@@ -13,7 +13,11 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
 
-  useEffect(() => {
+useEffect(() => {
+    // Skip auth if Cognito not configured
+    const hasCognito = !!(process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID && process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID);
+    if (!hasCognito) return;
+    
     // Skip auth check in dev mode
     if (process.env.NODE_ENV !== "development") {
       const token = getAccessToken();
