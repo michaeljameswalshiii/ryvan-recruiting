@@ -1,63 +1,36 @@
 "use client";
 
-import {
-  CognitoIdentityProviderClient,
-  SignUpCommand,
-  InitiateAuthCommand,
-  GetUserCommand,
-  GlobalSignOutCommand,
-} from "@aws-sdk/client-cognito-identity-provider";
-import {
-  DynamoDBClient,
-  GetItemCommand,
-  PutItemCommand,
-  QueryCommand,
-  UpdateItemCommand,
-  DeleteItemCommand,
-} from "@aws-sdk/client-dynamodb";
-import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
+// DON'T import AWS SDK at top level - import dynamically instead
+// This prevents the error during build
 
 // AWS Configuration - only use if env vars are present
-const region = process.env.NEXT_PUBLIC_AWS_REGION || "us-east-1";
-const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || "";
-const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || "";
-const tenantsTable = process.env.NEXT_PUBLIC_TENANTS_TABLE || "turnkey-tenants";
-const profilesTable = process.env.NEXT_PUBLIC_PROFILES_TABLE || "turnkey-profiles";
-const clientsTable = process.env.NEXT_PUBLIC_CLIENTS_TABLE || "turnkey-clients";
-const leadsTable = process.env.NEXT_PUBLIC_LEADS_TABLE || "turnkey-leads";
-const sourcesTable = process.env.NEXT_PUBLIC_SOURCES_TABLE || "turnkey-sources";
+const region = typeof process !== 'undefined' ? (process.env?.NEXT_PUBLIC_AWS_REGION || "us-east-1") : "us-east-1";
+const userPoolId = "";
+const clientId = "";
+const tenantsTable = "turnkey-tenants";
+const profilesTable = "turnkey-profiles";
+const clientsTable = "turnkey-clients";
+const leadsTable = "turnkey-leads";
+const sourcesTable = "turnkey-sources";
 
-// Check if AWS is configured
-const isConfigured = !!(clientId && userPoolId);
-
-// Lazy initialize AWS clients - only if configured
-let cognitoClient: CognitoIdentityProviderClient | null = null;
-let dynamoClient: DynamoDBClient | null = null;
-
-function getCognitoClient() {
-  if (!cognitoClient && isConfigured) {
-    cognitoClient = new CognitoIdentityProviderClient({ region });
-  }
-  if (!cognitoClient) throw new Error("AWS not configured - missing COGNITO_CLIENT_ID");
-  return cognitoClient;
+// Check if AWS is configured at runtime
+function isAwsConfigured() {
+  if (typeof process === 'undefined') return false;
+  const cid = process.env?.NEXT_PUBLIC_COGNITO_CLIENT_ID;
+  const pid = process.env?.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
+  return !!(cid && pid);
 }
 
-function getDynamoClient() {
-  if (!dynamoClient && isConfigured) {
-    dynamoClient = new DynamoDBClient({ region });
+// No-op placeholder - real functions only work when AWS is configured
+export async function signUp(email: string, password: string, fullName: string) {
+  if (!isAwsConfigured()) {
+    throw new Error("AWS not configured. Add NEXT_PUBLIC_COGNITO_CLIENT_ID to env vars.");
   }
-  if (!dynamoClient) throw new Error("AWS not configured - missing DynamoDB config");
-  return dynamoClient;
-}
-
-// Auth Functions
-export async function signUp(
-  email: string,
-  password: string,
-  fullName: string
-) {
+  // Dynamic import only when needed
+  const { CognitoIdentityProviderClient, SignUpCommand } = await import("@aws-sdk/client-cognito-identity-provider");
+  const client = new CognitoIdentityProviderClient({ region });
   const command = new SignUpCommand({
-    ClientId: clientId,
+    ClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID,
     Username: email,
     Password: password,
     UserAttributes: [
@@ -65,47 +38,39 @@ export async function signUp(
       { Name: "name", Value: fullName },
     ],
   });
-
-  const response = await getCognitoClient().send(command);
-  return response;
+  return client.send(command);
 }
 
 export async function signIn(email: string, password: string) {
+  if (!isAwsConfigured()) {
+    throw new Error("AWS not configured. Add NEXT_PUBLIC_COGNITO_CLIENT_ID to env vars.");
+  }
+  const { CognitoIdentityProviderClient, InitiateAuthCommand } = await import("@aws-sdk/client-cognito-identity-provider");
+  const client = new CognitoIdentityProviderClient({ region });
   const command = new InitiateAuthCommand({
     AuthFlow: "USER_PASSWORD_AUTH",
-    ClientId: clientId,
+    ClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID,
     AuthParameters: {
       USERNAME: email,
       PASSWORD: password,
     },
   });
-
-  const response = await getCognitoClient().send(command);
-  
-  // Store tokens
+  const response = await client.send(command);
   if (response.AuthenticationResult) {
-    localStorage.setItem(
-      "accessToken",
-      response.AuthenticationResult.AccessToken || ""
-    );
-    localStorage.setItem(
-      "refreshToken",
-      response.AuthenticationResult.RefreshToken || ""
-    );
-    localStorage.setItem(
-      "idToken",
-      response.AuthenticationResult.IdToken || ""
-    );
+    localStorage.setItem("accessToken", response.AuthenticationResult.AccessToken || "");
+    localStorage.setItem("refreshToken", response.AuthenticationResult.RefreshToken || "");
+    localStorage.setItem("idToken", response.AuthenticationResult.IdToken || "");
   }
-  
   return response;
 }
 
 export async function signOut() {
   const accessToken = localStorage.getItem("accessToken");
-  if (accessToken) {
+  if (accessToken && isAwsConfigured()) {
+    const { CognitoIdentityProviderClient, GlobalSignOutCommand } = await import("@aws-sdk/client-cognito-identity-provider");
+    const client = new CognitoIdentityProviderClient({ region });
     const command = new GlobalSignOutCommand({ AccessToken: accessToken });
-    await getCognitoClient().send(command);
+    await client.send(command);
   }
   localStorage.removeItem("accessToken");
   localStorage.removeItem("refreshToken");
@@ -115,9 +80,12 @@ export async function signOut() {
 export async function getCurrentUser() {
   const accessToken = localStorage.getItem("accessToken");
   if (!accessToken) return null;
-
+  if (!isAwsConfigured()) return null;
+  
+  const { CognitoIdentityProviderClient, GetUserCommand } = await import("@aws-sdk/client-cognito-identity-provider");
+  const client = new CognitoIdentityProviderClient({ region });
   const command = new GetUserCommand({ AccessToken: accessToken });
-  const response = await getCognitoClient().send(command);
+  const response = await client.send(command);
   return response.UserAttributes;
 }
 
@@ -125,43 +93,57 @@ export function getAccessToken() {
   return typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
 }
 
-// Database Functions
+async function getDynamoClient() {
+  if (!isAwsConfigured()) {
+    throw new Error("AWS not configured");
+  }
+  const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb");
+  return new DynamoDBClient({ region });
+}
+
+async function unmarshall(item: any) {
+  const { unmarshall } = await import("@aws-sdk/util-dynamodb");
+  return unmarshall(item);
+}
+
 export async function getProfile(userId: string) {
+  const { GetItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new GetItemCommand({
     TableName: profilesTable,
-    Key: marshall({ id: userId }),
+    Key: { id: { S: userId } },
   });
-  const response = await getDynamoClient().send(command);
-  return response.Item ? unmarshall(response.Item) : null;
+  const response = await client.send(command);
+  return response.Item ? await unmarshall(response.Item) : null;
 }
 
-// Tenant Functions
 export async function getTenant(tenantId: string) {
+  const { GetItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new GetItemCommand({
     TableName: tenantsTable,
-    Key: marshall({ id: tenantId }),
+    Key: { id: { S: tenantId } },
   });
-  const response = await getDynamoClient().send(command);
-  return response.Item ? unmarshall(response.Item) : null;
+  const response = await client.send(command);
+  return response.Item ? await unmarshall(response.Item) : null;
 }
 
-export async function createTenant(tenant: {
-  id: string;
-  name: string;
-  subdomain: string;
-}) {
+export async function createTenant(tenant: { id: string; name: string; subdomain: string }) {
+  const { PutItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new PutItemCommand({
     TableName: tenantsTable,
-    Item: marshall({
-      ...tenant,
-      created_at: new Date().toISOString(),
-    }),
+    Item: {
+      id: { S: tenant.id },
+      name: { S: tenant.name },
+      subdomain: { S: tenant.subdomain },
+      created_at: { S: new Date().toISOString() },
+    },
   });
-  await getDynamoClient().send(command);
+  await client.send(command);
   return tenant;
 }
 
-// Profile Functions
 export async function createProfile(profile: {
   id: string;
   tenant_id: string;
@@ -169,25 +151,33 @@ export async function createProfile(profile: {
   full_name: string;
   role: string;
 }) {
+  const { PutItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new PutItemCommand({
     TableName: profilesTable,
-    Item: marshall({
-      ...profile,
-      created_at: new Date().toISOString(),
-    }),
+    Item: {
+      id: { S: profile.id },
+      tenant_id: { S: profile.tenant_id },
+      email: { S: profile.email },
+      full_name: { S: profile.full_name },
+      role: { S: profile.role },
+      created_at: { S: new Date().toISOString() },
+    },
   });
-  await getDynamoClient().send(command);
+  await client.send(command);
   return profile;
 }
 
 export async function getClients(tenantId: string) {
+  const { QueryCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new QueryCommand({
     TableName: clientsTable,
     KeyConditionExpression: "tenant_id = :tenantId",
-    ExpressionAttributeValues: marshall({ ":tenantId": tenantId }),
+    ExpressionAttributeValues: { ":tenantId": { S: tenantId } },
   });
-  const response = await getDynamoClient().send(command);
-  return response.Items ? response.Items.map((item) => unmarshall(item)) : [];
+  const response = await client.send(command);
+  return response.Items ? Promise.all(response.Items.map(unmarshall)) : [];
 }
 
 export async function createClient(client: {
@@ -198,11 +188,20 @@ export async function createClient(client: {
   phone?: string;
   company?: string;
 }) {
+  const { PutItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const dbClient = await getDynamoClient();
   const command = new PutItemCommand({
     TableName: clientsTable,
-    Item: marshall(client),
+    Item: {
+      id: { S: client.id },
+      tenant_id: { S: client.tenant_id },
+      name: { S: client.name },
+      email: { S: client.email },
+      phone: { S: client.phone || "" },
+      company: { S: client.company || "" },
+    },
   });
-  await getDynamoClient().send(command);
+  await dbClient.send(command);
   return client;
 }
 
@@ -211,9 +210,11 @@ export async function updateClient(
   clientId: string,
   updates: Record<string, unknown>
 ) {
+  const { UpdateItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new UpdateItemCommand({
     TableName: clientsTable,
-    Key: marshall({ tenant_id: tenantId, id: clientId }),
+    Key: { tenant_id: { S: tenantId }, id: { S: clientId } },
     UpdateExpression: "SET #name = :name, #email = :email, #phone = :phone, #company = :company",
     ExpressionAttributeNames: {
       "#name": "name",
@@ -221,33 +222,37 @@ export async function updateClient(
       "#phone": "phone",
       "#company": "company",
     },
-    ExpressionAttributeValues: marshall({
-      ":name": updates.name,
-      ":email": updates.email,
-      ":phone": updates.phone,
-      ":company": updates.company,
-    }),
+    ExpressionAttributeValues: {
+      ":name": { S: updates.name as string },
+      ":email": { S: updates.email as string },
+      ":phone": { S: updates.phone as string },
+      ":company": { S: updates.company as string },
+    },
   });
-  const response = await getDynamoClient().send(command);
-  return response.Attributes ? unmarshall(response.Attributes) : null;
+  const response = await client.send(command);
+  return response.Attributes ? await unmarshall(response.Attributes) : null;
 }
 
 export async function deleteClient(tenantId: string, clientId: string) {
+  const { DeleteItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new DeleteItemCommand({
     TableName: clientsTable,
-    Key: marshall({ tenant_id: tenantId, id: clientId }),
+    Key: { tenant_id: { S: tenantId }, id: { S: clientId } },
   });
-  await getDynamoClient().send(command);
+  await client.send(command);
 }
 
 export async function getLeads(tenantId: string) {
+  const { QueryCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new QueryCommand({
     TableName: leadsTable,
     KeyConditionExpression: "tenant_id = :tenantId",
-    ExpressionAttributeValues: marshall({ ":tenantId": tenantId }),
+    ExpressionAttributeValues: { ":tenantId": { S: tenantId } },
   });
-  const response = await getDynamoClient().send(command);
-  return response.Items ? response.Items.map((item) => unmarshall(item)) : [];
+  const response = await client.send(command);
+  return response.Items ? Promise.all(response.Items.map(unmarshall)) : [];
 }
 
 export async function createLead(lead: {
@@ -259,11 +264,21 @@ export async function createLead(lead: {
   status?: string;
   notes?: string;
 }) {
+  const { PutItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new PutItemCommand({
     TableName: leadsTable,
-    Item: marshall(lead),
+    Item: {
+      id: { S: lead.id },
+      tenant_id: { S: lead.tenant_id },
+      name: { S: lead.name },
+      email: { S: lead.email },
+      company: { S: lead.company || "" },
+      status: { S: lead.status || "new" },
+      notes: { S: lead.notes || "" },
+    },
   });
-  await getDynamoClient().send(command);
+  await client.send(command);
   return lead;
 }
 
@@ -272,9 +287,11 @@ export async function updateLead(
   leadId: string,
   updates: Record<string, unknown>
 ) {
+  const { UpdateItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new UpdateItemCommand({
     TableName: leadsTable,
-    Key: marshall({ tenant_id: tenantId, id: leadId }),
+    Key: { tenant_id: { S: tenantId }, id: { S: leadId } },
     UpdateExpression: "SET #name = :name, #email = :email, #company = :company, #status = :status, #notes = :notes",
     ExpressionAttributeNames: {
       "#name": "name",
@@ -283,34 +300,38 @@ export async function updateLead(
       "#status": "status",
       "#notes": "notes",
     },
-    ExpressionAttributeValues: marshall({
-      ":name": updates.name,
-      ":email": updates.email,
-      ":company": updates.company,
-      ":status": updates.status,
-      ":notes": updates.notes,
-    }),
+    ExpressionAttributeValues: {
+      ":name": { S: updates.name as string },
+      ":email": { S: updates.email as string },
+      ":company": { S: updates.company as string },
+      ":status": { S: updates.status as string },
+      ":notes": { S: updates.notes as string },
+    },
   });
-  const response = await getDynamoClient().send(command);
-  return response.Attributes ? unmarshall(response.Attributes) : null;
+  const response = await client.send(command);
+  return response.Attributes ? await unmarshall(response.Attributes) : null;
 }
 
 export async function deleteLead(tenantId: string, leadId: string) {
+  const { DeleteItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new DeleteItemCommand({
     TableName: leadsTable,
-    Key: marshall({ tenant_id: tenantId, id: leadId }),
+    Key: { tenant_id: { S: tenantId }, id: { S: leadId } },
   });
-  await getDynamoClient().send(command);
+  await client.send(command);
 }
 
 export async function getSources(tenantId: string) {
+  const { QueryCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new QueryCommand({
     TableName: sourcesTable,
     KeyConditionExpression: "tenant_id = :tenantId",
-    ExpressionAttributeValues: marshall({ ":tenantId": tenantId }),
+    ExpressionAttributeValues: { ":tenantId": { S: tenantId } },
   });
-  const response = await getDynamoClient().send(command);
-  return response.Items ? response.Items.map((item) => unmarshall(item)) : [];
+  const response = await client.send(command);
+  return response.Items ? Promise.all(response.Items.map(unmarshall)) : [];
 }
 
 export async function createSource(source: {
@@ -321,10 +342,19 @@ export async function createSource(source: {
   url?: string;
   description?: string;
 }) {
+  const { PutItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
   const command = new PutItemCommand({
     TableName: sourcesTable,
-    Item: marshall(source),
+    Item: {
+      id: { S: source.id },
+      tenant_id: { S: source.tenant_id },
+      name: { S: source.name },
+      type: { S: source.type },
+      url: { S: source.url || "" },
+      description: { S: source.description || "" },
+    },
   });
-  await getDynamoClient().send(command);
+  await client.send(command);
   return source;
 }
