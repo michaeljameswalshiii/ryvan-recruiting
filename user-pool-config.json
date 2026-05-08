@@ -1,0 +1,8 @@
+{
+  "AutoVerifyAttributes": [
+    {
+      "Name": "email",
+      "Value": "always"
+    }
+  ]
+}

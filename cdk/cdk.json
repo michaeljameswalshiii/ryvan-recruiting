@@ -1,0 +1,17 @@
+{
+  "app": "python C:/Users/micha/Downloads/TurnkeyOptimization/cdk/app.py",
+  "watch": {
+    "include": [
+      "**"
+    ],
+    "exclude": [
+      "README*",
+      "package*",
+      "cdk*.json",
+      "requirements*",
+      "setup.py",
+      "pytest.ini",
+      "*.pyc"
+    ]
+  }
+}
