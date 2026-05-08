@@ -1,6 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  // Skip auth if Cognito credentials aren't configured
+  const hasCognito = !!(process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID && process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID);
+  
+  // Allow all routes if no Cognito config (Vercel production fix)
+  if (!hasCognito) {
+    return NextResponse.next();
+  }
+  
   // DEV MODE: Skip auth checks for development
   const isDev = process.env.NODE_ENV === "development";
   
