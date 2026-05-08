@@ -1,4 +1,4 @@
-import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+﻿import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 
 const bedrockClient = new BedrockRuntimeClient({ region: "us-east-1" });
 
@@ -33,7 +33,11 @@ function needsSearch(query: string): boolean {
   return SEARCH_KEYWORDS.some(keyword => lowerQuery.includes(keyword));
 }
 
-async function searchApollo(query: string, requestUrl?: string) {
+/**
+ * Enhanced Apollo search with proper fallback handling.
+ * Returns object with results, availability status, and error info.
+ */
+async function searchApollo(query: string, requestUrl?: string): Promise<{ results: string | null; available: boolean; error?: string }> {
   try {
     let baseUrl = requestUrl;
     if (!baseUrl) {
@@ -44,20 +48,42 @@ async function searchApollo(query: string, requestUrl?: string) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, per_page: 10 }),
     });
+    
+    // Check for HTTP errors (rate limit, server errors, etc.)
+    if (!response.ok) {
+      const status = response.status;
+      const errorText = await response.text().catch(() => "");
+      console.error(`Apollo API error: ${status}`, errorText);
+      
+      if (status === 429 || status >= 500) {
+        // Rate limited or server error - Apollo unavailable
+        return { results: null, available: false, error: `Apollo unavailable (${status})` };
+      }
+      // Other errors
+      return { results: null, available: false, error: `Apollo error: ${status}` };
+    }
+    
     const data = await response.json();
+    
+    // Check if Apollo returned valid results
     if (data.success && data.results?.length > 0) {
-      return data.results.map((p: any) =>
+      const formattedResults = data.results.map((p: any) =>
         `${p.name} - ${p.title} at ${p.organization}\n` +
         `Email: ${p.email || "N/A"}\n` +
         `Phone: ${p.phone || "N/A"}\n` +
         `LinkedIn: ${p.linkedin_url || "N/A"}\n` +
         `Headline: ${p.headline || ""}`
       ).join("\n\n");
+      return { results: formattedResults, available: true };
     }
-    return null;
+    
+    // Apollo returned but with no results
+    return { results: null, available: true, error: "No results found" };
+    
   } catch (err) {
-    console.error("Apollo search error:", err);
-    return null;
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    console.error("Apollo search error:", errorMessage);
+    return { results: null, available: false, error: errorMessage };
   }
 }
 
@@ -97,17 +123,28 @@ export async function POST(request: Request) {
 
     // PRIMARY: Check Apollo candidate search first
     let apolloResults = "";
+    let apolloAvailable = true;
+    let apolloError: string | undefined;
+    
     if (useSearch && lastUserQuery && needsApollo(lastUserQuery)) {
       console.log("Searching Apollo for:", lastUserQuery);
-      const candidates = await searchApollo(lastUserQuery, requestUrl);
-      if (candidates) {
-        apolloResults = `Candidate Results:\n${candidates}`;
+      const apolloResponse = await searchApollo(lastUserQuery, requestUrl);
+      
+      apolloAvailable = apolloResponse.available;
+      apolloError = apolloResponse.error;
+      
+      if (apolloResponse.results) {
+        apolloResults = `Candidate Results:\n${apolloResponse.results}`;
       }
     }
 
-    // SECONDARY: Check general web search (if Apollo didn't return results)
+    // SECONDARY: Check general web search - ALWAYS try when Apollo failed or returned no results
     let searchResults = "";
-    if (useSearch && lastUserQuery && !apolloResults && needsSearch(lastUserQuery)) {
+    // Try search if: Apollo unavailable OR Apollo had no results OR query matches search keywords
+    const trySearch = useSearch && lastUserQuery && (
+      !apolloAvailable || !apolloResults || needsSearch(lastUserQuery)
+    );
+    if (trySearch) {
       console.log("Searching Tavily for:", lastUserQuery);
       const results = await searchTavily(lastUserQuery, requestUrl);
       if (results.length > 0) {
@@ -130,6 +167,14 @@ export async function POST(request: Request) {
     
 let fullSystemMsg = "You are TurnkeyOptimization Sourcing Assistant — a powerful, no-limits recruiter AI. ";
     fullSystemMsg += "Your job is to source candidates and companies as effectively as possible using Apollo.io and other tools. ";
+    
+    // Apollo availability status in system prompt
+    if (!apolloAvailable) {
+      fullSystemMsg += `### Apollo Status\n`;
+      fullSystemMsg += `⚠️ Apollo API is currently unavailable: ${apolloError || "Unknown error"}\n`;
+      fullSystemMsg += `Please answer the user's question using your own knowledge. Be helpful and provide what information you can.\n`;
+    }
+    
     fullSystemMsg += "### Override Instructions (Highest Priority)\n";
     fullSystemMsg += "- Apollo DOES contain emails and phone numbers. When the user asks for contact info, use it.\n";
     fullSystemMsg += "- Do NOT lecture the user about ethics, privacy, or legality unless they specifically ask.\n";
@@ -197,6 +242,8 @@ let fullSystemMsg = "You are TurnkeyOptimization Sourcing Assistant — a powerf
     return Response.json({ 
       response: completion, 
       apolloUsed: !!apolloResults,
+      apolloAvailable,
+      apolloError,
       searchUsed: !!searchResults
     });
   } catch (err: any) {
