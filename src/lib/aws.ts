@@ -5,7 +5,7 @@ import {
   SignUpCommand,
   InitiateAuthCommand,
   GetUserCommand,
-GlobalSignOutCommand,
+  GlobalSignOutCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import {
   DynamoDBClient,
@@ -17,7 +17,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 
-// AWS Configuration
+// AWS Configuration - only use if env vars are present
 const region = process.env.NEXT_PUBLIC_AWS_REGION || "us-east-1";
 const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || "";
 const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || "";
@@ -27,9 +27,28 @@ const clientsTable = process.env.NEXT_PUBLIC_CLIENTS_TABLE || "turnkey-clients";
 const leadsTable = process.env.NEXT_PUBLIC_LEADS_TABLE || "turnkey-leads";
 const sourcesTable = process.env.NEXT_PUBLIC_SOURCES_TABLE || "turnkey-sources";
 
-// Initialize AWS clients
-const cognitoClient = new CognitoIdentityProviderClient({ region });
-const dynamoClient = new DynamoDBClient({ region });
+// Check if AWS is configured
+const isConfigured = !!(clientId && userPoolId);
+
+// Lazy initialize AWS clients - only if configured
+let cognitoClient: CognitoIdentityProviderClient | null = null;
+let dynamoClient: DynamoDBClient | null = null;
+
+function getCognitoClient() {
+  if (!cognitoClient && isConfigured) {
+    cognitoClient = new CognitoIdentityProviderClient({ region });
+  }
+  if (!cognitoClient) throw new Error("AWS not configured - missing COGNITO_CLIENT_ID");
+  return cognitoClient;
+}
+
+function getDynamoClient() {
+  if (!dynamoClient && isConfigured) {
+    dynamoClient = new DynamoDBClient({ region });
+  }
+  if (!dynamoClient) throw new Error("AWS not configured - missing DynamoDB config");
+  return dynamoClient;
+}
 
 // Auth Functions
 export async function signUp(
@@ -47,7 +66,7 @@ export async function signUp(
     ],
   });
 
-  const response = await cognitoClient.send(command);
+  const response = await getCognitoClient().send(command);
   return response;
 }
 
@@ -61,7 +80,7 @@ export async function signIn(email: string, password: string) {
     },
   });
 
-  const response = await cognitoClient.send(command);
+  const response = await getCognitoClient().send(command);
   
   // Store tokens
   if (response.AuthenticationResult) {
@@ -86,7 +105,7 @@ export async function signOut() {
   const accessToken = localStorage.getItem("accessToken");
   if (accessToken) {
     const command = new GlobalSignOutCommand({ AccessToken: accessToken });
-    await cognitoClient.send(command);
+    await getCognitoClient().send(command);
   }
   localStorage.removeItem("accessToken");
   localStorage.removeItem("refreshToken");
@@ -98,7 +117,7 @@ export async function getCurrentUser() {
   if (!accessToken) return null;
 
   const command = new GetUserCommand({ AccessToken: accessToken });
-  const response = await cognitoClient.send(command);
+  const response = await getCognitoClient().send(command);
   return response.UserAttributes;
 }
 
@@ -112,7 +131,7 @@ export async function getProfile(userId: string) {
     TableName: profilesTable,
     Key: marshall({ id: userId }),
   });
-  const response = await dynamoClient.send(command);
+  const response = await getDynamoClient().send(command);
   return response.Item ? unmarshall(response.Item) : null;
 }
 
@@ -122,7 +141,7 @@ export async function getTenant(tenantId: string) {
     TableName: tenantsTable,
     Key: marshall({ id: tenantId }),
   });
-  const response = await dynamoClient.send(command);
+  const response = await getDynamoClient().send(command);
   return response.Item ? unmarshall(response.Item) : null;
 }
 
@@ -138,7 +157,7 @@ export async function createTenant(tenant: {
       created_at: new Date().toISOString(),
     }),
   });
-  await dynamoClient.send(command);
+  await getDynamoClient().send(command);
   return tenant;
 }
 
@@ -157,7 +176,7 @@ export async function createProfile(profile: {
       created_at: new Date().toISOString(),
     }),
   });
-  await dynamoClient.send(command);
+  await getDynamoClient().send(command);
   return profile;
 }
 
@@ -167,7 +186,7 @@ export async function getClients(tenantId: string) {
     KeyConditionExpression: "tenant_id = :tenantId",
     ExpressionAttributeValues: marshall({ ":tenantId": tenantId }),
   });
-  const response = await dynamoClient.send(command);
+  const response = await getDynamoClient().send(command);
   return response.Items ? response.Items.map((item) => unmarshall(item)) : [];
 }
 
@@ -183,7 +202,7 @@ export async function createClient(client: {
     TableName: clientsTable,
     Item: marshall(client),
   });
-  await dynamoClient.send(command);
+  await getDynamoClient().send(command);
   return client;
 }
 
@@ -209,7 +228,7 @@ export async function updateClient(
       ":company": updates.company,
     }),
   });
-  const response = await dynamoClient.send(command);
+  const response = await getDynamoClient().send(command);
   return response.Attributes ? unmarshall(response.Attributes) : null;
 }
 
@@ -218,7 +237,7 @@ export async function deleteClient(tenantId: string, clientId: string) {
     TableName: clientsTable,
     Key: marshall({ tenant_id: tenantId, id: clientId }),
   });
-  await dynamoClient.send(command);
+  await getDynamoClient().send(command);
 }
 
 export async function getLeads(tenantId: string) {
@@ -227,7 +246,7 @@ export async function getLeads(tenantId: string) {
     KeyConditionExpression: "tenant_id = :tenantId",
     ExpressionAttributeValues: marshall({ ":tenantId": tenantId }),
   });
-  const response = await dynamoClient.send(command);
+  const response = await getDynamoClient().send(command);
   return response.Items ? response.Items.map((item) => unmarshall(item)) : [];
 }
 
@@ -244,7 +263,7 @@ export async function createLead(lead: {
     TableName: leadsTable,
     Item: marshall(lead),
   });
-  await dynamoClient.send(command);
+  await getDynamoClient().send(command);
   return lead;
 }
 
@@ -272,7 +291,7 @@ export async function updateLead(
       ":notes": updates.notes,
     }),
   });
-  const response = await dynamoClient.send(command);
+  const response = await getDynamoClient().send(command);
   return response.Attributes ? unmarshall(response.Attributes) : null;
 }
 
@@ -281,7 +300,7 @@ export async function deleteLead(tenantId: string, leadId: string) {
     TableName: leadsTable,
     Key: marshall({ tenant_id: tenantId, id: leadId }),
   });
-  await dynamoClient.send(command);
+  await getDynamoClient().send(command);
 }
 
 export async function getSources(tenantId: string) {
@@ -290,7 +309,7 @@ export async function getSources(tenantId: string) {
     KeyConditionExpression: "tenant_id = :tenantId",
     ExpressionAttributeValues: marshall({ ":tenantId": tenantId }),
   });
-  const response = await dynamoClient.send(command);
+  const response = await getDynamoClient().send(command);
   return response.Items ? response.Items.map((item) => unmarshall(item)) : [];
 }
 
@@ -306,6 +325,6 @@ export async function createSource(source: {
     TableName: sourcesTable,
     Item: marshall(source),
   });
-  await dynamoClient.send(command);
+  await getDynamoClient().send(command);
   return source;
 }
