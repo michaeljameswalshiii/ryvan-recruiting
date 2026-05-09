@@ -55,6 +55,12 @@ async function searchApollo(query: string, requestUrl?: string): Promise<{ resul
       const errorText = await response.text().catch(() => "");
       console.error(`Apollo API error: ${status}`, errorText);
       
+      // Check for free plan limitation
+      if (errorText.includes("free plan") || errorText.includes("API_INACCESSIBLE") || status === 403) {
+        // Free plan doesn't have access to people search - mark as unavailable
+        return { results: null, available: false, error: "Apollo free plan does not include people search API access" };
+      }
+      
       if (status === 429 || status >= 500) {
         // Rate limited or server error - Apollo unavailable
         return { results: null, available: false, error: `Apollo unavailable (${status})` };
