@@ -3,6 +3,18 @@
 import { useState } from "react";
 import { Plus, MoreHorizontal, Mail, Phone, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Lead {
   id: string;
@@ -59,6 +71,14 @@ const columns = [
 export default function PipelinePage() {
   const [leads, setLeads] = useState<Lead[]>(initialLeads);
   const [draggedLead, setDraggedLead] = useState<string | null>(null);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  
+  // New lead form state
+  const [newLeadName, setNewLeadName] = useState("");
+  const [newLeadEmail, setNewLeadEmail] = useState("");
+  const [newLeadCompany, setNewLeadCompany] = useState("");
+  const [newLeadPhone, setNewLeadPhone] = useState("");
+  const [newLeadNotes, setNewLeadNotes] = useState("");
 
   const getLeadsByStatus = (status: string) => {
     return leads.filter((lead) => lead.status === status);
@@ -87,6 +107,31 @@ export default function PipelinePage() {
     return leads.filter((lead) => lead.status === status).length;
   };
 
+  const handleAddLead = () => {
+    if (!newLeadName || !newLeadEmail) return;
+    
+    const newLead: Lead = {
+      id: Date.now().toString(),
+      name: newLeadName,
+      email: newLeadEmail,
+      company: newLeadCompany,
+      phone: newLeadPhone,
+      status: "new",
+      notes: newLeadNotes,
+      created_at: new Date().toISOString(),
+    };
+    
+    setLeads((prev) => [...prev, newLead]);
+    setIsAddDialogOpen(false);
+    
+    // Reset form
+    setNewLeadName("");
+    setNewLeadEmail("");
+    setNewLeadCompany("");
+    setNewLeadPhone("");
+    setNewLeadNotes("");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -96,10 +141,79 @@ export default function PipelinePage() {
             Manage your outreach leads.
           </p>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Lead
-        </Button>
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Lead
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Lead</DialogTitle>
+              <DialogDescription>
+                Add a new lead to your pipeline.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="name">Name *</Label>
+                <Input
+                  id="name"
+                  value={newLeadName}
+                  onChange={(e) => setNewLeadName(e.target.value)}
+                  placeholder="John Smith"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email *</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={newLeadEmail}
+                  onChange={(e) => setNewLeadEmail(e.target.value)}
+                  placeholder="john@example.com"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="company">Company</Label>
+                <Input
+                  id="company"
+                  value={newLeadCompany}
+                  onChange={(e) => setNewLeadCompany(e.target.value)}
+                  placeholder="ABC Construction"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={newLeadPhone}
+                  onChange={(e) => setNewLeadPhone(e.target.value)}
+                  placeholder="561-555-0100"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea
+                  id="notes"
+                  value={newLeadNotes}
+                  onChange={(e) => setNewLeadNotes(e.target.value)}
+                  placeholder="Add any notes about this lead..."
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddLead} disabled={!newLeadName || !newLeadEmail}>
+                Add Lead
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Pipeline Board */}

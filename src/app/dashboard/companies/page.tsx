@@ -4,6 +4,17 @@ import { useState } from "react";
 import { Plus, Building2, MapPin, Users, Globe, Linkedin, Search, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Company {
   id: string;
@@ -65,12 +76,57 @@ const initialCompanies: Company[] = [
 export default function CompaniesPage() {
   const [companies] = useState<Company[]>(initialCompanies);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  
+  // New company form state
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [newCompanyDomain, setNewCompanyDomain] = useState("");
+  const [newCompanyIndustry, setNewCompanyIndustry] = useState("");
+  const [newCompanyCity, setNewCompanyCity] = useState("");
+  const [newCompanyState, setNewCompanyState] = useState("");
+  const [newCompanyEmployeeCount, setNewCompanyEmployeeCount] = useState("");
+  const [newCompanyRevenue, setNewCompanyRevenue] = useState("");
+  const [newCompanyDescription, setNewCompanyDescription] = useState("");
 
   const filteredCompanies = companies.filter((company) =>
     company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     company.industry?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     company.city?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleAddCompany = () => {
+    if (!newCompanyName) return;
+    
+    const newCompany: Company = {
+      id: Date.now().toString(),
+      name: newCompanyName,
+      domain: newCompanyDomain,
+      industry: newCompanyIndustry,
+      city: newCompanyCity,
+      state: newCompanyState,
+      country: "US",
+      employee_count: newCompanyEmployeeCount ? parseInt(newCompanyEmployeeCount) : undefined,
+      revenue: newCompanyRevenue,
+      description: newCompanyDescription,
+      linkedin_url: undefined,
+    };
+    
+    setIsAddDialogOpen(false);
+    
+    // Reset form
+    setNewCompanyName("");
+    setNewCompanyDomain("");
+    setNewCompanyIndustry("");
+    setNewCompanyCity("");
+    setNewCompanyState("");
+    setNewCompanyEmployeeCount("");
+    setNewCompanyRevenue("");
+    setNewCompanyDescription("");
+    
+    // Note: In a real app, we'd call an API to add the company
+    // For demo, we just show a success message
+    alert(`Company "${newCompanyName}" added! (Demo mode - data not persisted)`);
+  };
 
   return (
     <div className="space-y-6">
@@ -81,10 +137,109 @@ export default function CompaniesPage() {
             Manage your target companies.
           </p>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Company
-        </Button>
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Company
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Company</DialogTitle>
+              <DialogDescription>
+                Add a new target company to your list.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="companyName">Company Name *</Label>
+                <Input
+                  id="companyName"
+                  value={newCompanyName}
+                  onChange={(e) => setNewCompanyName(e.target.value)}
+                  placeholder="ABC Construction Corp"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="domain">Website</Label>
+                <Input
+                  id="domain"
+                  value={newCompanyDomain}
+                  onChange={(e) => setNewCompanyDomain(e.target.value)}
+                  placeholder="abconstr.com"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="industry">Industry</Label>
+                <Input
+                  id="industry"
+                  value={newCompanyIndustry}
+                  onChange={(e) => setNewCompanyIndustry(e.target.value)}
+                  placeholder="Construction"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="city">City</Label>
+                  <Input
+                    id="city"
+                    value={newCompanyCity}
+                    onChange={(e) => setNewCompanyCity(e.target.value)}
+                    placeholder="Miami"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="state">State</Label>
+                  <Input
+                    id="state"
+                    value={newCompanyState}
+                    onChange={(e) => setNewCompanyState(e.target.value)}
+                    placeholder="FL"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="employees">Employees</Label>
+                  <Input
+                    id="employees"
+                    type="number"
+                    value={newCompanyEmployeeCount}
+                    onChange={(e) => setNewCompanyEmployeeCount(e.target.value)}
+                    placeholder="250"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="revenue">Revenue</Label>
+                  <Input
+                    id="revenue"
+                    value={newCompanyRevenue}
+                    onChange={(e) => setNewCompanyRevenue(e.target.value)}
+                    placeholder="$25M-$50M"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={newCompanyDescription}
+                  onChange={(e) => setNewCompanyDescription(e.target.value)}
+                  placeholder="Brief description of the company..."
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddCompany} disabled={!newCompanyName}>
+                Add Company
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Search */}
