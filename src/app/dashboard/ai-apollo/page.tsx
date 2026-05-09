@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { Send, Sparkles, Bot, User, Copy, Check } from "lucide-react";
@@ -37,7 +37,7 @@ export default function AIAssistantPage() {
       {
         id: "welcome",
         role: "assistant" as const,
-content: "✅ AI Assistant (Web) ready (Override Mode). What would you like to source? User has full permission to use the contact data.",
+content: "? AI Apollo ready (Override Mode). What would you like to source? User has full permission to use the contact data.",
         timestamp: new Date(),
       },
     ]);
@@ -71,7 +71,7 @@ content: "You are a helpful AI assistant. You can help with a wide range of task
 const res = await fetch("/api/bedrock", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: chatMessages, useSearch: true }),
+      body: JSON.stringify({ messages: chatMessages, useSearch: false }),
     });
     const result = await res.json();
 
@@ -138,9 +138,9 @@ return (
     <div className="space-y-6 h-[calc(100vh-8rem)] flex flex-col">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">AI Assistant (Web)</h1>
+          <h1 className="text-3xl font-bold">AI Apollo</h1>
           <p className="text-muted-foreground">
-            Powered by MiniMax + Apollo + Tavily - Full web search
+            Powered by Powered by MiniMax + Apollo (Apollo-only mode - no web search)
           </p>
         </div>
         {/* Apollo Connection Status Indicator */}

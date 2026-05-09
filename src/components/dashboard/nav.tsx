@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Users,
   Building2,
@@ -20,11 +20,18 @@ const navItems = [
   { href: "/dashboard/sourcing", label: "Sourcing", icon: Search },
   { href: "/dashboard/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
-  { href: "/dashboard/ai-assistant", label: "AI Assistant", icon: Sparkles },
+{ href: "/dashboard/ai-assistant", label: "AI Assistant (Web)", icon: Sparkles },
+  { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
 ];
 
 export function DashboardNav() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push("/");
+  };
 
   return (
     <nav className="w-64 h-screen bg-sidebar border-r border-border fixed left-0 top-0 flex flex-col">
@@ -62,7 +69,7 @@ export function DashboardNav() {
           Settings
         </Link>
         <button
-          onClick={() => signOut()}
+          onClick={handleSignOut}
           className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-accent hover:text-foreground w-full"
         >
           <LogOut className="h-4 w-4" />

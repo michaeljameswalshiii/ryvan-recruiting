@@ -1,46 +1,16 @@
-# Sourcing Assistant Implementation Plan
+# Apollo Fallback to Bedrock Enhancement
 
-## Information Gathered
+- [x] Modify bedrock/route.ts to add proper fallback when Apollo API fails or is unavailable
+- [x] Deploy to Vercel
+- [ ] Test the AI Assistant with queries to verify fallback works
 
-### Current State
-- AI Assistant at `/dashboard/ai-assistant` uses Bedrock + MiniMax for chat
-- Has basic sourcing quick actions but no proper Apollo connection flow
-- Apollo API key is server-side only (not user-connected)
-- No structured candidate table display
-- No enrichment or pipeline saving workflow
+## Enhancement Details
 
-### Target State
-- Turn the AI Assistant into a **Sourcing Assistant** persona
-- Should check if user has connected their Apollo account
-- Only show contact info when Apollo is connected
-- Implement full workflow: Search → Table → Enrich → Save to Pipeline
+When Apollo API is unavailable or rate-limited:
+1. Catch Apollo errors properly
+2. Add "Apollo unavailable" note to system prompt
+3. Let MiniMax answer from its own knowledge
 
-## Plan
-
-### File Changes
-
-1. **`src/app/dashboard/ai-assistant/page.tsx`** - Major update
-   - Update welcome message to: "✅ Sourcing Assistant ready. Who or what would you like to source today?"
-   - Add Apollo connection status indicator
-   - Add proper sourcing workflow UI with table display
-   - Add enrichment confirmation dialog
-   - Add "Save to Pipeline" button functionality
-   - Update system prompt for the sourcing persona
-
-2. **`src/app/api/bedrock/route.ts`** - Minor update
-   - Update system prompt to reflect new Sourcing Assistant persona
-   - Add better handling for Apollo-enriched results
-
-3. **Add new components** (optional):
-   - May need a table component for candidate display
-   - Confirmation dialog for enrichment
-
-## Progress
-
-- [x] Step 1: Update ai-assistant/page.tsx with new Sourcing Assistant persona
-- [x] Step 2: Update api/bedrock/route.ts with new system prompt
-- [ ] Step 3: Test the updated AI Assistant with sourcing queries
-
-## Followup Steps
-- Test the updated AI Assistant with sourcing queries
-- Verify Apollo API integration works properly
+## Deployed
+- Production: https://turnkey-optimization.vercel.app
+- Deployment successful!

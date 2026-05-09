@@ -1,7 +1,6 @@
 "use client";
 
 import { signIn as awsSignIn, signUp as awsSignUp, signOut as awsSignOut, getCurrentUser, createTenant, createProfile } from "./aws";
-import { redirect } from "next/navigation";
 
 function generateId(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
@@ -18,7 +17,8 @@ export async function signIn(email: string, password: string) {
     if (typeof window !== "undefined") {
       localStorage.setItem("accessToken", "true");
     }
-    redirect("/dashboard");
+    // Return success - let the caller handle redirect
+    return { success: true };
   } catch (error) {
     console.error("Sign in error:", error);
     throw error;
@@ -62,7 +62,8 @@ export async function signUp(
     }
     
     console.log("Sign up result:", result);
-    redirect("/dashboard");
+    // Return success - let the caller handle redirect
+    return { success: true };
   } catch (error) {
     console.error("Sign up error:", error);
     throw error;
@@ -71,7 +72,7 @@ export async function signUp(
 
 export async function signOut() {
   await awsSignOut();
-  redirect("/");
+  // Let caller handle redirect
 }
 
 export async function getSession() {
