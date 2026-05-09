@@ -5,8 +5,8 @@
 
 // AWS Configuration - only use if env vars are present
 const region = typeof process !== 'undefined' ? (process.env?.NEXT_PUBLIC_AWS_REGION || "us-east-1") : "us-east-1";
-const userPoolId = "";
-const clientId = "";
+const userPoolId = typeof process !== 'undefined' ? (process.env?.NEXT_PUBLIC_COGNITO_USER_POOL_ID || "") : "";
+const clientId = typeof process !== 'undefined' ? (process.env?.NEXT_PUBLIC_COGNITO_CLIENT_ID || "") : "";
 const tenantsTable = "turnkey-tenants";
 const profilesTable = "turnkey-profiles";
 const clientsTable = "turnkey-clients";
@@ -21,60 +21,105 @@ function isAwsConfigured() {
   return !!(cid && pid);
 }
 
+function getCognitoConfig() {
+  const cid = process.env?.NEXT_PUBLIC_COGNITO_CLIENT_ID;
+  const pid = process.env?.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
+  if (!cid || !pid) {
+    throw new Error("Cognito not configured. Please add NEXT_PUBLIC_COGNITO_CLIENT_ID and NEXT_PUBLIC_COGNITO_USER_POOL_ID to your environment variables.");
+  }
+  return { clientId: cid, userPoolId: pid, region };
+}
+
 // No-op placeholder - real functions only work when AWS is configured
 export async function signUp(email: string, password: string, fullName: string) {
   if (!isAwsConfigured()) {
     throw new Error("AWS not configured. Add NEXT_PUBLIC_COGNITO_CLIENT_ID to env vars.");
   }
-  // Dynamic import only when needed
-  const { CognitoIdentityProviderClient, SignUpCommand } = await import("@aws-sdk/client-cognito-identity-provider");
-  const client = new CognitoIdentityProviderClient({ region });
-  const command = new SignUpCommand({
-    ClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID,
-    Username: email,
-    Password: password,
-    UserAttributes: [
-      { Name: "email", Value: email },
-      { Name: "name", Value: fullName },
-    ],
-  });
-  return client.send(command);
+  
+  try {
+    // Dynamic import only when needed
+    const { CognitoIdentityProviderClient, SignUpCommand } = await import("@aws-sdk/client-cognito-identity-provider");
+    const client = new CognitoIdentityProviderClient({ region });
+    const command = new SignUpCommand({
+      ClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID,
+      Username: email,
+      Password: password,
+      UserAttributes: [
+        { Name: "email", Value: email },
+        { Name: "name", Value: fullName },
+      ],
+    });
+    return await client.send(command);
+  } catch (error: any) {
+    // Handle specific signup errors
+    if (error.name === "InvalidParameterException" || error.message?.includes("password")) {
+      throw new Error("Password does not meet requirements. Use at least 6 characters.");
+    } else if (error.name === "UsernameExistsException") {
+      throw new Error("An account with this email already exists. Please sign in instead.");
+    }
+    console.error("Signup error:", error);
+    throw new Error(error.message || "Registration failed. Please try again.");
+  }
 }
 
 export async function signIn(email: string, password: string) {
-  if (!isAwsConfigured()) {
-    throw new Error("AWS not configured. Add NEXT_PUBLIC_COGNITO_CLIENT_ID to env vars.");
+  let config;
+  try {
+    config = getCognitoConfig();
+  } catch (error) {
+    throw new Error("Authentication system not configured. Please contact the administrator.");
   }
-  const { CognitoIdentityProviderClient, InitiateAuthCommand } = await import("@aws-sdk/client-cognito-identity-provider");
-  const client = new CognitoIdentityProviderClient({ region });
-  const command = new InitiateAuthCommand({
-    AuthFlow: "USER_PASSWORD_AUTH",
-    ClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID,
-    AuthParameters: {
-      USERNAME: email,
-      PASSWORD: password,
-    },
-  });
-  const response = await client.send(command);
-  if (response.AuthenticationResult) {
-    localStorage.setItem("accessToken", response.AuthenticationResult.AccessToken || "");
-    localStorage.setItem("refreshToken", response.AuthenticationResult.RefreshToken || "");
-    localStorage.setItem("idToken", response.AuthenticationResult.IdToken || "");
+  
+  try {
+    const { CognitoIdentityProviderClient, InitiateAuthCommand } = await import("@aws-sdk/client-cognito-identity-provider");
+    const client = new CognitoIdentityProviderClient({ region: config.region });
+    const command = new InitiateAuthCommand({
+      AuthFlow: "USER_PASSWORD_AUTH",
+      ClientId: config.clientId,
+      AuthParameters: {
+        USERNAME: email,
+        PASSWORD: password,
+      },
+    });
+    const response = await client.send(command);
+    if (response.AuthenticationResult) {
+      localStorage.setItem("accessToken", response.AuthenticationResult.AccessToken || "");
+      localStorage.setItem("refreshToken", response.AuthenticationResult.RefreshToken || "");
+      localStorage.setItem("idToken", response.AuthenticationResult.IdToken || "");
+    }
+    return response;
+  } catch (error: any) {
+    // Extract AWS error message for better user feedback
+    if (error.name === "UserNotFoundException") {
+      throw new Error("User does not exist. Please create an account first.");
+    } else if (error.name === "NotAuthorizedException") {
+      throw new Error("Incorrect username or password.");
+    }
+    // Re-throw with more context
+    throw new Error(error.message || "Login failed. Please try again.");
   }
-  return response;
 }
 
 export async function signOut() {
-  const accessToken = localStorage.getItem("accessToken");
-  if (accessToken && isAwsConfigured()) {
-    const { CognitoIdentityProviderClient, GlobalSignOutCommand } = await import("@aws-sdk/client-cognito-identity-provider");
-    const client = new CognitoIdentityProviderClient({ region });
-    const command = new GlobalSignOutCommand({ AccessToken: accessToken });
-    await client.send(command);
-  }
+  // Always clear localStorage first, regardless of token validity
   localStorage.removeItem("accessToken");
   localStorage.removeItem("refreshToken");
   localStorage.removeItem("idToken");
+  localStorage.removeItem("tenantId");
+  
+  // Try to sign out from Cognito, but don't fail if token is invalid/expired
+  const accessToken = localStorage.getItem("accessToken");
+  if (accessToken && isAwsConfigured()) {
+    try {
+      const { CognitoIdentityProviderClient, GlobalSignOutCommand } = await import("@aws-sdk/client-cognito-identity-provider");
+      const client = new CognitoIdentityProviderClient({ region });
+      const command = new GlobalSignOutCommand({ AccessToken: accessToken });
+      await client.send(command);
+    } catch (error) {
+      // Ignore errors - token may be expired or invalid
+      console.log("Sign out from Cognito skipped:", error);
+    }
+  }
 }
 
 export async function getCurrentUser() {

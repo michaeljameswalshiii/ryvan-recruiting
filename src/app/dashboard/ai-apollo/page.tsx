@@ -43,7 +43,7 @@ content: "? AI Apollo ready (Override Mode). What would you like to source? User
     ]);
   }, []);
 
-  const sendMessage = async (content: string) => {
+const sendMessage = async (content: string) => {
     if (!content.trim()) return;
 
     const userMessage: Message = {
@@ -57,21 +57,21 @@ content: "? AI Apollo ready (Override Mode). What would you like to source? User
     setInput("");
     setIsLoading(true);
 
-// Build conversation context for Bedrock
-    const chatMessages = [
-      {
-        role: "system" as const,
-content: "You are a helpful AI assistant. You can help with a wide range of tasks including answering questions, writing, analysis, and more. Be concise and helpful.",
-      },
-      ...messages.slice(-6).map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-      { role: "user" as const, content },
-    ];
+    // Build conversation context for chat
+    const chatMessages = messages.slice(-6).map((m) => ({ 
+      role: m.role as "user" | "assistant", 
+      content: m.content 
+    }));
 
-// Call our API route which handles Bedrock creds server-side
-const res = await fetch("/api/bedrock", {
+    // Call /api/apollo which tries Apollo first, falls back to Bedrock
+    const res = await fetch("/api/apollo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: chatMessages, useSearch: false }),
+      body: JSON.stringify({ 
+        message: content,
+        messages: chatMessages,
+        useSearch: false 
+      }),
     });
     const result = await res.json();
 

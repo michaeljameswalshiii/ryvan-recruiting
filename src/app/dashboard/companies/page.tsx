@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Building2, MapPin, Users, Globe, Linkedin, Search, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
+import { getClients, createClient, updateClient, deleteClient } from "@/lib/aws";
 
 interface Company {
   id: string;
@@ -22,7 +23,7 @@ interface Company {
   description?: string;
 }
 
-// Mock data for demo
+// Mock data for demo (fallback when no DB)
 const initialCompanies: Company[] = [
   {
     id: "1",
@@ -65,10 +66,19 @@ const initialCompanies: Company[] = [
   },
 ];
 
+// Get tenant ID from session or use default
+// Note: auth.ts stores this as "tenantId" not "tenant_id"
+function getTenantId(): string {
+  if (typeof window === "undefined") return "default";
+  // Check both keys for compatibility
+  return localStorage.getItem("tenantId") || localStorage.getItem("tenant_id") || "default";
+}
+
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>(initialCompanies);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [dbReady, setDbReady] = useState(false);
   
   // New company form state
   const [newCompanyName, setNewCompanyName] = useState("");
@@ -80,13 +90,61 @@ export default function CompaniesPage() {
   const [newCompanyRevenue, setNewCompanyRevenue] = useState("");
   const [newCompanyDescription, setNewCompanyDescription] = useState("");
 
+// Load companies from localStorage or DynamoDB on mount
+  useEffect(() => {
+    async function loadCompanies() {
+      try {
+        const tenantId = getTenantId();
+        // Try DynamoDB first
+        const dbCompanies = await getClients(tenantId);
+        if (dbCompanies && dbCompanies.length > 0) {
+          // Convert DB format to Company format
+          const formattedCompanies: Company[] = dbCompanies.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            domain: c.domain || "",
+            city: c.city || "",
+            state: c.state || "",
+            country: "US",
+            employee_count: c.employee_count || 0,
+            industry: c.industry || "",
+            revenue: c.revenue || "",
+            description: c.description || "",
+          }));
+          setCompanies(formattedCompanies);
+          setDbReady(true);
+          // Also save to localStorage for backup
+          localStorage.setItem("companies", JSON.stringify(formattedCompanies));
+          return;
+        }
+      } catch (err) {
+        console.log("DynamoDB not available, checking localStorage...");
+      }
+      
+      // Fallback to localStorage
+      const stored = localStorage.getItem("companies");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          setCompanies(parsed);
+          setDbReady(false);
+          return;
+        } catch {}
+      }
+      
+      // No data found - use mock but save to localStorage
+      localStorage.setItem("companies", JSON.stringify(initialCompanies));
+    }
+    loadCompanies();
+  }, []);
+
   const filteredCompanies = companies.filter((company) =>
     company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     company.industry?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     company.city?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-const handleAddCompany = () => {
+const handleAddCompany = async () => {
     if (!newCompanyName) return;
     
     const newCompany: Company = {
@@ -103,8 +161,30 @@ const handleAddCompany = () => {
       linkedin_url: undefined,
     };
     
-    setCompanies((prev) => [...prev, newCompany]);
+    // Update state and persist to localStorage
+    setCompanies((prev) => {
+      const updated = [...prev, newCompany];
+      localStorage.setItem("companies", JSON.stringify(updated));
+      return updated;
+    });
     setIsAddDialogOpen(false);
+    
+    // Save to DynamoDB if configured
+    if (dbReady) {
+      try {
+        const tenantId = getTenantId();
+        await createClient({
+          id: newCompany.id,
+          tenant_id: tenantId,
+          name: newCompany.name,
+          email: `${newCompany.id}@placeholder.com`,
+          phone: newCompanyEmployeeCount,
+          company: newCompany.description,
+        });
+      } catch (err) {
+        console.error("Failed to save company to DB:", err);
+      }
+    }
     
     // Reset form
     setNewCompanyName("");

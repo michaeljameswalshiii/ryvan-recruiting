@@ -143,10 +143,10 @@ return (
             Powered by MiniMax + Apollo + Tavily - Full web search
           </p>
         </div>
-        {/* Apollo Connection Status Indicator */}
-        <div className="flex items-center gap-2 text-sm">
-          <span className="w-2 h-2 rounded-full bg-green-500"></span>
-          <span className="text-muted-foreground">Apollo Connected</span>
+{/* Apollo Connection Status Indicator */}
+      <div className="flex items-center gap-2 text-sm">
+          <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
+          <span className="text-muted-foreground">Bedrock Active (Apollo fallback)</span>
         </div>
       </div>
 

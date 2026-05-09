@@ -13,9 +13,31 @@ function generateId(): string {
 export async function signIn(email: string, password: string) {
   try {
     await awsSignIn(email, password);
+    
+    // Get the user to find their sub (user ID)
+    const user = await getCurrentUser();
+    const userSub = user?.find(a => a.Name === "sub")?.Value;
+    
+    // Try to get the user's profile to find their tenant
+    let tenantId = null;
+    if (userSub) {
+      try {
+        const profile = await import("./aws").then(m => m.getProfile(userSub));
+        if (profile) {
+          tenantId = profile.tenant_id;
+        }
+      } catch (profileError) {
+        console.log("Could not fetch profile:", profileError);
+      }
+    }
+    
     // Store in localStorage for client-side auth check
     if (typeof window !== "undefined") {
       localStorage.setItem("accessToken", "true");
+      // Also store tenant ID if found
+      if (tenantId) {
+        localStorage.setItem("tenantId", tenantId);
+      }
     }
     // Return success - let the caller handle redirect
     return { success: true };
@@ -72,6 +94,13 @@ export async function signUp(
 
 export async function signOut() {
   await awsSignOut();
+  // Clear localStorage for fresh sign in
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("tenantId");
+    localStorage.removeItem("leads");
+    localStorage.removeItem("companies");
+  }
   // Let caller handle redirect
 }
 

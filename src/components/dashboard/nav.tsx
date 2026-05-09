@@ -28,9 +28,9 @@ export function DashboardNav() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const handleSignOut = async () => {
+const handleSignOut = async () => {
     await signOut();
-    router.push("/");
+    router.push("/login");
   };
 
   return (

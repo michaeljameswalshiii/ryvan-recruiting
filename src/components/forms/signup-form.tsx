@@ -40,14 +40,20 @@ export function SignupForm() {
     resolver: zodResolver(signupSchema),
   });
 
-  const onSubmit = async (data: SignupFormData) => {
+const onSubmit = async (data: SignupFormData) => {
     try {
       setIsLoading(true);
       setError(null);
       await signUp(data.email, data.password, data.tenantName, data.subdomain, data.fullName);
-      router.push("/dashboard");
+      // Redirect to login page with success message - user needs to confirm email first
+      // Store success message for login page to display
+      if (typeof window !== "undefined") {
+        localStorage.setItem("registrationSuccess", "true");
+      }
+      router.push("/login");
     } catch (err: any) {
-      setError(err.message || "Registration failed");
+      console.error("Signup failed:", err);
+      setError(err.message || "Registration failed. Please check your AWS configuration.");
     } finally {
       setIsLoading(false);
     }

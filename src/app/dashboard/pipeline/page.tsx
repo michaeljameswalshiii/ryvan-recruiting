@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, MoreHorizontal, Mail, Phone, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
+import { getLeads, createLead, updateLead, deleteLead } from "@/lib/aws";
 
 interface Lead {
   id: string;
@@ -19,7 +20,7 @@ interface Lead {
   created_at: string;
 }
 
-// Mock data for demo
+// Mock data for demo (fallback when no DB)
 const initialLeads: Lead[] = [
   {
     id: "1",
@@ -52,6 +53,14 @@ const initialLeads: Lead[] = [
   },
 ];
 
+// Get tenant ID from session or use default
+// Note: auth.ts stores this as "tenantId" not "tenant_id"
+function getTenantId(): string {
+  if (typeof window === "undefined") return "default";
+  // Check both keys for compatibility
+  return localStorage.getItem("tenantId") || localStorage.getItem("tenant_id") || "default";
+}
+
 const columns = [
   { id: "new", title: "New", color: "bg-blue-500" },
   { id: "contacted", title: "Contacted", color: "bg-yellow-500" },
@@ -64,6 +73,7 @@ export default function PipelinePage() {
   const [leads, setLeads] = useState<Lead[]>(initialLeads);
   const [draggedLead, setDraggedLead] = useState<string | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [dbReady, setDbReady] = useState(false);
   
   // New lead form state
   const [newLeadName, setNewLeadName] = useState("");
@@ -71,6 +81,52 @@ export default function PipelinePage() {
   const [newLeadCompany, setNewLeadCompany] = useState("");
   const [newLeadPhone, setNewLeadPhone] = useState("");
   const [newLeadNotes, setNewLeadNotes] = useState("");
+
+// Load leads from localStorage or DynamoDB on mount
+  useEffect(() => {
+    async function loadLeads() {
+      try {
+        const tenantId = getTenantId();
+        // Try DynamoDB first
+        const dbLeads = await getLeads(tenantId);
+        if (dbLeads && dbLeads.length > 0) {
+          // Convert DB format to Lead format
+          const formattedLeads: Lead[] = dbLeads.map((l: any) => ({
+            id: l.id,
+            name: l.name,
+            email: l.email,
+            company: l.company || "",
+            phone: l.phone || "",
+            status: (l.status as Lead["status"]) || "new",
+            notes: l.notes || "",
+            created_at: l.created_at || new Date().toISOString(),
+          }));
+          setLeads(formattedLeads);
+          setDbReady(true);
+          // Also save to localStorage for backup
+          localStorage.setItem("leads", JSON.stringify(formattedLeads));
+          return;
+        }
+      } catch (err) {
+        console.log("DynamoDB not available, checking localStorage...");
+      }
+      
+      // Fallback to localStorage
+      const stored = localStorage.getItem("leads");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          setLeads(parsed);
+          setDbReady(false);
+          return;
+        } catch {}
+      }
+      
+      // No data found - use mock but save to localStorage
+      localStorage.setItem("leads", JSON.stringify(initialLeads));
+    }
+    loadLeads();
+  }, []);
 
   const getLeadsByStatus = (status: string) => {
     return leads.filter((lead) => lead.status === status);
@@ -84,13 +140,37 @@ export default function PipelinePage() {
     e.preventDefault();
   };
 
-  const handleDrop = (status: Lead["status"]) => {
+const handleDrop = async (status: Lead["status"]) => {
     if (draggedLead) {
-      setLeads((prev) =>
-        prev.map((lead) =>
+      const leadId = draggedLead;
+      // Update state and persist to localStorage
+      setLeads((prev) => {
+        const updated = prev.map((lead) =>
           lead.id === draggedLead ? { ...lead, status } : lead
-        )
-      );
+        );
+        localStorage.setItem("leads", JSON.stringify(updated));
+        return updated;
+      });
+      
+      // Save status change to DynamoDB if configured
+      if (dbReady) {
+        try {
+          const tenantId = getTenantId();
+          const lead = leads.find(l => l.id === leadId);
+          if (lead) {
+            await updateLead(tenantId, leadId, {
+              name: lead.name,
+              email: lead.email,
+              company: lead.company || "",
+              status: status,
+              notes: lead.notes || "",
+            });
+          }
+        } catch (err) {
+          console.error("Failed to update lead status in DB:", err);
+        }
+      }
+      
       setDraggedLead(null);
     }
   };
@@ -99,7 +179,7 @@ export default function PipelinePage() {
     return leads.filter((lead) => lead.status === status).length;
   };
 
-  const handleAddLead = () => {
+const handleAddLead = async () => {
     if (!newLeadName || !newLeadEmail) return;
     
     const newLead: Lead = {
@@ -113,8 +193,31 @@ export default function PipelinePage() {
       created_at: new Date().toISOString(),
     };
     
-    setLeads((prev) => [...prev, newLead]);
+    // Update state and persist to localStorage
+    setLeads((prev) => {
+      const updated = [...prev, newLead];
+      localStorage.setItem("leads", JSON.stringify(updated));
+      return updated;
+    });
     setIsAddDialogOpen(false);
+    
+    // Save to DynamoDB if configured
+    if (dbReady) {
+      try {
+        const tenantId = getTenantId();
+        await createLead({
+          id: newLead.id,
+          tenant_id: tenantId,
+          name: newLead.name,
+          email: newLead.email,
+          company: newLead.company,
+          status: newLead.status,
+          notes: newLead.notes,
+        });
+      } catch (err) {
+        console.error("Failed to save lead to DB:", err);
+      }
+    }
     
     // Reset form
     setNewLeadName("");
