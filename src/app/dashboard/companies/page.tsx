@@ -66,7 +66,7 @@ const initialCompanies: Company[] = [
 ];
 
 export default function CompaniesPage() {
-  const [companies] = useState<Company[]>(initialCompanies);
+  const [companies, setCompanies] = useState<Company[]>(initialCompanies);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   
@@ -86,9 +86,24 @@ export default function CompaniesPage() {
     company.city?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleAddCompany = () => {
+const handleAddCompany = () => {
     if (!newCompanyName) return;
     
+    const newCompany: Company = {
+      id: Date.now().toString(),
+      name: newCompanyName,
+      domain: newCompanyDomain,
+      industry: newCompanyIndustry,
+      city: newCompanyCity,
+      state: newCompanyState,
+      country: "US",
+      employee_count: newCompanyEmployeeCount ? parseInt(newCompanyEmployeeCount) : undefined,
+      revenue: newCompanyRevenue,
+      description: newCompanyDescription,
+      linkedin_url: undefined,
+    };
+    
+    setCompanies((prev) => [...prev, newCompany]);
     setIsAddDialogOpen(false);
     
     // Reset form
@@ -100,10 +115,6 @@ export default function CompaniesPage() {
     setNewCompanyEmployeeCount("");
     setNewCompanyRevenue("");
     setNewCompanyDescription("");
-    
-    // Note: In a real app, we'd call an API to add the company
-    // For demo, we just show a success message
-    alert(`Company "${newCompanyName}" added! (Demo mode - data not persisted)`);
   };
 
   return (
