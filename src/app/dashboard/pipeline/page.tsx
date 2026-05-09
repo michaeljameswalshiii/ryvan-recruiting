@@ -3,18 +3,10 @@
 import { useState } from "react";
 import { Plus, MoreHorizontal, Mail, Phone, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { SimpleDialog } from "@/components/ui/simple-dialog";
 
 interface Lead {
   id: string;
@@ -141,80 +133,79 @@ export default function PipelinePage() {
             Manage your outreach leads.
           </p>
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
+        <Button onClick={() => setIsAddDialogOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Lead
+        </Button>
+      </div>
+
+      {/* Add Lead Dialog */}
+      <SimpleDialog
+        open={isAddDialogOpen}
+        onOpenChange={setIsAddDialogOpen}
+        title="Add New Lead"
+        description="Add a new lead to your pipeline."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddLead} disabled={!newLeadName || !newLeadEmail}>
               Add Lead
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Lead</DialogTitle>
-              <DialogDescription>
-                Add a new lead to your pipeline.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Name *</Label>
-                <Input
-                  id="name"
-                  value={newLeadName}
-                  onChange={(e) => setNewLeadName(e.target.value)}
-                  placeholder="John Smith"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={newLeadEmail}
-                  onChange={(e) => setNewLeadEmail(e.target.value)}
-                  placeholder="john@example.com"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="company">Company</Label>
-                <Input
-                  id="company"
-                  value={newLeadCompany}
-                  onChange={(e) => setNewLeadCompany(e.target.value)}
-                  placeholder="ABC Construction"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  value={newLeadPhone}
-                  onChange={(e) => setNewLeadPhone(e.target.value)}
-                  placeholder="561-555-0100"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={newLeadNotes}
-                  onChange={(e) => setNewLeadNotes(e.target.value)}
-                  placeholder="Add any notes about this lead..."
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddLead} disabled={!newLeadName || !newLeadEmail}>
-                Add Lead
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+          </>
+        }
+      >
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="name">Name *</Label>
+            <Input
+              id="name"
+              value={newLeadName}
+              onChange={(e) => setNewLeadName(e.target.value)}
+              placeholder="John Smith"
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="email">Email *</Label>
+            <Input
+              id="email"
+              type="email"
+              value={newLeadEmail}
+              onChange={(e) => setNewLeadEmail(e.target.value)}
+              placeholder="john@example.com"
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="company">Company</Label>
+            <Input
+              id="company"
+              value={newLeadCompany}
+              onChange={(e) => setNewLeadCompany(e.target.value)}
+              placeholder="ABC Construction"
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="phone">Phone</Label>
+            <Input
+              id="phone"
+              type="tel"
+              value={newLeadPhone}
+              onChange={(e) => setNewLeadPhone(e.target.value)}
+              placeholder="561-555-0100"
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea
+              id="notes"
+              value={newLeadNotes}
+              onChange={(e) => setNewLeadNotes(e.target.value)}
+              placeholder="Add any notes about this lead..."
+            />
+          </div>
+        </div>
+      </SimpleDialog>
 
       {/* Pipeline Board */}
       <div className="flex gap-4 overflow-x-auto pb-4">
