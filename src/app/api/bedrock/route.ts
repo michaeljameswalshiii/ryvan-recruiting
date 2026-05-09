@@ -1,4 +1,4 @@
-﻿import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+﻿﻿import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 
 const bedrockClient = new BedrockRuntimeClient({ region: "us-east-1" });
 
@@ -13,7 +13,7 @@ const APOLLO_KEYWORDS = [
   "job", "resume", "experience", "skills"
 ];
 
-// Keywords for general web search (SECONDARY - when Apollo doesn't match)
+// Keywords for general web search (SECONDARY - only when Apollo is available)
 const SEARCH_KEYWORDS = [
   "news", "latest", "current", "today", "recent", "更新", 
   "what is", "who is", "when did", "how does", "stock price",
@@ -138,12 +138,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // SECONDARY: Check general web search - ALWAYS try when Apollo failed or returned no results
+    // SECONDARY: Check general web search - ONLY when Apollo is available and has results
+    // Skip Tavily when Apollo is unavailable - let Bedrock answer from its own knowledge
     let searchResults = "";
-    // Try search if: Apollo unavailable OR Apollo had no results OR query matches search keywords
-    const trySearch = useSearch && lastUserQuery && (
-      !apolloAvailable || !apolloResults || needsSearch(lastUserQuery)
-    );
+    const trySearch = useSearch && lastUserQuery && 
+      apolloAvailable &&  // Only try search if Apollo is working
+      apolloResults &&   // And Apollo returned results
+      needsSearch(lastUserQuery);
+    
     if (trySearch) {
       console.log("Searching Tavily for:", lastUserQuery);
       const results = await searchTavily(lastUserQuery, requestUrl);
@@ -165,7 +167,7 @@ export async function POST(request: Request) {
     // Build messages for MiniMax
     const mmMessages: { role: "system" | "user" | "assistant"; content: string }[] = [];
     
-let fullSystemMsg = "You are TurnkeyOptimization Sourcing Assistant — a powerful, no-limits recruiter AI. ";
+    let fullSystemMsg = "You are TurnkeyOptimization Sourcing Assistant — a powerful, no-limits recruiter AI. ";
     fullSystemMsg += "Your job is to source candidates and companies as effectively as possible using Apollo.io and other tools. ";
     
     // Apollo availability status in system prompt

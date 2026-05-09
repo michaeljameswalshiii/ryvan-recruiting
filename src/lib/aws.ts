@@ -358,3 +358,94 @@ export async function createSource(source: {
   await client.send(command);
   return source;
 }
+
+// Pipeline operations
+export async function getPipeline(tenantId: string, pipelineId: string) {
+  const { GetItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
+  const command = new GetItemCommand({
+    TableName: "turnkey-pipeline",
+    Key: { tenant_id: { S: tenantId }, id: { S: pipelineId } },
+  });
+  const response = await client.send(command);
+  return response.Item ? await unmarshall(response.Item) : null;
+}
+
+export async function getPipelines(tenantId: string) {
+  const { QueryCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
+  const command = new QueryCommand({
+    TableName: "turnkey-pipeline",
+    KeyConditionExpression: "tenant_id = :tenantId",
+    ExpressionAttributeValues: { ":tenantId": { S: tenantId } },
+  });
+  const response = await client.send(command);
+  return response.Items ? Promise.all(response.Items.map(unmarshall)) : [];
+}
+
+export async function createPipeline(pipeline: {
+  id: string;
+  tenant_id: string;
+  name: string;
+  candidateName?: string;
+  candidateEmail?: string;
+  stage: string;
+  notes?: string;
+}) {
+  const { PutItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
+  const command = new PutItemCommand({
+    TableName: "turnkey-pipeline",
+    Item: {
+      id: { S: pipeline.id },
+      tenant_id: { S: pipeline.tenant_id },
+      name: { S: pipeline.name },
+      candidateName: { S: pipeline.candidateName || "" },
+      candidateEmail: { S: pipeline.candidateEmail || "" },
+      stage: { S: pipeline.stage },
+      notes: { S: pipeline.notes || "" },
+    },
+  });
+  await client.send(command);
+  return pipeline;
+}
+
+export async function updatePipeline(
+  tenantId: string,
+  pipelineId: string,
+  updates: Record<string, unknown>
+) {
+  const { UpdateItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
+  const command = new UpdateItemCommand({
+    TableName: "turnkey-pipeline",
+    Key: { tenant_id: { S: tenantId }, id: { S: pipelineId } },
+    UpdateExpression: "SET #name = :name, #candidateName = :candidateName, #candidateEmail = :candidateEmail, #stage = :stage, #notes = :notes",
+    ExpressionAttributeNames: {
+      "#name": "name",
+      "#candidateName": "candidateName",
+      "#candidateEmail": "candidateEmail",
+      "#stage": "stage",
+      "#notes": "notes",
+    },
+    ExpressionAttributeValues: {
+      ":name": { S: updates.name as string },
+      ":candidateName": { S: updates.candidateName as string },
+      ":candidateEmail": { S: updates.candidateEmail as string },
+      ":stage": { S: updates.stage as string },
+      ":notes": { S: updates.notes as string },
+    },
+  });
+  const response = await client.send(command);
+  return response.Attributes ? await unmarshall(response.Attributes) : null;
+}
+
+export async function deletePipeline(tenantId: string, pipelineId: string) {
+  const { DeleteItemCommand } = await import("@aws-sdk/client-dynamodb");
+  const client = await getDynamoClient();
+  const command = new DeleteItemCommand({
+    TableName: "turnkey-pipeline",
+    Key: { tenant_id: { S: tenantId }, id: { S: pipelineId } },
+  });
+  await client.send(command);
+}
