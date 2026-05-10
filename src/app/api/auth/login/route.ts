@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateUser, getCookieOptions, SESSION_COOKIE_NAME } from '@/lib/server-auth';
+import { authenticateUser, setSessionCookie } from '@/lib/server-auth';
 import { loginSchema } from '@/lib/schemas/auth';
 
 /**
@@ -42,23 +42,18 @@ export async function POST(request: NextRequest) {
       tenantId: session.tenantId,
     };
 
-    // Set httpOnly cookie with proper options
-    const response = NextResponse.json({ 
-      success: true,
-      user: {
-        id: session.userId,
-        email: session.email,
-        tenantId: session.tenantId,
-      }
-    });
-
-    response.cookies.set(
-      SESSION_COOKIE_NAME, 
-      JSON.stringify(sessionData),
-      getCookieOptions()
+    // Use helper to set cookie - returns response directly
+    return setSessionCookie(
+      NextResponse.json({ 
+        success: true,
+        user: {
+          id: session.userId,
+          email: session.email,
+          tenantId: session.tenantId,
+        }
+      }),
+      sessionData
     );
-
-    return response;
   } catch (error: unknown) {
     console.error('Login error:', error);
     

@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, signOutFromCognito, SESSION_COOKIE_NAME } from '@/lib/server-auth';
+import { getSession, signOutFromCognito, clearSessionCookie } from '@/lib/server-auth';
 
 /**
  * POST /api/auth/logout
@@ -27,17 +27,12 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Clear session cookie
-    const response = NextResponse.json({ success: true });
-    response.cookies.delete(SESSION_COOKIE_NAME);
-    
-    return response;
+    // Use helper to clear cookie - returns response directly
+    return clearSessionCookie(NextResponse.json({ success: true }));
   } catch (error: unknown) {
     console.error('Logout error:', error);
     
     // Still return success - session should be cleared
-    const response = NextResponse.json({ success: true });
-    response.cookies.delete(SESSION_COOKIE_NAME);
-    return response;
+    return clearSessionCookie(NextResponse.json({ success: true }));
   }
 }

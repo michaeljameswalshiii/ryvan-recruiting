@@ -4,8 +4,12 @@
  * Session management utilities for httpOnly cookies.
  * This runs ONLY on the server - never exposed to client.
  * 
- * NOTE: Cookie setting/deletion MUST be done in route handlers,
- * not in this library (cookies() only works in route handlers).
+ * NOTE: We use GetUserCommand for token validation - it's simple and reliable
+ * for checking if a token is valid. Later, consider switching to aws-jwt-verify
+ * for faster local JWT validation without Cognito API call.
+ * 
+ * For registerUser: In production, you'd use AdminGetUserCommand after confirmation
+ * or a Lambda trigger to get the actual sub. For now we use UserSub from signup response.
  * 
  * @serverOnly
  */
@@ -13,17 +17,35 @@
 "use server";
 
 import { cookies } from 'next/headers';
+import type { NextResponse } from 'next/server';
 import { CognitoIdentityProviderClient, GetUserCommand, InitiateAuthCommand, GlobalSignOutCommand, SignUpCommand, AdminGetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient, GetItemCommand, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { unmarshall, marshall } from '@aws-sdk/util-dynamodb';
 
-// AWS Configuration - server-side only (NOT NEXT_PUBLIC_*)
+// AWS Configuration - server-side ONLY (NOT NEXT_PUBLIC_*)
 const region = process.env.AWS_REGION || 'us-east-1';
 const userPoolId = process.env.COGNITO_USER_POOL_ID!;
 const clientId = process.env.COGNITO_CLIENT_ID!;
 
 // Cookie name
 const SESSION_COOKIE = 'turnkey-session';
+
+/**
+ * Session data type
+ */
+export interface SessionData {
+  accessToken: string;
+  idToken: string;
+  refreshToken: string;
+  userId: string;
+  email: string;
+  tenantId: string;
+}
+
+/**
+ * Cookie name export for routes
+ */
+export const SESSION_COOKIE_NAME = SESSION_COOKIE;
 
 /**
  * Get cookie options (for route handlers)
@@ -39,21 +61,20 @@ export function getCookieOptions() {
 }
 
 /**
- * Session data type
+ * Set session cookie on response (helper for route handlers)
  */
-export interface SessionData {
-  accessToken: string;
-  idToken: string;
-  refreshToken: string;
-  userId: string;
-  email: string;
-  tenantId: string;
+export function setSessionCookie(response: NextResponse, session: SessionData): NextResponse {
+  response.cookies.set(SESSION_COOKIE, JSON.stringify(session), getCookieOptions());
+  return response;
 }
 
 /**
- * Cookie constants for routes
+ * Clear session cookie on response (helper for route handlers)
  */
-export const SESSION_COOKIE_NAME = SESSION_COOKIE;
+export function clearSessionCookie(response: NextResponse): NextResponse {
+  response.cookies.delete(SESSION_COOKIE);
+  return response;
+}
 
 /**
  * Get current session from httpOnly cookie
@@ -83,7 +104,10 @@ export async function getSession(): Promise<SessionData | null> {
 
 /**
  * Validate session token with Cognito
- * Uses GetUserCommand to verify token is still valid
+ * 
+ * Uses GetUserCommand to verify token is still valid.
+ * NOTE: Consider switching to aws-jwt-verify package for JWT-only
+ * validation without Cognito API call (faster).
  */
 export async function validateSession(accessToken: string): Promise<boolean> {
   if (!accessToken) {
@@ -283,7 +307,14 @@ export async function signOutFromCognito(accessToken: string): Promise<void> {
 
 /**
  * Register new user
- * Creates tenant + profile in DynamoDB
+ * 
+ * Creates tenant + profile in DynamoDB.
+ * 
+ * NOTE: In production, Cognito requires email verification before 
+ * the user can sign in. We use UserSub from the signup response
+ * as a temporary userId. A cleaner approach would be
+ * to use a Lambda trigger that runs on post-confirmation
+ * to write the profile with the real sub.
  */
 export async function registerUser(
   email: string,
@@ -316,17 +347,13 @@ export async function registerUser(
   const signupResponse = await cognitoClient.send(signUpCommand);
   
   // Get the actual userId (sub) from Cognito
-  let userId = '';
-  try {
-    const userCommand = new AdminGetUserCommand({
-      Username: email,
-      UserPoolId: userPoolId,
-    });
-    const userResponse = await cognitoClient.send(userCommand);
-    userId = userResponse.UserAttributes?.find(a => a.Name === 'sub')?.Value || '';
-  } catch {
-    // Use UserSub from signup response if available
-    userId = signupResponse.UserSub || email;
+  // Use UserSub from signup response - this is the Cognito user ID
+  let userId = signupResponse.UserSub || '';
+  
+  // If we couldn't get UserSub, log but continue
+  if (!userId) {
+    console.warn('No UserSub from signup - using email as fallback userId');
+    userId = email;
   }
   
   if (!userId) {
