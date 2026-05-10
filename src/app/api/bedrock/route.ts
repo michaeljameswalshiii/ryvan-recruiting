@@ -13,12 +13,11 @@
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { NextRequest, NextResponse } from "next/server";
 
-import { getSessionTenantId, getSession } from "@/lib/server-auth";
 import { checkRateLimit, addRateLimitHeaders } from "@/lib/rate-limit";
 
-// Bedrock client
+// Bedrock client - server-only env var
 const bedrockClient = new BedrockRuntimeClient({ 
-  region: process.env.NEXT_PUBLIC_AWS_REGION || "us-east-1" 
+  region: process.env.AWS_REGION || "us-east-1" 
 });
 
 const DEFAULT_MODEL = "minimax.minimax-m2.5";
@@ -214,21 +213,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { messages, model = DEFAULT_MODEL, useTools = true } = body;
 
+// ============================================================================
+    // Get Tenant Context (from middleware headers injected by middleware)
     // ============================================================================
-    // Get Tenant Context (from middleware headers or session)
-    // ============================================================================
-    // First try headers from middleware (x-tenant-id), then fall back to session validation
-    let tenantId: string | null = request.headers.get("x-tenant-id") || null;
-    
-    if (!tenantId) {
-      // Try to get from session (only if no header - avoids extra Cognito call if possible)
-      try {
-        tenantId = await getSessionTenantId();
-      } catch {
-        // Session check failed - continue without tenant context
-        console.log("No tenant context available");
-      }
-    }
+    // Middleware injects x-tenant-id header - use that
+    const tenantId = request.headers.get("x-tenant-id");
 
     // ============================================================================
     // Rate Limiting
