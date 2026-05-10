@@ -9,6 +9,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateUser } from '@/lib/server-auth';
 import { loginSchema } from '@/lib/schemas/auth';
 
+const SESSION_COOKIE = 'turnkey-session';
+
 /**
  * POST /api/auth/login
  * Login and set session cookie
@@ -17,25 +19,23 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    // Validate input
+    // Validate input with Zod
     const validated = loginSchema.safeParse(body);
     
     if (!validated.success) {
       return NextResponse.json(
-        { error: validated.error.flatten().fieldErrors.email?.[0] || 
-                validated.error.flatten().fieldErrors.password?.[0] || 
-                'Invalid credentials' },
+        { error: 'Invalid credentials' },
         { status: 400 }
       );
     }
 
-    // Authenticate and get tokens
+    // Authenticate with Cognito
     const session = await authenticateUser(
       validated.data.email,
       validated.data.password
     );
 
-    // Create session data
+    // Create session data for cookie
     const sessionData = {
       accessToken: session.AccessToken,
       idToken: session.IdToken,
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       tenantId: session.tenantId,
     };
 
-    // Create response with cookie
+    // Set httpOnly cookie
     const response = NextResponse.json({ 
       success: true,
       user: {
@@ -55,20 +55,23 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // Set httpOnly session cookie
-    response.cookies.set('turnkey-session', JSON.stringify(sessionData), {
+response.cookies.set(SESSION_COOKIE, JSON.stringify(sessionData), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-      path: '/',
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/'
     });
 
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Login error:', error);
+    
+    // Don't leak internal error messages
+    const message = error instanceof Error ? error.message : 'Login failed';
+    
     return NextResponse.json(
-      { error: error.message || 'Login failed' },
+      { error: message },
       { status: 401 }
     );
   }

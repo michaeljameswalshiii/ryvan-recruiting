@@ -7,13 +7,15 @@
  * @serverOnly
  */
 
+"use server";
+
 import { cookies } from 'next/headers';
 import { CognitoIdentityProviderClient, GetUserCommand, InitiateAuthCommand, GlobalSignOutCommand, SignUpCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient, GetItemCommand, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { unmarshall, marshall } from '@aws-sdk/util-dynamodb';
 
-// AWS Configuration
-const region = process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
+// AWS Configuration - server-side only (not NEXT_PUBLIC_*)
+const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
 const userPoolId = process.env.COGNITO_USER_POOL_ID!;
 const clientId = process.env.COGNITO_CLIENT_ID!;
 
@@ -60,6 +62,10 @@ export async function getSession(): Promise<{
  * Validate session token with Cognito
  */
 export async function validateSession(accessToken: string): Promise<boolean> {
+  if (!accessToken) {
+    return false;
+  }
+  
   try {
     const client = new CognitoIdentityProviderClient({ region });
     const command = new GetUserCommand({ AccessToken: accessToken });
@@ -95,38 +101,6 @@ export async function getSessionUserEmail(): Promise<string | null> {
 }
 
 /**
- * authClient is READ-ONLY for session data.
- * 
- * Cookie management (setSessionCookie, clearSessionCookie) is handled
- * directly in API route handlers using NextResponse.cookies().
- * 
- * This is the proper Next.js 15 pattern - cookies() cannot be used
- * in library code, only in Middleware and Route Handlers.
- */
-
-/**
- * Create session data object (for use in API routes)
- */
-export function createSessionData(tokens: {
-  AccessToken: string;
-  IdToken: string;
-  RefreshToken: string;
-}, user: {
-  userId: string;
-  email: string;
-  tenantId: string;
-}) {
-  return {
-    accessToken: tokens.AccessToken,
-    idToken: tokens.IdToken,
-    refreshToken: tokens.RefreshToken,
-    userId: user.userId,
-    email: user.email,
-    tenantId: user.tenantId,
-  };
-}
-
-/**
  * Authenticate user with Cognito (returns tokens for API route to set cookie)
  */
 export async function authenticateUser(email: string, password: string): Promise<{
@@ -137,6 +111,11 @@ export async function authenticateUser(email: string, password: string): Promise
   IdToken: string;
   RefreshToken: string;
 }> {
+  // Validate env vars
+  if (!clientId) {
+    throw new Error('Authentication not configured');
+  }
+  
   const client = new CognitoIdentityProviderClient({ region });
   
   // Initiate auth
@@ -194,12 +173,17 @@ export async function authenticateUser(email: string, password: string): Promise
 /**
  * Sign out from Cognito (token invalidation only - cookie cleared by API route)
  */
-export async function signOutFromCognito(accessToken: string) {
+export async function signOutFromCognito(accessToken: string): Promise<void> {
+  if (!accessToken) {
+    return;
+  }
+  
   try {
     const client = new CognitoIdentityProviderClient({ region });
     const command = new GlobalSignOutCommand({ AccessToken: accessToken });
     await client.send(command);
   } catch (err) {
+    // Log error but don't throw - token may already be invalid
     console.log('Cognito sign out error:', err);
   }
 }
@@ -214,6 +198,11 @@ export async function registerUser(
   tenantName: string,
   subdomain: string
 ): Promise<{ userId: string; tenantId: string }> {
+  // Validate env vars
+  if (!clientId) {
+    throw new Error('Authentication not configured');
+  }
+  
   const cognitoClient = new CognitoIdentityProviderClient({ region });
   
   // Sign up with Cognito
@@ -229,9 +218,8 @@ export async function registerUser(
   
   await cognitoClient.send(signUpCommand);
   
-  // Get the userId (sub) - we need to confirm email first, but for now use email as temp ID
-  // In production, you'd use AdminGetUser or wait for confirmation
-  const userId = email; // Temporary - in real app, get from Cognito after confirmation
+  // Use email as temp userId (in production, get sub from Cognito after confirmation)
+  const userId = email;
   
   // Generate tenant ID
   const tenantId = `tenant-${Date.now()}-${Math.random().toString(36).slice(2)}`;

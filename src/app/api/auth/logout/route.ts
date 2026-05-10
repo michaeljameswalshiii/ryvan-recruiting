@@ -8,6 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, signOutFromCognito } from '@/lib/server-auth';
 
+const SESSION_COOKIE = 'turnkey-session';
+
 /**
  * POST /api/auth/logout
  * Clear session cookie and sign out
@@ -22,20 +24,22 @@ export async function POST(request: NextRequest) {
       try {
         await signOutFromCognito(session.accessToken);
       } catch (err) {
+        // Log but don't fail - token may already be invalid
         console.log('Cognito sign out error:', err);
       }
     }
     
     // Clear session cookie
     const response = NextResponse.json({ success: true });
-    response.cookies.delete('turnkey-session');
+    response.cookies.delete(SESSION_COOKIE);
     
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Logout error:', error);
+    
     // Still return success - session should be cleared
     const response = NextResponse.json({ success: true });
-    response.cookies.delete('turnkey-session');
+    response.cookies.delete(SESSION_COOKIE);
     return response;
   }
 }
