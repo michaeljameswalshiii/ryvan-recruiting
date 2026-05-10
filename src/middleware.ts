@@ -26,6 +26,11 @@ const API_PUBLIC_ROUTES = [
   '/api/boolean',
 ];
 
+// API protected routes (require auth via middleware)
+const API_PROTECTED_ROUTES = [
+  '/api/data',
+];
+
 // Protected routes that require authentication
 const PROTECTED_ROUTES = ['/dashboard'];
 
@@ -61,6 +66,13 @@ function isProtectedRoute(pathname: string): boolean {
 function needsTenantContext(pathname: string): boolean {
   return pathname.startsWith('/api/bedrock') || 
          pathname.startsWith('/api/apollo');
+}
+
+/**
+ * Check if route is API protected (data routes - require auth + tenant context)
+ */
+function isApiProtectedRoute(pathname: string): boolean {
+  return API_PROTECTED_ROUTES.some(route => pathname.startsWith(route));
 }
 
 /**
@@ -123,7 +135,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow API routes through - they handle their own auth
+// Allow API routes through - they handle their own auth
   if (isApiPublicRoute(pathname)) {
     // But inject tenant context for AI routes that need it
     if (needsTenantContext(pathname)) {
@@ -158,6 +170,37 @@ export async function middleware(request: NextRequest) {
     }
     
     return NextResponse.next();
+  }
+
+  // API protected routes - require auth + inject tenant context
+  if (isApiProtectedRoute(pathname)) {
+    const session = getSession(request);
+    
+    if (!session?.accessToken) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Validate token
+    const isValid = await validateSessionToken(session.accessToken);
+    
+    if (!isValid) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Inject headers for data routes
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-tenant-id', session.tenantId || '');
+    requestHeaders.set('x-user-id', session.userId || '');
+    
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    });
   }
 
   // Check if route is protected (dashboard)
