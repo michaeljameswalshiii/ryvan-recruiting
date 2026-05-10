@@ -1,0 +1,262 @@
+/**
+ * Server-Only DynamoDB Client
+ * 
+ * This module provides server-side DynamoDB access.
+ * It should NEVER be imported in client components.
+ * 
+ * @serverOnly
+ */
+
+import {
+  DynamoDBClient,
+  GetItemCommand,
+  PutItemCommand,
+  UpdateItemCommand,
+  DeleteItemCommand,
+  QueryCommand,
+  ScanCommand,
+} from '@aws-sdk/client-dynamodb';
+import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
+const region = process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
+
+// Table names from environment
+const tenantsTable = process.env.TenantsTable || 'turnkey-tenants';
+const profilesTable = process.env.ProfilesTable || 'turnkey-profiles';
+const clientsTable = process.env.ClientsTable || 'turnkey-clients';
+const leadsTable = process.env.LeadsTable || 'turnkey-leads';
+const pipelineTable = process.env.PipelineTable || 'turnkey-pipeline';
+const sourcesTable = process.env.SourcesTable || 'turnkey-sources';
+
+// ============================================================================
+// Client
+// ============================================================================
+
+let _client: DynamoDBClient | null = null;
+
+function getClient(): DynamoDBClient {
+  if (!_client) {
+    _client = new DynamoDBClient({ region });
+  }
+  return _client;
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+function isConfigured(): boolean {
+  return !!(process.env.NEXT_PUBLIC_AWS_REGION);
+}
+
+/**
+ * Get table name
+ */
+export function getTableName(table: keyof typeof tableNames): string {
+  return tableNames[table];
+}
+
+const tableNames = {
+  tenants: tenantsTable,
+  profiles: profilesTable,
+  clients: clientsTable,
+  leads: leadsTable,
+  pipeline: pipelineTable,
+  sources: sourcesTable,
+} as const;
+
+// ============================================================================
+// CRUD Operations
+// ============================================================================
+
+/**
+ * Get a single item by key
+ */
+export async function getItem<T>(table: string, key: Record<string, any>): Promise<T | null> {
+  const client = getClient();
+  
+  const command = new GetItemCommand({
+    TableName: table,
+    Key: marshall(key),
+  });
+  
+  const response = await client.send(command);
+  
+  if (!response.Item) {
+    return null;
+  }
+  
+  return unmarshall(response.Item) as T;
+}
+
+/**
+ * Get multiple items by key condition
+ */
+export async function queryItems<T>(
+  table: string,
+  keyCondition: string,
+  expressionValues: Record<string, any>,
+  expressionNames?: Record<string, string>
+): Promise<T[]> {
+  const client = getClient();
+  
+  const command = new QueryCommand({
+    TableName: table,
+    KeyConditionExpression: keyCondition,
+    ExpressionAttributeValues: marshall(expressionValues),
+    ExpressionAttributeNames: expressionNames,
+  });
+  
+  const response = await client.send(command);
+  
+  if (!response.Items || response.Items.length === 0) {
+    return [];
+  }
+  
+  return response.Items.map(item => unmarshall(item) as T);
+}
+
+/**
+ * Put a single item
+ */
+export async function putItem<T>(table: string, item: T): Promise<T> {
+  const client = getClient();
+  
+  const command = new PutItemCommand({
+    TableName: table,
+    Item: marshall(item),
+  });
+  
+  await client.send(command);
+  
+  return item;
+}
+
+/**
+ * Update an item
+ */
+export async function updateItem<T>(
+  table: string,
+  key: Record<string, any>,
+  updateExpression: string,
+  expressionValues: Record<string, any>,
+  expressionNames?: Record<string, string>
+): Promise<T | null> {
+  const client = getClient();
+  
+  const command = new UpdateItemCommand({
+    TableName: table,
+    Key: marshall(key),
+    UpdateExpression: updateExpression,
+    ExpressionAttributeValues: marshall(expressionValues),
+    ExpressionAttributeNames: expressionNames,
+    ReturnValues: 'ALL_NEW',
+  });
+  
+  const response = await client.send(command);
+  
+  if (!response.Attributes) {
+    return null;
+  }
+  
+  return unmarshall(response.Attributes) as T;
+}
+
+/**
+ * Delete an item
+ */
+export async function deleteItem(table: string, key: Record<string, any>): Promise<void> {
+  const client = getClient();
+  
+  const command = new DeleteItemCommand({
+    TableName: table,
+    Key: marshall(key),
+  });
+  
+  await client.send(command);
+}
+
+/**
+ * Scan all items in a table (use sparingly)
+ */
+export async function scanItems<T>(
+  table: string,
+  filterExpression?: string,
+  expressionValues?: Record<string, any>,
+  expressionNames?: Record<string, string>
+): Promise<T[]> {
+  const client = getClient();
+  
+  const command = new ScanCommand({
+    TableName: table,
+    FilterExpression: filterExpression,
+    ExpressionAttributeValues: expressionValues ? marshall(expressionValues) : undefined,
+    ExpressionAttributeNames: expressionNames,
+  });
+  
+  const response = await client.send(command);
+  
+  if (!response.Items || response.Items.length === 0) {
+    return [];
+  }
+  
+  return response.Items.map(item => unmarshall(item) as T);
+}
+
+// ============================================================================
+// Repository Helpers
+// ============================================================================
+
+/**
+ * Build a query for items by tenant
+ */
+export function buildTenantQuery(
+  table: string,
+  tenantId: string,
+  options?: {
+    limit?: number;
+    lastKey?: Record<string, any>;
+    scanIndexForward?: boolean;
+  }
+) {
+  return queryItems(
+    table,
+    'tenant_id = :tenantId',
+    { ':tenantId': tenantId },
+    undefined,
+  );
+}
+
+/**
+ * Verify tenant belongs to the current user
+ * This prevents a user from accessing another tenant's data
+ */
+export async function verifyTenantOwnership(
+  tenantId: string,
+  userId: string
+): Promise<boolean> {
+  const profile = await getItem<{ id: string; tenant_id: string }>(
+    profilesTable,
+    { id: userId }
+  );
+  
+  return profile?.tenant_id === tenantId;
+}
+
+// ============================================================================
+// Table Exports
+// ============================================================================
+
+export {
+  tableNames,
+  tenantsTable,
+  profilesTable,
+  clientsTable,
+  leadsTable,
+  pipelineTable,
+  sourcesTable,
+};

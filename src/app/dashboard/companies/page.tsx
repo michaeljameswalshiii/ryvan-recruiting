@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
-import { getClients, createClient, updateClient, deleteClient } from "@/lib/aws";
+// Use client API (SECURE - goes through server API, not directly to AWS)
+import { fetchClients, createClient, updateClient, deleteClient } from "@/lib/api/client-api";
 
 interface Company {
   id: string;
@@ -90,13 +91,12 @@ export default function CompaniesPage() {
   const [newCompanyRevenue, setNewCompanyRevenue] = useState("");
   const [newCompanyDescription, setNewCompanyDescription] = useState("");
 
-// Load companies from localStorage or DynamoDB on mount
+// Load companies from API or localStorage on mount
   useEffect(() => {
     async function loadCompanies() {
       try {
-        const tenantId = getTenantId();
-        // Try DynamoDB first
-        const dbCompanies = await getClients(tenantId);
+        // Try secure API first (uses session cookie for auth/tenant)
+        const dbCompanies = await fetchClients();
         if (dbCompanies && dbCompanies.length > 0) {
           // Convert DB format to Company format
           const formattedCompanies: Company[] = dbCompanies.map((c: any) => ({
@@ -169,17 +169,22 @@ const handleAddCompany = async () => {
     });
     setIsAddDialogOpen(false);
     
-    // Save to DynamoDB if configured
+// Save to API (tenant_id is enforced by server from session cookie)
     if (dbReady) {
       try {
-        const tenantId = getTenantId();
         await createClient({
-          id: newCompany.id,
-          tenant_id: tenantId,
           name: newCompany.name,
           email: `${newCompany.id}@placeholder.com`,
           phone: newCompanyEmployeeCount,
           company: newCompany.description,
+          domain: newCompanyDomain,
+          industry: newCompanyIndustry,
+          city: newCompanyCity,
+          state: newCompanyState,
+          country: "US",
+          employee_count: newCompanyEmployeeCount ? parseInt(newCompanyEmployeeCount) : undefined,
+          revenue: newCompanyRevenue,
+          description: newCompanyDescription,
         });
       } catch (err) {
         console.error("Failed to save company to DB:", err);

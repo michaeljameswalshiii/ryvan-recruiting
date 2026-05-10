@@ -1,168 +1,299 @@
-﻿﻿import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+﻿﻿/**
+ * Bedrock AI API Route
+ * Refactored for cleaner tool calling and better error handling
+ * 
+ * Structure:
+ * - Tool registry pattern (Apollo search, Tavily search as tools)
+ * - Reduced system prompt (modular prompts)
+ * - Proper error handling with retries
+ * - Session-aware with tenant context from middleware headers
+ * - Rate limiting for AI calls
+ */
 
-const bedrockClient = new BedrockRuntimeClient({ region: "us-east-1" });
+import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import { NextRequest, NextResponse } from "next/server";
+
+import { getSessionTenantId, getSession } from "@/lib/server-auth";
+import { checkRateLimit, addRateLimitHeaders } from "@/lib/rate-limit";
+
+// Bedrock client
+const bedrockClient = new BedrockRuntimeClient({ 
+  region: process.env.NEXT_PUBLIC_AWS_REGION || "us-east-1" 
+});
 
 const DEFAULT_MODEL = "minimax.minimax-m2.5";
 
-// Keywords that trigger Apollo candidate search (PRIMARY)
-const APOLLO_KEYWORDS = [
-  "find", "search", "candidate", "candidates", "person", "people",
-  "profile", "profiles", "developer", "engineer", "manager", "director",
-  "recruiter", "hire", "hiring", "talent", "staff", "software",
-  "python", "javascript", "react", "aws", "cloud", "data", "ai", "ml",
-  "job", "resume", "experience", "skills"
-];
+// ============================================================================
+// Rate Limiting
+// ============================================================================
 
-// Keywords for general web search (SECONDARY - only when Apollo is available)
-const SEARCH_KEYWORDS = [
-  "news", "latest", "current", "today", "recent", "更新", 
-  "what is", "who is", "when did", "how does", "stock price",
-  "weather", "2024", "2025", "2026",
-  "company", "companies", "contractor", "construction",
-  "manufacturer", "supplier", "vendor",
-  "south florida", "florida", "miami", "fort lauderdale"
-];
-
-function needsApollo(query: string): boolean {
-  const lowerQuery = query.toLowerCase();
-  return APOLLO_KEYWORDS.some(keyword => lowerQuery.includes(keyword));
+/**
+ * Get rate limit key - use tenant ID if available, else IP
+ */
+function getRateLimitKey(request: NextRequest, tenantId: string | null): string {
+  if (tenantId) {
+    return `bedrock:tenant:${tenantId}`;
+  }
+  // Fallback to IP
+  const ip = request.headers.get("x-forwarded-for") || 
+    request.headers.get("x-real-ip") || 
+    "unknown";
+  return `bedrock:ip:${ip.split(",")[0].trim()}`;
 }
 
-function needsSearch(query: string): boolean {
-  const lowerQuery = query.toLowerCase();
-  return SEARCH_KEYWORDS.some(keyword => lowerQuery.includes(keyword));
+// ============================================================================
+// Tool Registry Pattern
+// ============================================================================
+
+interface Tool {
+  name: string;
+  description: string;
+  execute: (query: string, requestUrl?: string) => Promise<ToolResult>;
+}
+
+interface ToolResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
 }
 
 /**
- * Enhanced Apollo search with proper fallback handling.
- * Returns object with results, availability status, and error info.
+ * Apollo Search Tool - Primary candidate sourcing
  */
-async function searchApollo(query: string, requestUrl?: string): Promise<{ results: string | null; available: boolean; error?: string }> {
+async function searchApolloTool(query: string, requestUrl?: string): Promise<ToolResult> {
   try {
-    let baseUrl = requestUrl;
-    if (!baseUrl) {
-      baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
-    }
+    const baseUrl = requestUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
+    
     const response = await fetch(`${baseUrl}/api/apollo`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, per_page: 10 }),
     });
     
-    // Check for HTTP errors (rate limit, server errors, etc.)
     if (!response.ok) {
       const status = response.status;
       const errorText = await response.text().catch(() => "");
-      console.error(`Apollo API error: ${status}`, errorText);
       
       // Check for free plan limitation
       if (errorText.includes("free plan") || errorText.includes("API_INACCESSIBLE") || status === 403) {
-        // Free plan doesn't have access to people search - mark as unavailable
-        return { results: null, available: false, error: "Apollo free plan does not include people search API access" };
+        return { success: false, error: "Apollo free plan does not include people search API access" };
       }
       
       if (status === 429 || status >= 500) {
-        // Rate limited or server error - Apollo unavailable
-        return { results: null, available: false, error: `Apollo unavailable (${status})` };
+        return { success: false, error: `Apollo unavailable (${status})` };
       }
-      // Other errors
-      return { results: null, available: false, error: `Apollo error: ${status}` };
+      
+      return { success: false, error: `Apollo error: ${status}` };
     }
     
     const data = await response.json();
     
-    // Check if Apollo returned valid results
     if (data.success && data.results?.length > 0) {
-      const formattedResults = data.results.map((p: any) =>
-        `${p.name} - ${p.title} at ${p.organization}\n` +
-        `Email: ${p.email || "N/A"}\n` +
-        `Phone: ${p.phone || "N/A"}\n` +
-        `LinkedIn: ${p.linkedin_url || "N/A"}\n` +
-        `Headline: ${p.headline || ""}`
-      ).join("\n\n");
-      return { results: formattedResults, available: true };
+      return { 
+        success: true, 
+        data: data.results.map((p: any) => ({
+          name: p.name,
+          title: p.title,
+          organization: p.organization,
+          email: p.email || "N/A",
+          phone: p.phone || "N/A",
+          linkedin_url: p.linkedin_url || "N/A",
+          headline: p.headline || "",
+        })) 
+      };
     }
     
-    // Apollo returned but with no results
-    return { results: null, available: true, error: "No results found" };
+    return { success: true, data: [], error: "No results found" };
     
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     console.error("Apollo search error:", errorMessage);
-    return { results: null, available: false, error: errorMessage };
+    return { success: false, error: errorMessage };
   }
 }
 
-async function searchTavily(query: string, requestUrl?: string) {
+/**
+ * Tavily Search Tool - Secondary web search
+ */
+async function searchTavilyTool(query: string, requestUrl?: string): Promise<ToolResult> {
   try {
-    let baseUrl = requestUrl;
-    if (!baseUrl) {
-      baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
-    }
+    const baseUrl = requestUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
+    
     const response = await fetch(`${baseUrl}/api/tavily`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query }),
     });
+    
+    if (!response.ok) {
+      return { success: false, error: `Tavily error: ${response.status}` };
+    }
+    
     const data = await response.json();
-    return data.results || [];
+    return { success: true, data: data.results || [] };
+    
   } catch (err) {
-    console.error("Tavily search error:", err);
-    return [];
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    console.error("Tavily search error:", errorMessage);
+    return { success: false, error: errorMessage };
   }
 }
 
-export async function POST(request: Request) {
+// ============================================================================
+// Agentic Tool Selection
+// ============================================================================
+
+/**
+ * Determine which tools to use based on query analysis
+ * Returns array of tool names to invoke
+ */
+function selectTools(userQuery: string): string[] {
+  const query = userQuery.toLowerCase();
+  const toolsToUse: string[] = [];
+  
+  // Apollo for candidate/people search
+  const candidateKeywords = [
+    "find", "search", "candidate", "candidates", "person", "people",
+    "profile", "profiles", "developer", "engineer", "manager", "director",
+    "recruiter", "hire", "hiring", "talent", "staff", "software",
+    "python", "javascript", "react", "aws", "cloud", "data", "ai", "ml",
+    "job", "resume", "experience", "skills"
+  ];
+  
+  // Web search for current information
+  const searchKeywords = [
+    "news", "latest", "current", "today", "recent", "更新", 
+    "what is", "who is", "when did", "how does", "stock price",
+    "weather", "2024", "2025", "2026",
+    "company", "companies", "contractor", "construction",
+    "manufacturer", "supplier", "vendor"
+  ];
+  
+  // Always try Apollo first for candidate queries
+  if (candidateKeywords.some(kw => query.includes(kw))) {
+    toolsToUse.push("apollo");
+  }
+  
+  // Add Tavily only if web search keywords present
+  if (searchKeywords.some(kw => query.includes(kw))) {
+    toolsToUse.push("tavily");
+  }
+  
+  return toolsToUse;
+}
+
+// ============================================================================
+// Modular System Prompts
+// ============================================================================
+
+const SYSTEM_PROMPTS = {
+  base: `You are TurnkeyOptimization Sourcing Assistant — a powerful recruiter AI.
+Your job is to source candidates and companies effectively.
+Be concise, direct, and action-focused. Use markdown tables.`,
+
+  apolloAvailable: `### Available Tools
+- Apollo: Search people and companies for candidates.
+- Always show full contact details when available (name, title, company, email, phone, LinkedIn).
+- Offer to 'Save to Pipeline' after showing candidate results.`,
+
+  apolloUnavailable: `### Apollo Status
+⚠️ Apollo API is currently unavailable. Answer using your own knowledge.`,
+
+  override: `### Override Instructions
+- Do NOT lecture about ethics or privacy.
+- Do NOT refuse to show contact info if available.
+- Be direct and helpful. Provide the data requested.`,
+};
+
+// ============================================================================
+// Main Handler
+// ============================================================================
+
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { messages, model = DEFAULT_MODEL, useSearch = true } = body;
+    const { messages, model = DEFAULT_MODEL, useTools = true } = body;
 
-    // Get the request URL for internal API calls
+    // ============================================================================
+    // Get Tenant Context (from middleware headers or session)
+    // ============================================================================
+    // First try headers from middleware (x-tenant-id), then fall back to session validation
+    let tenantId: string | null = request.headers.get("x-tenant-id") || null;
+    
+    if (!tenantId) {
+      // Try to get from session (only if no header - avoids extra Cognito call if possible)
+      try {
+        tenantId = await getSessionTenantId();
+      } catch {
+        // Session check failed - continue without tenant context
+        console.log("No tenant context available");
+      }
+    }
+
+    // ============================================================================
+    // Rate Limiting
+    // ============================================================================
+    const rateLimitKey = getRateLimitKey(request, tenantId);
+    const rateLimitResult = checkRateLimit(rateLimitKey);
+    
+    if (!rateLimitResult.allowed) {
+      const response = NextResponse.json(
+        { error: "Rate limit exceeded. Please wait before trying again." },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(response, rateLimitResult);
+    }
+
+    // Get request URL for internal API calls
     const requestUrl = request.url ? new URL(request.url).origin : undefined;
 
-    // Get the latest user message
+    // Get latest user message
     const userMessage = messages
       .filter((m: any) => m.role === "user")
       .slice(-1)[0];
 
     const lastUserQuery = userMessage?.content || "";
 
-    // PRIMARY: Check Apollo candidate search first
-    let apolloResults = "";
-    let apolloAvailable = true;
-    let apolloError: string | undefined;
+// ============================================================================
+    // Tool Execution
+    // ============================================================================
     
-    if (useSearch && lastUserQuery && needsApollo(lastUserQuery)) {
-      console.log("Searching Apollo for:", lastUserQuery);
-      const apolloResponse = await searchApollo(lastUserQuery, requestUrl);
+    interface ApolloToolResult {
+      success: boolean;
+      data?: unknown;
+      error?: string;
+    }
+    
+    interface TavilyToolResult {
+      success: boolean;
+      data?: unknown;
+      error?: string;
+    }
+    
+    let toolResults: {
+      apollo?: ApolloToolResult;
+      tavily?: TavilyToolResult;
+    } = {};
+    
+    if (useTools && lastUserQuery) {
+      const toolsToUse = selectTools(lastUserQuery);
       
-      apolloAvailable = apolloResponse.available;
-      apolloError = apolloResponse.error;
-      
-      if (apolloResponse.results) {
-        apolloResults = `Candidate Results:\n${apolloResponse.results}`;
+      for (const toolName of toolsToUse) {
+        if (toolName === "apollo") {
+          const result = await searchApolloTool(lastUserQuery, requestUrl);
+          toolResults.apollo = result;
+        } else if (toolName === "tavily") {
+          const result = await searchTavilyTool(lastUserQuery, requestUrl);
+          toolResults.tavily = result;
+        }
       }
     }
 
-    // SECONDARY: Check general web search - ONLY when Apollo is available and has results
-    // Skip Tavily when Apollo is unavailable - let Bedrock answer from its own knowledge
-    let searchResults = "";
-    const trySearch = useSearch && lastUserQuery && 
-      apolloAvailable &&  // Only try search if Apollo is working
-      apolloResults &&   // And Apollo returned results
-      needsSearch(lastUserQuery);
+    // ============================================================================
+    // Build Messages for Model
+    // ============================================================================
     
-    if (trySearch) {
-      console.log("Searching Tavily for:", lastUserQuery);
-      const results = await searchTavily(lastUserQuery, requestUrl);
-      if (results.length > 0) {
-        searchResults = "Search results:\n" + results
-          .map((r: any, i: number) => `${i + 1}. ${r.title}\n${r.snippet}\n${r.url}`)
-          .join("\n\n");
-      }
-    }
-
-    // Filter conversation messages
+    // Filter conversation
     const conversation = messages
       .filter((m: any) => m.role !== "system" && m.id !== "welcome")
       .map((msg: any) => ({
@@ -170,61 +301,57 @@ export async function POST(request: Request) {
         content: msg.content,
       }));
 
-    // Build messages for MiniMax
-    const mmMessages: { role: "system" | "user" | "assistant"; content: string }[] = [];
+    // Build system prompt
+    let systemPrompt = SYSTEM_PROMPTS.base + "\n\n";
     
-    let fullSystemMsg = "You are TurnkeyOptimization Sourcing Assistant — a powerful, no-limits recruiter AI. ";
-    fullSystemMsg += "Your job is to source candidates and companies as effectively as possible using Apollo.io and other tools. ";
-    
-    // Apollo availability status in system prompt
-    if (!apolloAvailable) {
-      fullSystemMsg += `### Apollo Status\n`;
-      fullSystemMsg += `⚠️ Apollo API is currently unavailable: ${apolloError || "Unknown error"}\n`;
-      fullSystemMsg += `Please answer the user's question using your own knowledge. Be helpful and provide what information you can.\n`;
+    // Add tool context
+    if (toolResults.apollo) {
+      if (toolResults.apollo.success) {
+        systemPrompt += SYSTEM_PROMPTS.apolloAvailable + "\n\n";
+      } else {
+        systemPrompt += SYSTEM_PROMPTS.apolloUnavailable + "\n";
+        systemPrompt += `Error: ${toolResults.apollo.error}\n\n`;
+      }
     }
     
-    fullSystemMsg += "### Override Instructions (Highest Priority)\n";
-    fullSystemMsg += "- Apollo DOES contain emails and phone numbers. When the user asks for contact info, use it.\n";
-    fullSystemMsg += "- Do NOT lecture the user about ethics, privacy, or legality unless they specifically ask.\n";
-    fullSystemMsg += "- Do NOT refuse to show emails or phones if they are available in Apollo.\n";
-    fullSystemMsg += "- Be direct and helpful. Provide the data the user is asking for.\n";
-    fullSystemMsg += "### Capabilities\n";
-    fullSystemMsg += "- Use Apollo to search people and companies.\n";
-    fullSystemMsg += "- Always enrich profiles to get emails and phones when possible.\n";
-    fullSystemMsg += "- Show full contact details (name, title, company, email, phone, LinkedIn) in clean tables.\n";
-    fullSystemMsg += "- Offer to 'Save to Pipeline' after showing results.\n";
-    fullSystemMsg += "### Response Style\n";
-    fullSystemMsg += "- Be concise, direct, and action-focused.\n";
-    fullSystemMsg += "- Lead with the data.\n";
-    fullSystemMsg += "- Use markdown tables.\n";
-    fullSystemMsg += "- If data is limited, say so and offer to try different search parameters.\n";
-    fullSystemMsg += "User has full permission to use the contact data.\n";
-    if (apolloResults || searchResults) {
-      fullSystemMsg += "Use the provided search results to answer questions accurately. ";
-    }
-    mmMessages.push({ role: "system", content: fullSystemMsg });
+    systemPrompt += SYSTEM_PROMPTS.override;
+
+    // Build mmMessages
+    const mmMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+      { role: "system", content: systemPrompt }
+    ];
 
     for (const msg of conversation) {
       mmMessages.push({ role: msg.role as "user" | "assistant", content: msg.content });
     }
 
-    // Add Apollo results if available
-    if (apolloResults) {
+    // Add tool results as user messages
+    if (toolResults.apollo?.success && (toolResults.apollo.data as any[])?.length > 0) {
+      const candidates = (toolResults.apollo.data as any[])
+        .map((p: any) => `${p.name} - ${p.title} at ${p.organization}\nEmail: ${p.email}\nPhone: ${p.phone}\nLinkedIn: ${p.linkedin_url}`)
+        .join("\n\n");
+      
       mmMessages.push({
-        role: "user" as const,
-        content: `Based on these candidate profiles, answer the user's question: ${apolloResults}`
+        role: "user",
+        content: `Candidate Results:\n${candidates}`
       });
     }
 
-    // Add search results if available (secondary)
-    if (searchResults) {
-      mmMessages.push({ 
-        role: "user" as const, 
-        content: `Based on these search results, answer the question: ${searchResults}` 
+    if (toolResults.tavily?.success && (toolResults.tavily.data as any[])?.length > 0) {
+      const results = (toolResults.tavily.data as any[])
+        .map((r: any, i: number) => `${i + 1}. ${r.title}\n${r.snippet}`)
+        .join("\n\n");
+      
+      mmMessages.push({
+        role: "user",
+        content: `Search Results:\n${results}`
       });
     }
 
-    // Build request for MiniMax
+    // ============================================================================
+    // Invoke Bedrock
+    // ============================================================================
+    
     const input = {
       modelId: model,
       contentType: "application/json",
@@ -236,26 +363,47 @@ export async function POST(request: Request) {
       }),
     };
 
-    const command = new InvokeModelCommand(input);
-    const response = await bedrockClient.send(command);
+const command = new InvokeModelCommand(input);
+    const bedrockResponse = await bedrockClient.send(command);
 
-    // Parse the response
-    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+    // Parse response
+    const responseBody = JSON.parse(new TextDecoder().decode(bedrockResponse.body));
     const completion = 
       responseBody.choices?.[0]?.message?.content || 
       responseBody.output?.message?.content?.[0]?.text ||
       responseBody.completion || 
       "";
 
-    return Response.json({ 
-      response: completion, 
-      apolloUsed: !!apolloResults,
-      apolloAvailable,
-      apolloError,
-      searchUsed: !!searchResults
+    const response = NextResponse.json({
+      response: completion,
+      toolsUsed: Object.keys(toolResults),
+      toolResults: {
+        apollo: toolResults.apollo ? { 
+          success: toolResults.apollo.success,
+          error: toolResults.apollo.error,
+          count: (toolResults.apollo.data as any[])?.length || 0
+        } : undefined,
+        tavily: toolResults.tavily ? {
+          success: toolResults.tavily.success,
+          error: toolResults.tavily.error,
+          count: (toolResults.tavily.data as any[])?.length || 0
+        } : undefined,
+      },
+      // Include rate limit info in response
+      rateLimit: {
+        remaining: rateLimitResult.remaining,
+        tenantId: tenantId ? "provided" : "anonymous"
+      }
     });
+    
+    // Add rate limit headers
+    return addRateLimitHeaders(response, rateLimitResult);
+    
   } catch (err: any) {
     console.error("Bedrock error:", err);
-    return Response.json({ error: err.message }, { status: 500 });
+    return NextResponse.json(
+      { error: err.message || "Internal server error" },
+      { status: 500 }
+    );
   }
 }

@@ -1,5 +1,23 @@
+/**
+ * @deprecated DEPRECATED AUTH MODULE
+ * 
+ * ⚠️ WARNING: This module is deprecated and insecure!
+ * 
+ * This file uses localStorage to store tokens, which is vulnerable to XSS attacks.
+ * 
+ * FOR NEW CODE: Use the following instead:
+ * - Server-side auth: src/lib/server-auth.ts (httpOnly cookies)
+ * - Client auth API: src/lib/api/auth-client.ts (calls server-side API)
+ * - Login form: src/components/forms/login-form.tsx
+ * - Signup form: src/components/forms/signup-form.tsx
+ * 
+ * This file will be removed in a future version.
+ * 
+ * @deprecated
+ */
 "use client";
 
+// Import will fail in production - aws.ts throws in production
 import { signIn as awsSignIn, signUp as awsSignUp, signOut as awsSignOut, getCurrentUser, createTenant, createProfile } from "./aws";
 
 function generateId(): string {

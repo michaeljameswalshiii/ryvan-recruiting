@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Eye, EyeClosed, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { signIn } from "@/lib/auth";
+// Use server-side auth with httpOnly cookies (SECURE)
+import { login } from "@/lib/api/auth-client";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -21,21 +22,13 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Check for registration success message
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const registrationSuccess = localStorage.getItem("registrationSuccess");
-      if (registrationSuccess) {
-        setSuccessMessage("Account created! Please check your email to confirm your account, then sign in.");
-        localStorage.removeItem("registrationSuccess");
-      }
-    }
-  }, []);
+  // Check for registration success from URL param (set by signup form)
+  const registered = searchParams.get("registered");
 
   const {
     register,
@@ -49,7 +42,8 @@ const onSubmit = async (data: LoginFormData) => {
     try {
       setIsLoading(true);
       setError(null);
-      await signIn(data.email, data.password);
+      // Use secure server-side auth with httpOnly cookies
+      await login(data.email, data.password);
       router.push("/dashboard");
     } catch (err: any) {
       // More detailed error handling
@@ -74,9 +68,9 @@ const onSubmit = async (data: LoginFormData) => {
 
 return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      {successMessage && (
+      {registered === "true" && (
         <div className="bg-green-100 text-green-800 text-sm p-3 rounded-md">
-          {successMessage}
+          Account created! Please sign in to continue.
         </div>
       )}
 

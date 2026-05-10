@@ -10,7 +10,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { signUp } from "@/lib/auth";
+// Use server-side auth with httpOnly cookies (SECURE)
+import { register } from "@/lib/api/auth-client";
 
 const signupSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -44,13 +45,10 @@ const onSubmit = async (data: SignupFormData) => {
     try {
       setIsLoading(true);
       setError(null);
-      await signUp(data.email, data.password, data.tenantName, data.subdomain, data.fullName);
-      // Redirect to login page with success message - user needs to confirm email first
-      // Store success message for login page to display
-      if (typeof window !== "undefined") {
-        localStorage.setItem("registrationSuccess", "true");
-      }
-      router.push("/login");
+      // Use secure server-side auth with httpOnly cookies
+      await register(data.email, data.password, data.fullName, data.tenantName, data.subdomain);
+      // Redirect to login page with success message via URL param
+      router.push("/login?registered=true");
     } catch (err: any) {
       console.error("Signup failed:", err);
       setError(err.message || "Registration failed. Please check your AWS configuration.");

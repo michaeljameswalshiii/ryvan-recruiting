@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
-import { getLeads, createLead, updateLead, deleteLead } from "@/lib/aws";
+// Use client API (SECURE - goes through server API, not directly to AWS)
+import { fetchLeads, createLead, updateLead, deleteLead } from "@/lib/api/client-api";
 
 interface Lead {
   id: string;
@@ -82,13 +83,12 @@ export default function PipelinePage() {
   const [newLeadPhone, setNewLeadPhone] = useState("");
   const [newLeadNotes, setNewLeadNotes] = useState("");
 
-// Load leads from localStorage or DynamoDB on mount
+// Load leads from API or localStorage on mount
   useEffect(() => {
     async function loadLeads() {
       try {
-        const tenantId = getTenantId();
-        // Try DynamoDB first
-        const dbLeads = await getLeads(tenantId);
+        // Try secure API first (uses session cookie for auth/tenant)
+        const dbLeads = await fetchLeads();
         if (dbLeads && dbLeads.length > 0) {
           // Convert DB format to Lead format
           const formattedLeads: Lead[] = dbLeads.map((l: any) => ({
@@ -152,13 +152,12 @@ const handleDrop = async (status: Lead["status"]) => {
         return updated;
       });
       
-      // Save status change to DynamoDB if configured
+// Save status change to API (tenant_id enforced by server from session cookie)
       if (dbReady) {
         try {
-          const tenantId = getTenantId();
           const lead = leads.find(l => l.id === leadId);
           if (lead) {
-            await updateLead(tenantId, leadId, {
+            await updateLead(leadId, {
               name: lead.name,
               email: lead.email,
               company: lead.company || "",
@@ -201,18 +200,16 @@ const handleAddLead = async () => {
     });
     setIsAddDialogOpen(false);
     
-    // Save to DynamoDB if configured
+// Save to API (tenant_id enforced by server from session cookie)
     if (dbReady) {
       try {
-        const tenantId = getTenantId();
         await createLead({
-          id: newLead.id,
-          tenant_id: tenantId,
           name: newLead.name,
           email: newLead.email,
           company: newLead.company,
+          phone: newLead.phone,
           status: newLead.status,
-          notes: newLead.notes,
+          notes: newLeadNotes,
         });
       } catch (err) {
         console.error("Failed to save lead to DB:", err);

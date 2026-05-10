@@ -13,7 +13,9 @@ import {
   Search,
   Sparkles,
 } from "lucide-react";
-import { signOut } from "@/lib/auth";
+// Use server-side auth API for secure logout (httpOnly cookies)
+// @/lib/auth is deprecated - use /api/auth/logout instead
+import { logout } from "@/lib/api/auth-client";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
@@ -29,7 +31,7 @@ export function DashboardNav() {
   const router = useRouter();
 
 const handleSignOut = async () => {
-    await signOut();
+    await logout();
     router.push("/login");
   };
 

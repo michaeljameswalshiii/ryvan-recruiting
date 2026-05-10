@@ -1,4 +1,43 @@
+/**
+ * @deprecated AWS SDK Client Wrapper
+ * 
+ * ⚠️ SECURITY WARNING: This file is marked "use client" which exposes AWS SDK to the browser.
+ * 
+ * This file is DEPRECATED and should NOT be used for new code.
+ * 
+ * Instead use:
+ * - Server-side auth: src/lib/server-auth.ts (httpOnly cookies)
+ * - Server actions: src/lib/actions/*.ts
+ * - API routes: src/app/api/data/* (with session cookie auth)
+ * 
+ * This file is kept for backward compatibility only.
+ * 
+ * @deprecated
+ */
 "use client";
+
+/**
+ * ⚠️ DEPRECATED - DO NOT USE IN NEW CODE ⚠️
+ * 
+ * This file is kept for legacy client-side auth.
+ * 
+ * FOR NEW CODE: Use server-auth.ts + server actions only.
+ * 
+ * This file should NEVER be imported in production.
+ * If you import it, you'll get a runtime error.
+ */
+
+// ============================================================================
+// PRODUCTION BLOCKER - Remove this to enable legacy mode (NOT recommended)
+// ============================================================================
+if (process.env.NODE_ENV === 'production') {
+  throw new Error(
+    'ERROR: src/lib/aws.ts is deprecated and cannot be used in production.\n' +
+    'Use src/lib/server-auth.ts + server actions instead.\n' +
+    'All AWS operations must be server-side only.'
+  );
+}
+// ============================================================================
 
 // DON'T import AWS SDK at top level - import dynamically instead
 // This prevents the error during build

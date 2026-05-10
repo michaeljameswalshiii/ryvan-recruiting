@@ -1,37 +1,46 @@
-"use client";
-
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { DashboardHeader } from "@/components/dashboard/header";
-import { getAccessToken } from "@/lib/aws";
+import { validateSession } from "@/lib/server-auth";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
-export default function DashboardLayout({
+/**
+ * Dashboard Layout - Server-side auth enforcement
+ * 
+ * This layout validates the session server-side using httpOnly cookies.
+ * Unauthenticated users are redirected to /login by middleware,
+ * but we also validate here as defense-in-depth.
+ */
+
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const router = useRouter();
+  // Validate session server-side
+  const session = await validateSession();
+  
+  if (!session) {
+    // Redirect to login if no valid session
+    // (middleware should catch this, but defense-in-depth)
+    redirect('/login');
+  }
 
-useEffect(() => {
-    // Skip auth if Cognito not configured
-    const hasCognito = !!(process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID && process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID);
-    if (!hasCognito) return;
-    
-    // Skip auth check in dev mode
-    if (process.env.NODE_ENV !== "development") {
-      const token = getAccessToken();
-      if (!token) {
-        router.push("/login");
-      }
-    }
-  }, [router]);
+  // Get tenant info from session for display
+  const tenantInfo = {
+    userId: session.userId,
+    email: session.email,
+    fullName: session.fullName,
+    tenantId: session.tenantId,
+    role: session.role,
+  };
 
   return (
     <div className="min-h-screen bg-background">
-      <DashboardNav />
+      {/* @ts-expect-error Server Component */}
+      <DashboardNav session={tenantInfo} />
       <div className="pl-64">
-        <DashboardHeader />
+        <DashboardHeader user={tenantInfo} />
         <main className="p-6">{children}</main>
       </div>
     </div>
