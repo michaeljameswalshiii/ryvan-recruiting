@@ -3,7 +3,7 @@
  * 
  * Protects all /dashboard routes.
  * Explicitly allows /api/auth/* to prevent redirect loops.
- * Injects x-tenant-id and x-user-id headers for downstream use.
+ * Injects x-tenant-id and x-user-id headers for AI APIs.
  * 
  * @serverOnly
  */
@@ -17,7 +17,7 @@ const PUBLIC_ROUTES = [
   '/signup',
 ];
 
-// API public routes (never require auth, just session check)
+// API public routes (never require redirect) - auth handled in route
 const API_PUBLIC_ROUTES = [
   '/api/auth',
   '/api/bedrock',
@@ -56,6 +56,14 @@ function isProtectedRoute(pathname: string): boolean {
 }
 
 /**
+ * Check if route needs tenant/user injection (AI routes)
+ */
+function needsTenantContext(pathname: string): boolean {
+  return pathname.startsWith('/api/bedrock') || 
+         pathname.startsWith('/api/apollo');
+}
+
+/**
  * Get session from cookie
  */
 function getSession(request: NextRequest) {
@@ -75,8 +83,8 @@ function getSession(request: NextRequest) {
 
 /**
  * Validate session token with Cognito
- * NOTE: For middleware performance, we use a lighter check
- * Full validation with getSession() happens in route handlers
+ * NOTE: Uses GetUserCommand - simple and reliable
+ * Consider aws-jwt-verify for faster local validation
  */
 async function validateSessionToken(accessToken: string): Promise<boolean> {
   if (!accessToken) {
@@ -115,12 +123,44 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow API public routes (they handle their own auth)
+  // Allow API routes through - they handle their own auth
   if (isApiPublicRoute(pathname)) {
+    // But inject tenant context for AI routes that need it
+    if (needsTenantContext(pathname)) {
+      const session = getSession(request);
+      
+      if (session?.accessToken) {
+        // Validate token for API access
+        const isValid = await validateSessionToken(session.accessToken);
+        
+        if (!isValid) {
+          return NextResponse.json(
+            { error: 'Unauthorized' },
+            { status: 401 }
+          );
+        }
+        
+        // Inject headers for downstream use
+        const requestHeaders = new Headers(request.headers);
+        requestHeaders.set('x-tenant-id', session.tenantId || '');
+        requestHeaders.set('x-user-id', session.userId || '');
+        
+        return NextResponse.next({
+          request: { headers: requestHeaders },
+        });
+      }
+      
+      // No session - return 401
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     return NextResponse.next();
   }
 
-  // Check if route is protected
+  // Check if route is protected (dashboard)
   if (isProtectedRoute(pathname)) {
     const session = getSession(request);
     
