@@ -75,6 +75,8 @@ function getSession(request: NextRequest) {
 
 /**
  * Validate session token with Cognito
+ * NOTE: For middleware performance, we use a lighter check
+ * Full validation with getSession() happens in route handlers
  */
 async function validateSessionToken(accessToken: string): Promise<boolean> {
   if (!accessToken) {
@@ -84,7 +86,7 @@ async function validateSessionToken(accessToken: string): Promise<boolean> {
   try {
     const { GetUserCommand, CognitoIdentityProviderClient } = await import('@aws-sdk/client-cognito-identity-provider');
     
-    const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
+    const region = process.env.AWS_REGION || 'us-east-1';
     const client = new CognitoIdentityProviderClient({ region });
     
     const command = new GetUserCommand({ AccessToken: accessToken });
