@@ -97,23 +97,63 @@ function getSession(request: NextRequest) {
  * Validate session token with Cognito
  * NOTE: Uses GetUserCommand - simple and reliable
  * Consider aws-jwt-verify for faster local validation
+ * 
+ * Updated: Now attempts token refresh on expiration
  */
-async function validateSessionToken(accessToken: string): Promise<boolean> {
+async function validateSessionToken(accessToken: string, refreshToken?: string): Promise<boolean> {
   if (!accessToken) {
     return false;
   }
   
+  const region = process.env.AWS_REGION || 'us-east-1';
+  
   try {
     const { GetUserCommand, CognitoIdentityProviderClient } = await import('@aws-sdk/client-cognito-identity-provider');
     
-    const region = process.env.AWS_REGION || 'us-east-1';
     const client = new CognitoIdentityProviderClient({ region });
     
     const command = new GetUserCommand({ AccessToken: accessToken });
     await client.send(command);
     
     return true;
-  } catch {
+  } catch (error: any) {
+    // Check if error is token expiration
+    const errorMessage = error?.message || '';
+    const isExpired = errorMessage.includes('Token expired') || 
+                     errorMessage.includes('Access token has expired') ||
+                     errorMessage.includes('NotAuthorizedException');
+    
+    // If token is expired and we have refresh token, try to refresh
+    if (isExpired && refreshToken) {
+      try {
+        const { InitiateAuthCommand, CognitoIdentityProviderClient } = await import('@aws-sdk/client-cognito-identity-provider');
+        const clientId = process.env.COGNITO_CLIENT_ID!;
+        
+        if (!clientId) {
+          return false;
+        }
+        
+        const client = new CognitoIdentityProviderClient({ region });
+        const refreshCommand = new InitiateAuthCommand({
+          AuthFlow: 'REFRESH_TOKEN_AUTH',
+          ClientId: clientId,
+          AuthParameters: {
+            REFRESH_TOKEN: refreshToken,
+          },
+        });
+        
+        const response = await client.send(refreshCommand);
+        
+        // If refresh successful, token is valid
+        if (response.AuthenticationResult?.AccessToken) {
+          return true;
+        }
+      } catch {
+        // Refresh failed
+        return false;
+      }
+    }
+    
     return false;
   }
 }
@@ -203,7 +243,7 @@ export async function middleware(request: NextRequest) {
     });
   }
 
-  // Check if route is protected (dashboard)
+// Check if route is protected (dashboard)
   if (isProtectedRoute(pathname)) {
     const session = getSession(request);
     
@@ -214,8 +254,8 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // Validate the token with Cognito
-    const isValid = await validateSessionToken(session.accessToken);
+    // Validate the token with Cognito (pass refresh token for auto-refresh)
+    const isValid = await validateSessionToken(session.accessToken, session.refreshToken);
     
     if (!isValid) {
       // Token invalid or expired - redirect to login

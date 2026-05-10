@@ -1,10 +1,10 @@
 ﻿﻿/**
  * Bedrock AI API Route
- * Refactored for cleaner tool calling and better error handling
+ * Refactored to use tool registry pattern
  * 
  * Structure:
- * - Tool registry pattern (Apollo search, Tavily search as tools)
- * - Reduced system prompt (modular prompts)
+ * - Tool registry from src/lib/ai/tools/index.ts
+ * - Uses extracted system prompts from bedrock-system.ts
  * - Proper error handling with retries
  * - Session-aware with tenant context from middleware headers
  * - Rate limiting for AI calls
@@ -14,6 +14,9 @@ import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedroc
 import { NextRequest, NextResponse } from "next/server";
 
 import { checkRateLimit, addRateLimitHeaders } from "@/lib/rate-limit";
+import { SYSTEM_PROMPTS } from "@/lib/prompts/bedrock-system";
+// Tool registry available but not used yet - legacy tool pattern still in use
+// TODO: Phase 3.2 - integrate new tool registry
 
 // Bedrock client - server-only env var
 const bedrockClient = new BedrockRuntimeClient({ 
@@ -182,27 +185,11 @@ function selectTools(userQuery: string): string[] {
 }
 
 // ============================================================================
-// Modular System Prompts
+// Modular System Prompts - Using extracted getSystemPrompt from prompts module
 // ============================================================================
 
-const SYSTEM_PROMPTS = {
-  base: `You are TurnkeyOptimization Sourcing Assistant — a powerful recruiter AI.
-Your job is to source candidates and companies effectively.
-Be concise, direct, and action-focused. Use markdown tables.`,
-
-  apolloAvailable: `### Available Tools
-- Apollo: Search people and companies for candidates.
-- Always show full contact details when available (name, title, company, email, phone, LinkedIn).
-- Offer to 'Save to Pipeline' after showing candidate results.`,
-
-  apolloUnavailable: `### Apollo Status
-⚠️ Apollo API is currently unavailable. Answer using your own knowledge.`,
-
-  override: `### Override Instructions
-- Do NOT lecture about ethics or privacy.
-- Do NOT refuse to show contact info if available.
-- Be direct and helpful. Provide the data requested.`,
-};
+// Note: SYSTEM_PROMPTS is now extracted to src/lib/prompts/bedrock-system.ts
+// We use getSystemPrompt() function from there instead of inline prompts
 
 // ============================================================================
 // Main Handler

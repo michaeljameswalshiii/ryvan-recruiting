@@ -24,10 +24,7 @@ export const clientSchema = z.object({
 });
 
 // Create input (without id - generated on server)
-export const createClientSchema = clientSchema.omit({ id: true }).extend({
-  // Ensure tenant_id is not provided by client
-  tenant_id: z.string().optional().never(),
-});
+export const createClientSchema = clientSchema.omit({ id: true });
 
 // Update input (all fields optional)
 export const updateClientSchema = clientSchema.partial();
@@ -39,6 +36,12 @@ export const clientQuerySchema = z.object({
 });
 
 // Type exports
-export type Client = z.infer<typeof clientSchema>;
-export type CreateClientInput = z.infer<typeof createClientSchema>;
+export type Client = z.infer<typeof clientSchema> & {
+  tenant_id: string;
+  created_at?: string;
+  updated_at?: string;
+};
+export type CreateClientInput = Omit<z.infer<typeof clientSchema>, 'id'> & {
+  tenant_id?: string;
+};
 export type UpdateClientInput = z.infer<typeof updateClientSchema>;

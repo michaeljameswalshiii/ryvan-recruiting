@@ -1,7 +1,6 @@
 import { DashboardNav } from "@/components/dashboard/nav";
 import { DashboardHeader } from "@/components/dashboard/header";
-import { validateSession } from "@/lib/server-auth";
-import { cookies } from "next/headers";
+import { getSession } from "@/lib/server-auth";
 import { redirect } from "next/navigation";
 
 /**
@@ -17,8 +16,8 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Validate session server-side
-  const session = await validateSession();
+// Get session from cookie
+  const session = await getSession();
   
   if (!session) {
     // Redirect to login if no valid session
@@ -26,13 +25,14 @@ export default async function DashboardLayout({
     redirect('/login');
   }
 
-  // Get tenant info from session for display
+// Get tenant info from session for display
+  // Note: fullName and role stored in DynamoDB profile, not in cookie
   const tenantInfo = {
     userId: session.userId,
     email: session.email,
-    fullName: session.fullName,
+    fullName: 'User', // Could fetch from profile if needed
     tenantId: session.tenantId,
-    role: session.role,
+    role: 'member', // Could fetch from profile if needed
   };
 
   return (

@@ -19,18 +19,19 @@ import {
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 
 // ============================================================================
-// Configuration
+// Configuration - SERVER-SIDE ONLY
 // ============================================================================
 
-const region = process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
+// Use server-side env vars (NOT NEXT_PUBLIC_*)
+const region = process.env.AWS_REGION || 'us-east-1';
 
 // Table names from environment
-const tenantsTable = process.env.TenantsTable || 'turnkey-tenants';
-const profilesTable = process.env.ProfilesTable || 'turnkey-profiles';
-const clientsTable = process.env.ClientsTable || 'turnkey-clients';
-const leadsTable = process.env.LeadsTable || 'turnkey-leads';
-const pipelineTable = process.env.PipelineTable || 'turnkey-pipeline';
-const sourcesTable = process.env.SourcesTable || 'turnkey-sources';
+const tenantsTable = process.env.DYNAMODB_TENANTS_TABLE || 'turnkey-tenants';
+const profilesTable = process.env.DYNAMODB_PROFILES_TABLE || 'turnkey-profiles';
+const clientsTable = process.env.DYNAMODB_CLIENTS_TABLE || 'turnkey-clients';
+const leadsTable = process.env.DYNAMODB_LEADS_TABLE || 'turnkey-leads';
+const pipelineTable = process.env.DYNAMODB_PIPELINE_TABLE || 'turnkey-pipeline';
+const sourcesTable = process.env.DYNAMODB_SOURCES_TABLE || 'turnkey-sources';
 
 // ============================================================================
 // Client
@@ -50,7 +51,8 @@ function getClient(): DynamoDBClient {
 // ============================================================================
 
 function isConfigured(): boolean {
-  return !!(process.env.NEXT_PUBLIC_AWS_REGION);
+  // Use server-side env var
+  return !!(process.env.AWS_REGION);
 }
 
 /**

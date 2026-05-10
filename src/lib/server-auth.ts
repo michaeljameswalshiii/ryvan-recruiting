@@ -14,8 +14,6 @@
  * @serverOnly
  */
 
-"use server";
-
 import { cookies } from 'next/headers';
 import type { NextResponse } from 'next/server';
 import { CognitoIdentityProviderClient, GetUserCommand, InitiateAuthCommand, GlobalSignOutCommand, SignUpCommand, AdminGetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
@@ -346,18 +344,14 @@ export async function registerUser(
   
   const signupResponse = await cognitoClient.send(signUpCommand);
   
-  // Get the actual userId (sub) from Cognito
+// Get the actual userId (sub) from Cognito
   // Use UserSub from signup response - this is the Cognito user ID
   let userId = signupResponse.UserSub || '';
   
-  // If we couldn't get UserSub, log but continue
+  // CRITICAL: Never use email as userId - this is a security issue
+  // If UserSub is missing, the signup failed
   if (!userId) {
-    console.warn('No UserSub from signup - using email as fallback userId');
-    userId = email;
-  }
-  
-  if (!userId) {
-    throw new Error('Failed to create user');
+    throw new Error('Failed to create user: Cognito did not return user ID');
   }
   
   // Generate tenant ID

@@ -84,25 +84,22 @@ export async function getClientById(tenantId: string, clientId: string): Promise
  * Create a new client
  */
 export async function createClient(tenantId: string, data: CreateClientInput): Promise<Client> {
-  // Validate input (but don't require it - already validated by Zod at action level)
-  const validated = data;
-  
   const client: Client = {
     id: generateId(),
     tenant_id: tenantId,
-    name: validated.name,
-    email: validated.email || '',
-    phone: validated.phone || '',
-    company: validated.company || '',
-    domain: validated.domain || '',
-    industry: validated.industry || '',
-    city: validated.city || '',
-    state: validated.state || '',
-    country: validated.country || '',
-    employee_count: validated.employee_count,
-    revenue: validated.revenue || '',
-    description: validated.description || '',
-    linkedin_url: validated.linkedin_url || '',
+    name: data.name ?? 'Unknown',
+    email: data.email || '',
+    phone: data.phone || '',
+    company: data.company || '',
+    domain: data.domain || '',
+    industry: data.industry || '',
+    city: data.city || '',
+    state: data.state || '',
+    country: data.country || '',
+    employee_count: data.employee_count,
+    revenue: data.revenue || '',
+    description: data.description || '',
+    linkedin_url: data.linkedin_url || '',
     created_at: new Date().toISOString(),
   };
   
@@ -123,7 +120,7 @@ export async function updateClient(
   clientId: string,
   data: UpdateClientInput
 ): Promise<Client | null> {
-// Build update expression
+  // Build update expression
   const updates: string[] = [];
   const values: Record<string, unknown> = {};
   const names: Record<string, string> = {};
@@ -203,7 +200,7 @@ export async function updateClient(
   values[':modified_at'] = new Date().toISOString();
   names['#modified_at'] = 'modified_at';
   
-  const updated = await updateItem(
+const updated = await updateItem<Client>(
     clientsTable,
     { tenant_id: tenantId, id: clientId },
     `SET ${updates.join(', ')}`,

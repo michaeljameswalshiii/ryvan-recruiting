@@ -12,8 +12,8 @@ import { cookies } from 'next/headers';
 import {
   authenticateUser,
   registerUser,
-  signOutUser,
-  validateSession,
+  signOutFromCognito,
+  getSession,
 } from '../server-auth';
 import { loginSchema, registerSchema } from '../schemas/auth';
 import { z } from 'zod';
@@ -77,15 +77,15 @@ export async function registerAction(formData: FormData) {
     };
   }
 
-  try {
+try {
     // Register and auto-login
-    await registerUser({
-      email: validated.data.email,
-      password: validated.data.password,
-      fullName: validated.data.fullName,
-      tenantName: validated.data.tenantName,
-      subdomain: validated.data.subdomain,
-    });
+    await registerUser(
+      validated.data.email,
+      validated.data.password,
+      validated.data.fullName,
+      validated.data.tenantName,
+      validated.data.subdomain
+    );
     
     // Return success - caller should redirect
     return { success: true };
@@ -99,7 +99,10 @@ export async function registerAction(formData: FormData) {
  */
 export async function logoutAction() {
   try {
-    await signOutUser();
+    const session = await getSession();
+    if (session?.accessToken) {
+      await signOutFromCognito(session.accessToken);
+    }
   } catch {
     // Ignore errors on logout
   }
@@ -111,15 +114,15 @@ export async function logoutAction() {
 /**
  * Get current session for server components
  */
-export async function getSession() {
-  return validateSession();
+export async function getCurrentSession() {
+  return getSession();
 }
 
 /**
  * Require session - throws redirect if not authenticated
  */
 export async function requireAuth() {
-  const session = await validateSession();
+  const session = await getSession();
   
   if (!session) {
     redirect('/login');

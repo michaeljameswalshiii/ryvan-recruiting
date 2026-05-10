@@ -196,7 +196,7 @@ export async function updatePipelineItem(
   values[':modified_at'] = new Date().toISOString();
   names['#modified_at'] = 'modified_at';
   
-  const updated = await updateItem(
+const updated = await updateItem<Pipeline>(
     pipelineTable,
     { tenant_id: tenantId, id: pipelineId },
     `SET ${updates.join(', ')}`,

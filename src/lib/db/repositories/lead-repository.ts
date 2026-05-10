@@ -178,7 +178,7 @@ export async function updateLead(
   values[':modified_at'] = new Date().toISOString();
   names['#modified_at'] = 'modified_at';
   
-  const updated = await updateItem(
+const updated = await updateItem<Lead>(
     leadsTable,
     { tenant_id: tenantId, id: leadId },
     `SET ${updates.join(', ')}`,

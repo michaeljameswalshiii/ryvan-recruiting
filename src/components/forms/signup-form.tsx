@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 // Use server-side auth with httpOnly cookies (SECURE)
-import { register } from "@/lib/api/auth-client";
+// Rename to avoid conflict with react-hook-form's register function
+import { register as registerUser } from "@/lib/api/auth-client";
 
 const signupSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -45,8 +46,8 @@ const onSubmit = async (data: SignupFormData) => {
     try {
       setIsLoading(true);
       setError(null);
-      // Use secure server-side auth with httpOnly cookies
-      await register(data.email, data.password, data.fullName, data.tenantName, data.subdomain);
+// Use secure server-side auth with httpOnly cookies
+      await registerUser(data.email, data.password, data.fullName, data.tenantName, data.subdomain);
       // Redirect to login page with success message via URL param
       router.push("/login?registered=true");
     } catch (err: any) {
