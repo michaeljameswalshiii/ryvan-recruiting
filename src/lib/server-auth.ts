@@ -1,8 +1,11 @@
 /**
  * Server-Side Authentication
  * 
- * Uses httpOnly cookies for secure session management.
+ * Session management utilities for httpOnly cookies.
  * This runs ONLY on the server - never exposed to client.
+ * 
+ * NOTE: Cookie setting/deletion MUST be done in route handlers,
+ * not in this library (cookies() only works in route handlers).
  * 
  * @serverOnly
  */
@@ -10,33 +13,53 @@
 "use server";
 
 import { cookies } from 'next/headers';
-import { CognitoIdentityProviderClient, GetUserCommand, InitiateAuthCommand, GlobalSignOutCommand, SignUpCommand } from '@aws-sdk/client-cognito-identity-provider';
+import { CognitoIdentityProviderClient, GetUserCommand, InitiateAuthCommand, GlobalSignOutCommand, SignUpCommand, AdminGetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient, GetItemCommand, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { unmarshall, marshall } from '@aws-sdk/util-dynamodb';
 
-// AWS Configuration - server-side only (not NEXT_PUBLIC_*)
-const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
+// AWS Configuration - server-side only (NOT NEXT_PUBLIC_*)
+const region = process.env.AWS_REGION || 'us-east-1';
 const userPoolId = process.env.COGNITO_USER_POOL_ID!;
 const clientId = process.env.COGNITO_CLIENT_ID!;
 
 // Cookie name
 const SESSION_COOKIE = 'turnkey-session';
 
-// DynamoDB tables
-const profilesTable = process.env.DYNAMODB_PROFILES_TABLE || 'turnkey-profiles';
+/**
+ * Get cookie options (for route handlers)
+ */
+export function getCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+    path: '/',
+  };
+}
 
 /**
- * Get current session from httpOnly cookie
- * This is READ-ONLY - use API routes to set/delete cookies
+ * Session data type
  */
-export async function getSession(): Promise<{
+export interface SessionData {
   accessToken: string;
   idToken: string;
   refreshToken: string;
   userId: string;
   email: string;
   tenantId: string;
-} | null> {
+}
+
+/**
+ * Cookie constants for routes
+ */
+export const SESSION_COOKIE_NAME = SESSION_COOKIE;
+
+/**
+ * Get current session from httpOnly cookie
+ * READ-ONLY - use API routes to set/delete cookies
+ */
+export async function getSession(): Promise<SessionData | null> {
   try {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get(SESSION_COOKIE);
@@ -45,7 +68,7 @@ export async function getSession(): Promise<{
       return null;
     }
     
-    const session = JSON.parse(sessionCookie.value);
+    const session = JSON.parse(sessionCookie.value) as SessionData;
     
     // Validate required fields
     if (!session.accessToken || !session.userId) {
@@ -60,6 +83,7 @@ export async function getSession(): Promise<{
 
 /**
  * Validate session token with Cognito
+ * Uses GetUserCommand to verify token is still valid
  */
 export async function validateSession(accessToken: string): Promise<boolean> {
   if (!accessToken) {
@@ -73,6 +97,42 @@ export async function validateSession(accessToken: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Try to refresh token if expired
+ * Returns new tokens if successful, null otherwise
+ */
+export async function refreshSession(refreshToken: string): Promise<{ AccessToken: string; IdToken: string; RefreshToken: string } | null> {
+  if (!refreshToken || !clientId) {
+    return null;
+  }
+  
+  try {
+    const client = new CognitoIdentityProviderClient({ region });
+    const authCommand = new InitiateAuthCommand({
+      AuthFlow: 'REFRESH_TOKEN_AUTH',
+      ClientId: clientId,
+      AuthParameters: {
+        REFRESH_TOKEN: refreshToken,
+      },
+    });
+    
+    const response = await client.send(authCommand);
+    const result = response.AuthenticationResult;
+    
+    if (!result?.AccessToken || !result?.IdToken) {
+      return null;
+    }
+    
+    return {
+      AccessToken: result.AccessToken,
+      IdToken: result.IdToken,
+      RefreshToken: result.RefreshToken || refreshToken,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -101,7 +161,8 @@ export async function getSessionUserEmail(): Promise<string | null> {
 }
 
 /**
- * Authenticate user with Cognito (returns tokens for API route to set cookie)
+ * Authenticate user with Cognito
+ * Returns tokens for API route to set cookie
  */
 export async function authenticateUser(email: string, password: string): Promise<{
   userId: string;
@@ -111,14 +172,18 @@ export async function authenticateUser(email: string, password: string): Promise
   IdToken: string;
   RefreshToken: string;
 }> {
-  // Validate env vars
-  if (!clientId) {
+  // Validate env vars - don't leak to client
+  if (!clientId || !userPoolId) {
     throw new Error('Authentication not configured');
+  }
+  
+  if (!email || !password) {
+    throw new Error('Email and password required');
   }
   
   const client = new CognitoIdentityProviderClient({ region });
   
-  // Initiate auth
+  // Initiate auth with USER_PASSWORD_AUTH
   const authCommand = new InitiateAuthCommand({
     AuthFlow: 'USER_PASSWORD_AUTH',
     ClientId: clientId,
@@ -131,7 +196,7 @@ export async function authenticateUser(email: string, password: string): Promise
   const authResponse = await client.send(authCommand);
   
   if (!authResponse.AuthenticationResult) {
-    throw new Error('Authentication failed');
+    throw new Error('Invalid credentials');
   }
   
   const { AccessToken, IdToken, RefreshToken } = authResponse.AuthenticationResult;
@@ -140,18 +205,45 @@ export async function authenticateUser(email: string, password: string): Promise
     throw new Error('Invalid authentication response');
   }
   
-  // Get user info to find userId
-  const userCommand = new GetUserCommand({ AccessToken });
-  const userResponse = await client.send(userCommand);
+  // Use AdminGetUserCommand to get reliable user sub/ID
+  let userId = '';
+  let userEmail = email;
   
-  const userId = userResponse.UserAttributes?.find(a => a.Name === 'sub')?.Value || '';
-  const userEmail = userResponse.UserAttributes?.find(a => a.Name === 'email')?.Value || email;
+  try {
+    const userCommand = new AdminGetUserCommand({
+      Username: email,
+      UserPoolId: userPoolId,
+    });
+    const userResponse = await client.send(userCommand);
+    
+    const subAttr = userResponse.UserAttributes?.find(a => a.Name === 'sub');
+    const emailAttr = userResponse.UserAttributes?.find(a => a.Name === 'email');
+    
+    userId = subAttr?.Value || '';
+    userEmail = emailAttr?.Value || email;
+  } catch {
+    // Fallback to GetUser if AdminGetUser not available
+    try {
+      const userCommand = new GetUserCommand({ AccessToken });
+      const userResponse = await client.send(userCommand);
+      
+      const subAttr = userResponse.UserAttributes?.find(a => a.Name === 'sub');
+      const emailAttr = userResponse.UserAttributes?.find(a => a.Name === 'email');
+      
+      userId = subAttr?.Value || '';
+      userEmail = emailAttr?.Value || email;
+    } catch (err) {
+      console.error('Failed to get user details:', err);
+    }
+  }
   
   // Get tenant from profile
   let tenantId = '';
   if (userId) {
     try {
       const dynamoClient = new DynamoDBClient({ region });
+      const profilesTable = process.env.DYNAMODB_PROFILES_TABLE || 'turnkey-profiles';
+      
       const profileCommand = new GetItemCommand({
         TableName: profilesTable,
         Key: { id: { S: userId } },
@@ -171,7 +263,8 @@ export async function authenticateUser(email: string, password: string): Promise
 }
 
 /**
- * Sign out from Cognito (token invalidation only - cookie cleared by API route)
+ * Sign out from Cognito
+ * Clears the token on server side - cookie cleared by route handler
  */
 export async function signOutFromCognito(accessToken: string): Promise<void> {
   if (!accessToken) {
@@ -183,13 +276,14 @@ export async function signOutFromCognito(accessToken: string): Promise<void> {
     const command = new GlobalSignOutCommand({ AccessToken: accessToken });
     await client.send(command);
   } catch (err) {
-    // Log error but don't throw - token may already be invalid
-    console.log('Cognito sign out error:', err);
+    // Log but don't throw - token may already be invalid
+    console.log('Cognito sign out skipped:', err);
   }
 }
 
 /**
- * Register new user (returns data for API route)
+ * Register new user
+ * Creates tenant + profile in DynamoDB
  */
 export async function registerUser(
   email: string,
@@ -198,9 +292,12 @@ export async function registerUser(
   tenantName: string,
   subdomain: string
 ): Promise<{ userId: string; tenantId: string }> {
-  // Validate env vars
-  if (!clientId) {
+  if (!clientId || !userPoolId) {
     throw new Error('Authentication not configured');
+  }
+  
+  if (!email || !password || !tenantName) {
+    throw new Error('All fields required');
   }
   
   const cognitoClient = new CognitoIdentityProviderClient({ region });
@@ -216,13 +313,28 @@ export async function registerUser(
     ],
   });
   
-  await cognitoClient.send(signUpCommand);
+  const signupResponse = await cognitoClient.send(signUpCommand);
   
-  // Use email as temp userId (in production, get sub from Cognito after confirmation)
-  const userId = email;
+  // Get the actual userId (sub) from Cognito
+  let userId = '';
+  try {
+    const userCommand = new AdminGetUserCommand({
+      Username: email,
+      UserPoolId: userPoolId,
+    });
+    const userResponse = await cognitoClient.send(userCommand);
+    userId = userResponse.UserAttributes?.find(a => a.Name === 'sub')?.Value || '';
+  } catch {
+    // Use UserSub from signup response if available
+    userId = signupResponse.UserSub || email;
+  }
+  
+  if (!userId) {
+    throw new Error('Failed to create user');
+  }
   
   // Generate tenant ID
-  const tenantId = `tenant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const tenantId = `tenant-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   
   // Create tenant in DynamoDB
   const dynamoClient = new DynamoDBClient({ region });
@@ -238,7 +350,7 @@ export async function registerUser(
     }),
   }));
   
-  // Create profile
+  // Create profile linked to user
   const profilesTable = process.env.DYNAMODB_PROFILES_TABLE || 'turnkey-profiles';
   await dynamoClient.send(new PutItemCommand({
     TableName: profilesTable,

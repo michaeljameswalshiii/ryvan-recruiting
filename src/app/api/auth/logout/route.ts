@@ -6,9 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, signOutFromCognito } from '@/lib/server-auth';
-
-const SESSION_COOKIE = 'turnkey-session';
+import { getSession, signOutFromCognito, SESSION_COOKIE_NAME } from '@/lib/server-auth';
 
 /**
  * POST /api/auth/logout
@@ -31,7 +29,7 @@ export async function POST(request: NextRequest) {
     
     // Clear session cookie
     const response = NextResponse.json({ success: true });
-    response.cookies.delete(SESSION_COOKIE);
+    response.cookies.delete(SESSION_COOKIE_NAME);
     
     return response;
   } catch (error: unknown) {
@@ -39,7 +37,7 @@ export async function POST(request: NextRequest) {
     
     // Still return success - session should be cleared
     const response = NextResponse.json({ success: true });
-    response.cookies.delete(SESSION_COOKIE);
+    response.cookies.delete(SESSION_COOKIE_NAME);
     return response;
   }
 }

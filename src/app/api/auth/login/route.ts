@@ -6,10 +6,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateUser } from '@/lib/server-auth';
+import { authenticateUser, getCookieOptions, SESSION_COOKIE_NAME } from '@/lib/server-auth';
 import { loginSchema } from '@/lib/schemas/auth';
-
-const SESSION_COOKIE = 'turnkey-session';
 
 /**
  * POST /api/auth/login
@@ -29,11 +27,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { email, password } = validated.data;
+
     // Authenticate with Cognito
-    const session = await authenticateUser(
-      validated.data.email,
-      validated.data.password
-    );
+    const session = await authenticateUser(email, password);
 
     // Create session data for cookie
     const sessionData = {
@@ -45,7 +42,7 @@ export async function POST(request: NextRequest) {
       tenantId: session.tenantId,
     };
 
-    // Set httpOnly cookie
+    // Set httpOnly cookie with proper options
     const response = NextResponse.json({ 
       success: true,
       user: {
@@ -55,13 +52,11 @@ export async function POST(request: NextRequest) {
       }
     });
 
-response.cookies.set(SESSION_COOKIE, JSON.stringify(sessionData), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/'
-    });
+    response.cookies.set(
+      SESSION_COOKIE_NAME, 
+      JSON.stringify(sessionData),
+      getCookieOptions()
+    );
 
     return response;
   } catch (error: unknown) {
