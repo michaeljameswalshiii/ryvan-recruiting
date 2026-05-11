@@ -7,7 +7,7 @@
  * @serverOnly
  */
 
-// Tenant repository
+// Tenant repository - explicit exports to avoid duplicate verifyUserTenant
 export {
   getTenantById,
   getTenantBySubdomain,
@@ -15,9 +15,10 @@ export {
   createTenant,
   updateTenant,
   deleteTenant,
+  verifyUserTenant,
 } from './tenant-repository';
 
-// Profile repository
+// Profile repository - explicit exports to avoid duplicate verifyUserTenant
 export {
   getProfileById,
   getProfileByEmail,
@@ -25,14 +26,13 @@ export {
   createProfile,
   updateProfile,
   deleteProfile,
-  verifyUserTenant,
 } from './profile-repository';
 
-// Client repository
+// Client repository - re-export all
 export * from './client-repository';
 
-// Lead repository
+// Lead repository - re-export all
 export * from './lead-repository';
 
-// Pipeline repository
+// Pipeline repository - re-export all
 export * from './pipeline-repository';

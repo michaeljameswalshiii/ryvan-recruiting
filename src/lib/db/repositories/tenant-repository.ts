@@ -280,16 +280,20 @@ export async function deleteTenant(tenantId: string): Promise<boolean> {
 }
 
 /**
- * Verify user belongs to tenant
+ * Verify user belongs to tenant (via profile)
  */
 export async function verifyUserTenant(userId: string, tenantId: string): Promise<boolean> {
-  // This is typically done via the profile, but keeping for convenience
-  const profileRepo = await import("./profile-repository");
-  const profile = await profileRepo.getProfileById(userId);
-  
-  if (!profile) {
+  try {
+    const { getProfileById } = await import("./profile-repository");
+    const profile = await getProfileById(userId);
+    
+    if (!profile) {
+      return false;
+    }
+    
+    return profile.tenant_id === tenantId;
+  } catch (error) {
+    console.error("verifyUserTenant error:", error);
     return false;
   }
-  
-  return profile.tenant_id === tenantId;
 }
