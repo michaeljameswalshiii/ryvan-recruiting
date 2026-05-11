@@ -24,7 +24,18 @@ import { NextRequest, NextResponse } from "next/server";
  * }
  */
 
-const APOLLO_API_KEY = process.env.APOLLO_API_KEY || process.env.APOLHO_API_KEY || "9tMwBHqyM2mztDN1qfHXpQ";
+const APOLLO_API_KEY = process.env.APOLLO_API_KEY;
+
+/**
+ * Get Apollo API key with required check
+ * Throws error if not configured
+ */
+function getApolloApiKey(): string {
+  if (!APOLLO_API_KEY) {
+    throw new Error("APOLLO_API_KEY environment variable not set");
+  }
+  return APOLLO_API_KEY;
+}
 const APOLLO_BASE_URL = "https://api.apollo.io/api/v1";
 
 export async function POST(request: NextRequest) {
@@ -46,15 +57,17 @@ export async function POST(request: NextRequest) {
     if (isSearchMode) {
       console.log("Searching for:", query, "location:", body.location);
 
-      // Try Apollo first
+// Try Apollo first
       let response;
       try {
+        const apiKey = getApolloApiKey();
+        
         response = await fetch(`${APOLLO_BASE_URL}/people/search`, {
           method: "POST",
-          headers: {
+          headers: new Headers({
             "Content-Type": "application/json",
-            "x-api-key": APOLLO_API_KEY,
-          },
+            "x-api-key": apiKey,
+          }),
           body: JSON.stringify({
             q: query,
             page: page,
