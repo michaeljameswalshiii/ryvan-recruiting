@@ -28,7 +28,17 @@ const navItems = [
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
 ];
 
-export function DashboardNav() {
+interface DashboardNavProps {
+  session?: {
+    userId: string;
+    email: string;
+    fullName: string;
+    tenantId: string;
+    role: string;
+  };
+}
+
+export function DashboardNav({ session }: DashboardNavProps) {
   const pathname = usePathname();
   const router = useRouter();
 
