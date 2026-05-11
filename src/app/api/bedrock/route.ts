@@ -92,6 +92,24 @@ interface RateLimitInfo {
 }
 
 /**
+ * Token usage info
+ */
+interface TokenUsage {
+  prompt: number;
+  completion: number;
+  total: number;
+}
+
+/**
+ * Cost estimate (USD)
+ */
+interface CostEstimate {
+  promptCost: number;
+  completionCost: number;
+  totalCost: number;
+}
+
+/**
  * Logging metadata
  */
 interface RequestLogMetadata {
@@ -99,6 +117,8 @@ interface RequestLogMetadata {
   tenantId: string | null;
   toolsUsed: string[];
   latencyMs: number;
+  tokens?: TokenUsage;
+  cost?: CostEstimate;
   error?: string;
 }
 
@@ -107,6 +127,28 @@ interface RequestLogMetadata {
 // ============================================================================
 
 const DEFAULT_MODEL = "minimax.minimax-m2.5";
+
+/**
+ * Estimate token count from text
+ * Rough estimate: ~4 characters per token
+ */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Estimate cost for MiniMax model (USD)
+ * Pricing: ~$0.001/1K tokens input, ~$0.002/1K tokens output (approximate)
+ */
+function estimateCost(promptTokens: number, completionTokens: number): CostEstimate {
+  const promptCost = (promptTokens / 1000) * 0.001;
+  const completionCost = (completionTokens / 1000) * 0.002;
+  return {
+    promptCost,
+    completionCost,
+    totalCost: promptCost + completionCost,
+  };
+}
 
 /**
  * App URL for internal API calls
@@ -256,7 +298,7 @@ function buildSystemPrompt(toolResults: Record<string, ToolResult>): string {
  * Log request with structured metadata
  */
 function logRequest(metadata: RequestLogMetadata): void {
-  const { query, tenantId, toolsUsed, latencyMs, error } = metadata;
+  const { query, tenantId, toolsUsed, latencyMs, tokens, cost, error } = metadata;
   
   if (error) {
     console.error(JSON.stringify({
@@ -268,13 +310,25 @@ function logRequest(metadata: RequestLogMetadata): void {
       error,
     }));
   } else {
-    console.log(JSON.stringify({
+    const logData: Record<string, unknown> = {
       event: "bedrock-request",
       query: query.substring(0, 100),
       tenantId: tenantId || "anonymous",
       toolsUsed,
       latencyMs,
-    }));
+    };
+    
+    // Add token usage if available
+    if (tokens) {
+      logData.tokens = tokens;
+    }
+    
+    // Add cost estimate if available
+    if (cost) {
+      logData.cost = cost;
+    }
+    
+    console.log(JSON.stringify(logData));
   }
 }
 
@@ -413,18 +467,33 @@ export async function POST(request: NextRequest) {
       responseBody.completion || 
       "";
 
-    // ============================================================================
+// ============================================================================
     // Success Response
     // ============================================================================
     
     const latencyMs = Date.now() - startTime;
     
-    // Log success
+    // Extract text from messages for token estimation
+    const promptText = messagesWithTools.map(m => m.content).join(" ");
+    const promptTokens = estimateTokens(promptText);
+    const completionTokens = estimateTokens(completion);
+    const tokens: TokenUsage = {
+      prompt: promptTokens,
+      completion: completionTokens,
+      total: promptTokens + completionTokens,
+    };
+    
+    // Estimate cost
+    const cost = estimateCost(promptTokens, completionTokens);
+    
+    // Log success with token usage
     logRequest({
       query: lastUserQuery,
       tenantId,
       toolsUsed: Object.keys(toolResults),
       latencyMs,
+      tokens,
+      cost,
     });
 
     // Build tool result summaries
