@@ -36,8 +36,7 @@ export default async function DashboardLayout({
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* @ts-expect-error Server Component */}
+<div className="min-h-screen bg-background">
       <DashboardNav session={tenantInfo} />
       <div className="pl-64">
         <DashboardHeader user={tenantInfo} />
