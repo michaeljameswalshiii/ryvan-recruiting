@@ -1,6 +1,6 @@
-// Using Tavily API as search backend (replaces broken TinyFish REST API)
-// Tavily offers free search with no credits required
-const TAVILY_API_KEY = process.env.TAVILY_API_KEY || "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";
+// Using Tavily API as search backend
+// Get your free API key at https://tavily.com/
+const TAVILY_API_KEY = process.env.TAVILY_API_KEY || "";
 const TINYFISH_API_URL = "https://api.tavily.com/search";
 
 export async function POST(request: Request) {
