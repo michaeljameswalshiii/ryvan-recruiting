@@ -57,6 +57,68 @@ export interface ToolDefinition {
  * 
  * Returns array of tool names to invoke
  */
+// ============================================================================
+// Tool Schemas for MiniMax Tool Calling
+// ============================================================================
+
+/**
+ * Get tool schemas in Anthropic/MiniMax format for tool calling
+ * These schemas allow the LLM to decide which tools to use
+ */
+export function getToolSchemas(): Array<{
+  name: string;
+  description: string;
+  input_schema: {
+    type: string;
+    properties: Record<string, { type: string; description: string }>;
+    required: string[];
+  };
+}> {
+  return [
+    {
+      name: "apollo",
+      description: "Search for people, candidates, companies, or contacts. Use to find emails, phone numbers, LinkedIn profiles for recruiting or sales leads.",
+      input_schema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query (job title, company, skills, industry)" },
+          location: { type: "string", description: "Location filter (city, state)" },
+          per_page: { type: "number", description: "Number of results (default 10)" },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      name: "tavily",
+      description: "Search the web for latest news, current events, weather, stock prices, or general information.",
+      input_schema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query for web search" },
+          max_results: { type: "number", description: "Maximum number of results (default 5)" },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      name: "internal_data",
+      description: "Get the user's existing leads, clients, or pipeline data from the database.",
+      input_schema: {
+        type: "object",
+        properties: {
+          data_type: { type: "string", description: "Type: leads, clients, or pipeline" },
+          action: { type: "string", description: "Action: list, get, or count" },
+        },
+        required: ["data_type"],
+      },
+    },
+  ];
+}
+
+/**
+ * Simple tool selection based on query analysis
+ * This is the fallback when no tool calling is used
+ */
 export function selectTools(query: string): string[] {
   const q = query.toLowerCase();
   const tools: string[] = [];
