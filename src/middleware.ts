@@ -105,7 +105,9 @@ async function validateSessionToken(accessToken: string, refreshToken?: string):
     return false;
   }
   
-  const region = process.env.AWS_REGION || 'us-east-1';
+  // Support both server-only vars (local) and NEXT_PUBLIC_ vars (Vercel deployment)
+  const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
+  const clientId = process.env.COGNITO_CLIENT_ID || process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || '';
   
   try {
     const { GetUserCommand, CognitoIdentityProviderClient } = await import('@aws-sdk/client-cognito-identity-provider');
@@ -123,11 +125,10 @@ async function validateSessionToken(accessToken: string, refreshToken?: string):
                      errorMessage.includes('Access token has expired') ||
                      errorMessage.includes('NotAuthorizedException');
     
-    // If token is expired and we have refresh token, try to refresh
+// If token is expired and we have refresh token, try to refresh
     if (isExpired && refreshToken) {
       try {
         const { InitiateAuthCommand, CognitoIdentityProviderClient } = await import('@aws-sdk/client-cognito-identity-provider');
-        const clientId = process.env.COGNITO_CLIENT_ID!;
         
         if (!clientId) {
           return false;

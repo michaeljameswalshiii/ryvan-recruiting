@@ -20,24 +20,50 @@ import { CognitoIdentityProviderClient, GetUserCommand, InitiateAuthCommand, Glo
 import { DynamoDBClient, GetItemCommand, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { unmarshall, marshall } from '@aws-sdk/util-dynamodb';
 
-// AWS Configuration - server-side ONLY (NOT NEXT_PUBLIC_*)
-const region = process.env.AWS_REGION || 'us-east-1';
-const userPoolId = process.env.COGNITO_USER_POOL_ID!;
-const clientId = process.env.COGNITO_CLIENT_ID!;
+// AWS Configuration - server-side
+// Support both server-only vars (local) and NEXT_PUBLIC_ vars (Vercel deployment)
+// Using non-null assertion with fallback to prefixed versions for Vercel compatibility
+const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
+const userPoolId = process.env.COGNITO_USER_POOL_ID || process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || '';
+const clientId = process.env.COGNITO_CLIENT_ID || process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || '';
 
 // Cookie name
 const SESSION_COOKIE = 'turnkey-session';
 
 /**
  * Session data type
+ * NOTE: We don't store full JWT tokens in the cookie because they exceed
+ * the 4096 byte cookie limit. Instead, we store minimal session info.
+ * API calls that need tokens will use the refresh token flow.
  */
 export interface SessionData {
-  accessToken: string;
-  idToken: string;
-  refreshToken: string;
   userId: string;
   email: string;
   tenantId: string;
+  accessToken?: string; // Needed for middleware validation
+  refreshToken: string; // Needed for token refresh
+}
+
+/**
+ * In-memory token cache for server-side storage
+ * Maps session key to full tokens
+ */
+const tokenCache = new Map<string, { accessToken: string; idToken: string; refreshToken: string }>();
+
+export function cacheTokens(sessionKey: string, tokens: { AccessToken: string; IdToken: string; RefreshToken: string }) {
+  tokenCache.set(sessionKey, {
+    accessToken: tokens.AccessToken,
+    idToken: tokens.IdToken,
+    refreshToken: tokens.RefreshToken,
+  });
+}
+
+export function getCachedTokens(sessionKey: string) {
+  return tokenCache.get(sessionKey) || null;
+}
+
+export function clearCachedTokens(sessionKey: string) {
+  tokenCache.delete(sessionKey);
 }
 
 /**
@@ -89,8 +115,8 @@ export async function getSession(): Promise<SessionData | null> {
     
     const session = JSON.parse(sessionCookie.value) as SessionData;
     
-    // Validate required fields
-    if (!session.accessToken || !session.userId) {
+    // Validate required fields - check for userId instead of accessToken
+    if (!session.userId) {
       return null;
     }
     

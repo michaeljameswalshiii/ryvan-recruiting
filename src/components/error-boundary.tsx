@@ -88,10 +88,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
  * Async error boundary for server actions and data fetching
  * Provides user-friendly error messages
  */
-'use client';
-
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { AlertCircle, HelpCircle } from 'lucide-react';
 
 interface AsyncErrorState {

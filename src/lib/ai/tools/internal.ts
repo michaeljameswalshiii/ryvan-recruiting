@@ -8,9 +8,9 @@
  */
 
 import { ToolResult, ToolContext } from "./types";
-import { getAllLeads, getLeadById } from "../db/repositories/lead-repository";
-import { getAllClients, getClientById } from "../db/repositories/client-repository";
-import { getAllPipeline, getPipelineById } from "../db/repositories/pipeline-repository";
+import { getAllLeads, getLeadById } from "../../db/repositories/lead-repository";
+import { getAllClients, getClientById } from "../../db/repositories/client-repository";
+import { getAllPipeline, getPipelineById } from "../../db/repositories/pipeline-repository";
 
 // ============================================================================
 // Types

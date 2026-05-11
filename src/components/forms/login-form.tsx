@@ -33,21 +33,24 @@ export function LoginForm() {
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors }
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
   });
 
-const onSubmit = async (data: LoginFormData) => {
+  const onSubmit = async (data: LoginFormData) => {
+    console.log('[LOGIN FORM] Submitting:', data.email);
     try {
       setIsLoading(true);
       setError(null);
       // Use secure server-side auth with httpOnly cookies
-      await login(data.email, data.password);
+      const result = await login(data.email, data.password);
+      console.log('[LOGIN FORM] Success:', result);
       router.push("/dashboard");
-    } catch (err: any) {
+    } catch (err: unknown) {
+      console.error('[LOGIN FORM] Error:', err);
       // More detailed error handling
-      const errorMessage = err.message || "Invalid credentials";
+      const errorMessage = err instanceof Error ? err.message : "Invalid credentials";
       
       // Check for specific Cognito errors
       if (errorMessage.includes("User does not exist") || errorMessage.includes("UserNotFoundException")) {
@@ -66,7 +69,7 @@ const onSubmit = async (data: LoginFormData) => {
     }
   };
 
-return (
+  return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       {registered === "true" && (
         <div className="bg-green-100 text-green-800 text-sm p-3 rounded-md">

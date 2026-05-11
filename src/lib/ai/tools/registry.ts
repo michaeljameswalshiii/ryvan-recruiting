@@ -6,7 +6,7 @@
  * @serverOnly
  */
 
-import { ToolDefinition, ToolParams, ToolContext, ToolResult, ToolParams } from "./types";
+import { ToolDefinition, ToolParams, ToolContext, ToolResult } from "./types";
 import { executeApolloSearch, APOLLO_TOOL_NAME, APOLLO_TOOL_DESCRIPTION } from "./apollo";
 import { executeTavilySearch, TAVILY_TOOL_NAME, TAVILY_TOOL_DESCRIPTION } from "./tavily";
 import { executeInternalData, INTERNAL_TOOL_NAME, INTERNAL_TOOL_DESCRIPTION } from "./internal";
