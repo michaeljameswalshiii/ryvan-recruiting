@@ -1,5 +1,6 @@
 ﻿"use client";
 
+// Candidates nav fixed - May 11 2026 - Force rebuild for Vercel deployment
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
