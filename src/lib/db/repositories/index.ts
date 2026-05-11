@@ -8,10 +8,25 @@
  */
 
 // Tenant repository
-export * from './tenant-repository';
+export {
+  getTenantById,
+  getTenantBySubdomain,
+  getAllTenants,
+  createTenant,
+  updateTenant,
+  deleteTenant,
+} from './tenant-repository';
 
 // Profile repository
-export * from './profile-repository';
+export {
+  getProfileById,
+  getProfileByEmail,
+  getProfilesByTenant,
+  createProfile,
+  updateProfile,
+  deleteProfile,
+  verifyUserTenant,
+} from './profile-repository';
 
 // Client repository
 export * from './client-repository';

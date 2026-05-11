@@ -1,369 +1,295 @@
 /**
  * Tenant Repository
- * Server-only data access layer for tenants
  * 
- * Features:
- * - Zod schema validation
- * - Caching layer
- * - Tenant isolation
- * - verifyUserTenant for ownership validation
+ * Full CRUD for tenants with caching and tenant isolation.
+ * Uses DynamoDB with tenant_id as partition key.
  * 
  * @serverOnly
  */
 
-import {
-  DynamoDBClient,
-  GetItemCommand,
-  PutItemCommand,
-  UpdateItemCommand,
-  DeleteItemCommand,
-  QueryCommand,
-} from '@aws-sdk/client-dynamodb';
-import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { z } from 'zod';
-import { getCached, setCached, invalidateTenantCache, makeCacheKey } from '../../cache';
+import { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand, DeleteItemCommand, QueryCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { unmarshall, marshall } from "@aws-sdk/util-dynamodb";
+import { z } from "zod";
+import { getCached, setCached, invalidateCache } from "@/lib/cache";
 
 // ============================================================================
-// Configuration
+// Types
 // ============================================================================
 
-const region = process.env.AWS_REGION || 'us-east-1';
-const tenantsTable = process.env.DYNAMODB_TENANTS_TABLE || 'turnkey-tenants';
-const profilesTable = process.env.DYNAMODB_PROFILES_TABLE || 'turnkey-profiles';
+export interface Tenant {
+  id: string;
+  name: string;
+  subdomain: string;
+  created_at: string;
+  updated_at?: string;
+}
 
-// Cache TTL: 5 minutes
-const CACHE_TTL = 300;
+export interface CreateTenantInput {
+  name: string;
+  subdomain: string;
+}
+
+export interface UpdateTenantInput {
+  name?: string;
+  subdomain?: string;
+}
 
 // ============================================================================
-// Zod Schemas
+// Schema Validation
 // ============================================================================
 
-/**
- * Tenant schema for validation
- */
 export const tenantSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  subdomain: z.string(),
-  created_at: z.string().optional(),
-  modified_at: z.string().optional(),
+  id: z.string().min(1),
+  name: z.string().min(1).max(100),
+  subdomain: z.string().min(1).max(50).regex(/^[a-z0-9-]+$/),
+  created_at: z.string(),
+  updated_at: z.string().optional(),
 });
 
 export const createTenantSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100),
-  subdomain: z.string().min(1, 'Subdomain is required').max(50).transform(v => v.toLowerCase().replace(/\s+/g, '-')),
+  name: z.string().min(1).max(100),
+  subdomain: z.string().min(1).max(50).regex(/^[a-z0-9-]+$/, "Only lowercase letters, numbers, and dashes"),
 });
 
 export const updateTenantSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  subdomain: z.string().min(1).max(50).optional(),
+  subdomain: z.string().min(1).max(50).regex(/^[a-z0-9-]+$/).optional(),
 });
 
-export const tenantQuerySchema = z.object({
-  limit: z.coerce.number().max(100).optional(),
-  cursor: z.string().optional(),
-});
-
-// Type exports
-export type Tenant = z.infer<typeof tenantSchema>;
-export type CreateTenantInput = z.infer<typeof createTenantSchema>;
-export type UpdateTenantInput = z.infer<typeof updateTenantSchema>;
-
 // ============================================================================
-// Client (singleton)
+// DynamoDB Client
 // ============================================================================
 
-let _client: DynamoDBClient | null = null;
+const region = process.env.AWS_REGION || "us-east-1";
+const dynamoClient = new DynamoDBClient({ region });
 
-function getClient(): DynamoDBClient {
-  if (!_client) {
-    _client = new DynamoDBClient({ region });
-  }
-  return _client;
+function getTenantsTable(): string {
+  return process.env.DYNAMODB_TENANTS_TABLE || "turnkey-tenants";
 }
 
 // ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Generate tenant ID
- */
-function generateTenantId(): string {
-  return 'tenant-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
-}
-
-/**
- * Unmarshall DynamoDB item
- */
-function unmarshallItem<T>(item: Record<string, any>): T {
-  return unmarshall(item) as T;
-}
-
-// ============================================================================
-// Repository Functions
+// CRUD Operations
 // ============================================================================
 
 /**
  * Get a tenant by ID
- * Includes caching
  */
 export async function getTenantById(tenantId: string): Promise<Tenant | null> {
-  const cacheKey = makeCacheKey(tenantId, 'tenant', tenantId);
+  const cacheKey = `tenant:${tenantId}`;
   
-  // Try cache first
+  // Check cache first
   const cached = await getCached<Tenant>(cacheKey);
   if (cached) {
     return cached;
   }
   
-  // Get from DynamoDB
-  const client = getClient();
-  const command = new GetItemCommand({
-    TableName: tenantsTable,
-    Key: marshall({ id: tenantId }),
-  });
-  
-  const response = await client.send(command);
-  
-  if (!response.Item) {
+  try {
+    const command = new GetItemCommand({
+      TableName: getTenantsTable(),
+      Key: { id: { S: tenantId } },
+    });
+    
+    const response = await dynamoClient.send(command);
+    
+    if (!response.Item) {
+      return null;
+    }
+    
+    const tenant = unmarshall(response.Item) as Tenant;
+    
+    // Cache for 5 minutes
+    await setCached(cacheKey, tenant, 300);
+    
+    return tenant;
+  } catch (error) {
+    console.error("getTenantById error:", error);
     return null;
   }
-  
-  const tenant = unmarshallItem<Tenant>(response.Item);
-  
-  // Cache the result
-  await setCached(cacheKey, tenant, CACHE_TTL);
-  
-  return tenant;
 }
 
 /**
  * Get a tenant by subdomain
- * Unique lookup for custom domains
  */
 export async function getTenantBySubdomain(subdomain: string): Promise<Tenant | null> {
-  const cacheKey = makeCacheKey(subdomain, 'tenant', 'subdomain');
+  const cacheKey = `tenant:subdomain:${subdomain}`;
   
-  // Try cache first
+  // Check cache first
   const cached = await getCached<Tenant>(cacheKey);
   if (cached) {
     return cached;
   }
   
-  // Query by subdomain GSI
-  const client = getClient();
-  const command = new QueryCommand({
-    TableName: tenantsTable,
-    IndexName: 'subdomain-index',
-    KeyConditionExpression: 'subdomain = :subdomain',
-    ExpressionAttributeValues: marshall({ ':subdomain': subdomain.toLowerCase() }),
-  });
-  
-  const response = await client.send(command);
-  
-  if (!response.Items || response.Items.length === 0) {
+  try {
+    const command = new QueryCommand({
+      TableName: getTenantsTable(),
+      IndexName: "subdomain-index",
+      KeyConditionExpression: "subdomain = :subdomain",
+      ExpressionAttributeValues: {
+        ":subdomain": { S: subdomain.toLowerCase() },
+      },
+    });
+    
+    const response = await dynamoClient.send(command);
+    
+    if (!response.Items?.length) {
+      return null;
+    }
+    
+    const tenant = unmarshall(response.Items[0]) as Tenant;
+    
+    // Cache for 5 minutes
+    await setCached(cacheKey, tenant, 300);
+    
+    return tenant;
+  } catch (error) {
+    console.error("getTenantBySubdomain error:", error);
     return null;
   }
-  
-  const tenant = unmarshallItem<Tenant>(response.Items[0]);
-  
-  // Cache the result
-  await setCached(cacheKey, tenant, CACHE_TTL);
-  
-  return tenant;
 }
 
 /**
  * Get all tenants (admin only)
  */
-export async function getAllTenants(options?: {
-  limit?: number;
-  cursor?: string;
-}): Promise<{ tenants: Tenant[]; nextCursor?: string }> {
-  const client = getClient();
-  
-  const command = new QueryCommand({
-    TableName: tenantsTable,
-    Limit: options?.limit || 50,
-    ExclusiveStartKey: options?.cursor ? marshall({ id: options.cursor }) : undefined,
-  });
-  
-  const response = await client.send(command);
-  
-  const tenants = response.Items?.map(item => unmarshallItem<Tenant>(item)) || [];
-  
-  const nextCursor = response.LastEvaluatedKey 
-    ? unmarshall(response.LastEvaluatedKey).id as string 
-    : undefined;
-  
-  return { tenants, nextCursor };
+export async function getAllTenants(): Promise<Tenant[]> {
+  try {
+    const command = new ScanCommand({
+      TableName: getTenantsTable(),
+    });
+    
+    const response = await dynamoClient.send(command);
+    
+    if (!response.Items) {
+      return [];
+    }
+    
+    return response.Items.map(item => unmarshall(item) as Tenant);
+  } catch (error) {
+    console.error("getAllTenants error:", error);
+    return [];
+  }
 }
 
 /**
  * Create a new tenant
  */
-export async function createTenant(data: CreateTenantInput): Promise<Tenant> {
-  const validated = createTenantSchema.parse(data);
+export async function createTenant(input: CreateTenantInput): Promise<Tenant> {
+  const validated = createTenantSchema.parse(input);
   
   const tenant: Tenant = {
-    id: generateTenantId(),
+    id: `tenant-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
     name: validated.name,
-    subdomain: validated.subdomain,
+    subdomain: validated.subdomain.toLowerCase(),
     created_at: new Date().toISOString(),
   };
   
-  // Save to DynamoDB
-  const client = getClient();
-  const command = new PutItemCommand({
-    TableName: tenantsTable,
-    Item: marshall(tenant),
-  });
-  
-  await client.send(command);
-  
-  // Invalidate any cached tenants
-  await invalidateTenantCache(tenant.id);
-  
-  return tenant;
+  try {
+    const command = new PutItemCommand({
+      TableName: getTenantsTable(),
+      Item: marshall(tenant),
+    });
+    
+    await dynamoClient.send(command);
+    
+    return tenant;
+  } catch (error) {
+    console.error("createTenant error:", error);
+    throw new Error("Failed to create tenant");
+  }
 }
 
 /**
  * Update a tenant
  */
-export async function updateTenant(
-  tenantId: string,
-  data: UpdateTenantInput
-): Promise<Tenant | null> {
-  const validated = updateTenantSchema.parse(data);
+export async function updateTenant(tenantId: string, input: UpdateTenantInput): Promise<Tenant | null> {
+  const validated = updateTenantSchema.parse(input);
   
   // Build update expression
   const updates: string[] = [];
-  const values: Record<string, any> = {};
+  const values: Record<string, unknown> = {};
   const names: Record<string, string> = {};
   
-  if (validated.name !== undefined) {
-    updates.push('#name = :name');
-    values[':name'] = validated.name;
-    names['#name'] = 'name';
+  if (validated.name) {
+    updates.push("#name = :name");
+    values[":name"] = validated.name;
+    names["#name"] = "name";
   }
-  if (validated.subdomain !== undefined) {
-    updates.push('#subdomain = :subdomain');
-    values[':subdomain'] = validated.subdomain.toLowerCase();
-    names['#subdomain'] = 'subdomain';
+  
+  if (validated.subdomain) {
+    updates.push("subdomain = :subdomain");
+    values[":subdomain"] = validated.subdomain.toLowerCase();
   }
   
   if (updates.length === 0) {
     return getTenantById(tenantId);
   }
   
-  // Always update modified_at
-  updates.push('#modified_at = :modified_at');
-  values[':modified_at'] = new Date().toISOString();
-  names['#modified_at'] = 'modified_at';
+  updates.push("updated_at = :updated_at");
+  values[":updated_at"] = new Date().toISOString();
   
-  // Execute update
-  const client = getClient();
-  const command = new UpdateItemCommand({
-    TableName: tenantsTable,
-    Key: marshall({ id: tenantId }),
-    UpdateExpression: `SET ${updates.join(', ')}`,
-    ExpressionAttributeValues: marshall(values),
-    ExpressionAttributeNames: names,
-    ReturnValues: 'ALL_NEW',
-  });
-  
-  const response = await client.send(command);
-  
-  if (!response.Attributes) {
-    return null;
-  }
-  
-  const updated = unmarshallItem<Tenant>(response.Attributes);
-  
-  // Invalidate cache
-  await invalidateTenantCache(tenantId);
-  
-  return updated;
-}
-
-/**
- * Delete a tenant (admin only)
- */
-export async function deleteTenant(tenantId: string): Promise<void> {
-  const client = getClient();
-  const command = new DeleteItemCommand({
-    TableName: tenantsTable,
-    Key: marshall({ id: tenantId }),
-  });
-  
-  await client.send(command);
-  
-  // Invalidate cache
-  await invalidateTenantCache(tenantId);
-}
-
-// ============================================================================
-// Tenant Isolation & Ownership
-// ============================================================================
-
-/**
- * Verify user belongs to tenant
- * CRITICAL: This prevents unauthorized access to other tenants' data
- */
-export async function verifyUserTenant(
-  userId: string,
-  tenantId: string
-): Promise<boolean> {
   try {
-    // Get user's profile to verify tenant ownership
-    const client = getClient();
-    const command = new GetItemCommand({
-      TableName: profilesTable,
-      Key: marshall({ id: userId }),
+    const command = new UpdateItemCommand({
+      TableName: getTenantsTable(),
+      Key: { id: { S: tenantId } },
+      UpdateExpression: `SET ${updates.join(", ")}`,
+      ExpressionAttributeValues: marshall(values),
+      ExpressionAttributeNames: names,
+      ReturnValues: "ALL_NEW",
     });
     
-    const response = await client.send(command);
+    const response = await dynamoClient.send(command);
     
-    if (!response.Item) {
+    if (!response.Attributes) {
+      return null;
+    }
+    
+    // Invalidate cache
+    await invalidateCache(`tenant:${tenantId}*`);
+    
+    return unmarshall(response.Attributes) as Tenant;
+  } catch (error) {
+    console.error("updateTenant error:", error);
+    return null;
+  }
+}
+
+/**
+ * Delete a tenant
+ */
+export async function deleteTenant(tenantId: string): Promise<boolean> {
+  try {
+    const command = new DeleteItemCommand({
+      TableName: getTenantsTable(),
+      Key: { id: { S: tenantId } },
+      ReturnValues: "ALL_OLD",
+    });
+    
+    const response = await dynamoClient.send(command);
+    
+    if (!response.Attributes) {
       return false;
     }
     
-    const profile = unmarshall(response.Item);
-    return profile.tenant_id === tenantId;
-  } catch {
+    // Invalidate cache
+    await invalidateCache(`tenant:${tenantId}*`);
+    
+    return true;
+  } catch (error) {
+    console.error("deleteTenant error:", error);
     return false;
   }
 }
 
 /**
- * Get tenant for a user
+ * Verify user belongs to tenant
  */
-export async function getTenantForUser(userId: string): Promise<Tenant | null> {
-  try {
-    // First get user's profile to find tenant_id
-    const client = getClient();
-    const profileCommand = new GetItemCommand({
-      TableName: profilesTable,
-      Key: marshall({ id: userId }),
-    });
-    
-    const profileResponse = await client.send(profileCommand);
-    
-    if (!profileResponse.Item) {
-      return null;
-    }
-    
-    const profile = unmarshall(profileResponse.Item);
-    const tenantId = profile.tenant_id;
-    
-    if (!tenantId) {
-      return null;
-    }
-    
-    // Then get the tenant
-    return getTenantById(tenantId);
-  } catch {
-    return null;
+export async function verifyUserTenant(userId: string, tenantId: string): Promise<boolean> {
+  // This is typically done via the profile, but keeping for convenience
+  const profileRepo = await import("./profile-repository");
+  const profile = await profileRepo.getProfileById(userId);
+  
+  if (!profile) {
+    return false;
   }
+  
+  return profile.tenant_id === tenantId;
 }

@@ -1,351 +1,324 @@
 /**
  * Profile Repository
- * Server-only data access layer for user profiles
  * 
- * Features:
- * - Zod schema validation
- * - Caching layer
- * - Tenant isolation
- * - getProfileByEmail for auth lookups
+ * Full CRUD for user profiles with caching and tenant isolation.
+ * Uses DynamoDB with id (userId) as partition key.
  * 
  * @serverOnly
  */
 
-import {
-  DynamoDBClient,
-  GetItemCommand,
-  PutItemCommand,
-  UpdateItemCommand,
-  DeleteItemCommand,
-  QueryCommand,
-} from '@aws-sdk/client-dynamodb';
-import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { z } from 'zod';
-import { getCached, setCached, invalidateTenantCache, makeCacheKey } from '../../cache';
+import { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand, DeleteItemCommand, QueryCommand } from "@aws-sdk/client-dynamodb";
+import { unmarshall, marshall } from "@aws-sdk/util-dynamodb";
+import { z } from "zod";
+import { getCached, setCached, invalidateCache } from "@/lib/cache";
 
 // ============================================================================
-// Configuration
+// Types
 // ============================================================================
 
-const region = process.env.AWS_REGION || 'us-east-1';
-const profilesTable = process.env.DYNAMODB_PROFILES_TABLE || 'turnkey-profiles';
+export interface Profile {
+  id: string;
+  tenant_id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  created_at: string;
+  updated_at?: string;
+}
 
-// Cache TTL: 5 minutes
-const CACHE_TTL = 300;
+export interface CreateProfileInput {
+  tenant_id: string;
+  email: string;
+  full_name: string;
+  role?: string;
+}
+
+export interface UpdateProfileInput {
+  full_name?: string;
+  role?: string;
+}
 
 // ============================================================================
-// Zod Schemas
+// Schema Validation
 // ============================================================================
 
-/**
- * Profile schema for validation
- */
 export const profileSchema = z.object({
-  id: z.string(),
-  tenant_id: z.string(),
+  id: z.string().min(1),
+  tenant_id: z.string().min(1),
   email: z.string().email(),
-  full_name: z.string(),
-  role: z.enum(['admin', 'member', 'viewer']),
-  created_at: z.string().optional(),
-  modified_at: z.string().optional(),
+  full_name: z.string().min(1).max(100),
+  role: z.string().optional(),
+  created_at: z.string(),
+  updated_at: z.string().optional(),
 });
 
 export const createProfileSchema = z.object({
-  tenant_id: z.string().min(1, 'Tenant ID is required'),
-  email: z.string().email('Invalid email'),
-  full_name: z.string().min(1, 'Full name is required'),
-  role: z.enum(['admin', 'member', 'viewer']).optional().default('member'),
+  tenant_id: z.string().min(1),
+  email: z.string().email(),
+  full_name: z.string().min(1).max(100),
+  role: z.string().optional(),
 });
 
 export const updateProfileSchema = z.object({
-  full_name: z.string().min(1).optional(),
-  role: z.enum(['admin', 'member', 'viewer']).optional(),
+  full_name: z.string().min(1).max(100).optional(),
+  role: z.string().optional(),
 });
 
-// Type exports
-export type Profile = z.infer<typeof profileSchema>;
-export type CreateProfileInput = z.infer<typeof createProfileSchema>;
-export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
-
 // ============================================================================
-// Client (singleton)
+// DynamoDB Client
 // ============================================================================
 
-let _client: DynamoDBClient | null = null;
+const region = process.env.AWS_REGION || "us-east-1";
+const dynamoClient = new DynamoDBClient({ region });
 
-function getClient(): DynamoDBClient {
-  if (!_client) {
-    _client = new DynamoDBClient({ region });
-  }
-  return _client;
+function getProfilesTable(): string {
+  return process.env.DYNAMODB_PROFILES_TABLE || "turnkey-profiles";
 }
 
 // ============================================================================
-// Helper Functions
+// CRUD Operations
 // ============================================================================
 
 /**
- * Generate user ID (UUID)
- */
-function generateUserId(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-/**
- * Unmarshall DynamoDB item
- */
-function unmarshallItem<T>(item: Record<string, any>): T {
-  return unmarshall(item) as T;
-}
-
-// ============================================================================
-// Repository Functions
-// ============================================================================
-
-/**
- * Get a profile by user ID
- * Includes caching
+ * Get a profile by ID (userId)
  */
 export async function getProfileById(userId: string): Promise<Profile | null> {
-  const cacheKey = makeCacheKey(userId, 'profile', userId);
+  const cacheKey = `profile:${userId}`;
   
-  // Try cache first
+  // Check cache first
   const cached = await getCached<Profile>(cacheKey);
   if (cached) {
     return cached;
   }
   
-  // Get from DynamoDB
-  const client = getClient();
-  const command = new GetItemCommand({
-    TableName: profilesTable,
-    Key: marshall({ id: userId }),
-  });
-  
-  const response = await client.send(command);
-  
-  if (!response.Item) {
+  try {
+    const command = new GetItemCommand({
+      TableName: getProfilesTable(),
+      Key: { id: { S: userId } },
+    });
+    
+    const response = await dynamoClient.send(command);
+    
+    if (!response.Item) {
+      return null;
+    }
+    
+    const profile = unmarshall(response.Item) as Profile;
+    
+    // Cache for 5 minutes
+    await setCached(cacheKey, profile, 300);
+    
+    return profile;
+  } catch (error) {
+    console.error("getProfileById error:", error);
     return null;
   }
+}
+
+/**
+ * Get a profile by email
+ */
+export async function getProfileByEmail(email: string): Promise<Profile | null> {
+  const cacheKey = `profile:email:${email.toLowerCase()}`;
   
-  const profile = unmarshallItem<Profile>(response.Item);
+  // Check cache first
+  const cached = await getCached<Profile>(cacheKey);
+  if (cached) {
+    return cached;
+  }
   
-  // Cache the result
-  await setCached(cacheKey, profile, CACHE_TTL);
-  
-  return profile;
+  try {
+    const command = new QueryCommand({
+      TableName: getProfilesTable(),
+      IndexName: "email-index",
+      KeyConditionExpression: "email = :email",
+      ExpressionAttributeValues: {
+        ":email": { S: email.toLowerCase() },
+      },
+    });
+    
+    const response = await dynamoClient.send(command);
+    
+    if (!response.Items?.length) {
+      return null;
+    }
+    
+    const profile = unmarshall(response.Items[0]) as Profile;
+    
+    // Cache for 5 minutes
+    await setCached(cacheKey, profile, 300);
+    
+    return profile;
+  } catch (error) {
+    console.error("getProfileByEmail error:", error);
+    return null;
+  }
 }
 
 /**
  * Get all profiles for a tenant
- * Returns all team members
  */
-export async function getAllProfiles(tenantId: string): Promise<Profile[]> {
-  const cacheKey = makeCacheKey(tenantId, 'profiles', 'all');
+export async function getProfilesByTenant(tenantId: string): Promise<Profile[]> {
+  const cacheKey = `profiles:tenant:${tenantId}`;
   
-  // Try cache first
+  // Check cache first
   const cached = await getCached<Profile[]>(cacheKey);
   if (cached) {
     return cached;
   }
   
-  // Query from DynamoDB
-  const client = getClient();
-  const command = new QueryCommand({
-    TableName: profilesTable,
-    KeyConditionExpression: 'tenant_id = :tenantId',
-    ExpressionAttributeValues: marshall({ ':tenantId': tenantId }),
-  });
-  
-  const response = await client.send(command);
-  
-  const profiles = response.Items?.map(item => unmarshallItem<Profile>(item)) || [];
-  
-  // Cache the result
-  await setCached(cacheKey, profiles, CACHE_TTL);
-  
-  return profiles;
-}
-
-/**
- * Get profile by email and tenant
- * Used for login/authentication
- */
-export async function getProfileByEmail(
-  tenantId: string,
-  email: string
-): Promise<Profile | null> {
-  const cacheKey = makeCacheKey(tenantId, 'profile', `email:${email.toLowerCase()}`);
-  
-  // Try cache first
-  const cached = await getCached<Profile>(cacheKey);
-  if (cached) {
-    return cached;
+  try {
+    const command = new QueryCommand({
+      TableName: getProfilesTable(),
+      IndexName: "tenant-index",
+      KeyConditionExpression: "tenant_id = :tenant_id",
+      ExpressionAttributeValues: {
+        ":tenant_id": { S: tenantId },
+      },
+    });
+    
+    const response = await dynamoClient.send(command);
+    
+    if (!response.Items) {
+      return [];
+    }
+    
+    const profiles = response.Items.map(item => unmarshall(item) as Profile);
+    
+    // Cache for 5 minutes
+    await setCached(cacheKey, profiles, 300);
+    
+    return profiles;
+  } catch (error) {
+    console.error("getProfilesByTenant error:", error);
+    return [];
   }
-  
-  // Query by email GSI
-  const client = getClient();
-  const command = new QueryCommand({
-    TableName: profilesTable,
-    IndexName: 'email-index',
-    KeyConditionExpression: 'tenant_id = :tenantId AND email = :email',
-    ExpressionAttributeValues: marshall({ 
-      ':tenantId': tenantId, 
-      ':email': email.toLowerCase() 
-    }),
-  });
-  
-  const response = await client.send(command);
-  
-  if (!response.Items || response.Items.length === 0) {
-    return null;
-  }
-  
-  const profile = unmarshallItem<Profile>(response.Items[0]);
-  
-  // Cache the result
-  await setCached(cacheKey, profile, CACHE_TTL);
-  
-  return profile;
 }
 
 /**
  * Create a new profile
- * Used during user registration
  */
-export async function createProfile(data: CreateProfileInput): Promise<Profile> {
-  const validated = createProfileSchema.parse(data);
+export async function createProfile(input: CreateProfileInput): Promise<Profile> {
+  const validated = createProfileSchema.parse(input);
   
   const profile: Profile = {
-    id: generateUserId(),
+    id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
     tenant_id: validated.tenant_id,
     email: validated.email.toLowerCase(),
     full_name: validated.full_name,
-    role: validated.role || 'member',
+    role: validated.role || "user",
     created_at: new Date().toISOString(),
   };
   
-  // Save to DynamoDB
-  const client = getClient();
-  const command = new PutItemCommand({
-    TableName: profilesTable,
-    Item: marshall(profile),
-  });
-  
-  await client.send(command);
-  
-  // Invalidate tenant cache (new user added)
-  await invalidateTenantCache(validated.tenant_id);
-  
-  return profile;
+  try {
+    const command = new PutItemCommand({
+      TableName: getProfilesTable(),
+      Item: marshall(profile),
+    });
+    
+    await dynamoClient.send(command);
+    
+    return profile;
+  } catch (error) {
+    console.error("createProfile error:", error);
+    throw new Error("Failed to create profile");
+  }
 }
 
 /**
  * Update a profile
  */
-export async function updateProfile(
-  userId: string,
-  data: UpdateProfileInput
-): Promise<Profile | null> {
-  const validated = updateProfileSchema.parse(data);
-  
-  // First get existing to know tenant_id for cache
-  const existing = await getProfileById(userId);
-  if (!existing) {
-    return null;
-  }
+export async function updateProfile(userId: string, input: UpdateProfileInput): Promise<Profile | null> {
+  const validated = updateProfileSchema.parse(input);
   
   // Build update expression
   const updates: string[] = [];
-  const values: Record<string, any> = {};
+  const values: Record<string, unknown> = {};
   const names: Record<string, string> = {};
   
-  if (validated.full_name !== undefined) {
-    updates.push('#full_name = :full_name');
-    values[':full_name'] = validated.full_name;
-    names['#full_name'] = 'full_name';
+  if (validated.full_name) {
+    updates.push("#full_name = :full_name");
+    values[":full_name"] = validated.full_name;
+    names["#full_name"] = "full_name";
   }
-  if (validated.role !== undefined) {
-    updates.push('#role = :role');
-    values[':role'] = validated.role;
-    names['#role'] = 'role';
+  
+  if (validated.role) {
+    updates.push("#role = :role");
+    values[":role"] = validated.role;
+    names["#role"] = "role";
   }
   
   if (updates.length === 0) {
-    return existing;
+    return getProfileById(userId);
   }
   
-  // Always update modified_at
-  updates.push('#modified_at = :modified_at');
-  values[':modified_at'] = new Date().toISOString();
-  names['#modified_at'] = 'modified_at';
+  updates.push("updated_at = :updated_at");
+  values[":updated_at"] = new Date().toISOString();
   
-  // Execute update
-  const client = getClient();
-  const command = new UpdateItemCommand({
-    TableName: profilesTable,
-    Key: marshall({ id: userId }),
-    UpdateExpression: `SET ${updates.join(', ')}`,
-    ExpressionAttributeValues: marshall(values),
-    ExpressionAttributeNames: names,
-    ReturnValues: 'ALL_NEW',
-  });
-  
-  const response = await client.send(command);
-  
-  if (!response.Attributes) {
+  try {
+    const command = new UpdateItemCommand({
+      TableName: getProfilesTable(),
+      Key: { id: { S: userId } },
+      UpdateExpression: `SET ${updates.join(", ")}`,
+      ExpressionAttributeValues: marshall(values),
+      ExpressionAttributeNames: names,
+      ReturnValues: "ALL_NEW",
+    });
+    
+    const response = await dynamoClient.send(command);
+    
+    if (!response.Attributes) {
+      return null;
+    }
+    
+    // Invalidate cache
+    await invalidateCache(`profile:${userId}*`);
+    await invalidateCache(`profiles:tenant:*`);
+    
+    return unmarshall(response.Attributes) as Profile;
+  } catch (error) {
+    console.error("updateProfile error:", error);
     return null;
   }
-  
-  const updated = unmarshallItem<Profile>(response.Attributes);
-  
-  // Invalidate cache
-  await invalidateTenantCache(existing.tenant_id);
-  
-  return updated;
 }
 
 /**
  * Delete a profile
  */
-export async function deleteProfile(userId: string): Promise<void> {
-  // First get existing to know tenant_id for cache
-  const existing = await getProfileById(userId);
-  
-  const client = getClient();
-  const command = new DeleteItemCommand({
-    TableName: profilesTable,
-    Key: marshall({ id: userId }),
-  });
-  
-  await client.send(command);
-  
-  // Invalidate cache if we had the profile
-  if (existing) {
-    await invalidateTenantCache(existing.tenant_id);
+export async function deleteProfile(userId: string): Promise<boolean> {
+  try {
+    const command = new DeleteItemCommand({
+      TableName: getProfilesTable(),
+      Key: { id: { S: userId } },
+      ReturnValues: "ALL_OLD",
+    });
+    
+    const response = await dynamoClient.send(command);
+    
+    if (!response.Attributes) {
+      return false;
+    }
+    
+    // Invalidate cache
+    await invalidateCache(`profile:${userId}*`);
+    await invalidateCache(`profiles:tenant:*`);
+    
+    return true;
+  } catch (error) {
+    console.error("deleteProfile error:", error);
+    return false;
   }
 }
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
 /**
- * Check if user is admin of tenant
+ * Verify user belongs to tenant
  */
-export async function isTenantAdmin(userId: string, tenantId: string): Promise<boolean> {
+export async function verifyUserTenant(userId: string, tenantId: string): Promise<boolean> {
   const profile = await getProfileById(userId);
-  return profile?.tenant_id === tenantId && profile?.role === 'admin';
-}
-
-/**
- * Get tenant ID for a user
- */
-export async function getTenantIdForUser(userId: string): Promise<string | null> {
-  const profile = await getProfileById(userId);
-  return profile?.tenant_id || null;
+  
+  if (!profile) {
+    return false;
+  }
+  
+  return profile.tenant_id === tenantId;
 }
