@@ -408,10 +408,13 @@ export async function POST(request: NextRequest) {
     // ============================================================================
     let toolResults: Record<string, ToolResult> = {};
     
-    if (useTools && lastUserQuery) {
+if (useTools && lastUserQuery) {
+      // Get userId from session (via middleware header)
+      const userId = request.headers.get("x-user-id");
+      
       const toolContext: ToolContext = {
         tenantId,
-        userId: null,
+        userId,
         requestUrl: appUrl,
       };
       
@@ -519,7 +522,7 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    const response = NextResponse.json({
+const response = NextResponse.json({
       response: completion,
       toolsUsed: Object.keys(toolResults),
       toolResults: toolResultSummaries,
@@ -527,6 +530,8 @@ export async function POST(request: NextRequest) {
         remaining: rateLimitResult.remaining,
         tenantId: tenantId ? "provided" : "anonymous",
       } as RateLimitInfo,
+      tokens,
+      cost,
     });
     
     return addRateLimitHeaders(response, rateLimitResult);

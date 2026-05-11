@@ -2,12 +2,15 @@
  * Internal Data Tool
  * 
  * Access tenant's own data (leads, clients, pipeline).
- * Uses repositories for proper tenant isolation.
+ * Uses repositories directly for proper tenant isolation.
  * 
  * @serverOnly
  */
 
-import { ToolResult, ToolContext, ToolParams } from "./types";
+import { ToolResult, ToolContext } from "./types";
+import { getAllLeads, getLeadById } from "../db/repositories/lead-repository";
+import { getAllClients, getClientById } from "../db/repositories/client-repository";
+import { getAllPipeline, getPipelineById } from "../db/repositories/pipeline-repository";
 
 // ============================================================================
 // Types
@@ -40,15 +43,6 @@ export interface InternalDataParams {
 }
 
 /**
- * Internal data result
- */
-export interface InternalData {
-  leads?: unknown[];
-  clients?: unknown[];
-  pipeline?: unknown[];
-}
-
-/**
  * Execute internal data access
  * 
  * @param params - Data access parameters
@@ -56,7 +50,7 @@ export interface InternalData {
  * @returns ToolResult with data or error
  */
 export async function executeInternalData(
-  params: ToolParams,
+  params: unknown,
   context: ToolContext
 ): Promise<ToolResult> {
   // Parse input
@@ -89,50 +83,50 @@ export async function executeInternalData(
     };
   }
   
+  // If getting by ID, require ID
+  if (input.action === "get" && !input.id) {
+    return {
+      success: false,
+      error: "ID required for get action",
+    };
+  }
+  
   try {
-    const baseUrl = context.requestUrl || 
-      process.env.NEXT_PUBLIC_APP_URL || 
-      "http://localhost:3001";
+    const tenantId = context.tenantId;
+    let data: unknown;
     
-    // Build endpoint
-    let endpoint = "";
     switch (input.data_type) {
       case "leads":
-        endpoint = input.id ? `/api/data/leads/${input.id}` : "/api/data/leads";
+        if (input.action === "list") {
+          data = await getAllLeads(tenantId);
+        } else {
+          data = await getLeadById(tenantId, input.id!);
+        }
         break;
+        
       case "clients":
-        endpoint = input.id ? `/api/data/clients/${input.id}` : "/api/data/clients";
+        if (input.action === "list") {
+          data = await getAllClients(tenantId);
+        } else {
+          data = await getClientById(tenantId, input.id!);
+        }
         break;
-      case "pipeline":
-        endpoint = input.id ? `/api/data/pipeline/${input.id}` : "/api/data/pipeline";
+        
+case "pipeline":
+        if (input.action === "list") {
+          data = await getAllPipeline(tenantId);
+        } else {
+          data = await getPipelineById(tenantId, input.id!);
+        }
         break;
     }
-    
-    // Make API call with tenant ID in headers (set by middleware)
-    const response = await fetch(`${baseUrl}${endpoint}`, {
-      method: "GET",
-      headers: new Headers({
-        "Content-Type": "application/json",
-        "x-tenant-id": context.tenantId,
-      }),
-    });
-    
-    if (!response.ok) {
-      return { 
-        success: false, 
-        error: `Internal API error: ${response.status}`,
-        metadata: { status: response.status }
-      };
-    }
-    
-    const data = await response.json();
     
     return { 
       success: true, 
       data,
       metadata: { 
         source: "internal", 
-        tenantId: context.tenantId,
+        tenantId,
         dataType: input.data_type,
         action: input.action 
       }
