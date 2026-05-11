@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Building2, MapPin, Users, Globe, Linkedin, Search, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
 // Use client API (SECURE - goes through server API, not directly to AWS)
 import { fetchClients, createClient, updateClient, deleteClient } from "@/lib/api/client-api";
+import { clientKeys } from "@/lib/hooks/query-client";
 
 interface Company {
   id: string;
@@ -76,6 +78,7 @@ function getTenantId(): string {
 }
 
 export default function CompaniesPage() {
+  const queryClient = useQueryClient();
   const [companies, setCompanies] = useState<Company[]>(initialCompanies);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -186,6 +189,8 @@ const handleAddCompany = async () => {
           revenue: newCompanyRevenue,
           description: newCompanyDescription,
         });
+        // Invalidate dashboard cache so count updates
+        queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
       } catch (err) {
         console.error("Failed to save company to DB:", err);
       }

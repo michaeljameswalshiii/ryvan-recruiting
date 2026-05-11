@@ -54,6 +54,11 @@ export default function DashboardPage() {
         <p className="text-muted-foreground">
           Welcome back! Here&apos;s what&apos;s happening.
         </p>
+        
+        {/* Debug info - temporary */}
+        <p className="text-xs text-muted-foreground mt-2">
+          Debug: {JSON.stringify(stats)}
+        </p>
       </div>
 
       {/* Stats Cards */}
