@@ -47,20 +47,46 @@ export default function DashboardPage() {
   const { stats, isLoading: statsLoading } = useDashboardStats();
   const { activity, isLoading: activityLoading } = useRecentActivity();
 
-  // Temporary debug - will be removed after fix
+// Temporary debug - will be removed after fix
   console.log("Dashboard Debug:", { stats, statsLoading });
+
+  // Seed test data function
+  const handleSeedTestData = async () => {
+    try {
+      const response = await fetch('/api/seed-test-data', { method: 'POST' });
+      const data = await response.json();
+      if (data.success) {
+        alert(`Test data seeded: ${data.companies} companies, ${data.leads} leads`);
+        // Refresh the page to see new data
+        window.location.reload();
+      } else {
+        alert('Failed to seed: ' + data.error);
+      }
+    } catch (err) {
+      console.error('Seed error:', err);
+      alert('Failed to seed test data');
+    }
+  };
 
 return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">Welcome back! Here's what's happening.</p>
-        
-        {/* Temporary Debug - remove after fix */}
-        <div className="text-xs bg-muted p-2 mt-2 rounded">
-          Debug: Companies = {stats.companies} | Candidates = {stats.contacts} | 
-          Loading: {statsLoading ? "Yes" : "No"}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground">Welcome back! Here's what's happening.</p>
+          
+          {/* Temporary Debug - remove after fix */}
+          <div className="text-xs bg-muted p-2 mt-2 rounded">
+            Debug: Companies = {stats.companies} | Candidates = {stats.contacts} | 
+            Loading: {statsLoading ? "Yes" : "No"}
+          </div>
         </div>
+        <button 
+          onClick={handleSeedTestData}
+          className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          Seed Test Data
+        </button>
       </div>
 
       {/* Stats Cards */}
