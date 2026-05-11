@@ -79,7 +79,7 @@ Similar changes needed.
 1. ✅ `src/components/forms/login-form.tsx` - Fix import + method
 2. ✅ `src/components/forms/signup-form.tsx` - Fix import + method
 3. ✅ `src/app/dashboard/companies/page.tsx` - Fix imports + API calls
-4. ⬜ `src/app/dashboard/pipeline/page.tsx` - Check and fix if needed
+4. ✅ `src/app/dashboard/pipeline/page.tsx` - Uses secure client-api ✅
 
 ---
 

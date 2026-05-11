@@ -1,4 +1,4 @@
-﻿﻿/**
+/**
  * Bedrock AI API Route
  * Refactored to use tool registry pattern
  * 
@@ -15,8 +15,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { checkRateLimit, addRateLimitHeaders } from "@/lib/rate-limit";
 import { SYSTEM_PROMPTS } from "@/lib/prompts/bedrock-system";
-// Tool registry available but not used yet - legacy tool pattern still in use
-// TODO: Phase 3.2 - integrate new tool registry
+// NEW: Tool registry pattern - Phase 3 completion
+import { selectTools as chooseTools, executeTool, ToolContext } from "@/lib/ai/tools";
 
 // Bedrock client - server-only env var
 const bedrockClient = new BedrockRuntimeClient({ 
@@ -44,145 +44,10 @@ function getRateLimitKey(request: NextRequest, tenantId: string | null): string 
 }
 
 // ============================================================================
-// Tool Registry Pattern
+// Tool Registry - Using Imported Tool Registry Pattern
 // ============================================================================
-
-interface Tool {
-  name: string;
-  description: string;
-  execute: (query: string, requestUrl?: string) => Promise<ToolResult>;
-}
-
-interface ToolResult {
-  success: boolean;
-  data?: unknown;
-  error?: string;
-}
-
-/**
- * Apollo Search Tool - Primary candidate sourcing
- */
-async function searchApolloTool(query: string, requestUrl?: string): Promise<ToolResult> {
-  try {
-    const baseUrl = requestUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
-    
-    const response = await fetch(`${baseUrl}/api/apollo`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, per_page: 10 }),
-    });
-    
-    if (!response.ok) {
-      const status = response.status;
-      const errorText = await response.text().catch(() => "");
-      
-      // Check for free plan limitation
-      if (errorText.includes("free plan") || errorText.includes("API_INACCESSIBLE") || status === 403) {
-        return { success: false, error: "Apollo free plan does not include people search API access" };
-      }
-      
-      if (status === 429 || status >= 500) {
-        return { success: false, error: `Apollo unavailable (${status})` };
-      }
-      
-      return { success: false, error: `Apollo error: ${status}` };
-    }
-    
-    const data = await response.json();
-    
-    if (data.success && data.results?.length > 0) {
-      return { 
-        success: true, 
-        data: data.results.map((p: any) => ({
-          name: p.name,
-          title: p.title,
-          organization: p.organization,
-          email: p.email || "N/A",
-          phone: p.phone || "N/A",
-          linkedin_url: p.linkedin_url || "N/A",
-          headline: p.headline || "",
-        })) 
-      };
-    }
-    
-    return { success: true, data: [], error: "No results found" };
-    
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : "Unknown error";
-    console.error("Apollo search error:", errorMessage);
-    return { success: false, error: errorMessage };
-  }
-}
-
-/**
- * Tavily Search Tool - Secondary web search
- */
-async function searchTavilyTool(query: string, requestUrl?: string): Promise<ToolResult> {
-  try {
-    const baseUrl = requestUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
-    
-    const response = await fetch(`${baseUrl}/api/tavily`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
-    });
-    
-    if (!response.ok) {
-      return { success: false, error: `Tavily error: ${response.status}` };
-    }
-    
-    const data = await response.json();
-    return { success: true, data: data.results || [] };
-    
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : "Unknown error";
-    console.error("Tavily search error:", errorMessage);
-    return { success: false, error: errorMessage };
-  }
-}
-
-// ============================================================================
-// Agentic Tool Selection
-// ============================================================================
-
-/**
- * Determine which tools to use based on query analysis
- * Returns array of tool names to invoke
- */
-function selectTools(userQuery: string): string[] {
-  const query = userQuery.toLowerCase();
-  const toolsToUse: string[] = [];
-  
-  // Apollo for candidate/people search
-  const candidateKeywords = [
-    "find", "search", "candidate", "candidates", "person", "people",
-    "profile", "profiles", "developer", "engineer", "manager", "director",
-    "recruiter", "hire", "hiring", "talent", "staff", "software",
-    "python", "javascript", "react", "aws", "cloud", "data", "ai", "ml",
-    "job", "resume", "experience", "skills"
-  ];
-  
-  // Web search for current information
-  const searchKeywords = [
-    "news", "latest", "current", "today", "recent", "更新", 
-    "what is", "who is", "when did", "how does", "stock price",
-    "weather", "2024", "2025", "2026",
-    "company", "companies", "contractor", "construction",
-    "manufacturer", "supplier", "vendor"
-  ];
-  
-  // Always try Apollo first for candidate queries
-  if (candidateKeywords.some(kw => query.includes(kw))) {
-    toolsToUse.push("apollo");
-  }
-  
-  // Add Tavily only if web search keywords present
-  if (searchKeywords.some(kw => query.includes(kw))) {
-    toolsToUse.push("tavily");
-  }
-  
-  return toolsToUse;
-}
+// Note: Tool implementations are now in src/lib/ai/tools/index.ts
+// We use executeTool() and chooseTools() from the imported registry
 
 // ============================================================================
 // Modular System Prompts - Using extracted getSystemPrompt from prompts module
@@ -231,38 +96,33 @@ export async function POST(request: NextRequest) {
     const lastUserQuery = userMessage?.content || "";
 
 // ============================================================================
-    // Tool Execution
+    // Tool Execution - Using Tool Registry
     // ============================================================================
     
-    interface ApolloToolResult {
-      success: boolean;
-      data?: unknown;
-      error?: string;
-    }
+    // Create tool context for execution
+    const toolContext: ToolContext = {
+      tenantId,
+      userId: null,
+      requestUrl,
+    };
     
-    interface TavilyToolResult {
-      success: boolean;
-      data?: unknown;
-      error?: string;
-    }
+    // Use imported chooseTools to select appropriate tools
+    const toolsToUse = chooseTools(lastUserQuery);
     
-    let toolResults: {
-      apollo?: ApolloToolResult;
-      tavily?: TavilyToolResult;
-    } = {};
+    // Execute tools using the tool registry
+    const toolResultsMap: Record<string, any> = {};
     
-    if (useTools && lastUserQuery) {
-      const toolsToUse = selectTools(lastUserQuery);
+    for (const toolName of toolsToUse) {
+      // Build input based on tool type
+      const input = toolName === "apollo" 
+        ? { query: lastUserQuery, per_page: 10 }
+        : toolName === "tavily"
+          ? { query: lastUserQuery, max_results: 5 }
+          : { query: lastUserQuery };
       
-      for (const toolName of toolsToUse) {
-        if (toolName === "apollo") {
-          const result = await searchApolloTool(lastUserQuery, requestUrl);
-          toolResults.apollo = result;
-        } else if (toolName === "tavily") {
-          const result = await searchTavilyTool(lastUserQuery, requestUrl);
-          toolResults.tavily = result;
-        }
-      }
+      // Execute tool via registry
+      const result = await executeTool(toolName, input, toolContext);
+      toolResultsMap[toolName] = result;
     }
 
     // ============================================================================
@@ -280,13 +140,13 @@ export async function POST(request: NextRequest) {
     // Build system prompt
     let systemPrompt = SYSTEM_PROMPTS.base + "\n\n";
     
-    // Add tool context
-    if (toolResults.apollo) {
-      if (toolResults.apollo.success) {
+// Add tool context
+    if (toolResultsMap.apollo) {
+if (toolResultsMap.apollo.success) {
         systemPrompt += SYSTEM_PROMPTS.apolloAvailable + "\n\n";
       } else {
         systemPrompt += SYSTEM_PROMPTS.apolloUnavailable + "\n";
-        systemPrompt += `Error: ${toolResults.apollo.error}\n\n`;
+        systemPrompt += `Error: ${toolResultsMap.apollo.error}\n\n`;
       }
     }
     
@@ -301,9 +161,9 @@ export async function POST(request: NextRequest) {
       mmMessages.push({ role: msg.role as "user" | "assistant", content: msg.content });
     }
 
-    // Add tool results as user messages
-    if (toolResults.apollo?.success && (toolResults.apollo.data as any[])?.length > 0) {
-      const candidates = (toolResults.apollo.data as any[])
+// Add tool results as user messages
+    if (toolResultsMap.apollo?.success && (toolResultsMap.apollo.data as any[])?.length > 0) {
+const candidates = (toolResultsMap.apollo.data as any[])
         .map((p: any) => `${p.name} - ${p.title} at ${p.organization}\nEmail: ${p.email}\nPhone: ${p.phone}\nLinkedIn: ${p.linkedin_url}`)
         .join("\n\n");
       
@@ -313,8 +173,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (toolResults.tavily?.success && (toolResults.tavily.data as any[])?.length > 0) {
-      const results = (toolResults.tavily.data as any[])
+if (toolResultsMap.tavily?.success && (toolResultsMap.tavily.data as any[])?.length > 0) {
+const results = (toolResultsMap.tavily.data as any[])
         .map((r: any, i: number) => `${i + 1}. ${r.title}\n${r.snippet}`)
         .join("\n\n");
       
@@ -352,17 +212,17 @@ const command = new InvokeModelCommand(input);
 
     const response = NextResponse.json({
       response: completion,
-      toolsUsed: Object.keys(toolResults),
+toolsUsed: Object.keys(toolResultsMap),
       toolResults: {
-        apollo: toolResults.apollo ? { 
-          success: toolResults.apollo.success,
-          error: toolResults.apollo.error,
-          count: (toolResults.apollo.data as any[])?.length || 0
+apollo: toolResultsMap.apollo ? {
+          success: toolResultsMap.apollo.success,
+          error: toolResultsMap.apollo.error,
+          count: (toolResultsMap.apollo.data as any[])?.length || 0
         } : undefined,
-        tavily: toolResults.tavily ? {
-          success: toolResults.tavily.success,
-          error: toolResults.tavily.error,
-          count: (toolResults.tavily.data as any[])?.length || 0
+        tavily: toolResultsMap.tavily ? {
+          success: toolResultsMap.tavily.success,
+          error: toolResultsMap.tavily.error,
+          count: (toolResultsMap.tavily.data as any[])?.length || 0
         } : undefined,
       },
       // Include rate limit info in response
