@@ -4,20 +4,23 @@ const TAVILY_API_KEY = process.env.TAVILY_API_KEY || "";
 const TINYFISH_API_URL = "https://api.tavily.com/search";
 
 export async function POST(request: Request) {
+  const requestId = Math.random().toString(36).substring(7);
+  
   try {
     const body = await request.json();
-    const { query } = body;
+    const { query, max_results = 5 } = body;
 
     if (!query) {
       return Response.json({ error: "Query is required" }, { status: 400 });
     }
 
-// Log key presence (masked for security)
-    console.log("[TAVILY] API key configured:", !!TAVILY_API_KEY);
+    console.log(`[TAVILY-${requestId}] Query:`, query.substring(0, 50));
+    console.log(`[TAVILY-${requestId}] API key present:`, !!TAVILY_API_KEY);
+    console.log(`[TAVILY-${requestId}] API key value:`, TAVILY_API_KEY ? `set (${TAVILY_API_KEY.length} chars)` : "NOT SET");
 
     // If no Tavily API key, return mock results for demo
     if (!TAVILY_API_KEY) {
-      console.log("[TAVILY] No API key - returning demo results");
+      console.log(`[TAVILY-${requestId}] No API key - returning demo results`);
       return Response.json({
         results: [
           {
@@ -29,6 +32,8 @@ export async function POST(request: Request) {
       });
     }
 
+    console.log(`[TAVILY-${requestId}] Calling Tavily API...`);
+    
     // Call Tavily Search API
     const response = await fetch(TINYFISH_API_URL, {
       method: "POST",
@@ -38,23 +43,27 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         api_key: TAVILY_API_KEY,
         query: query,
-        max_results: 5,
+        max_results: max_results,
         search_depth: "basic",
         include_answer: true,
         include_raw_content: false,
       }),
     });
 
+    const responseStatus = response.status;
+    console.log(`[TAVILY-${requestId}] Response status:`, responseStatus);
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Tavily API error:", response.status, errorText);
+      console.error(`[TAVILY-${requestId}] API error:`, responseStatus, errorText);
       return Response.json(
-        { error: `Search API error: ${response.status}` },
-        { status: response.status }
+        { error: `Search API error: ${responseStatus}`, details: errorText },
+        { status: responseStatus }
       );
     }
 
     const data = await response.json();
+    console.log(`[TAVILY-${requestId}] Results count:`, data.results?.length || 0);
 
     // Format results for consumption by MiniMax
     const results = data.results?.map((r: any) => ({
@@ -68,9 +77,10 @@ export async function POST(request: Request) {
       results[0].snippet = `[Answer]: ${data.answer}\n\n${results[0].snippet}`;
     }
 
+    console.log(`[TAVILY-${requestId}] Returning ${results.length} results`);
     return Response.json({ results });
   } catch (err: any) {
-    console.error("Search error:", err);
+    console.error(`[TAVILY-${requestId}] Exception:`, err.message || err);
     return Response.json({ error: err.message }, { status: 500 });
   }
 }

@@ -6,9 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-// Apollo.io API configuration
-const APOLLO_API_KEY = process.env.NEXT_PUBLIC_APOLLO_API_KEY || "";
-
 interface Company {
   id: string;
   name: string;
@@ -30,6 +27,9 @@ export default function SourcingPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
+// Apollo.io API configuration
+  const APOLLO_API_KEY = process.env.NEXT_PUBLIC_APOLLO_API_KEY || "";
+
   const searchCompanies = async () => {
     if (!query.trim()) return;
     
@@ -38,31 +38,51 @@ export default function SourcingPage() {
     setHasSearched(true);
 
     try {
-      // Using Apollo.io API
-      const response = await fetch("https://api.apollo.io/api/v1 companies/search", {
+if (!APOLLO_API_KEY) {
+        throw new Error("Apollo API key is not configured. Please add NEXT_PUBLIC_APOLLO_API_KEY in Vercel settings.");
+      }
+
+const response = await fetch("https://api.apollo.io/api/v1/organizations/search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Api-Key": APOLLO_API_KEY,
         },
         body: JSON.stringify({
-          q: query,
+          q: query,                    // keyword / industry
           locations: [location],
-          employee_ranges: [employeeCount],
+          organization_num_employees_ranges: [employeeCount],  // correct field name
           per_page: 20,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to fetch from Apollo.io");
+        const errorText = await response.text().catch(() => "Unknown error");
+        throw new Error(`Apollo API ${response.status}: ${errorText}`);
       }
 
       const data = await response.json();
-      setResults(data.companies || []);
-    } catch (err) {
+      
+      // Apollo returns "organizations", not "companies"
+      const companies = (data.organizations || []).map((org: any) => ({
+        id: org.id || String(Math.random()),
+        name: org.name,
+        domain: org.domain,
+        linkedin_url: org.linkedin_url,
+        city: org.city,
+        state: org.state,
+        country: org.country,
+        employee_count: org.employee_count,
+        industry: org.industry || query,
+      }));
+
+      setResults(companies);
+
+    } catch (err: any) {
       console.error("Apollo.io API error:", err);
-      setError("Failed to search companies. Please check your API key.");
-      // Mock data for demo
+      setError(`Search failed: ${err.message}`);
+      
+      // Keep mock data as fallback (good for demo)
       setResults([
         {
           id: "1",
@@ -122,16 +142,16 @@ export default function SourcingPage() {
       ]);
     } finally {
       setIsLoading(false);
-    }
+}
   };
 
-  const addToLead = (company: Company) => {
+const addToLead = (company: Company) => {
     // TODO: Add to leads table via DynamoDB
     console.log("Add to lead:", company);
     alert(`Added ${company.name} to leads!`);
   };
 
-  return (
+  return
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Sourcing</h1>
