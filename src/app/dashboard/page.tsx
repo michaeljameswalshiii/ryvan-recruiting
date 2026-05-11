@@ -47,6 +47,9 @@ export default function DashboardPage() {
   const { stats, isLoading: statsLoading } = useDashboardStats();
   const { activity, isLoading: activityLoading } = useRecentActivity();
 
+  // Temporary debug - will be removed after fix
+  console.log("Dashboard Debug:", { stats, statsLoading });
+
   return (
     <div className="space-y-6">
       <div>

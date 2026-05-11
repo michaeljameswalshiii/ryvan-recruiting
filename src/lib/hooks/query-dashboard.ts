@@ -25,17 +25,27 @@ export interface DashboardStats {
 /**
  * Get dashboard statistics
  * Combines counts from clients, leads, and pipeline
+ * Includes debug logging for troubleshooting
  */
 export function useDashboardStats() {
-  const { data: clients = [], isLoading: loadingClients } = useClients();
-  const { data: leads = [], isLoading: loadingLeads } = useLeads();
+  const { data: clients = [], isLoading: loadingClients, error: clientsError } = useClients();
+  const { data: leads = [], isLoading: loadingLeads, error: leadsError } = useLeads();
   const { data: pipeline = [], isLoading: loadingPipeline } = usePipeline();
 
+  // Debug logging
+  console.log("Dashboard Data:", { 
+    clientsCount: clients?.length || 0, 
+    leadsCount: leads?.length || 0, 
+    pipelineCount: pipeline?.length || 0,
+    clientsError,
+    leadsError 
+  });
+
   const stats: DashboardStats = {
-    contacts: leads.length,
-    companies: clients.length,
-    openJobs: pipeline.filter((item: any) => item.stage === 'interviewing').length,
-    placements: pipeline.filter((item: any) => item.stage === 'hired').length,
+    contacts: leads?.length || 0,
+    companies: clients?.length || 0,
+    openJobs: pipeline?.filter((item: any) => item.stage === 'interviewing').length || 0,
+    placements: pipeline?.filter((item: any) => item.stage === 'hired').length || 0,
   };
 
   const isLoading = loadingClients || loadingLeads || loadingPipeline;
@@ -43,7 +53,7 @@ export function useDashboardStats() {
   return {
     stats,
     isLoading,
-    error: null,
+    error: clientsError || leadsError || null,
   };
 }
 
