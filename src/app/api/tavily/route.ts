@@ -12,9 +12,12 @@ export async function POST(request: Request) {
       return Response.json({ error: "Query is required" }, { status: 400 });
     }
 
+// Log key presence (masked for security)
+    console.log("[TAVILY] API key configured:", !!TAVILY_API_KEY);
+
     // If no Tavily API key, return mock results for demo
     if (!TAVILY_API_KEY) {
-      console.log("No Tavily API key configured, returning demo search results");
+      console.log("[TAVILY] No API key - returning demo results");
       return Response.json({
         results: [
           {
