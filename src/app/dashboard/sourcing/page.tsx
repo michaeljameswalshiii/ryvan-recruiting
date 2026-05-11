@@ -151,7 +151,7 @@ const addToLead = (company: Company) => {
     alert(`Added ${company.name} to leads!`);
   };
 
-  return
+return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Sourcing</h1>
