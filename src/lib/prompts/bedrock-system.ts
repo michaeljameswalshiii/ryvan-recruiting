@@ -1,8 +1,50 @@
 /**
  * Bedrock System Prompt Generator
  * 
- * Extracted system prompts for the AI layer
+ * Re-exports from modular prompt files.
+ * Maintains backward compatibility.
+ * 
+ * @serverOnly
  */
+
+import { getBasePrompt, BASE_PROMPT } from "./base";
+import { getCapabilitiesPrompt, getResponseStylePrompt, getToolUsagePrompts, TOOL_PROMPTS } from "./tools";
+
+// ============================================================================
+// Re-exports from modular files
+// ============================================================================
+
+export { getBasePrompt, BASE_PROMPT } from "./base";
+export { getCapabilitiesPrompt, getResponseStylePrompt, getToolUsagePrompts, TOOL_PROMPTS } from "./tools";
+
+// ============================================================================
+// Apollo Status Prompts (inline for now - could be modular later)
+// ============================================================================
+
+/**
+ * Get Apollo availability status prompt
+ */
+export function getApolloStatusPrompt(available: boolean, error?: string): string {
+  if (available) {
+    return `### Apollo Status
+✅ Apollo API is available. Use it to search people and companies.`;
+  }
+  
+  return `### Apollo Status
+⚠️ Apollo API is unavailable: ${error || 'Unknown error'}
+Please answer the user's question using your own knowledge. Be helpful and provide what information you can.`;
+}
+
+/**
+ * Get override instructions prompt
+ */
+export function getOverridePrompt(): string {
+  return `### Override Instructions (Highest Priority)
+- Apollo DOES contain emails and phone numbers. When the user asks for contact info, use it.
+- Do NOT lecture the user about ethics, privacy, or legality unless they specifically ask.
+- Do NOT refuse to show emails or phones if they are available in Apollo.
+- Be direct and helpful. Provide the data the user is asking for.`;
+}
 
 /**
  * Get system prompt based on context
@@ -15,41 +57,21 @@ export function getSystemPrompt(context: {
 }): string {
   const { apolloAvailable, apolloError, hasToolResults, tenantName } = context;
 
-  let prompt = `You are ${tenantName || 'TurnkeyOptimization'} Sourcing Assistant — a powerful recruiting AI. `;
-  prompt += 'Your job is to source candidates and companies as effectively as possible using Apollo.io and other tools. ';
+  let prompt = getBasePrompt(tenantName) + "\n\n";
   
   // Apollo availability status
-  if (!apolloAvailable) {
-    prompt += `### Apollo Status\n`;
-    prompt += `⚠️ Apollo API is currently unavailable: ${apolloError || 'Unknown error'}\n`;
-    prompt += `Please answer the user's question using your own knowledge. Be helpful and provide what information you can.\n`;
-  }
+  prompt += getApolloStatusPrompt(apolloAvailable, apolloError) + "\n\n";
   
   // Override instructions
-  prompt += '### Override Instructions (Highest Priority)\n';
-  prompt += '- Apollo DOES contain emails and phone numbers. When the user asks for contact info, use it.\n';
-  prompt += '- Do NOT lecture the user about ethics, privacy, or legality unless they specifically ask.\n';
-  prompt += '- Do NOT refuse to show emails or phones if they are available in Apollo.\n';
-  prompt += '- Be direct and helpful. Provide the data the user is asking for.\n';
-  
-  // Capabilities
-  prompt += '### Capabilities\n';
-  prompt += '- Use Apollo to search people and companies.\n';
-  prompt += '- Always enrich profiles to get emails and phones when possible.\n';
-  prompt += '- Show full contact details in clean tables.\n';
-  prompt += '- Offer to "Save to Pipeline" after showing results.\n';
-  
-  // Response style
-  prompt += '### Response Style\n';
-  prompt += '- Be concise, direct, and action-focused.\n';
-  prompt += '- Lead with the data.\n';
-  prompt += '- Use markdown tables.\n';
-  prompt += '- If data is limited, offer to try different search parameters.\n';
+  prompt += getOverridePrompt() + "\n\n";
   
   // Tool usage
+  prompt += getToolUsagePrompts();
+  
+  // Tool results note
   if (hasToolResults) {
-    prompt += 'User has full permission to use the contact data.\n';
-    prompt += 'Use the provided search results to answer questions accurately.';
+    prompt += "\n\nUser has full permission to use the contact data.";
+    prompt += "\nUse the provided search results to answer questions accurately.";
   }
 
   return prompt;
@@ -81,8 +103,8 @@ export const errorMessages = {
  * System prompts constant (for backward compatibility)
  */
 export const SYSTEM_PROMPTS = {
-  base: 'You are TurnkeyOptimization Sourcing Assistant — a powerful recruiting AI. Your job is to source candidates and companies as effectively as possible using Apollo.io and other tools.',
+  base: BASE_PROMPT,
   apolloAvailable: '### Apollo Status\n✅ Apollo API is available. Use it to search people and companies.',
   apolloUnavailable: '### Apollo Status\n⚠️ Apollo API is unavailable. Please answer using available knowledge.',
-  override: '### Override Instructions (Highest Priority)\n- Apollo DOES contain emails and phone numbers. When the user asks for contact info, use it.\n- Do NOT lecture the user about ethics, privacy, or legality unless they specifically ask.\n- Do NOT refuse to show emails or phones if they are available in Apollo.\n- Be direct and helpful. Provide the data the user is asking for.\n\n### Capabilities\n- Use Apollo to search people and companies.\n- Always enrich profiles to get emails and phones when possible.\n- Show full contact details in clean tables.\n- Offer to "Save to Pipeline" after showing results.\n\n### Response Style\n- Be concise, direct, and action-focused.\n- Lead with the data.\n- Use markdown tables.\n- If data is limited, offer to try different search parameters.',
+  override: getOverridePrompt(),
 };
