@@ -50,14 +50,17 @@ export default function DashboardPage() {
   // Temporary debug - will be removed after fix
   console.log("Dashboard Debug:", { stats, statsLoading });
 
-  return (
+return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Dashboard</h1>
-<p className="text-muted-foreground">
-          Welcome back! Here&apos;s what&apos;s happening.
-        </p>
-        {/* Dashboard debug removed - May 11 2026 */}
+        <p className="text-muted-foreground">Welcome back! Here's what's happening.</p>
+        
+        {/* Temporary Debug - remove after fix */}
+        <div className="text-xs bg-muted p-2 mt-2 rounded">
+          Debug: Companies = {stats.companies} | Candidates = {stats.contacts} | 
+          Loading: {statsLoading ? "Yes" : "No"}
+        </div>
       </div>
 
       {/* Stats Cards */}

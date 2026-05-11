@@ -32,13 +32,15 @@ export function useDashboardStats() {
   const { data: leads = [], isLoading: loadingLeads, error: leadsError } = useLeads();
   const { data: pipeline = [], isLoading: loadingPipeline } = usePipeline();
 
-  // Debug logging
-  console.log("Dashboard Data:", { 
+// Debug logging with null safety and error details
+  console.log("Dashboard Data:", {
     clientsCount: clients?.length || 0, 
     leadsCount: leads?.length || 0, 
     pipelineCount: pipeline?.length || 0,
-    clientsError,
-    leadsError 
+    clientsError: clientsError?.message || null,
+    leadsError: leadsError?.message || null,
+    clientsLoaded: !!clients,
+    leadsLoaded: !!leads
   });
 
   const stats: DashboardStats = {
