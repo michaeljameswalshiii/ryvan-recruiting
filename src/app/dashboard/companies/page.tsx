@@ -1,6 +1,11 @@
+/**
+ * Companies Page
+ * 100% database-driven using TanStack Query hooks
+ */
+
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Building2, MapPin, Users, Globe, Linkedin, Search, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,9 +13,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
-// Use client API (SECURE - goes through server API, not directly to AWS)
-import { fetchClients, createClient, updateClient, deleteClient } from "@/lib/api/client-api";
-import { clientKeys } from "@/lib/hooks/query-client";
+import { Skeleton } from "@/components/ui/skeleton";
+// Use TanStack Query hooks - server actions for DB access
+import { useClients, useCreateClient, clientKeys } from "@/lib/hooks/query-client";
 
 interface Company {
   id: string;
@@ -26,65 +31,24 @@ interface Company {
   description?: string;
 }
 
-// Mock data for demo (fallback when no DB)
-const initialCompanies: Company[] = [
-  {
-    id: "1",
-    name: "ABC Construction Corp",
-    domain: "abconstr.com",
-    linkedin_url: "https://linkedin.com/company/abc-construction",
-    city: "Boca Raton",
-    state: "FL",
-    country: "US",
-    employee_count: 250,
-    industry: "Construction",
-    revenue: "$25M-$50M",
-    description: "General construction company specializing in commercial buildings",
-  },
-  {
-    id: "2",
-    name: "Sunrise Builders Inc",
-    domain: "sunrisebuilders.com",
-    linkedin_url: "https://linkedin.com/company/sunrise-builders",
-    city: "Boca Raton",
-    state: "FL",
-    country: "US",
-    employee_count: 180,
-    industry: "Construction",
-    revenue: "$10M-$25M",
-    description: "Residential and commercial builder",
-  },
-  {
-    id: "3",
-    name: "Elite Contractors LLC",
-    domain: "elitecontractors.com",
-    linkedin_url: "https://linkedin.com/company/elite-contractors",
-    city: "Boca Raton",
-    state: "FL",
-    country: "US",
-    employee_count: 320,
-    industry: "Construction",
-    revenue: "$50M-$100M",
-    description: "High-end commercial contractor",
-  },
+const columns = [
+  { id: "new", title: "New", color: "bg-blue-500" },
+  { id: "contacted", title: "Contacted", color: "bg-yellow-500" },
+  { id: "qualified", title: "Qualified", color: "bg-orange-500" },
+  { id: "proposal", title: "Proposal", color: "bg-purple-500" },
+  { id: "closed", title: "Closed Won", color: "bg-green-500" },
 ];
-
-// Get tenant ID from session or use default
-// Note: auth.ts stores this as "tenantId" not "tenant_id"
-function getTenantId(): string {
-  if (typeof window === "undefined") return "default";
-  // Check both keys for compatibility
-  return localStorage.getItem("tenantId") || localStorage.getItem("tenant_id") || "default";
-}
 
 export default function CompaniesPage() {
   const queryClient = useQueryClient();
-  const [companies, setCompanies] = useState<Company[]>(initialCompanies);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [dbReady, setDbReady] = useState(false);
-  
-  // New company form state
+
+  // Use TanStack Query hooks - fetches from DB via server actions
+  const { data: clients = [], isLoading, error } = useClients();
+  const createClientMutation = useCreateClient();
+
+  // Form state
   const [newCompanyName, setNewCompanyName] = useState("");
   const [newCompanyDomain, setNewCompanyDomain] = useState("");
   const [newCompanyIndustry, setNewCompanyIndustry] = useState("");
@@ -94,134 +58,55 @@ export default function CompaniesPage() {
   const [newCompanyRevenue, setNewCompanyRevenue] = useState("");
   const [newCompanyDescription, setNewCompanyDescription] = useState("");
 
-// Load companies from API or localStorage on mount
-  useEffect(() => {
-    async function loadCompanies() {
-      try {
-        // Try secure API first (uses session cookie for auth/tenant)
-        // Note: API may succeed but return empty array if no data exists yet
-        const dbCompanies = await fetchClients();
-        
-        // dbReady should be true if we can connect to DB, regardless of empty results
-        // This ensures new companies are saved to DB, not just localStorage
-        setDbReady(true);
-        
-        if (dbCompanies && dbCompanies.length > 0) {
-          // Convert DB format to Company format
-          const formattedCompanies: Company[] = dbCompanies.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            domain: c.domain || "",
-            city: c.city || "",
-            state: c.state || "",
-            country: "US",
-            employee_count: c.employee_count || 0,
-            industry: c.industry || "",
-            revenue: c.revenue || "",
-            description: c.description || "",
-          }));
-          setCompanies(formattedCompanies);
-          // Also save to localStorage for backup
-          localStorage.setItem("companies", JSON.stringify(formattedCompanies));
-          return;
-        }
-        
-        // DB is connected but empty - use initial companies as template
-        // These will be saved to DB when user adds them
-        setCompanies(initialCompanies);
-        localStorage.setItem("companies", JSON.stringify(initialCompanies));
-        return;
-      } catch (err) {
-        console.log("DynamoDB not available, checking localStorage...");
-        setDbReady(false);
-      }
-      
-      // Fallback to localStorage
-      const stored = localStorage.getItem("companies");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          setCompanies(parsed);
-          setDbReady(false);
-          return;
-        } catch {}
-      }
-      
-      // No data found - use mock but save to localStorage
-      localStorage.setItem("companies", JSON.stringify(initialCompanies));
-    }
-    loadCompanies();
-  }, []);
-
-  const filteredCompanies = companies.filter((company) =>
-    company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    company.industry?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    company.city?.toLowerCase().includes(searchQuery.toLowerCase())
+  // Filter clients based on search
+  const filteredClients = clients.filter((client: any) =>
+    client.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    client.industry?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    client.city?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-const handleAddCompany = async () => {
+  // Convert DB client to Company interface
+  const companies: Company[] = filteredClients.map((c: any) => ({
+    id: c.id,
+    name: c.name || "",
+    domain: c.domain || "",
+    city: c.city || "",
+    state: c.state || "",
+    country: c.country || "",
+    employee_count: c.employee_count || 0,
+    industry: c.industry || "",
+    revenue: c.revenue || "",
+    description: c.description || "",
+    linkedin_url: c.linkedin_url || "",
+  }));
+
+  const handleAddCompany = async () => {
     if (!newCompanyName) return;
-    
-    const newCompany: Company = {
-      id: Date.now().toString(),
-      name: newCompanyName,
-      domain: newCompanyDomain,
-      industry: newCompanyIndustry,
-      city: newCompanyCity,
-      state: newCompanyState,
-      country: "US",
-      employee_count: newCompanyEmployeeCount ? parseInt(newCompanyEmployeeCount) : undefined,
-      revenue: newCompanyRevenue,
-      description: newCompanyDescription,
-      linkedin_url: undefined,
-    };
-    
-    // Update state and persist to localStorage
-    setCompanies((prev) => {
-      const updated = [...prev, newCompany];
-      localStorage.setItem("companies", JSON.stringify(updated));
-      return updated;
-    });
-    setIsAddDialogOpen(false);
-    
-// Save to API (tenant_id is enforced by server from session cookie)
-    if (dbReady) {
-      try {
-        await createClient({
-          name: newCompany.name,
-          email: `${newCompany.id}@placeholder.com`,
-          phone: newCompanyEmployeeCount,
-          company: newCompany.description,
-          domain: newCompanyDomain,
-          industry: newCompanyIndustry,
-          city: newCompanyCity,
-          state: newCompanyState,
-          country: "US",
-          employee_count: newCompanyEmployeeCount ? parseInt(newCompanyEmployeeCount) : undefined,
-          revenue: newCompanyRevenue,
-          description: newCompanyDescription,
-        });
-// Invalidate all related queries so dashboard count updates
-        queryClient.invalidateQueries({ queryKey: ['clients'], refetchType: 'all' });
-        queryClient.invalidateQueries({ queryKey: clientKeys.lists(), refetchType: 'all' });
-        // Also invalidate dashboard queries
-        queryClient.invalidateQueries({ queryKey: ['dashboard'], refetchType: 'all' });
-        queryClient.invalidateQueries({ queryKey: ['stats'], refetchType: 'all' });
-        // Also invalidate leads and pipeline (in case same data affects them)
-        queryClient.invalidateQueries({ queryKey: ['leads'], refetchType: 'all' });
-        queryClient.invalidateQueries({ queryKey: ['pipeline'], refetchType: 'all' });
-        // Show success (without hard reload - React Query will auto-update)
-        alert("Company added successfully!");
-      } catch (err) {
-        console.error("Failed to save company to DB:", err);
-        alert("Note: Company saved locally but failed to save to database");
-      }
-    } else {
-      // No DB - just show local success
-      alert("Company added successfully!");
+
+    // Build FormData for server action
+    const formData = new FormData();
+    formData.set("name", newCompanyName);
+    formData.set("email", `${Date.now()}@placeholder.com`);
+    formData.set("domain", newCompanyDomain);
+    formData.set("industry", newCompanyIndustry);
+    formData.set("city", newCompanyCity);
+    formData.set("state", newCompanyState);
+    formData.set("country", "US");
+    if (newCompanyEmployeeCount) {
+      formData.set("employee_count", newCompanyEmployeeCount);
     }
-    
-    // Reset form
+    formData.set("revenue", newCompanyRevenue);
+    formData.set("description", newCompanyDescription);
+
+    // Use mutation - handles DB save + query invalidation + toast
+    await createClientMutation.mutateAsync(formData);
+
+    // Close dialog and reset form
+    setIsAddDialogOpen(false);
+    resetForm();
+  };
+
+  const resetForm = () => {
     setNewCompanyName("");
     setNewCompanyDomain("");
     setNewCompanyIndustry("");
@@ -232,8 +117,54 @@ const handleAddCompany = async () => {
     setNewCompanyDescription("");
   };
 
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['stats'] });
+  };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Companies</h1>
+          <p className="text-muted-foreground">Manage your target companies.</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="p-4 rounded-lg border border-border bg-card">
+              <Skeleton className="h-12 w-12 rounded-lg mb-3" />
+              <Skeleton className="h-4 w-3/4 mb-2" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Companies</h1>
+          <p className="text-muted-foreground">Manage your target companies.</p>
+        </div>
+        <div className="p-4 rounded-md bg-destructive/10 text-destructive">
+          Failed to load companies. Please try again.
+          <Button variant="outline" onClick={handleRefresh} className="ml-4">
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Companies</h1>
@@ -241,17 +172,13 @@ const handleAddCompany = async () => {
             Manage your target companies.
           </p>
         </div>
-<div className="flex gap-2">
-          <Button variant="outline" onClick={() => {
-            queryClient.invalidateQueries({ queryKey: ['clients'] });
-            queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['stats'] });
-          }}>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleRefresh}>
             Refresh
           </Button>
-          <Button onClick={() => setIsAddDialogOpen(true)}>
+          <Button onClick={() => setIsAddDialogOpen(true)} disabled={createClientMutation.isPending}>
             <Plus className="mr-2 h-4 w-4" />
-            Add Company
+            {createClientMutation.isPending ? "Adding..." : "Add Company"}
           </Button>
         </div>
       </div>
@@ -267,8 +194,11 @@ const handleAddCompany = async () => {
             <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddCompany} disabled={!newCompanyName}>
-              Add Company
+            <Button
+              onClick={handleAddCompany}
+              disabled={!newCompanyName || createClientMutation.isPending}
+            >
+              {createClientMutation.isPending ? "Adding..." : "Add Company"}
             </Button>
           </>
         }
@@ -366,88 +296,93 @@ const handleAddCompany = async () => {
       </div>
 
       {/* Companies Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredCompanies.map((company) => (
-          <div
-            key={company.id}
-            className="p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors"
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Building2 className="h-6 w-6 text-primary" />
+      {companies.length > 0 ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {companies.map((company) => (
+            <div
+              key={company.id}
+              className="p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Building2 className="h-6 w-6 text-primary" />
+                </div>
+                <button className="text-muted-foreground hover:text-foreground">
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
               </div>
-              <button className="text-muted-foreground hover:text-foreground">
-                <MoreHorizontal className="h-4 w-4" />
-              </button>
+
+              <h3 className="font-semibold mb-1">{company.name}</h3>
+
+              {company.industry && (
+                <p className="text-sm text-muted-foreground mb-3">
+                  {company.industry}
+                </p>
+              )}
+
+              <div className="space-y-2 text-sm">
+                {company.city && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <MapPin className="h-3 w-3" />
+                    {company.city}, {company.state}
+                  </div>
+                )}
+
+                {company.employee_count && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Users className="h-3 w-3" />
+                    {company.employee_count} employees
+                  </div>
+                )}
+
+                {company.revenue && (
+                  <div className="text-primary">
+                    {company.revenue}
+                  </div>
+                )}
+              </div>
+
+              {company.description && (
+                <p className="mt-3 text-sm text-muted-foreground line-clamp-2">
+                  {company.description}
+                </p>
+              )}
+
+              <div className="flex gap-2 mt-3 pt-3 border-t border-border">
+                {company.linkedin_url && (
+                  <a
+                    href={company.linkedin_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
+                  >
+                    <Linkedin className="h-4 w-4" />
+                    LinkedIn
+                  </a>
+                )}
+                {company.domain && (
+                  <a
+                    href={`https://${company.domain}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
+                  >
+                    <Globe className="h-4 w-4" />
+                    Website
+                  </a>
+                )}
+              </div>
             </div>
-
-            <h3 className="font-semibold mb-1">{company.name}</h3>
-            
-            {company.industry && (
-              <p className="text-sm text-muted-foreground mb-3">
-                {company.industry}
-              </p>
-            )}
-
-            <div className="space-y-2 text-sm">
-              {company.city && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <MapPin className="h-3 w-3" />
-                  {company.city}, {company.state}
-                </div>
-              )}
-              
-              {company.employee_count && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Users className="h-3 w-3" />
-                  {company.employee_count} employees
-                </div>
-              )}
-
-              {company.revenue && (
-                <div className="text-primary">
-                  {company.revenue}
-                </div>
-              )}
-            </div>
-
-            {company.description && (
-              <p className="mt-3 text-sm text-muted-foreground line-clamp-2">
-                {company.description}
-              </p>
-            )}
-
-            <div className="flex gap-2 mt-3 pt-3 border-t border-border">
-              {company.linkedin_url && (
-                <a
-                  href={company.linkedin_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
-                >
-                  <Linkedin className="h-4 w-4" />
-                  LinkedIn
-                </a>
-              )}
-              {company.domain && (
-                <a
-                  href={`https://${company.domain}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
-                >
-                  <Globe className="h-4 w-4" />
-                  Website
-                </a>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {filteredCompanies.length === 0 && (
+          ))}
+        </div>
+      ) : (
         <div className="p-8 text-center text-muted-foreground">
-          No companies found matching your search.
+          <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+          <p>No companies yet.</p>
+          <Button onClick={() => setIsAddDialogOpen(true)} className="mt-4">
+            <Plus className="mr-2 h-4 w-4" />
+            Add Your First Company
+          </Button>
         </div>
       )}
     </div>

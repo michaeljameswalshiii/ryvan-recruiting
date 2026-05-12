@@ -1,46 +1,29 @@
 /**
- * Test script to force confirm a user in AWS Cognito
- * Run: node confirm-user.js
+ * Confirm user in Cognito
  */
 
-const { CognitoIdentityProviderClient, AdminConfirmSignUpCommand, AdminGetUserCommand } = require("@aws-sdk/client-cognito-identity-provider");
+const { CognitoIdentityProviderClient, AdminConfirmSignUpCommand } = require("@aws-sdk/client-cognito-identity-provider");
 
-const region = "us-east-1";
+const client = new CognitoIdentityProviderClient({ region: "us-east-1" });
 const userPoolId = "us-east-1_ouSZGnQwC";
 
-const email = process.argv[2] || "Ryan@ryvanrecruiting.com";
+// User sub from michaeljameswalshiii@gmail.com
+const username = "34689498-40a1-70e2-e604-aeb2af721269";
 
 async function confirmUser() {
-  console.log(`Confirming user: ${email}`);
-  console.log(`User Pool ID: ${userPoolId}`);
-  console.log("---");
-
-  const client = new CognitoIdentityProviderClient({ region });
-
+  console.log(`=== Confirming user: ${username} ===\n`);
+  
   try {
-    // First, check current user status
-    const getCommand = new AdminGetUserCommand({
+    const result = await client.send(new AdminConfirmSignUpCommand({
+      Username: username,
       UserPoolId: userPoolId,
-      Username: email,
-    });
+    }));
     
-    const userInfo = await client.send(getCommand);
-    console.log("Current status:", userInfo.UserStatus);
-    console.log("Enabled:", userInfo.Enabled);
-    console.log("---");
-
-    // Now confirm the user
-    const command = new AdminConfirmSignUpCommand({
-      UserPoolId: userPoolId,
-      Username: email,
-    });
-
-    await client.send(command);
-    console.log("✅ User confirmed successfully!");
+    console.log('✅ User confirmed successfully!');
+    console.log('Response:', result);
     
-  } catch (error) {
-    console.error("❌ Confirm failed:", error.message);
-    throw error;
+  } catch (e) {
+    console.log('❌ Error:', e.message);
   }
 }
 

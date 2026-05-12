@@ -1,6 +1,12 @@
+/**
+ * Pipeline Page
+ * 100% database-driven using TanStack Query hooks
+ * Kanban board with drag-and-drop
+ */
+
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, MoreHorizontal, Mail, Phone, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,8 +14,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
-// Use client API (SECURE - goes through server API, not directly to AWS)
-import { fetchLeads, createLead, updateLead, deleteLead } from "@/lib/api/client-api";
+import { Skeleton } from "@/components/ui/skeleton";
+// Use TanStack Query hooks - server actions for DB access
+import { usePipeline, useCreatePipeline, useUpdatePipeline, pipelineKeys } from "@/lib/hooks/query-pipeline";
+import { leadKeys } from "@/lib/hooks/query-lead";
+import { clientKeys } from "@/lib/hooks/query-client";
 
 interface Lead {
   id: string;
@@ -22,47 +31,6 @@ interface Lead {
   created_at: string;
 }
 
-// Mock data for demo (fallback when no DB)
-const initialLeads: Lead[] = [
-  {
-    id: "1",
-    name: "John Smith",
-    email: "john@abcconstruction.com",
-    company: "ABC Construction Corp",
-    phone: "561-555-0101",
-    status: "new",
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: "2",
-    name: "Sarah Johnson",
-    email: "sarah@sunrisebuilders.com",
-    company: "Sunrise Builders Inc",
-    phone: "561-555-0102",
-    status: "contacted",
-    notes: "Interested in our staffing services",
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: "3",
-    name: "Mike Williams",
-    email: "mike@elitecontractors.com",
-    company: "Elite Contractors LLC",
-    phone: "561-555-0103",
-    status: "qualified",
-    notes: "Looking for 5+ candidates",
-    created_at: new Date().toISOString(),
-  },
-];
-
-// Get tenant ID from session or use default
-// Note: auth.ts stores this as "tenantId" not "tenant_id"
-function getTenantId(): string {
-  if (typeof window === "undefined") return "default";
-  // Check both keys for compatibility
-  return localStorage.getItem("tenantId") || localStorage.getItem("tenant_id") || "default";
-}
-
 const columns = [
   { id: "new", title: "New", color: "bg-blue-500" },
   { id: "contacted", title: "Contacted", color: "bg-yellow-500" },
@@ -73,62 +41,32 @@ const columns = [
 
 export default function PipelinePage() {
   const queryClient = useQueryClient();
-  const [leads, setLeads] = useState<Lead[]>(initialLeads);
   const [draggedLead, setDraggedLead] = useState<string | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [dbReady, setDbReady] = useState(false);
-  
-  // New lead form state
+
+  // Use TanStack Query hooks - fetches from DB via server actions
+  const { data: pipelineItems = [], isLoading, error } = usePipeline();
+  const createPipelineMutation = useCreatePipeline();
+  const updatePipelineMutation = useUpdatePipeline();
+
+  // Form state
   const [newLeadName, setNewLeadName] = useState("");
   const [newLeadEmail, setNewLeadEmail] = useState("");
   const [newLeadCompany, setNewLeadCompany] = useState("");
   const [newLeadPhone, setNewLeadPhone] = useState("");
   const [newLeadNotes, setNewLeadNotes] = useState("");
 
-// Load leads from API or localStorage on mount
-  useEffect(() => {
-    async function loadLeads() {
-      try {
-        // Try secure API first (uses session cookie for auth/tenant)
-        const dbLeads = await fetchLeads();
-        if (dbLeads && dbLeads.length > 0) {
-          // Convert DB format to Lead format
-          const formattedLeads: Lead[] = dbLeads.map((l: any) => ({
-            id: l.id,
-            name: l.name,
-            email: l.email,
-            company: l.company || "",
-            phone: l.phone || "",
-            status: (l.status as Lead["status"]) || "new",
-            notes: l.notes || "",
-            created_at: l.created_at || new Date().toISOString(),
-          }));
-          setLeads(formattedLeads);
-          setDbReady(true);
-          // Also save to localStorage for backup
-          localStorage.setItem("leads", JSON.stringify(formattedLeads));
-          return;
-        }
-      } catch (err) {
-        console.log("DynamoDB not available, checking localStorage...");
-      }
-      
-      // Fallback to localStorage
-      const stored = localStorage.getItem("leads");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          setLeads(parsed);
-          setDbReady(false);
-          return;
-        } catch {}
-      }
-      
-      // No data found - use mock but save to localStorage
-      localStorage.setItem("leads", JSON.stringify(initialLeads));
-    }
-    loadLeads();
-  }, []);
+  // Convert DB items to Lead interface
+  const leads: Lead[] = pipelineItems.map((item: any) => ({
+    id: item.id,
+    name: item.name || "",
+    email: item.email || "",
+    company: item.company || "",
+    phone: item.phone || "",
+    status: (item.status as Lead["status"]) || "new",
+    notes: item.notes || "",
+    created_at: item.created_at || new Date().toISOString(),
+  }));
 
   const getLeadsByStatus = (status: string) => {
     return leads.filter((lead) => lead.status === status);
@@ -142,90 +80,43 @@ export default function PipelinePage() {
     e.preventDefault();
   };
 
-const handleDrop = async (status: Lead["status"]) => {
-    if (draggedLead) {
-      const leadId = draggedLead;
-      // Update state and persist to localStorage
-      setLeads((prev) => {
-        const updated = prev.map((lead) =>
-          lead.id === draggedLead ? { ...lead, status } : lead
-        );
-        localStorage.setItem("leads", JSON.stringify(updated));
-        return updated;
-      });
-      
-// Save status change to API (tenant_id enforced by server from session cookie)
-      if (dbReady) {
-        try {
-          const lead = leads.find(l => l.id === leadId);
-          if (lead) {
-            await updateLead(leadId, {
-              name: lead.name,
-              email: lead.email,
-              company: lead.company || "",
-              status: status,
-              notes: lead.notes || "",
-            });
-          }
-        } catch (err) {
-          console.error("Failed to update lead status in DB:", err);
-        }
-      }
-      
-      setDraggedLead(null);
-    }
-  };
+  const handleDrop = async (status: Lead["status"]) => {
+    if (!draggedLead) return;
 
-  const getColumnCount = (status: string) => {
-    return leads.filter((lead) => lead.status === status).length;
-  };
+    // Build FormData for update
+    const formData = new FormData();
+    formData.set("status", status);
 
-const handleAddLead = async () => {
-    if (!newLeadName || !newLeadEmail) return;
-    
-    const newLead: Lead = {
-      id: Date.now().toString(),
-      name: newLeadName,
-      email: newLeadEmail,
-      company: newLeadCompany,
-      phone: newLeadPhone,
-      status: "new",
-      notes: newLeadNotes,
-      created_at: new Date().toISOString(),
-    };
-    
-    // Update state and persist to localStorage
-    setLeads((prev) => {
-      const updated = [...prev, newLead];
-      localStorage.setItem("leads", JSON.stringify(updated));
-      return updated;
+    // Use mutation - handles DB save + query invalidation + toast
+    await updatePipelineMutation.mutateAsync({
+      pipelineId: draggedLead,
+      formData,
     });
+
+    setDraggedLead(null);
+  };
+
+  const handleAddLead = async () => {
+    if (!newLeadName || !newLeadEmail) return;
+
+    // Build FormData for server action
+    const formData = new FormData();
+    formData.set("name", newLeadName);
+    formData.set("email", newLeadEmail);
+    formData.set("company", newLeadCompany);
+    formData.set("phone", newLeadPhone);
+    formData.set("notes", newLeadNotes);
+    formData.set("status", "new");
+
+    // Use mutation - handles DB save + query invalidation + toast
+    await createPipelineMutation.mutateAsync(formData);
+
+    // Close dialog and reset form
     setIsAddDialogOpen(false);
-    
-// Save to API (tenant_id enforced by server from session cookie)
-    if (dbReady) {
-      try {
-        await createLead({
-          name: newLead.name,
-          email: newLead.email,
-          company: newLead.company,
-          phone: newLead.phone,
-          status: newLead.status,
-          notes: newLeadNotes,
-        });
-        // Invalidate all related queries so dashboard stats update
-        queryClient.invalidateQueries({ queryKey: ['leads'] });
-        queryClient.invalidateQueries({ queryKey: ['pipeline'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-        queryClient.invalidateQueries({ queryKey: ['stats'] });
-        // Also invalidate clients
-        queryClient.invalidateQueries({ queryKey: ['clients'] });
-      } catch (err) {
-        console.error("Failed to save lead to DB:", err);
-      }
-    }
-    
-    // Reset form
+    resetForm();
+  };
+
+  const resetForm = () => {
     setNewLeadName("");
     setNewLeadEmail("");
     setNewLeadCompany("");
@@ -233,8 +124,67 @@ const handleAddLead = async () => {
     setNewLeadNotes("");
   };
 
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['stats'] });
+  };
+
+  const getColumnCount = (status: string) => {
+    return leads.filter((lead) => lead.status === status).length;
+  };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Pipeline</h1>
+          <p className="text-muted-foreground">Manage your outreach leads.</p>
+        </div>
+        <div className="flex gap-4 overflow-x-auto">
+          {columns.map((col) => (
+            <div key={col.id} className="flex-shrink-0 w-72">
+              <div className="flex items-center gap-2 mb-3">
+                <div className={`h-2 w-2 rounded-full ${col.color}`} />
+                <h3 className="font-medium">{col.title}</h3>
+              </div>
+              <div className="space-y-3 min-h-[400px] p-2 rounded-lg bg-muted/50">
+                {[1, 2].map((i) => (
+                  <div key={i} className="p-3 rounded-md bg-background border">
+                    <Skeleton className="h-4 w-24 mb-2" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Pipeline</h1>
+          <p className="text-muted-foreground">Manage your outreach leads.</p>
+        </div>
+        <div className="p-4 rounded-md bg-destructive/10 text-destructive">
+          Failed to load pipeline. Please try again.
+          <Button variant="outline" onClick={handleRefresh} className="ml-4">
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Pipeline</h1>
@@ -242,10 +192,15 @@ const handleAddLead = async () => {
             Manage your outreach leads.
           </p>
         </div>
-        <Button onClick={() => setIsAddDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Lead
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleRefresh}>
+            Refresh
+          </Button>
+          <Button onClick={() => setIsAddDialogOpen(true)} disabled={createPipelineMutation.isPending}>
+            <Plus className="mr-2 h-4 w-4" />
+            {createPipelineMutation.isPending ? "Adding..." : "Add Lead"}
+          </Button>
+        </div>
       </div>
 
       {/* Add Lead Dialog */}
@@ -259,8 +214,11 @@ const handleAddLead = async () => {
             <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddLead} disabled={!newLeadName || !newLeadEmail}>
-              Add Lead
+            <Button
+              onClick={handleAddLead}
+              disabled={!newLeadName || !newLeadEmail || createPipelineMutation.isPending}
+            >
+              {createPipelineMutation.isPending ? "Adding..." : "Add Lead"}
             </Button>
           </>
         }

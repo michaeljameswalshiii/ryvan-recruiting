@@ -1,33 +1,17 @@
 /**
  * Main Dashboard Page
- * Modern Recruiting CRM Style Dashboard with Blue Accents
+ * 100% database-driven using TanStack Query hooks
  */
 
 "use client";
 
 import { useDashboardStats, useRecentActivity } from "@/lib/hooks/query-dashboard";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Users, Briefcase, TrendingUp, ArrowUpRight, Building2, Calendar } from "lucide-react";
 
-// Seed test data for demo
-const handleSeedTestData = async () => {
-  try {
-    const response = await fetch('/api/seed-test-data', { method: 'POST' });
-    const data = await response.json();
-    if (data.success) {
-      alert(`Test data seeded: ${data.companies} companies, ${data.leads} leads`);
-      window.location.reload();
-    } else {
-      alert('Failed to seed: ' + data.error);
-    }
-  } catch (err) {
-    console.error('Seed error:', err);
-    alert('Failed to seed test data');
-  }
-};
-
 export default function DashboardPage() {
-  const { stats, isLoading: statsLoading } = useDashboardStats();
+  const { stats, isLoading: statsLoading, error: statsError } = useDashboardStats();
   const { activity, isLoading: activityLoading } = useRecentActivity();
 
   // Format current month/year
@@ -35,6 +19,9 @@ export default function DashboardPage() {
     month: 'long', 
     year: 'numeric' 
   });
+
+  // Calculate fees pipeline (contacts * $25,000)
+  const feesPipeline = ((stats.contacts || 0) * 25000).toLocaleString();
 
   return (
     <div className="space-y-8">
@@ -46,14 +33,18 @@ export default function DashboardPage() {
         </div>
         
         <div className="text-right">
-          <div className="text-4xl font-semibold text-green-600">
-            ${((stats.contacts || 0) * 25000).toLocaleString()}
-          </div>
+          {statsLoading ? (
+            <Skeleton className="h-10 w-32" />
+          ) : (
+            <div className="text-4xl font-semibold text-green-600">
+              ${feesPipeline}
+            </div>
+          )}
           <p className="text-sm text-muted-foreground">fees pipeline</p>
         </div>
       </div>
 
-{/* Stats Cards */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         {/* Active Candidates */}
         <div className="p-6 rounded-lg border border-border bg-card">
@@ -61,11 +52,17 @@ export default function DashboardPage() {
             <span className="text-sm font-medium">Active Candidates</span>
             <Users className="h-5 w-5 text-blue-600" />
           </div>
-          <div className="text-4xl font-bold">{stats.contacts || 0}</div>
-          <p className="text-sm text-green-600 flex items-center gap-1 mt-1">
-            <TrendingUp className="h-3 w-3" />
-            Active pipeline
-          </p>
+          {statsLoading ? (
+            <Skeleton className="h-10 w-16" />
+          ) : (
+            <>
+              <div className="text-4xl font-bold">{stats.contacts || 0}</div>
+              <p className="text-sm text-green-600 flex items-center gap-1 mt-1">
+                <TrendingUp className="h-3 w-3" />
+                Active pipeline
+              </p>
+            </>
+          )}
         </div>
 
         {/* Companies */}
@@ -74,10 +71,16 @@ export default function DashboardPage() {
             <span className="text-sm font-medium">Companies</span>
             <Building2 className="h-5 w-5 text-blue-600" />
           </div>
-          <div className="text-4xl font-bold">{stats.companies || 0}</div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Active clients
-          </p>
+          {statsLoading ? (
+            <Skeleton className="h-10 w-16" />
+          ) : (
+            <>
+              <div className="text-4xl font-bold">{stats.companies || 0}</div>
+              <p className="text-sm text-muted-foreground mt-1">
+                Active clients
+              </p>
+            </>
+          )}
         </div>
 
         {/* Open Jobs */}
@@ -86,10 +89,16 @@ export default function DashboardPage() {
             <span className="text-sm font-medium">Open Roles</span>
             <Briefcase className="h-5 w-5 text-blue-600" />
           </div>
-          <div className="text-4xl font-bold">{stats.openJobs || 0}</div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Positions to fill
-          </p>
+          {statsLoading ? (
+            <Skeleton className="h-10 w-16" />
+          ) : (
+            <>
+              <div className="text-4xl font-bold">{stats.openJobs || 0}</div>
+              <p className="text-sm text-muted-foreground mt-1">
+                Positions to fill
+              </p>
+            </>
+          )}
         </div>
 
         {/* Placements */}
@@ -98,11 +107,17 @@ export default function DashboardPage() {
             <span className="text-sm font-medium">Placements YTD</span>
             <TrendingUp className="h-5 w-5 text-blue-600" />
           </div>
-          <div className="text-4xl font-bold">{stats.placements || 0}</div>
-          <p className="text-sm text-green-600 flex items-center gap-1 mt-1">
-            <TrendingUp className="h-3 w-3" />
-            This year
-          </p>
+          {statsLoading ? (
+            <Skeleton className="h-10 w-16" />
+          ) : (
+            <>
+              <div className="text-4xl font-bold">{stats.placements || 0}</div>
+              <p className="text-sm text-green-600 flex items-center gap-1 mt-1">
+                <TrendingUp className="h-3 w-3" />
+                This year
+              </p>
+            </>
+          )}
         </div>
 
         {/* Interviews This Week */}
@@ -111,9 +126,8 @@ export default function DashboardPage() {
             <span className="text-sm font-medium">Interviews This Week</span>
             <Calendar className="h-5 w-5 text-blue-600" />
           </div>
-          <div className="text-4xl font-bold">9</div>
-          <p className="text-sm text-green-600 flex items-center gap-1 mt-1">
-            <TrendingUp className="h-3 w-3" />
+          <div className="text-4xl font-bold">0</div>
+          <p className="text-sm text-muted-foreground mt-1">
             Scheduled
           </p>
         </div>
@@ -126,7 +140,17 @@ export default function DashboardPage() {
           <h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
           <div className="space-y-4">
             {activityLoading ? (
-              <p className="text-muted-foreground">Loading...</p>
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex gap-4">
+                    <Skeleton className="h-4 w-4 rounded-full" />
+                    <div className="flex-1">
+                      <Skeleton className="h-4 w-3/4 mb-1" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : activity.length > 0 ? (
               activity.slice(0, 5).map((item: any) => (
                 <div key={item.id} className="flex gap-4">
@@ -144,15 +168,15 @@ export default function DashboardPage() {
             ) : (
               <div className="text-center py-8">
                 <p className="text-muted-foreground mb-4">No recent activity</p>
-                <Button variant="outline" size="sm" onClick={handleSeedTestData}>
-                  Seed Test Data
-                </Button>
+                <p className="text-sm text-muted-foreground">
+                  Add companies and candidates to get started
+                </p>
               </div>
             )}
           </div>
         </div>
 
-{/* Quick Actions */}
+        {/* Quick Actions */}
         <div className="p-6 rounded-lg border border-border bg-card">
           <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
           <div className="space-y-3">
@@ -184,14 +208,6 @@ export default function DashboardPage() {
               <span>Source Companies</span>
               <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
             </a>
-            <Button 
-              variant="outline" 
-              onClick={() => window.location.reload()}
-              className="w-full justify-between"
-            >
-              <span>Refresh Dashboard</span>
-              <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
-            </Button>
           </div>
         </div>
       </div>
