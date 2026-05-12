@@ -26,86 +26,54 @@ export default function CandidatesPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
-const APOLLO_API_KEY = process.env.NEXT_PUBLIC_APOLLO_API_KEY || "";
-
-  // People Enrichment Function - for enriching saved candidates
-  const enrichPerson = async (input: {
-    first_name?: string;
-    last_name?: string;
-    email?: string;
-    organization_name?: string;
-    domain?: string;
-  }) => {
-    if (!APOLLO_API_KEY) {
-      throw new Error("Apollo API key is not configured. Please add NEXT_PUBLIC_APOLLO_API_KEY in Vercel settings.");
-    }
-
-    const res = await fetch("https://api.apollo.io/api/v1/people/match", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Api-Key": APOLLO_API_KEY,
-      },
-      body: JSON.stringify({
-        ...input,
-        reveal_personal_emails: false,   // set true only when needed (costs more credits)
-        reveal_phone_number: false,
-      }),
-    });
-
-    if (!res.ok) throw new Error(`Enrichment failed: ${res.status}`);
-    return res.json();
-  };
-
-const searchCandidates = async () => {
+  const searchCandidates = async () => {
     if (!query.trim()) return;
-    
+
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
 
     try {
-      if (!APOLLO_API_KEY) {
-        throw new Error("Apollo API key is not configured. Please add NEXT_PUBLIC_APOLLO_API_KEY in Vercel settings.");
-      }
-
-    // Use server-side proxy to avoid CORS
-    const response = await fetch("/api/apollo/people", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      // Build clean payload
+      const payload = {
         q: query,
         locations: [location],
         per_page: 20,
-      }),
-    });
+      };
 
-    if (!response.ok) {
-      throw new Error("Search failed");
-    }
+      // Use server-side proxy to avoid CORS
+      const response = await fetch("/api/apollo/people", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    const data = await response.json();
-    
-    // Mixed people search returns "people" in "partial_results" or "people"
-    const people = data.people || data.partial_results || [];
-    const candidates = (people).map((person: any) => ({
-      id: person.id || String(Math.random()),
-      name: person.name,
-      title: person.title,
-      organization: person.organization?.name,
-      email: person.email,
-      phone: person.phone_number,
-      linkedin_url: person.linkedin_url,
-      location: person.location,
-      headline: person.headline,
-    }));
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.details || errorData.error || "Search failed");
+      }
 
-    setResults(candidates);
+      const data = await response.json();
 
-} catch (err: any) {
-      console.error("Apollo.io API error:", err);
+      // Mixed people search returns "people"
+      const people = data.people || data.accounts || [];
+      const candidates = (people).map((person: any) => ({
+        id: person.id || String(Math.random()),
+        name: person.name,
+        title: person.title,
+        organization: person.organization?.name,
+        email: person.email,
+        phone: person.phone_number,
+        linkedin_url: person.linkedin_url,
+        location: person.location,
+        headline: person.headline,
+      }));
+
+      setResults(candidates);
+
+    } catch (err: any) {
+      console.error("Search error:", err);
       setError(`Search failed: ${err.message}`);
-      
       setResults([]);
     } finally {
       setIsLoading(false);
@@ -127,11 +95,11 @@ const searchCandidates = async () => {
           linkedin_url: candidate.linkedin_url || "",
         }),
       });
-      
+
       if (!response.ok) {
         throw new Error("Failed to save lead");
       }
-      
+
       alert(`Added ${candidate.name} to leads!`);
     } catch (err) {
       console.error("Error adding lead:", err);
@@ -230,7 +198,7 @@ const searchCandidates = async () => {
                     </div>
                   </div>
                 </div>
-<div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                   {candidate.email && (
                     <a
                       href={`mailto:${candidate.email}`}
