@@ -42,16 +42,16 @@ if (!APOLLO_API_KEY) {
         throw new Error("Apollo API key is not configured. Please add NEXT_PUBLIC_APOLLO_API_KEY in Vercel settings.");
       }
 
-const response = await fetch("https://api.apollo.io/api/v1/organizations/search", {
+const response = await fetch("https://api.apollo.io/api/v1/mixed_companies/search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Api-Key": APOLLO_API_KEY,
         },
         body: JSON.stringify({
-          q: query,                    // keyword / industry
+          q: query,
           locations: [location],
-          organization_num_employees_ranges: [employeeCount],  // correct field name
+          organization_num_employees_ranges: [employeeCount],
           per_page: 20,
         }),
       });
@@ -63,8 +63,9 @@ const response = await fetch("https://api.apollo.io/api/v1/organizations/search"
 
       const data = await response.json();
       
-      // Apollo returns "organizations", not "companies"
-      const companies = (data.organizations || []).map((org: any) => ({
+      // Mixed companies search returns "organizations" in "partial_results" or "organizations"
+      const orgs = data.organizations || data.partial_results || [];
+      const companies = (orgs).map((org: any) => ({
         id: org.id || String(Math.random()),
         name: org.name,
         domain: org.domain,

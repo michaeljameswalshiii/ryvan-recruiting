@@ -26,7 +26,36 @@ export default function CandidatesPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const APOLLO_API_KEY = process.env.NEXT_PUBLIC_APOLLO_API_KEY || "";
+const APOLLO_API_KEY = process.env.NEXT_PUBLIC_APOLLO_API_KEY || "";
+
+  // People Enrichment Function - for enriching saved candidates
+  const enrichPerson = async (input: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    organization_name?: string;
+    domain?: string;
+  }) => {
+    if (!APOLLO_API_KEY) {
+      throw new Error("Apollo API key is not configured. Please add NEXT_PUBLIC_APOLLO_API_KEY in Vercel settings.");
+    }
+
+    const res = await fetch("https://api.apollo.io/api/v1/people/match", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Api-Key": APOLLO_API_KEY,
+      },
+      body: JSON.stringify({
+        ...input,
+        reveal_personal_emails: false,   // set true only when needed (costs more credits)
+        reveal_phone_number: false,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`Enrichment failed: ${res.status}`);
+    return res.json();
+  };
 
   const searchCandidates = async () => {
     if (!query.trim()) return;
@@ -40,17 +69,16 @@ export default function CandidatesPage() {
         throw new Error("Apollo API key is not configured. Please add NEXT_PUBLIC_APOLLO_API_KEY in Vercel settings.");
       }
 
-      const response = await fetch("https://api.apollo.io/api/v1/people/search", {
+const response = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": APOLLO_API_KEY,
+          "Api-Key": APOLLO_API_KEY,
         },
         body: JSON.stringify({
           q: query,
-          location: location,
+          locations: [location],
           per_page: 20,
-          contact_email_verified: true,
         }),
       });
 
@@ -61,7 +89,9 @@ export default function CandidatesPage() {
 
       const data = await response.json();
       
-      const candidates = (data.people || []).map((person: any) => ({
+      // Mixed people search returns "people" in "partial_results" or "people"
+      const people = data.people || data.partial_results || [];
+      const candidates = (people).map((person: any) => ({
         id: person.id || String(Math.random()),
         name: person.name,
         title: person.title,
