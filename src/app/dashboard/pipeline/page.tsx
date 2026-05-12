@@ -164,8 +164,10 @@ export default function PipelinePage() {
     );
   }
 
-  // Error state
-  if (error) {
+// Error state - show empty state for auth errors
+  const isAuthError = error?.message?.includes('Unauthorized');
+
+  if (error && !isAuthError) {
     return (
       <div className="space-y-6">
         <div>

@@ -16,7 +16,7 @@ export const leadSchema = z.object({
   status: z.enum(['new', 'contacted', 'qualified', 'interested', 'not_interested', 'converted']).default('new'),
   source: z.string().max(50).optional().or(z.literal('')),
   notes: z.string().max(2000).optional().or(z.literal('')),
-  linkedin_url: z.string().url().optional().or(z.literal('')),
+linkedin_url: z.string().max(200).optional().or(z.literal('')),
   created_at: z.string().optional(),
   modified_at: z.string().optional(),
 });
