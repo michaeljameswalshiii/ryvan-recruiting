@@ -99,7 +99,13 @@ export default function CompaniesPage() {
     async function loadCompanies() {
       try {
         // Try secure API first (uses session cookie for auth/tenant)
+        // Note: API may succeed but return empty array if no data exists yet
         const dbCompanies = await fetchClients();
+        
+        // dbReady should be true if we can connect to DB, regardless of empty results
+        // This ensures new companies are saved to DB, not just localStorage
+        setDbReady(true);
+        
         if (dbCompanies && dbCompanies.length > 0) {
           // Convert DB format to Company format
           const formattedCompanies: Company[] = dbCompanies.map((c: any) => ({
@@ -115,13 +121,19 @@ export default function CompaniesPage() {
             description: c.description || "",
           }));
           setCompanies(formattedCompanies);
-          setDbReady(true);
           // Also save to localStorage for backup
           localStorage.setItem("companies", JSON.stringify(formattedCompanies));
           return;
         }
+        
+        // DB is connected but empty - use initial companies as template
+        // These will be saved to DB when user adds them
+        setCompanies(initialCompanies);
+        localStorage.setItem("companies", JSON.stringify(initialCompanies));
+        return;
       } catch (err) {
         console.log("DynamoDB not available, checking localStorage...");
+        setDbReady(false);
       }
       
       // Fallback to localStorage
