@@ -11,7 +11,7 @@ export const clientSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional().or(z.literal('')),
   company: z.string().optional().or(z.literal('')),
-  domain: z.string().url().optional().or(z.literal('')),
+domain: z.string().max(100).optional().or(z.literal('')),
   industry: z.string().max(50).optional().or(z.literal('')),
   city: z.string().max(50).optional().or(z.literal('')),
   state: z.string().max(50).optional().or(z.literal('')),
@@ -19,7 +19,7 @@ export const clientSchema = z.object({
   employee_count: z.number().int().positive().optional(),
   revenue: z.string().max(50).optional().or(z.literal('')),
   description: z.string().max(500).optional().or(z.literal('')),
-  linkedin_url: z.string().url().optional().or(z.literal('')),
+linkedin_url: z.string().max(200).optional().or(z.literal('')),
   notes: z.string().max(2000).optional().or(z.literal('')),
 });
 
