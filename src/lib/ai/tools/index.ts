@@ -124,12 +124,14 @@ export function getToolSchemas(): Array<{
 /**
  * Simple tool selection based on query analysis
  * This is the fallback when no tool calling is used
+ * 
+ * ENHANCED: Priority workflow for company research with contact info
  */
 export function selectTools(query: string): string[] {
   const q = query.toLowerCase();
   const tools: string[] = [];
   
-  // Company search keywords (business development)
+  // Company search keywords (business development) - ENHANCED for priority workflow
   const companyKeywords = [
     "company", "companies", "business", "businesses",
     "contractor", "contractors", "manufacturer", "manufacturers",
@@ -138,7 +140,10 @@ export function selectTools(query: string): string[] {
     "organization", "organizations", "firm", "firms",
     "location", "sourcing", "prospects", "prospecting",
     "find companies", "find businesses", "search companies",
-    "real estate", "construction", "manufacturing"
+    "real estate", "construction", "manufacturing",
+    // Priority workflow keywords - find companies in location/industry with contact info
+    "in (city)", "in (state)", "located in", "based in",
+    "industry", "sector", "contact info", "email", "phone"
   ];
   
   // Candidate/people search keywords (recruiting)
@@ -164,8 +169,12 @@ export function selectTools(query: string): string[] {
     "existing", "current", "all", "list"
   ];
   
-  // Add company search tool first (business development)
-  if (companyKeywords.some(kw => q.includes(kw))) {
+  // Add company search tool first (business development - priority workflow)
+  // Check for company keywords + location combo for priority company search
+  const hasCompanyKeywords = companyKeywords.some(kw => q.includes(kw));
+  const hasLocationKeywords = ["in ", "located", "based in", "city", "state"].some(kw => q.includes(kw));
+  
+  if (hasCompanyKeywords || hasLocationKeywords) {
     tools.push(APOLLO_COMPANY_TOOL_NAME);
   }
   
@@ -185,6 +194,18 @@ export function selectTools(query: string): string[] {
   }
   
   return tools;
+}
+
+/**
+ * Select tools based on query complexity for dynamic model routing
+ * Used to determine if complex tool orchestration is needed
+ * 
+ * @param query - User query
+ * @returns Array of tool names
+ */
+export function selectToolsByComplexity(query: string): string[] {
+  // Use the main selectTools function
+  return selectTools(query);
 }
 
 // ============================================================================

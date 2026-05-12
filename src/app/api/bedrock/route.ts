@@ -1,8 +1,16 @@
 /**
  * Bedrock AI API Route
- * Refactored with proper TypeScript, logging, and error handling
+ * Refactored with Dynamic Model Routing + MCP-Style Integration
  * 
  * Features:
+ * - Dynamic Model Routing:
+ *   - Haiku 4.5 for simple queries (fast/cheap)
+ *   - Sonnet 4.6 as default for most agentic work
+ *   - Opus 4.7 for very complex multi-step tasks
+ * - MCP-Style Integration:
+ *   - Clear planning step: identify needed tools before execution
+ *   - Self-reflection: check if results are sufficient
+ *   - Targeted results: go after specific outcomes
  * - Strong TypeScript types for messages and tool results
  * - Structured logging (latency, tokens, cost)
  * - Better error handling with retries
@@ -123,10 +131,117 @@ interface RequestLogMetadata {
 }
 
 // ============================================================================
-// Constants
+// Constants - Dynamic Model Routing
 // ============================================================================
 
-const DEFAULT_MODEL = "minimax.minimax-m2.5";
+/**
+ * Model IDs for Anthropic Claude on AWS Bedrock
+ * 
+ * Routing Strategy:
+ * - Haiku 4.5: Simple queries, summarization, fast lookups (fastest/cheapest)
+ * - Sonnet 4.6: Most agentic work, targeted research, tool orchestration (default)
+ * - Opus 4.7: Very complex multi-step planning, large context (most capable)
+ */
+
+// Haiku 4.5 - Fast/cheap for simple queries
+const MODEL_HAIKU = "anthropic.claude-haiku-4-2025-01-15";
+
+// Sonnet 4.6 - Default for most agentic work  
+const MODEL_SONNET = "anthropic.claude-sonnet-4-6-2025-02-19";
+
+// Opus 4.7 - For very complex multi-step tasks
+const MODEL_OPUS = "anthropic.claude-opus-4-7-2025-01-15";
+
+// Default model (Sonnet 4.6 for agentic work)
+const DEFAULT_MODEL = MODEL_SONNET;
+
+/**
+ * Query complexity levels for dynamic routing
+ */
+type QueryComplexity = "simple" | "moderate" | "complex";
+
+/**
+ * Analyze query complexity to determine optimal model
+ * 
+ * @param query - User query string
+ * @returns Complexity level
+ */
+function analyzeQueryComplexity(query: string): QueryComplexity {
+  const q = query.toLowerCase();
+  const wordCount = q.split(/\s+/).length;
+  
+  // Complex indicators: multi-step, planning, analysis, comparison, many criteria
+  const complexKeywords = [
+    "compare", "analysis", "analyze", "plan", "planning", "strategy", "strategic",
+    "multiple", "and also", "as well as", "then", "after that", "finally",
+    "pros and cons", "versus", "vs ", "benefits", "tradeoffs", "decision",
+    "research", "investigate", "deep dive", "detailed", "comprehensive",
+    "all companies", "all candidates", "every", "list of", "all the",
+    "prioritize", "rank", "score", "evaluate", "assess"
+  ];
+  
+  // Simple indicators: basic lookup, single entity, quick fact
+  const simpleKeywords = [
+    "what is", "who is", "find", "show", "get", "list",
+    "email", "phone", "contact", "linkedin",
+    "summarize", " summarize", "quick", "just",
+    "weather", "stock", "price", "today"
+  ];
+  
+  // Count keyword matches
+  const complexMatches = complexKeywords.filter(kw => q.includes(kw)).length;
+  const simpleMatches = simpleKeywords.filter(kw => q.includes(kw)).length;
+  
+  // Determine complexity
+  if (complexMatches >= 2 || wordCount > 50) {
+    return "complex";
+  }
+  
+  if (simpleMatches >= 1 && complexMatches === 0 && wordCount < 15) {
+    return "simple";
+  }
+  
+  // Default to moderate
+  return "moderate";
+}
+
+/**
+ * Select model based on query complexity and context
+ * 
+ * @param query - User query
+ * @param requestedModel - Optional user-requested model
+ * @returns Selected model ID
+ */
+function selectModel(query: string, requestedModel?: string): string {
+  // If user explicitly requested a model, use it (with validation)
+  if (requestedModel) {
+    const validModels = [MODEL_HAIKU, MODEL_SONNET, MODEL_OPUS, DEFAULT_MODEL];
+    if (validModels.includes(requestedModel)) {
+      return requestedModel;
+    }
+    // Fall back to default if invalid model requested
+    console.warn(`Invalid model requested: ${requestedModel}, using default`);
+  }
+  
+  // Analyze query complexity
+  const complexity = analyzeQueryComplexity(query);
+  
+  // Route to appropriate model
+  switch (complexity) {
+    case "simple":
+      console.log(`Routing to Haiku 4.5 (simple query detected)`);
+      return MODEL_HAIKU;
+    
+    case "complex":
+      console.log(`Routing to Opus 4.7 (complex query detected)`);
+      return MODEL_OPUS;
+    
+    case "moderate":
+    default:
+      console.log(`Routing to Sonnet 4.6 (default for agentic work)`);
+      return MODEL_SONNET;
+  }
+}
 
 /**
  * Estimate token count from text
@@ -385,10 +500,23 @@ export async function POST(request: NextRequest) {
   let tenantId: string | null = null;
   let lastUserQuery = "";
   
-  try {
+try {
     // Parse request body
     const body: BedrockRequest = await request.json();
-    const { messages, model = DEFAULT_MODEL, useTools = true } = body;
+    const { messages, model: requestedModel, useTools = true } = body;
+
+    // ============================================================================
+    // Dynamic Model Routing (MCP-Style)
+    // ============================================================================
+    // Get the latest user message for routing decision
+    const userMessage = messages
+      .filter((m) => m.role === "user")
+      .slice(-1)[0];
+
+    lastUserQuery = userMessage?.content || "";
+
+    // Select model based on query complexity and user request
+    const selectedModel = selectModel(lastUserQuery, requestedModel);
 
     // ============================================================================
     // Get Tenant Context (from middleware headers)
@@ -411,15 +539,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get request URL for internal API calls
+// Get request URL for internal API calls
     const appUrl = getAppUrl(request);
-
-    // Get latest user message
-    const userMessage = messages
-      .filter((m) => m.role === "user")
-      .slice(-1)[0];
-
-    lastUserQuery = userMessage?.content || "";
 
     // ============================================================================
     // Tool Execution
@@ -466,8 +587,8 @@ if (useTools && lastUserQuery) {
     // Invoke Bedrock Model
     // ============================================================================
     
-    const input = {
-      modelId: model,
+const input = {
+      modelId: selectedModel,
       contentType: "application/json",
       accept: "application/json",
       body: JSON.stringify({
