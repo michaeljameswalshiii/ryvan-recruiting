@@ -456,42 +456,140 @@ function logRequest(metadata: RequestLogMetadata): void {
 // ============================================================================
 
 /**
+ * Error categories for better debugging
+ */
+type BedrockErrorCategory = 
+  | "credentials" 
+  | "model_access" 
+  | "rate_limit" 
+  | "validation" 
+  | "timeout"
+  | "network"
+  | "unknown";
+
+/**
+ * Categorize error and determine handling
+ */
+function categorizeError(err: unknown): BedrockErrorCategory {
+  const message = err instanceof Error ? err.message : String(err);
+  const errorName = err instanceof Error ? err.name : "Unknown";
+  
+  // Credentials issues
+  if (message.includes("AccessDeniedException") || 
+      message.includes("Unauthorized") || 
+      message.includes("access denied") ||
+      message.includes("InvalidSignatureException") ||
+      message.includes("SignatureDoesNotMatch") ||
+      errorName === "CredentialsProviderError") {
+    return "credentials";
+  }
+  
+  // Model access issues
+  if (message.includes("ModelNotSupportedException") || 
+      message.includes("ValidationException") && message.includes("model")) {
+    return "model_access";
+  }
+  
+  // Rate limit issues
+  if (message.includes("ThrottlingException") || 
+      message.includes("Rate limit") ||
+      message.includes("Throttling")) {
+    return "rate_limit";
+  }
+  
+  // Validation issues
+  if (message.includes("ValidationException")) {
+    return "validation";
+  }
+  
+  // Timeout issues
+  if (message.includes("AbortError") || 
+      message.includes("timeout") ||
+      message.includes("timed out")) {
+    return "timeout";
+  }
+  
+  // Network issues
+  if (message.includes("ENOTFOUND") || 
+      message.includes("ECONNREFUSED") ||
+      message.includes("NetworkError") ||
+      message.includes("Socket closed")) {
+    return "network";
+  }
+  
+  return "unknown";
+}
+
+/**
+ * Get suggestion for error category
+ */
+function getSuggestionForCategory(category: BedrockErrorCategory): string {
+  switch (category) {
+    case "credentials":
+      return "Check AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in Vercel env vars. Make sure credentials have Bedrock invoke permissions.";
+    case "model_access":
+      return "Request access to the model in AWS Bedrock Console > Model access. Make sure the model is available in your region.";
+    case "rate_limit":
+      return "Wait a few seconds before retrying. Consider reducing request frequency.";
+    case "validation":
+      return "Check request body format and try again with valid JSON.";
+    case "timeout":
+      return "The request took too long. Try again - the system will use faster models.";
+    case "network":
+      return "Network issue detected. Check AWS_REGION and try again.";
+    default:
+      return "Check AWS credentials and model access in AWS Bedrock Console";
+  }
+}
+
+/**
  * Handle Bedrock invocation errors
  */
-function handleBedrockError(err: unknown): { error: string; status: number; suggestion?: string } {
+function handleBedrockError(err: unknown): { error: string; status: number; suggestion?: string; category?: BedrockErrorCategory } {
   const message = err instanceof Error ? err.message : "Unknown error";
   const errorName = err instanceof Error ? err.name : "Unknown";
   const errorCode = (err as any).code;
   const metadata = (err as any).$metadata;
   
+  // Categorize the error
+  const category = categorizeError(err);
+  const suggestion = getSuggestionForCategory(category);
+  
   // Log full error details
   console.error("=== BEDROCK FULL ERROR ===");
+  console.error("Category:", category);
   console.error("Message:", message);
   console.error("Name:", errorName);
   console.error("Code:", errorCode);
   console.error("$metadata:", metadata);
   
-  // Check for specific error types
-  if (message.includes("ThrottlingException") || message.includes("Rate limit")) {
-    return { error: "Rate limit exceeded. Please try again.", status: 429 };
+  // Check for specific error types and return appropriate error message
+  if (category === "rate_limit") {
+    return { error: "Rate limit exceeded. Please try again.", status: 429, suggestion, category };
   }
   
-  if (message.includes("AccessDeniedException") || message.includes("Unauthorized") || message.includes("access denied")) {
+  if (category === "credentials") {
     return { 
-      error: "Unauthorized - Check AWS credentials and model access", 
+      error: "Unauthorized - Invalid AWS credentials", 
       status: 403,
-      suggestion: "Make sure you have requested model access in AWS Bedrock Console"
+      suggestion: "Make sure AWS credentials have Bedrock invoke permissions in IAM"
     };
   }
   
-  if (message.includes("ValidationException")) {
-    return { error: "Invalid request.", status: 400 };
+  if (category === "validation") {
+    return { error: "Invalid request format.", status: 400, suggestion, category };
   }
   
+  if (category === "timeout") {
+    return { error: "Request timed out. Please try again.", status: 504, suggestion, category };
+  }
+  
+  // For unknown errors, return the actual error message for better debugging
   return { 
-    error: "Bedrock failed", 
+    error: `Bedrock error: ${message}`, 
     status: 500,
-    suggestion: "Check AWS credentials and model access in AWS Bedrock Console"
+    suggestion,
+    category
   };
 }
 
@@ -505,9 +603,58 @@ export async function POST(request: NextRequest) {
   let lastUserQuery = "";
   
 try {
+    // ============================================================================
+    // EARLY ENVIRONMENT VARIABLE VALIDATION
+    // ============================================================================
+    const awsRegion = process.env.AWS_REGION;
+    const bedrockEndpoint = process.env.AWS_BEDROCK_ENDPOINT;
+    const awsAccessKeyId = process.env.AWS_ACCESS_KEY_ID;
+    const awsSecretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+    
+    console.log("=== BEDROCK REQUEST START ===");
+    console.log("AWS_REGION present:", !!awsRegion, awsRegion || "not set");
+    console.log("AWS_ACCESS_KEY_ID present:", !!awsAccessKeyId);
+    console.log("AWS_SECRET_ACCESS_KEY present:", !!awsSecretAccessKey);
+    console.log("AWS_BEDROCK_ENDPOINT present:", !!bedrockEndpoint);
+    console.log("NEXT_PUBLIC_APP_URL:", process.env.NEXT_PUBLIC_APP_URL || "not set");
+    
+    if (!awsRegion) {
+      console.error("AWS_REGION not configured");
+      return NextResponse.json(
+        { error: "Server configuration error: AWS_REGION not set" },
+        { status: 500 }
+      );
+    }
+    
+    // Check for AWS credentials (warn if missing)
+    if (!awsAccessKeyId || !awsSecretAccessKey) {
+      console.warn("WARNING: AWS credentials may not be configured properly");
+    }
+
+    // ============================================================================
+    // REQUEST VALIDATION
+    // ============================================================================
+    
     // Parse request body
-    const body: BedrockRequest = await request.json();
+    let body: BedrockRequest;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON in request body" },
+        { status: 400 }
+      );
+    }
+    
     const { messages, model: requestedModel, useTools = true } = body;
+    
+// Validate messages exist
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return NextResponse.json(
+        { error: "messages array is required and cannot be empty" },
+        { status: 400 }
+      );
+    }
 
     // ============================================================================
     // Dynamic Model Routing (MCP-Style)
@@ -519,13 +666,22 @@ try {
 
     lastUserQuery = userMessage?.content || "";
 
-    // Select model based on query complexity and user request
+// Select model based on query complexity and user request
     const selectedModel = selectModel(lastUserQuery, requestedModel);
+    
+    // Log detailed model selection info
+    console.log("=== MODEL SELECTION ===");
+    console.log("Requested model:", requestedModel || "none");
+    console.log("Selected model:", selectedModel);
+    console.log("Query length:", lastUserQuery.length);
+    console.log("Query preview:", lastUserQuery.substring(0, 50));
 
     // ============================================================================
     // Get Tenant Context (from middleware headers)
     // ============================================================================
     tenantId = request.headers.get("x-tenant-id");
+    console.log("Tenant ID:", tenantId || "none provided");
+    console.log("User ID:", request.headers.get("x-user-id") || "none");
 
     // ============================================================================
     // Rate Limiting
@@ -587,31 +743,86 @@ if (useTools && lastUserQuery) {
     // Add tool results
     const messagesWithTools = addToolResultsToMessages(mmMessages, toolResults);
 
-    // ============================================================================
-    // Invoke Bedrock Model
+// ============================================================================
+    // Invoke Bedrock Model with Fallback + Timeout
     // ============================================================================
     
-const input = {
-      modelId: selectedModel,
-      contentType: "application/json",
-      accept: "application/json",
-      body: JSON.stringify({
-        messages: messagesWithTools,
-        max_tokens: 4096,
-        temperature: 0.7,
-      }),
-    };
+    // Timeout settings (30 seconds for each model attempt)
+    const MODEL_TIMEOUT_MS = 30000;
+    
+    // Determine models to try in order: primary, then Haiku fallback, then legacy format
+    const modelsToTry = [selectedModel];
+    
+    // Add fallback models if primary isn't Haiku
+    if (selectedModel === MODEL_SONNET || selectedModel === MODEL_OPUS) {
+      modelsToTry.push(MODEL_HAIKU);  // Fall back to Haiku
+    } else if (selectedModel === MODEL_SONNET_FALLBACK) {
+      modelsToTry.push(MODEL_HAIKU_FALLBACK);
+    }
+    
+    // Add legacy format as final fallback
+    if (selectedModel.startsWith("us.")) {
+      modelsToTry.push(selectedModel.replace("us.", ""));
+    }
+    
+    let completion = "";
+    let finalModelUsed = "";
+    let invokeError: unknown = null;
+    
+    for (const modelId of modelsToTry) {
+      try {
+        console.log(`Trying model: ${modelId} with ${MODEL_TIMEOUT_MS}ms timeout`);
+        
+        // Create abort controller for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          console.error(`Model ${modelId} timed out after ${MODEL_TIMEOUT_MS}ms`);
+          controller.abort();
+        }, MODEL_TIMEOUT_MS);
+        
+        const input = {
+          modelId,
+          contentType: "application/json",
+          accept: "application/json",
+          body: JSON.stringify({
+            messages: messagesWithTools,
+            max_tokens: 4096,
+            temperature: 0.7,
+          }),
+        };
 
-    const command = new InvokeModelCommand(input);
-    const bedrockResponse = await bedrockClient.send(command);
+        const command = new InvokeModelCommand(input);
+        
+        // Use signal for timeout (AWS SDK v3 supports AbortSignal)
+        const bedrockResponse = await bedrockClient.send(command, {
+          abortSignal: controller.signal as AbortSignal
+        });
+        
+        clearTimeout(timeoutId);
 
-    // Parse response
-    const responseBody = JSON.parse(new TextDecoder().decode(bedrockResponse.body));
-    const completion = 
-      responseBody.choices?.[0]?.message?.content || 
-      responseBody.output?.message?.content?.[0]?.text ||
-      responseBody.completion || 
-      "";
+        // Parse response
+        const responseBody = JSON.parse(new TextDecoder().decode(bedrockResponse.body));
+        completion = 
+          responseBody.choices?.[0]?.message?.content || 
+          responseBody.output?.message?.content?.[0]?.text ||
+          responseBody.completion || 
+          "";
+        
+        finalModelUsed = modelId;
+        console.log(`Successfully invoked model: ${modelId}`);
+        break; // Success - exit loop
+        
+      } catch (err) {
+        console.error(`Model ${modelId} failed:`, err instanceof Error ? err.message : "Unknown error");
+        invokeError = err;
+        // Continue to next model in fallback list
+      }
+    }
+    
+    // If all models failed, throw the last error
+    if (!completion && invokeError) {
+      throw invokeError;
+    }
 
 // ============================================================================
     // Success Response
