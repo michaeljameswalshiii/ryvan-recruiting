@@ -144,8 +144,10 @@ export default function CompaniesPage() {
     );
   }
 
-  // Error state
-  if (error) {
+// Error state - show empty state for auth errors, error for actual failures
+  const isAuthError = error?.message?.includes('Unauthorized') || error?.message?.includes('Unauthorized');
+
+  if (error && !isAuthError) {
     return (
       <div className="space-y-6">
         <div>
