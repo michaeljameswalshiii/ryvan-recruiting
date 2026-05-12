@@ -64,9 +64,9 @@ export async function POST(request: NextRequest) {
         
         response = await fetch(`${APOLLO_BASE_URL}/people/search`, {
           method: "POST",
-          headers: new Headers({
+headers: new Headers({
             "Content-Type": "application/json",
-            "x-api-key": apiKey,
+            "Api-Key": apiKey,
           }),
           body: JSON.stringify({
             q: query,

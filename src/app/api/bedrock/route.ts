@@ -339,23 +339,41 @@ function logRequest(metadata: RequestLogMetadata): void {
 /**
  * Handle Bedrock invocation errors
  */
-function handleBedrockError(err: unknown): { error: string; status: number } {
+function handleBedrockError(err: unknown): { error: string; status: number; suggestion?: string } {
   const message = err instanceof Error ? err.message : "Unknown error";
+  const errorName = err instanceof Error ? err.name : "Unknown";
+  const errorCode = (err as any).code;
+  const metadata = (err as any).$metadata;
+  
+  // Log full error details
+  console.error("=== BEDROCK FULL ERROR ===");
+  console.error("Message:", message);
+  console.error("Name:", errorName);
+  console.error("Code:", errorCode);
+  console.error("$metadata:", metadata);
   
   // Check for specific error types
   if (message.includes("ThrottlingException") || message.includes("Rate limit")) {
     return { error: "Rate limit exceeded. Please try again.", status: 429 };
   }
   
-  if (message.includes("AccessDeniedException")) {
-    return { error: "Model access denied.", status: 403 };
+  if (message.includes("AccessDeniedException") || message.includes("Unauthorized") || message.includes("access denied")) {
+    return { 
+      error: "Unauthorized - Check AWS credentials and model access", 
+      status: 403,
+      suggestion: "Make sure you have requested model access in AWS Bedrock Console"
+    };
   }
   
   if (message.includes("ValidationException")) {
     return { error: "Invalid request.", status: 400 };
   }
   
-  return { error: "Internal server error.", status: 500 };
+  return { 
+    error: "Bedrock failed", 
+    status: 500,
+    suggestion: "Check AWS credentials and model access in AWS Bedrock Console"
+  };
 }
 
 // ============================================================================
@@ -536,9 +554,9 @@ const response = NextResponse.json({
     
     return addRateLimitHeaders(response, rateLimitResult);
     
-  } catch (err: unknown) {
+} catch (err: unknown) {
     const latencyMs = Date.now() - startTime;
-    const { error, status } = handleBedrockError(err);
+    const { error: errMsg, status, suggestion } = handleBedrockError(err);
     
     // Log error
     logRequest({
@@ -549,10 +567,12 @@ const response = NextResponse.json({
       error: err instanceof Error ? err.message : "Unknown",
     });
     
-    console.error("Bedrock error:", err instanceof Error ? err.message : err);
-    
     return NextResponse.json(
-      { error },
+      { 
+        error: errMsg,
+        message: errMsg,
+        ...(suggestion && { suggestion })
+      },
       { status }
     );
   }

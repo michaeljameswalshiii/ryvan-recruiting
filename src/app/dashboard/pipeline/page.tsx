@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, MoreHorizontal, Mail, Phone, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +72,7 @@ const columns = [
 ];
 
 export default function PipelinePage() {
+  const queryClient = useQueryClient();
   const [leads, setLeads] = useState<Lead[]>(initialLeads);
   const [draggedLead, setDraggedLead] = useState<string | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -211,6 +213,13 @@ const handleAddLead = async () => {
           status: newLead.status,
           notes: newLeadNotes,
         });
+        // Invalidate all related queries so dashboard stats update
+        queryClient.invalidateQueries({ queryKey: ['leads'] });
+        queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['stats'] });
+        // Also invalidate clients
+        queryClient.invalidateQueries({ queryKey: ['clients'] });
       } catch (err) {
         console.error("Failed to save lead to DB:", err);
       }

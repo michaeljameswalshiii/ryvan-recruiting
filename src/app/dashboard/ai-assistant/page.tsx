@@ -75,12 +75,25 @@ const res = await fetch("/api/bedrock", {
     });
     const result = await res.json();
 
-    const assistantMessage: Message = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content: result.error || result.response || "I couldn't generate a response. Please try again.",
-      timestamp: new Date(),
-    };
+    let assistantMessage: Message;
+    if (result.error) {
+      // Fallback response when Bedrock fails
+      assistantMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: result.suggestion 
+          ? `${result.message || result.error}\n\nTip: ${result.suggestion}`
+          : result.message || result.error || "I'm having trouble connecting to my AI brain right now. Try again in a moment or ask me something simpler.",
+        timestamp: new Date(),
+      };
+    } else {
+      assistantMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: result.response || "I couldn't generate a response. Please try again.",
+        timestamp: new Date(),
+      };
+    }
 
     setMessages((prev) => [...prev, assistantMessage]);
     setIsLoading(false);

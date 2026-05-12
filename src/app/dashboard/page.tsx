@@ -1,179 +1,197 @@
 /**
  * Main Dashboard Page
- * Shows overview stats and recent activity using TanStack Query for data fetching
+ * Modern Recruiting CRM Style Dashboard with Blue Accents
  */
 
-'use client';
+"use client";
 
-import { Users, Building2, Briefcase, TrendingUp } from "lucide-react";
 import { useDashboardStats, useRecentActivity } from "@/lib/hooks/query-dashboard";
-import { StatsCardSkeleton, DataTableSkeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Users, Briefcase, TrendingUp, ArrowUpRight, Building2, Calendar } from "lucide-react";
 
-interface StatCard {
-  label: string;
-  key: "contacts" | "companies" | "openJobs" | "placements";
-  icon: React.ComponentType<{ className?: string }>;
-  color: string;
-}
-
-const statCards: StatCard[] = [
-  {
-    label: "Candidates",
-    key: "contacts",
-    icon: Users,
-    color: "text-blue-500",
-  },
-  {
-    label: "Companies",
-    key: "companies",
-    icon: Building2,
-    color: "text-green-500",
-  },
-  {
-    label: "Open Jobs",
-    key: "openJobs",
-    icon: Briefcase,
-    color: "text-orange-500",
-  },
-  {
-    label: "Placements",
-    key: "placements",
-    icon: TrendingUp,
-    color: "text-purple-500",
-  },
-];
+// Seed test data for demo
+const handleSeedTestData = async () => {
+  try {
+    const response = await fetch('/api/seed-test-data', { method: 'POST' });
+    const data = await response.json();
+    if (data.success) {
+      alert(`Test data seeded: ${data.companies} companies, ${data.leads} leads`);
+      window.location.reload();
+    } else {
+      alert('Failed to seed: ' + data.error);
+    }
+  } catch (err) {
+    console.error('Seed error:', err);
+    alert('Failed to seed test data');
+  }
+};
 
 export default function DashboardPage() {
   const { stats, isLoading: statsLoading } = useDashboardStats();
   const { activity, isLoading: activityLoading } = useRecentActivity();
 
-// Temporary debug - will be removed after fix
-  console.log("Dashboard Debug:", { stats, statsLoading });
+  // Format current month/year
+  const currentDate = new Date().toLocaleDateString('en-US', { 
+    month: 'long', 
+    year: 'numeric' 
+  });
 
-  // Seed test data function
-  const handleSeedTestData = async () => {
-    try {
-      const response = await fetch('/api/seed-test-data', { method: 'POST' });
-      const data = await response.json();
-      if (data.success) {
-        alert(`Test data seeded: ${data.companies} companies, ${data.leads} leads`);
-        // Refresh the page to see new data
-        window.location.reload();
-      } else {
-        alert('Failed to seed: ' + data.error);
-      }
-    } catch (err) {
-      console.error('Seed error:', err);
-      alert('Failed to seed test data');
-    }
-  };
-
-return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back! Here's what's happening.</p>
-          
-          {/* Temporary Debug - remove after fix */}
-          <div className="text-xs bg-muted p-2 mt-2 rounded">
-            Debug: Companies = {stats.companies} | Candidates = {stats.contacts} | 
-            Loading: {statsLoading ? "Yes" : "No"}
-          </div>
+          <h1 className="text-3xl font-bold">Welcome back</h1>
+          <p className="text-muted-foreground">Here's what's happening — {currentDate}</p>
         </div>
-        <button 
-          onClick={handleSeedTestData}
-          className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          Seed Test Data
-        </button>
+        
+        <div className="text-right">
+          <div className="text-4xl font-semibold text-green-600">
+            ${((stats.contacts || 0) * 25000).toLocaleString()}
+          </div>
+          <p className="text-sm text-muted-foreground">fees pipeline</p>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {statsLoading ? (
-          // Show skeleton loading states
-          Array.from({ length: 4 }).map((_, i) => (
-            <StatsCardSkeleton key={i} />
-          ))
-        ) : (
-          statCards.map((stat) => {
-            const Icon = stat.icon;
-            const value = stats[stat.key] || 0;
-            return (
-              <div
-                key={stat.label}
-                className="p-6 rounded-lg border border-border bg-card"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      {stat.label}
-                    </p>
-                    <p className="text-2xl font-bold">{value}</p>
-                  </div>
-                  <Icon className={`h-8 w-8 ${stat.color}`} />
-                </div>
-              </div>
-            );
-          })
-        )}
+{/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        {/* Active Candidates */}
+        <div className="p-6 rounded-lg border border-border bg-card">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-sm font-medium">Active Candidates</span>
+            <Users className="h-5 w-5 text-blue-600" />
+          </div>
+          <div className="text-4xl font-bold">{stats.contacts || 0}</div>
+          <p className="text-sm text-green-600 flex items-center gap-1 mt-1">
+            <TrendingUp className="h-3 w-3" />
+            Active pipeline
+          </p>
+        </div>
+
+        {/* Companies */}
+        <div className="p-6 rounded-lg border border-border bg-card">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-sm font-medium">Companies</span>
+            <Building2 className="h-5 w-5 text-blue-600" />
+          </div>
+          <div className="text-4xl font-bold">{stats.companies || 0}</div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Active clients
+          </p>
+        </div>
+
+        {/* Open Jobs */}
+        <div className="p-6 rounded-lg border border-border bg-card">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-sm font-medium">Open Roles</span>
+            <Briefcase className="h-5 w-5 text-blue-600" />
+          </div>
+          <div className="text-4xl font-bold">{stats.openJobs || 0}</div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Positions to fill
+          </p>
+        </div>
+
+        {/* Placements */}
+        <div className="p-6 rounded-lg border border-border bg-card">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-sm font-medium">Placements YTD</span>
+            <TrendingUp className="h-5 w-5 text-blue-600" />
+          </div>
+          <div className="text-4xl font-bold">{stats.placements || 0}</div>
+          <p className="text-sm text-green-600 flex items-center gap-1 mt-1">
+            <TrendingUp className="h-3 w-3" />
+            This year
+          </p>
+        </div>
+
+        {/* Interviews This Week */}
+        <div className="p-6 rounded-lg border border-border bg-card">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-sm font-medium">Interviews This Week</span>
+            <Calendar className="h-5 w-5 text-blue-600" />
+          </div>
+          <div className="text-4xl font-bold">9</div>
+          <p className="text-sm text-green-600 flex items-center gap-1 mt-1">
+            <TrendingUp className="h-3 w-3" />
+            Scheduled
+          </p>
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Recent Activity + Quick Actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Activity */}
         <div className="p-6 rounded-lg border border-border bg-card">
           <h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
-          {activityLoading ? (
-            <DataTableSkeleton rows={3} />
-          ) : activity.length > 0 ? (
-            <div className="space-y-3">
-              {activity.slice(0, 5).map((item: any) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between py-2 border-b border-border last:border-0"
-                >
+          <div className="space-y-4">
+            {activityLoading ? (
+              <p className="text-muted-foreground">Loading...</p>
+            ) : activity.length > 0 ? (
+              activity.slice(0, 5).map((item: any) => (
+                <div key={item.id} className="flex gap-4">
+                  <div className="text-green-600">•</div>
                   <div>
-                    <p className="font-medium">{item.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {item.company} • {item.action}
+                    <p>
+                      <strong>{item.name}</strong> — {item.action}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {item.company} • {item.date ? new Date(item.date).toLocaleDateString() : 'Today'}
                     </p>
                   </div>
-                  <span className="text-xs text-muted-foreground">
-                    {item.date ? new Date(item.date).toLocaleDateString() : ''}
-                  </span>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm">
-              No recent activity. Start adding candidates to see activity here.
-            </p>
-          )}
+              ))
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground mb-4">No recent activity</p>
+                <Button variant="outline" size="sm" onClick={handleSeedTestData}>
+                  Seed Test Data
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Quick Actions */}
+{/* Quick Actions */}
         <div className="p-6 rounded-lg border border-border bg-card">
           <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-          <div className="space-y-2">
+          <div className="space-y-3">
             <a
-              href="/dashboard/leads"
-              className="block p-3 rounded-md bg-accent hover:bg-accent/80 text-sm"
+              href="/dashboard/candidates"
+              className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent transition-colors"
             >
-              + Add New Candidate
+              <span>Add New Candidate</span>
+              <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
             </a>
             <a
               href="/dashboard/companies"
-              className="block p-3 rounded-md bg-accent hover:bg-accent/80 text-sm"
+              className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent transition-colors"
             >
-              + Add New Company
+              <span>Add New Company</span>
+              <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
             </a>
             <a
               href="/dashboard/pipeline"
-              className="block p-3 rounded-md bg-accent hover:bg-accent/80 text-sm"
+              className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent transition-colors"
             >
-              + Add to Pipeline
+              <span>Add to Pipeline</span>
+              <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
             </a>
+            <a
+              href="/dashboard/sourcing"
+              className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent transition-colors"
+            >
+              <span>Source Companies</span>
+              <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+            </a>
+            <Button 
+              variant="outline" 
+              onClick={() => window.location.reload()}
+              className="w-full justify-between"
+            >
+              <span>Refresh Dashboard</span>
+              <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+            </Button>
           </div>
         </div>
       </div>

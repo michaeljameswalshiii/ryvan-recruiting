@@ -43,11 +43,30 @@ export function useDashboardStats() {
     leadsLoaded: !!leads
   });
 
+// More robust stats calculation with null safety and multiple property names
+  const openJobsPipeline = pipeline || [];
+  const contactsCount = leads?.length || 0;
+  const companiesCount = clients?.length || 0;
+  
+  // Count open jobs from pipeline - check stage, status, or pipeline_stage properties
+  const openJobs = openJobsPipeline.filter((item: any) => {
+    const stage = item.stage || item.status || item.pipeline_stage || '';
+    return ['interviewing', 'interview', 'new', 'contacted', 'qualified'].includes(
+      stage.toLowerCase()
+    );
+  }).length;
+  
+  // Count placements - check for hired, closed_won, placement, etc.
+  const placements = openJobsPipeline.filter((item: any) => {
+    const stage = item.stage || item.status || item.pipeline_stage || '';
+    return ['hired', 'closed_won', 'placement', 'placed'].includes(stage.toLowerCase());
+  }).length;
+
   const stats: DashboardStats = {
-    contacts: leads?.length || 0,
-    companies: clients?.length || 0,
-    openJobs: pipeline?.filter((item: any) => item.stage === 'interviewing').length || 0,
-    placements: pipeline?.filter((item: any) => item.stage === 'hired').length || 0,
+    contacts: contactsCount,
+    companies: companiesCount,
+    openJobs: openJobs || 0,
+    placements: placements || 0,
   };
 
   const isLoading = loadingClients || loadingLeads || loadingPipeline;

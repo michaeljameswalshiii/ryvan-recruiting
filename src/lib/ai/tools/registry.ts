@@ -8,6 +8,7 @@
 
 import { ToolDefinition, ToolParams, ToolContext, ToolResult } from "./types";
 import { executeApolloSearch, APOLLO_TOOL_NAME, APOLLO_TOOL_DESCRIPTION } from "./apollo";
+import { executeApolloCompanySearch, APOLLO_COMPANY_TOOL_NAME, APOLLO_COMPANY_TOOL_DESCRIPTION } from "./apollo-company";
 import { executeTavilySearch, TAVILY_TOOL_NAME, TAVILY_TOOL_DESCRIPTION } from "./tavily";
 import { executeInternalData, INTERNAL_TOOL_NAME, INTERNAL_TOOL_DESCRIPTION } from "./internal";
 
@@ -24,11 +25,18 @@ const TOOL_REGISTRY: Record<string, ToolDefinition> = {};
  * Initialize registry with all tools
  */
 function initializeRegistry(): void {
-  // Apollo search tool
+  // Apollo people search tool
   TOOL_REGISTRY[APOLLO_TOOL_NAME] = {
     name: APOLLO_TOOL_NAME,
     description: APOLLO_TOOL_DESCRIPTION,
     execute: executeApolloSearch,
+  };
+  
+  // Apollo company search tool
+  TOOL_REGISTRY[APOLLO_COMPANY_TOOL_NAME] = {
+    name: APOLLO_COMPANY_TOOL_NAME,
+    description: APOLLO_COMPANY_TOOL_DESCRIPTION,
+    execute: executeApolloCompanySearch,
   };
   
   // Tavily search tool
@@ -100,6 +108,7 @@ export async function executeTool(
  */
 export const TOOL_NAMES = {
   apollo: APOLLO_TOOL_NAME,
+  apolloCompany: APOLLO_COMPANY_TOOL_NAME,
   tavily: TAVILY_TOOL_NAME,
   internal: INTERNAL_TOOL_NAME,
 } as const;

@@ -10,6 +10,8 @@
 import { ToolResult, ToolContext, ToolParams } from "./types";
 import { executeApolloSearch, APOLLO_TOOL_NAME, APOLLO_TOOL_DESCRIPTION } from "./apollo";
 import { formatApolloCandidate } from "./apollo";
+import { executeApolloCompanySearch, APOLLO_COMPANY_TOOL_NAME, APOLLO_COMPANY_TOOL_DESCRIPTION } from "./apollo-company";
+import { formatApolloCompany } from "./apollo-company";
 import { executeTavilySearch, TAVILY_TOOL_NAME, TAVILY_TOOL_DESCRIPTION } from "./tavily";
 import { formatTavilyResult } from "./tavily";
 import { executeInternalData, INTERNAL_TOOL_NAME, INTERNAL_TOOL_DESCRIPTION } from "./internal";
@@ -22,9 +24,13 @@ import { executeTool, getTools, getTool, hasTool, getToolDescription, TOOL_NAMES
 // Types
 export type { ToolParams, ToolContext, ToolResult } from "./types";
 
-// Apollo
+// Apollo (People)
 export { executeApolloSearch, APOLLO_TOOL_NAME, APOLLO_TOOL_DESCRIPTION } from "./apollo";
 export type { ApolloSearchParams, ApolloSearchResultData, ApolloCandidate } from "./apollo";
+
+// Apollo Company Search
+export { executeApolloCompanySearch, APOLLO_COMPANY_TOOL_NAME, APOLLO_COMPANY_TOOL_DESCRIPTION } from "./apollo-company";
+export type { ApolloCompanySearchParams, ApolloCompanySearchResultData, ApolloCompany } from "./apollo-company";
 
 // Tavily
 export { executeTavilySearch, TAVILY_TOOL_NAME, TAVILY_TOOL_DESCRIPTION } from "./tavily";
@@ -123,21 +129,33 @@ export function selectTools(query: string): string[] {
   const q = query.toLowerCase();
   const tools: string[] = [];
   
-  // Candidate/people search keywords
+  // Company search keywords (business development)
+  const companyKeywords = [
+    "company", "companies", "business", "businesses",
+    "contractor", "contractors", "manufacturer", "manufacturers",
+    "supplier", "suppliers", "vendor", "vendors",
+    "startup", "startups", "enterprise",
+    "organization", "organizations", "firm", "firms",
+    "location", "sourcing", "prospects", "prospecting",
+    "find companies", "find businesses", "search companies",
+    "real estate", "construction", "manufacturing"
+  ];
+  
+  // Candidate/people search keywords (recruiting)
   const candidateKeywords = [
     "find", "search", "candidate", "candidates", "person", "people",
     "profile", "profiles", "developer", "engineer", "manager", "director",
     "recruiter", "hire", "hiring", "talent", "staff", "software",
     "python", "javascript", "react", "aws", "cloud", "data", "ai", "ml",
-    "job", "resume", "experience", "skills", "team", "hired"
+    "job", "resume", "experience", "skills", "team", "hired",
+    "employee", "employees", "candidate"
   ];
   
   // Web search keywords
   const searchKeywords = [
     "news", "latest", "current", "today", "recent", 
     "what is", "who is", "when did", "how does", 
-    "weather", "stock", "price",
-    "company", "companies", "contractor", "manufacturer", "supplier"
+    "weather", "stock", "price"
   ];
   
   // Internal data keywords
@@ -146,15 +164,22 @@ export function selectTools(query: string): string[] {
     "existing", "current", "all", "list"
   ];
   
-  // Add tools based on keywords
+  // Add company search tool first (business development)
+  if (companyKeywords.some(kw => q.includes(kw))) {
+    tools.push(APOLLO_COMPANY_TOOL_NAME);
+  }
+  
+  // Add people search tool (recruiting)
   if (candidateKeywords.some(kw => q.includes(kw))) {
     tools.push(APOLLO_TOOL_NAME);
   }
   
+  // Add web search (general queries)
   if (searchKeywords.some(kw => q.includes(kw))) {
     tools.push(TAVILY_TOOL_NAME);
   }
   
+  // Add internal data (if checking own data)
   if (internalKeywords.some(kw => q.includes(kw))) {
     tools.push(INTERNAL_TOOL_NAME);
   }

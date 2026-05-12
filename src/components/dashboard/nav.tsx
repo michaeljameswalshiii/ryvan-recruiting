@@ -1,6 +1,5 @@
 ﻿"use client";
 
-// Candidates nav fixed - May 11 2026 - Force rebuild for Vercel deployment
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -14,8 +13,6 @@ import {
   Search,
   Sparkles,
 } from "lucide-react";
-// Use server-side auth API for secure logout (httpOnly cookies)
-// @/lib/auth is deprecated - use /api/auth/logout instead
 import { logout } from "@/lib/api/auth-client";
 
 const navItems = [
@@ -24,7 +21,7 @@ const navItems = [
   { href: "/dashboard/candidates", label: "Candidates", icon: Users },
   { href: "/dashboard/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
-  { href: "/dashboard/ai-assistant", label: "AI Assistant (Web)", icon: Sparkles },
+  { href: "/dashboard/ai-assistant", label: "AI Assistant", icon: Sparkles },
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
 ];
 
