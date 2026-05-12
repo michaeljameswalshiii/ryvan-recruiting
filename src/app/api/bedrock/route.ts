@@ -162,6 +162,14 @@ const DEFAULT_MODEL = MODEL_SONNET;
 // Anthropic API version for Bedrock
 const ANTHROPIC_VERSION = "bedrock-2023-05-31";
 
+// Model configuration
+const MODEL_CONFIG = {
+  maxTokens: 4096,
+  temperature: 0.7,
+  topP: 0.95,
+  maxIterations: 5,
+};
+
 /**
  * Query complexity levels for dynamic routing
  */
@@ -390,11 +398,12 @@ async function invokeClaude(
 ): Promise<{ content: ClaudeContent[]; stop_reason?: string }> {
   const selectedModel = DEFAULT_MODEL;
   
-  // Build request body with system prompt in correct field
+// Build request body with system prompt in correct field
   const body: Record<string, unknown> = {
     anthropic_version: ANTHROPIC_VERSION,
-    max_tokens: 4096,
-    temperature: 0.7,
+    max_tokens: MODEL_CONFIG.maxTokens,
+    temperature: MODEL_CONFIG.temperature,
+    top_p: MODEL_CONFIG.topP,
     messages,
   };
   
@@ -418,10 +427,12 @@ async function invokeClaude(
     body: JSON.stringify(body),
   });
   
-  const response = await bedrockClient.send(command);
+const response = await bedrockClient.send(command);
   const result = JSON.parse(new TextDecoder().decode(response.body));
   
-  console.log(`[MCP] Claude response - stop_reason: ${result.stop_reason}`);
+  // Log token usage
+  const usage = result.usage;
+  console.log(`[MCP] Claude response - stop_reason: ${result.stop_reason} | tokens: ${usage?.input_tokens}/${usage?.output_tokens}`);
   
   return {
     content: result.content || [],
