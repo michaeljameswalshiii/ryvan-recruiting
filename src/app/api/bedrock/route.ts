@@ -259,12 +259,12 @@ function estimateTokens(text: string): number {
 }
 
 /**
- * Estimate cost for MiniMax model (USD)
- * Pricing: ~$0.001/1K tokens input, ~$0.002/1K tokens output (approximate)
+ * Estimate cost for Claude Sonnet 4.6 on Bedrock (USD)
+ * Pricing: ~$0.003/1K tokens input, ~$0.015/1K tokens output
  */
 function estimateCost(promptTokens: number, completionTokens: number): CostEstimate {
-  const promptCost = (promptTokens / 1000) * 0.001;
-  const completionCost = (completionTokens / 1000) * 0.002;
+  const promptCost = (promptTokens / 1000) * 0.003;
+  const completionCost = (completionTokens / 1000) * 0.015;
   return {
     promptCost,
     completionCost,
