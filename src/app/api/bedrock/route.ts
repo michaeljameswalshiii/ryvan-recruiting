@@ -377,15 +377,20 @@ function getToolSchemasForBedrock(): BedrockTool[] {
 }
 
 /**
- * Invoke Claude model with optional tools
+ * Invoke Claude model with optional tools and system prompt
+ * 
+ * @param messages - Conversation messages
+ * @param tools - Available tools for the model
+ * @param systemPrompt - System prompt (placed in correct top-level field)
  */
 async function invokeClaude(
   messages: ClaudeMessage[],
-  tools: BedrockTool[] = []
+  tools: BedrockTool[] = [],
+  systemPrompt: string = ""
 ): Promise<{ content: ClaudeContent[]; stop_reason?: string }> {
   const selectedModel = DEFAULT_MODEL;
   
-  // Build request body
+  // Build request body with system prompt in correct field
   const body: Record<string, unknown> = {
     anthropic_version: ANTHROPIC_VERSION,
     max_tokens: 4096,
@@ -393,11 +398,18 @@ async function invokeClaude(
     messages,
   };
   
+  // Place system prompt in top-level field (correct for Anthropic API)
+  if (systemPrompt) {
+    body.system = systemPrompt;
+  }
+  
   // Add tools if provided
   if (tools.length > 0) {
     body.tools = tools;
     body.tool_choice = { type: "auto" };
   }
+  
+  console.log(`[MCP] Invoking ${selectedModel} with ${messages.length} messages, ${tools.length} tools`);
   
   const command = new InvokeModelCommand({
     modelId: selectedModel,
@@ -408,6 +420,8 @@ async function invokeClaude(
   
   const response = await bedrockClient.send(command);
   const result = JSON.parse(new TextDecoder().decode(response.body));
+  
+  console.log(`[MCP] Claude response - stop_reason: ${result.stop_reason}`);
   
   return {
     content: result.content || [],
@@ -455,7 +469,27 @@ async function executeToolByName(
 }
 
 /**
+ * Execute a single tool and format result for Claude
+ */
+async function executeSingleTool(
+  toolUse: ClaudeContent & { type: "tool_use" },
+  toolContext: ToolContext
+): Promise<{ tool_use_id: string; content: string }> {
+  try {
+    console.log(`[MCP Tool] Executing ${toolUse.name} with input:`, toolUse.input);
+    const result = await executeToolByName(toolUse.name, toolUse.input, toolContext);
+    console.log(`[MCP Tool] ${toolUse.name} completed`);
+    return { tool_use_id: toolUse.id, content: result };
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Tool execution failed";
+    console.error(`[MCP Tool Error] ${toolUse.name}:`, errorMsg);
+    return { tool_use_id: toolUse.id, content: `Error: ${errorMsg}` };
+  }
+}
+
+/**
  * Run MCP Agent Loop - Model decides when to use tools
+ * Robust implementation with parallel tool execution
  * 
  * @param query - User query
  * @param toolContext - Tool execution context
@@ -466,15 +500,14 @@ async function runMCPAgent(
   toolContext: ToolContext
 ): Promise<string> {
   const systemPrompt = `You are an MCP (Multi-step Cognitive Processor) agent powered by Claude Sonnet 4.6.
-You specialize in talent sourcing and business development.
-Think step-by-step: Plan → Use tools if needed → Observe results → Reflect → Give final answer.
-Use Apollo for people/company searches when relevant. Always show contact details (emails, phones, LinkedIn).`;
+Specialize in talent sourcing, recruiting, and business development using Apollo.io.
+Think step-by-step: Plan → Use tools when needed → Observe results → Reflect → Final Answer.
+Only use tools when they genuinely help. Be concise and actionable.`;
 
   const tools = getToolSchemasForBedrock();
   
-  // Initial messages
+  // Initial messages (system prompt in messages array)
   let messages: ClaudeMessage[] = [
-    { role: "system", content: systemPrompt },
     { role: "user", content: query },
   ];
   
@@ -482,10 +515,10 @@ Use Apollo for people/company searches when relevant. Always show contact detail
   let iteration = 0;
   
   while (iteration < MAX_ITERATIONS) {
-    console.log(`MCP Agent iteration ${iteration + 1}`);
+    console.log(`[MCP] Iteration ${iteration + 1}/${MAX_ITERATIONS}`);
     
-    // Invoke model with tools
-    const result = await invokeClaude(messages, tools);
+    // Invoke model with tools and system prompt
+    const result = await invokeClaude(messages, tools, systemPrompt);
     const content = result.content;
     
     // Check for tool uses
@@ -498,33 +531,34 @@ Use Apollo for people/company searches when relevant. Always show contact detail
       const textBlock = content.find((c): c is ClaudeContent & { type: "text" } => 
         typeof c === "object" && c.type === "text"
       );
-      return textBlock?.text || "No response";
+      const text = textBlock?.text || "No response";
+      console.log(`[MCP] Final response: ${text.substring(0, 100)}...`);
+      return text;
     }
     
-    // Execute tools and add results
-    for (const tool of toolUses) {
-      console.log(`Executing tool: ${tool.name}`);
-      
-      const toolResult = await executeToolByName(tool.name, tool.input, toolContext);
-      
-      // Add tool result to messages
-      messages.push({ role: "assistant", content });
-      messages.push({
-        role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: tool.id,
-            content: toolResult,
-          } as ClaudeContent,
-        ],
-      });
-    }
+    // Execute tools IN PARALLEL
+    console.log(`[MCP] Executing ${toolUses.length} tool(s) in parallel...`);
+    const executions = toolUses.map(tool => executeSingleTool(tool, toolContext));
+    const toolResults = await Promise.all(executions);
+    
+    // Format tool results for Claude
+    const formattedToolResults = toolResults.map(r => ({
+      type: "tool_result",
+      tool_use_id: r.tool_use_id,
+      content: r.content,
+    })) as ClaudeContent[];
+    
+    // Add assistant's tool_use to messages
+    messages.push({ role: "assistant", content });
+    
+    // Add tool results as user message
+    messages.push({ role: "user", content: formattedToolResults });
     
     iteration++;
   }
   
-  return "Max iterations reached. Please try again.";
+  console.log(`[MCP] Max iterations (${MAX_ITERATIONS}) reached`);
+  return "Maximum iterations reached. Please refine your query.";
 }
 
 // ============================================================================
