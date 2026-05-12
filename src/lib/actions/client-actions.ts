@@ -80,8 +80,10 @@ export async function createClient(formData: FormData) {
     industry: formData.get('industry') as string || '',
     city: formData.get('city') as string || '',
     state: formData.get('state') as string || '',
-    country: formData.get('country') as string || '',
-    employee_count: formData.get('employee_count') ? Number(formData.get('employee_count')) : undefined,
+country: formData.get('country') as string || '',
+    employee_count: formData.get('employee_count') && formData.get('employee_count') !== '' 
+      ? Number(formData.get('employee_count')) 
+      : undefined,
     revenue: formData.get('revenue') as string || '',
     description: formData.get('description') as string || '',
   };
