@@ -1,14 +1,16 @@
 import { NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
-  const APOLLO_API_KEY = process.env.APOLLO_API_KEY || process.env.NEXT_PUBLIC_APOLLO_API_KEY || "";
+  // Try both possible variable names
+  const APOLLO_API_KEY = process.env.APOLLO_API_KEY || 
+                        process.env.NEXT_PUBLIC_APOLLO_API_KEY || "";
 
-  console.log("Apollo Proxy - Key present?", !!APOLLO_API_KEY);
+  console.log("🔑 Apollo Proxy Debug - Key exists?", !!APOLLO_API_KEY, "Length:", APOLLO_API_KEY.length);
 
   if (!APOLLO_API_KEY) {
     return Response.json({ 
       error: "Api key required",
-      message: "Apollo API key not found in environment variables" 
+      message: "Add APOLLO_API_KEY or NEXT_PUBLIC_APOLLO_API_KEY in Vercel Settings"
     }, { status: 400 });
   }
 
@@ -26,7 +28,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      return Response.json({ error: errorText || "Apollo API error" }, { status: response.status });
+      return Response.json({ error: errorText }, { status: response.status });
     }
 
     const data = await response.json();
@@ -34,6 +36,6 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error("Apollo Proxy Error:", error);
-    return Response.json({ error: "Search failed", message: error.message }, { status: 500 });
+    return Response.json({ error: error.message || "Search failed" }, { status: 500 });
   }
 }

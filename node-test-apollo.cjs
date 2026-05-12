@@ -1,7 +1,7 @@
 // Test Apollo API directly
 const https = require('https');
 
-const apiKey = process.env.APOLLO_API_KEY || 'qX6K_RYFVmNXzTakFnJsqw';
+const apiKey = process.env.APOLLO_API_KEY || '***REMOVED***';
 console.log('Testing with API key:', apiKey.substring(0, 5) + '...');
 
 const data = JSON.stringify({

@@ -5,6 +5,7 @@ import { Search, Loader2, Building2, MapPin, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { searchCompaniesAction } from "./actions";
 
 interface Company {
   id: string;
@@ -27,7 +28,7 @@ export default function SourcingPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const searchCompanies = async () => {
+const searchCompanies = async () => {
     if (!query.trim()) return;
 
     setIsLoading(true);
@@ -35,27 +36,13 @@ export default function SourcingPage() {
     setHasSearched(true);
 
     try {
-      // Build clean payload
-      const payload = {
+      // Use Server Action for Apollo search
+      const data = await searchCompaniesAction({
         q: query,
         locations: [location],
         organization_num_employees_ranges: [employeeCount],
         per_page: 20,
-      };
-
-      // Use server-side proxy to avoid CORS
-      const response = await fetch("/api/apollo/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.details || errorData.error || "Search failed");
-      }
-
-      const data = await response.json();
 
       // Mixed companies search returns "organizations"
       const orgs = data.organizations || data.accounts || [];
