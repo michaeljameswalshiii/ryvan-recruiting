@@ -144,13 +144,13 @@ interface RequestLogMetadata {
  */
 
 // Haiku 4.5 - Fast/cheap for simple queries
-const MODEL_HAIKU = "anthropic.claude-haiku-4-2025-01-15";
+const MODEL_HAIKU = "us.anthropic.claude-haiku-4-2025-01-15";
 
 // Sonnet 4.6 - Default for most agentic work  
-const MODEL_SONNET = "anthropic.claude-sonnet-4-6-2025-02-19";
+const MODEL_SONNET = "us.anthropic.claude-sonnet-4-6-20250219";
 
 // Opus 4.7 - For very complex multi-step tasks
-const MODEL_OPUS = "anthropic.claude-opus-4-7-2025-01-15";
+const MODEL_OPUS = "us.anthropic.claude-opus-4-7-2025-01-15";
 
 // Default model (Sonnet 4.6 for agentic work)
 const DEFAULT_MODEL = MODEL_SONNET;
