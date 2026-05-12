@@ -152,6 +152,10 @@ const MODEL_SONNET = "us.anthropic.claude-sonnet-4-6-20250219";
 // Opus 4.7 - For very complex multi-step tasks
 const MODEL_OPUS = "us.anthropic.claude-opus-4-7-2025-01-15";
 
+// Fallback: Try legacy format if main models fail
+const MODEL_SONNET_FALLBACK = "anthropic.claude-sonnet-4-6-20250219";
+const MODEL_HAIKU_FALLBACK = "anthropic.claude-haiku-4-2025-01-15";
+
 // Default model (Sonnet 4.6 for agentic work)
 const DEFAULT_MODEL = MODEL_SONNET;
 
