@@ -60,9 +60,14 @@ export function useCreateLead() {
       }
       return result;
     },
-    onSuccess: () => {
+onSuccess: () => {
       toast.success('Lead created successfully');
-      queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: leadKeys.lists(), refetchType: 'all' });
+      // Also invalidate dashboard queries so stats update
+      queryClient.invalidateQueries({ queryKey: ['dashboard'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['stats'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['clients'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['pipeline'], refetchType: 'all' });
     },
     onError: (error) => {
       toast.error('Failed to create lead', {

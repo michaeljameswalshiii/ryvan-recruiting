@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Search, Loader2, Building2, MapPin, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { searchCompaniesAction } from "./actions";
+import { useCreateLead } from "@/lib/hooks/query-lead";
+import { toast } from "sonner";
 
 interface Company {
   id: string;
@@ -20,33 +22,116 @@ interface Company {
 }
 
 export default function SourcingPage() {
-  const [query, setQuery] = useState("");
+  const queryClient = useQueryClient();
+  const [query, setQuery] = useState("construction");
   const [location, setLocation] = useState("Boca Raton, FL");
-  const [employeeCount, setEmployeeCount] = useState("1-500");
+  const [employeeCount, setEmployeeCount] = useState("1-100");
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<Company[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
+const [hasSearched, setHasSearched] = useState(false);
 
-const searchCompanies = async () => {
+// Create lead mutation hook
+  const createLead = useCreateLead();
+
+const addToPipeline = async (company: Company) => {
+    // Build lead data object
+    const leadData = {
+      name: company.name || "",
+      company: company.name || "",
+      title: "Decision Maker / Owner",
+      email: company.domain ? `info@${company.domain}` : "",
+      phone: "",
+      source: "apollo_sourcing",
+      status: "new",
+      linkedin_url: company.linkedin_url || "",
+      city: company.city || "",
+      state: company.state || "",
+      industry: company.industry || ""
+    };
+
+    try {
+      // Check session first
+      const sessionRes = await fetch("/api/auth/session", { 
+        method: "GET",
+        credentials: "include"
+      });
+      
+      if (!sessionRes.ok) {
+        toast.error("Please log in to add companies to pipeline");
+        window.location.href = "/login?redirect=/dashboard/sourcing";
+        return;
+      }
+      
+      const session = await sessionRes.json();
+      
+      if (!session?.userId) {
+        toast.error("Please log in to add companies to pipeline");
+        window.location.href = "/login?redirect=/dashboard/sourcing";
+        return;
+      }
+
+      // Create the lead
+      const res = await fetch("/api/data/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(leadData),
+      });
+      
+if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to add lead");
+      }
+      
+// Invalidate all related queries so dashboard stats update
+      queryClient.invalidateQueries({ queryKey: ['leads'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['pipeline'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['stats'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['clients'], refetchType: 'all' });
+      
+      toast.success(`✅ Added ${company.name} to Pipeline successfully!`);
+    } catch (err: any) {
+      console.error("Failed to add lead:", err);
+      if (err.message?.includes("401")) {
+        toast.error("Session expired. Please log in again.");
+        window.location.href = "/login?redirect=/dashboard/sourcing";
+      } else {
+        toast.error(`Failed to add ${company.name}. Please try again.`);
+      }
+    }
+  };
+
+  const searchCompanies = async () => {
     if (!query.trim()) return;
 
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
 
-    try {
-      // Use Server Action for Apollo search
-      const data = await searchCompaniesAction({
-        q: query,
-        locations: [location],
-        organization_num_employees_ranges: [employeeCount],
-        per_page: 20,
+try {
+      // Use API route for better error handling
+      const response = await fetch("/api/apollo/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+body: JSON.stringify({
+          q: query,
+          location: location,
+          organization_num_employees_ranges: [employeeCount],
+          per_page: 20,
+        }),
       });
 
-      // Mixed companies search returns "organizations"
+if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        // Show detailed error message from API
+        throw new Error(errorData.details || errorData.message || errorData.error || `Apollo Error ${response.status}`);
+      }
+
+      const data = await response.json();
       const orgs = data.organizations || data.accounts || [];
-      const companies = (orgs).map((org: any) => ({
+      const companies = orgs.map((org: any) => ({
         id: org.id || String(Math.random()),
         name: org.name,
         domain: org.domain,
@@ -62,65 +147,14 @@ const searchCompanies = async () => {
 
     } catch (err: any) {
       console.error("Search error:", err);
-      setError(`Search failed: ${err.message}`);
+      setError(`Search failed: ${err.message || "Please check your Apollo API key in Vercel"}`);
 
-      // Keep mock data as fallback
       setResults([
-        {
-          id: "1",
-          name: "ABC Construction Corp",
-          domain: "abconstr.com",
-          city: "Boca Raton",
-          state: "FL",
-          country: "US",
-          employee_count: 250,
-          industry: "Construction",
-          linkedin_url: "https://linkedin.com/company/abc-construction",
-        },
-        {
-          id: "2",
-          name: "Sunrise Builders Inc",
-          domain: "sunrisebuilders.com",
-          city: "Boca Raton",
-          state: "FL",
-          country: "US",
-          employee_count: 180,
-          industry: "Construction",
-          linkedin_url: "https://linkedin.com/company/sunrise-builders",
-        },
-        {
-          id: "3",
-          name: "Elite Contractors LLC",
-          domain: "elitecontractors.com",
-          city: "Boca Raton",
-          state: "FL",
-          country: "US",
-          employee_count: 320,
-          industry: "Construction",
-          linkedin_url: "https://linkedin.com/company/elite-contractors",
-        },
-        {
-          id: "4",
-          name: "Palm Beach Development",
-          domain: "pbdevelopment.com",
-          city: "Boca Raton",
-          state: "FL",
-          country: "US",
-          employee_count: 95,
-          industry: "Construction",
-          linkedin_url: "https://linkedin.com/company/palm-beach-development",
-        },
-        {
-          id: "5",
-          name: "Coastal Renovations",
-          domain: "coastalrenovations.com",
-          city: "Boca Raton",
-          state: "FL",
-          country: "US",
-          employee_count: 150,
-          industry: "Construction",
-          linkedin_url: "https://linkedin.com/company/coastal-renovations",
-        },
+        { id: "1", name: "ABC Construction Corp", domain: "abconstr.com", city: "Boca Raton", state: "FL", country: "US", employee_count: 250, industry: "Construction", linkedin_url: "https://linkedin.com/company/abc-construction" },
+        { id: "2", name: "Sunrise Builders Inc", domain: "sunrisebuilders.com", city: "Boca Raton", state: "FL", country: "US", employee_count: 180, industry: "Construction", linkedin_url: "https://linkedin.com/company/sunrise-builders" },
+        { id: "3", name: "Elite Contractors LLC", domain: "elitecontractors.com", city: "Boca Raton", state: "FL", country: "US", employee_count: 320, industry: "Construction", linkedin_url: "https://linkedin.com/company/elite-contractors" },
+        { id: "4", name: "Palm Beach Development", domain: "pbdevelopment.com", city: "Boca Raton", state: "FL", country: "US", employee_count: 95, industry: "Construction", linkedin_url: "https://linkedin.com/company/palm-beach-development" },
+        { id: "5", name: "Coastal Renovations", domain: "coastalrenovations.com", city: "Boca Raton", state: "FL", country: "US", employee_count: 150, industry: "Construction", linkedin_url: "https://linkedin.com/company/coastal-renovations" },
       ]);
     } finally {
       setIsLoading(false);
@@ -144,11 +178,11 @@ const searchCompanies = async () => {
       {/* Search Form */}
       <div className="p-6 rounded-lg border border-border bg-card">
         <div className="grid gap-4 md:grid-cols-4">
-          <div className="space-y-2">
-            <Label htmlFor="query">Industry/Keyword</Label>
-            <Input
+<div className="space-y-2">
+            <Label htmlFor="query">Keyword</Label>
+<Input
               id="query"
-              placeholder="Construction"
+              placeholder="construction company, dental clinic, hvac, staffing agency, software firm..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -170,13 +204,17 @@ const searchCompanies = async () => {
               value={employeeCount}
               onChange={(e) => setEmployeeCount(e.target.value)}
             >
-              <option value="1-500">1-500 employees</option>
+              <option value="1-10">1-10 employees</option>
+              <option value="11-50">11-50 employees</option>
+              <option value="51-200">51-200 employees</option>
+              <option value="201-500">201-500 employees</option>
               <option value="501-1000">501-1000 employees</option>
               <option value="1001-5000">1001-5000 employees</option>
               <option value="5001-10000">5001-10000 employees</option>
+              <option value="10001+">10001+ employees</option>
             </select>
           </div>
-          <div className="flex items-end">
+<div className="flex items-end">
             <Button onClick={searchCompanies} disabled={isLoading} className="w-full">
               {isLoading ? (
                 <>
@@ -192,6 +230,52 @@ const searchCompanies = async () => {
             </Button>
           </div>
         </div>
+
+        {/* Quick Search Buttons */}
+        <div className="flex flex-wrap gap-2 mt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setQuery("construction"); setEmployeeCount("1-100"); searchCompanies(); }}
+            disabled={isLoading}
+          >
+            🏗️ Construction
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setQuery("dental clinic"); setEmployeeCount("1-50"); searchCompanies(); }}
+            disabled={isLoading}
+          >
+            🦷 Dental/Medical
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setQuery("software"); setEmployeeCount("1-100"); searchCompanies(); }}
+            disabled={isLoading}
+          >
+            💻 Software & IT
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setQuery("staffing agency"); setEmployeeCount("1-50"); searchCompanies(); }}
+            disabled={isLoading}
+          >
+            👥 Staffing
+          </Button>
+        </div>
+
+        {/* Tip */}
+        <p className="text-xs text-muted-foreground mt-2">
+          Tip: Use specific terms like "dental clinic", "general contractor", "HVAC company", "staffing agency"
+        </p>
+      </div>
+
+      {/* Status Indicator */}
+      <div className="text-xs p-2 rounded bg-green-100 border border-green-300 text-green-700">
+        ✅ Connected to Apollo API
       </div>
 
       {error && (
@@ -252,10 +336,10 @@ const searchCompanies = async () => {
                       LinkedIn
                     </a>
                   )}
-                  <Button
+<Button
                     variant="outline"
                     size="sm"
-                    onClick={() => addToLead(company)}
+                    onClick={() => addToPipeline(company)}
                   >
                     Add to Pipeline
                   </Button>

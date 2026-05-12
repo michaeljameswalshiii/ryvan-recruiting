@@ -189,11 +189,24 @@ const handleAddCompany = async () => {
           revenue: newCompanyRevenue,
           description: newCompanyDescription,
         });
-        // Invalidate dashboard cache so count updates
-        queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
+// Invalidate all related queries so dashboard count updates
+        queryClient.invalidateQueries({ queryKey: ['clients'], refetchType: 'all' });
+        queryClient.invalidateQueries({ queryKey: clientKeys.lists(), refetchType: 'all' });
+        // Also invalidate dashboard queries
+        queryClient.invalidateQueries({ queryKey: ['dashboard'], refetchType: 'all' });
+        queryClient.invalidateQueries({ queryKey: ['stats'], refetchType: 'all' });
+        // Also invalidate leads and pipeline (in case same data affects them)
+        queryClient.invalidateQueries({ queryKey: ['leads'], refetchType: 'all' });
+        queryClient.invalidateQueries({ queryKey: ['pipeline'], refetchType: 'all' });
+        // Show success (without hard reload - React Query will auto-update)
+        alert("Company added successfully!");
       } catch (err) {
         console.error("Failed to save company to DB:", err);
+        alert("Note: Company saved locally but failed to save to database");
       }
+    } else {
+      // No DB - just show local success
+      alert("Company added successfully!");
     }
     
     // Reset form
@@ -216,10 +229,19 @@ const handleAddCompany = async () => {
             Manage your target companies.
           </p>
         </div>
-        <Button onClick={() => setIsAddDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Company
-        </Button>
+<div className="flex gap-2">
+          <Button variant="outline" onClick={() => {
+            queryClient.invalidateQueries({ queryKey: ['clients'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+            queryClient.invalidateQueries({ queryKey: ['stats'] });
+          }}>
+            Refresh
+          </Button>
+          <Button onClick={() => setIsAddDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Company
+          </Button>
+        </div>
       </div>
 
       {/* Add Company Dialog */}

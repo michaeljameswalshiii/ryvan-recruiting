@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Search, Loader2, User, Mail, Phone, Linkedin, MapPin, Briefcase, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +20,8 @@ interface Candidate {
 }
 
 export default function CandidatesPage() {
-  const [query, setQuery] = useState("");
+  const queryClient = useQueryClient();
+  const [query, setQuery] = useState("")
   const [location, setLocation] = useState("Boca Raton, FL");
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<Candidate[]>([]);
@@ -80,7 +82,7 @@ export default function CandidatesPage() {
     }
   };
 
-  const addToLead = async (candidate: Candidate) => {
+const addToLead = async (candidate: Candidate) => {
     try {
       const response = await fetch("/api/data/leads", {
         method: "POST",
@@ -100,6 +102,14 @@ export default function CandidatesPage() {
         throw new Error("Failed to save lead");
       }
 
+// Invalidate queries so dashboard stats update
+      queryClient.invalidateQueries({ queryKey: ['leads'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['stats'], refetchType: 'all' });
+      // Also invalidate pipeline (leads and pipeline share data)
+      queryClient.invalidateQueries({ queryKey: ['pipeline'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['clients'], refetchType: 'all' });
+      
       alert(`Added ${candidate.name} to leads!`);
     } catch (err) {
       console.error("Error adding lead:", err);
@@ -110,10 +120,18 @@ export default function CandidatesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Candidates</h1>
+<h1 className="text-3xl font-bold">Candidates</h1>
         <p className="text-muted-foreground">
           Find candidates/contacts for your pipeline.
         </p>
+<Button variant="outline" onClick={() => {
+          queryClient.invalidateQueries({ queryKey: ['leads'] });
+          queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+          queryClient.invalidateQueries({ queryKey: ['stats'] });
+        }} className="ml-4">
+          Refresh
+        </Button>
       </div>
 
       {/* Search Form */}
