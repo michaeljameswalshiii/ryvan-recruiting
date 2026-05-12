@@ -16,10 +16,17 @@ import { z } from 'zod';
  * Get all leads for the current tenant
  */
 export async function getLeads() {
-  const tenantId = await getSessionTenantId();
-  
+  let tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+
+  // If no tenantId but user is logged in, use default tenant
+  if (!tenantId && userId) {
+    tenantId = `tenant-${userId}`;
+  }
+
   if (!tenantId) {
-    return { error: 'Unauthorized' };
+    // Not logged in - return empty array (not an error)
+    return { leads: [] };
   }
 
   try {
@@ -34,11 +41,16 @@ export async function getLeads() {
  * Create a new lead
  */
 export async function createLead(formData: FormData) {
-  const tenantId = await getSessionTenantId();
+  let tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
   
-  if (!tenantId || !userId) {
+  if (!userId) {
     return { error: 'Unauthorized' };
+  }
+
+  // If no tenantId but user is logged in, create/use default tenant
+  if (!tenantId) {
+    tenantId = `tenant-${userId}`;
   }
 
   const rawData = {

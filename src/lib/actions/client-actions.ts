@@ -15,10 +15,17 @@ import { createClientSchema, updateClientSchema } from '../schemas/client';
  * Get all clients for the current tenant
  */
 export async function getClients() {
-  const tenantId = await getSessionTenantId();
-  
+  let tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+
+  // If no tenantId but user is logged in, use default tenant
+  if (!tenantId && userId) {
+    tenantId = `tenant-${userId}`;
+  }
+
   if (!tenantId) {
-    return { error: 'Unauthorized' };
+    // Not logged in - return empty array (not an error)
+    return { clients: [] };
   }
 
   try {
@@ -51,11 +58,17 @@ export async function getClientByIdAction(clientId: string) {
  * Create a new client
  */
 export async function createClient(formData: FormData) {
-  const tenantId = await getSessionTenantId();
+  let tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
   
-  if (!tenantId || !userId) {
+  if (!userId) {
     return { error: 'Unauthorized' };
+  }
+
+  // If no tenantId but user is logged in, create/use default tenant
+  if (!tenantId) {
+    console.log('[createClient] No tenantId for user, creating default tenant');
+    tenantId = `tenant-${userId}`;
   }
 
   const rawData = {
