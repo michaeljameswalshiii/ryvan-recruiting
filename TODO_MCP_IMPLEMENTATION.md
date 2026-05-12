@@ -1,9 +1,8 @@
 # MCP Implementation TODO
 
-## Implementation In Progress
+## Implementation in Progress
 
 ### Step 1: bedrock/route.ts
-- [x] Plan confirmed
 - [ ] IN PROGRESS: Update DEFAULT_MODEL to Claude Sonnet 4.6
 - [ ] Add MODEL_OPTIONS enum
 - [ ] Add MCP planning step
@@ -15,5 +14,4 @@
 - [ ] Add MCP system prompts
 
 ### Step 3: ai/tools/index.ts
-- [ ] Add parallel execution support
-- [ ] Enhance tool result aggregation
+- [ ] Enhance for MCP patterns

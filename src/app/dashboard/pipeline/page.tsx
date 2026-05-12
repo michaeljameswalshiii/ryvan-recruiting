@@ -56,14 +56,16 @@ export default function PipelinePage() {
   const [newLeadPhone, setNewLeadPhone] = useState("");
   const [newLeadNotes, setNewLeadNotes] = useState("");
 
-  // Convert DB items to Lead interface
+// Convert DB items to Lead interface
+  // Note: Pipeline uses 'stage' field, not 'status'
   const leads: Lead[] = pipelineItems.map((item: any) => ({
     id: item.id,
     name: item.name || "",
     email: item.email || "",
     company: item.company || "",
     phone: item.phone || "",
-    status: (item.status as Lead["status"]) || "new",
+    // Use stage field (new, contacted, qualified, proposal, closed)
+    status: (item.stage as Lead["status"]) || (item.status as Lead["status"]) || "new",
     notes: item.notes || "",
     created_at: item.created_at || new Date().toISOString(),
   }));
@@ -80,12 +82,12 @@ export default function PipelinePage() {
     e.preventDefault();
   };
 
-  const handleDrop = async (status: Lead["status"]) => {
+const handleDrop = async (status: Lead["status"]) => {
     if (!draggedLead) return;
 
-    // Build FormData for update
+    // Build FormData for update - use 'stage' for pipeline
     const formData = new FormData();
-    formData.set("status", status);
+    formData.set("stage", status);
 
     // Use mutation - handles DB save + query invalidation + toast
     await updatePipelineMutation.mutateAsync({
@@ -99,14 +101,14 @@ export default function PipelinePage() {
   const handleAddLead = async () => {
     if (!newLeadName || !newLeadEmail) return;
 
-    // Build FormData for server action
+    // Build FormData for server action - use 'stage' for pipeline
     const formData = new FormData();
     formData.set("name", newLeadName);
     formData.set("email", newLeadEmail);
     formData.set("company", newLeadCompany);
     formData.set("phone", newLeadPhone);
     formData.set("notes", newLeadNotes);
-    formData.set("status", "new");
+    formData.set("stage", "new");
 
     // Use mutation - handles DB save + query invalidation + toast
     await createPipelineMutation.mutateAsync(formData);
@@ -166,6 +168,11 @@ export default function PipelinePage() {
 
 // Error state - show empty state for auth errors
   const isAuthError = error?.message?.includes('Unauthorized');
+  
+  // Log error for debugging
+  if (error) {
+    console.log('[PIPELINE-PAGE] Error:', error?.message);
+  }
 
   if (error && !isAuthError) {
     return (
@@ -176,6 +183,8 @@ export default function PipelinePage() {
         </div>
         <div className="p-4 rounded-md bg-destructive/10 text-destructive">
           Failed to load pipeline. Please try again.
+          <br />
+          <span className="text-xs">Error: {error?.message}</span>
           <Button variant="outline" onClick={handleRefresh} className="ml-4">
             Retry
           </Button>

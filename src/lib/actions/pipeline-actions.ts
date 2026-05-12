@@ -21,23 +21,32 @@ import { createPipelineSchema, updatePipelineSchema } from '../schemas/pipeline'
  * Get all pipeline items for the current tenant
  */
 export async function getPipeline() {
+  console.log('[PIPELINE-ACTION] getPipeline called');
+  
   let tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
+  
+  console.log('[PIPELINE-ACTION] tenantId:', tenantId, 'userId:', userId);
 
   // If no tenantId but user is logged in, use default tenant
   if (!tenantId && userId) {
     tenantId = `tenant-${userId}`;
+    console.log('[PIPELINE-ACTION] Using fallback tenantId:', tenantId);
   }
 
   if (!tenantId) {
     // Not logged in - return empty array (not an error)
+    console.log('[PIPELINE-ACTION] No tenantId, returning empty array');
     return { pipeline: [] };
   }
 
   try {
+    console.log('[PIPELINE-ACTION] Calling getAllPipeline with tenantId:', tenantId);
     const pipeline = await getAllPipeline(tenantId);
+    console.log('[PIPELINE-ACTION] getAllPipeline returned:', pipeline?.length || 0, 'items');
     return { pipeline };
   } catch (error: any) {
+    console.error('[PIPELINE-ACTION] Error:', error);
     return { error: error.message || 'Failed to get pipeline' };
   }
 }
@@ -91,9 +100,10 @@ export async function createPipeline(formData: FormData) {
     rating: formData.get('rating') ? Number(formData.get('rating')) : undefined,
   };
 
-  const validated = createPipelineSchema.safeParse(rawData);
+const validated = createPipelineSchema.safeParse(rawData);
   
   if (!validated.success) {
+    console.log('[PIPELINE-ACTION] Validation errors:', JSON.stringify(validated.error.flatten().fieldErrors));
     return {
       error: 'Invalid input',
       details: validated.error.flatten().fieldErrors,

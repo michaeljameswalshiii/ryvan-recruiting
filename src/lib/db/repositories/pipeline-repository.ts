@@ -34,25 +34,61 @@ function generateId(): string {
  * Get all pipeline items for a tenant
  */
 export async function getAllPipeline(tenantId: string): Promise<Pipeline[]> {
+  console.log('[PIPELINE-REPO] getAllPipeline called with tenantId:', tenantId);
+  
+  // Validate tenantId
+  if (!tenantId) {
+    console.log('[PIPELINE-REPO] No tenantId, returning empty array');
+    return [];
+  }
+  
   const cacheKey = makeCacheKey(tenantId, 'pipeline', 'all');
+  console.log('[PIPELINE-REPO] cacheKey:', cacheKey);
   
   // Try cache first
-  const cached = await getCached<Pipeline[]>(cacheKey);
-  if (cached) {
-    return cached;
+  try {
+    const cached = await getCached<Pipeline[]>(cacheKey);
+    console.log('[PIPELINE-REPO] cache check result:', cached ? 'hit' : 'miss');
+    if (cached) {
+      return cached;
+    }
+  } catch (cacheError: any) {
+    console.error('[PIPELINE-REPO] Cache error:', cacheError?.message);
   }
   
   // Query from DynamoDB
-  const pipeline = await queryItems<Pipeline>(
-    pipelineTable,
-    'tenant_id = :tenantId',
-    { ':tenantId': tenantId }
-  );
-  
-  // Cache the result
-  await setCached(cacheKey, pipeline, CACHE_TTL);
-  
-  return pipeline;
+  console.log('[PIPELINE-REPO] Querying DynamoDB with table:', pipelineTable);
+  try {
+    const pipeline = await queryItems<Pipeline>(
+      pipelineTable,
+      'tenant_id = :tenantId',
+      { ':tenantId': tenantId }
+    );
+    console.log('[PIPELINE-REPO] DynamoDB returned:', pipeline?.length || 0, 'items');
+    
+    // Cache the result
+    try {
+      await setCached(cacheKey, pipeline, CACHE_TTL);
+      console.log('[PIPELINE-REPO] Cached result');
+    } catch (cacheSetError: any) {
+      console.error('[PIPELINE-REPO] Cache set error:', cacheSetError?.message);
+    }
+    
+    return pipeline;
+  } catch (dbError: any) {
+    const errorMessage = dbError?.message || '';
+    console.error('[PIPELINE-REPO] DynamoDB error:', errorMessage);
+    
+    // Check for specific errors
+    if (errorMessage.includes('Requested resource not found') || errorMessage.includes('Table not found')) {
+      console.error('[PIPELINE-REPO] Table may not exist or tenant access issue');
+      // Return empty array instead of throwing - user has no pipeline data yet
+      return [];
+    }
+    
+    // Re-throw other errors
+    throw dbError;
+  }
 }
 
 /**

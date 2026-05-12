@@ -32,15 +32,11 @@ function generateId(): string {
 
 /**
  * Get all clients for a tenant
+ * NOTE: Cache disabled for now - causes issues with Vercel serverless
  */
 export async function getAllClients(tenantId: string): Promise<Client[]> {
-  const cacheKey = makeCacheKey(tenantId, 'clients', 'all');
-  
-  // Try cache first
-  const cached = await getCached<Client[]>(cacheKey);
-  if (cached) {
-    return cached;
-  }
+  // Directly query DynamoDB without caching
+  // (Vercel's in-memory cache doesn't work across instances)
   
   // Query from DynamoDB
   const clients = await queryItems<Client>(
@@ -48,9 +44,6 @@ export async function getAllClients(tenantId: string): Promise<Client[]> {
     'tenant_id = :tenantId',
     { ':tenantId': tenantId }
   );
-  
-  // Cache the result
-  await setCached(cacheKey, clients, CACHE_TTL);
   
   return clients;
 }

@@ -16,6 +16,7 @@ import { SimpleDialog } from "@/components/ui/simple-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 // Use TanStack Query hooks - server actions for DB access
 import { useClients, useCreateClient, clientKeys } from "@/lib/hooks/query-client";
+import { toast } from "sonner";
 
 interface Company {
   id: string;
@@ -80,30 +81,37 @@ export default function CompaniesPage() {
     linkedin_url: c.linkedin_url || "",
   }));
 
-  const handleAddCompany = async () => {
+const handleAddCompany = async () => {
     if (!newCompanyName) return;
 
-    // Build FormData for server action
-    const formData = new FormData();
-    formData.set("name", newCompanyName);
-    formData.set("email", `${Date.now()}@placeholder.com`);
-    formData.set("domain", newCompanyDomain);
-    formData.set("industry", newCompanyIndustry);
-    formData.set("city", newCompanyCity);
-    formData.set("state", newCompanyState);
-    formData.set("country", "US");
-    if (newCompanyEmployeeCount) {
-      formData.set("employee_count", newCompanyEmployeeCount);
+    try {
+      // Build FormData for server action
+      const formData = new FormData();
+      formData.set("name", newCompanyName);
+      formData.set("email", `${Date.now()}@placeholder.com`);
+      formData.set("domain", newCompanyDomain);
+      formData.set("industry", newCompanyIndustry);
+      formData.set("city", newCompanyCity);
+      formData.set("state", newCompanyState);
+      formData.set("country", "US");
+      if (newCompanyEmployeeCount) {
+        formData.set("employee_count", newCompanyEmployeeCount);
+      }
+      formData.set("revenue", newCompanyRevenue);
+      formData.set("description", newCompanyDescription);
+
+      // Use mutation - handles DB save + query invalidation + toast
+      await createClientMutation.mutateAsync(formData);
+
+      // Success - close dialog and reset form
+      toast.success(`${newCompanyName} added successfully!`);
+      setIsAddDialogOpen(false);
+      resetForm();
+    } catch (error) {
+      // Error handling - show error message
+      console.error("Failed to add company:", error);
+      toast.error(`Failed to add ${newCompanyName}. Please try again.`);
     }
-    formData.set("revenue", newCompanyRevenue);
-    formData.set("description", newCompanyDescription);
-
-    // Use mutation - handles DB save + query invalidation + toast
-    await createClientMutation.mutateAsync(formData);
-
-    // Close dialog and reset form
-    setIsAddDialogOpen(false);
-    resetForm();
   };
 
   const resetForm = () => {
@@ -144,10 +152,34 @@ export default function CompaniesPage() {
     );
   }
 
-// Error state - show empty state for auth errors, error for actual failures
-  const isAuthError = error?.message?.includes('Unauthorized') || error?.message?.includes('Unauthorized');
+// Error state - show message for load errors
+  if (error) {
+    const errorMsg = error.message || '';
+    const isAuthError = errorMsg.includes('Unauthorized') || errorMsg.includes('Session') || errorMsg.includes('login');
 
-  if (error && !isAuthError) {
+    // For auth errors, redirect to login
+    if (isAuthError) {
+      return (
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold">Companies</h1>
+            <p className="text-muted-foreground">Manage your target companies.</p>
+          </div>
+          <div className="p-4 rounded-md bg-destructive/10 text-destructive">
+            Please log in to view companies.
+            <Button 
+              variant="outline" 
+              onClick={() => window.location.href = '/login'} 
+              className="ml-4"
+            >
+              Go to Login
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // For other errors, show retry option
     return (
       <div className="space-y-6">
         <div>
@@ -155,7 +187,7 @@ export default function CompaniesPage() {
           <p className="text-muted-foreground">Manage your target companies.</p>
         </div>
         <div className="p-4 rounded-md bg-destructive/10 text-destructive">
-          Failed to load companies. Please try again.
+          Failed to load companies: {errorMsg}
           <Button variant="outline" onClick={handleRefresh} className="ml-4">
             Retry
           </Button>

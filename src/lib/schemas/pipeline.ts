@@ -13,10 +13,11 @@ export const pipelineSchema = z.object({
   phone: z.string().optional().or(z.literal('')),
   company: z.string().max(100).optional().or(z.literal('')),
   title: z.string().max(100).optional().or(z.literal('')),
-  stage: z.enum(['new', 'screening', 'interview', 'offer', 'hired', 'rejected']).default('new'),
+  // Support both UI stages and schema-only stages
+  stage: z.enum(['new', 'contacted', 'qualified', 'proposal', 'closed', 'screening', 'interview', 'offer', 'hired', 'rejected']).default('new'),
   source: z.string().max(50).optional().or(z.literal('')),
   notes: z.string().max(2000).optional().or(z.literal('')),
-linkedin_url: z.string().max(200).optional().or(z.literal('')),
+  linkedin_url: z.string().max(200).optional().or(z.literal('')),
   resume_url: z.string().max(200).optional().or(z.literal('')),
   scheduled_date: z.string().datetime().optional(),
   rating: z.number().min(1).max(5).optional(),

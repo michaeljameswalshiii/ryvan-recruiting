@@ -35,14 +35,23 @@ export function usePipeline() {
   return useQuery({
     queryKey: pipelineKeys.lists(),
     queryFn: async () => {
-      const result = await getPipeline();
-      if (result.error) {
-        throw new Error(result.error);
+      console.log('[QUERY-PIPELINE] Fetching pipeline data');
+      try {
+        const result = await getPipeline();
+        console.log('[QUERY-PIPELINE] Result:', result);
+        if (result.error) {
+          console.error('[QUERY-PIPELINE] Error from server action:', result.error);
+          throw new Error(result.error);
+        }
+        return result.pipeline || [];
+      } catch (err: any) {
+        console.error('[QUERY-PIPELINE] Query error:', err?.message, err?.stack);
+        throw err;
       }
-      return result.pipeline || [];
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
     retry: 2,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 }
 
@@ -79,7 +88,7 @@ export function useCreatePipeline() {
       }
       return result;
     },
-onSuccess: () => {
+    onSuccess: () => {
       toast.success('Added to pipeline successfully');
       // Invalidate pipeline queries
       queryClient.invalidateQueries({ queryKey: pipelineKeys.lists(), refetchType: 'all' });
