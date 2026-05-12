@@ -22,6 +22,13 @@ export interface DashboardStats {
   placements: number;
 }
 
+// Dashboard query keys for explicit invalidation
+export const dashboardKeys = {
+  all: ['dashboard'] as const,
+  stats: ['dashboard-stats'] as const,
+  activity: ['dashboard-activity'] as const,
+};
+
 /**
  * Get dashboard statistics
  * Combines counts from clients, leads, and pipeline

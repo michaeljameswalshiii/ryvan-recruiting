@@ -81,9 +81,11 @@ export function useCreateClient() {
     },
 onSuccess: () => {
       toast.success('Client created successfully');
+      // Invalidate client queries
       queryClient.invalidateQueries({ queryKey: clientKeys.lists(), refetchType: 'all' });
       // Also invalidate dashboard queries so stats update
       queryClient.invalidateQueries({ queryKey: ['dashboard'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'], refetchType: 'all' });
       queryClient.invalidateQueries({ queryKey: ['stats'], refetchType: 'all' });
       queryClient.invalidateQueries({ queryKey: ['leads'], refetchType: 'all' });
       queryClient.invalidateQueries({ queryKey: ['pipeline'], refetchType: 'all' });

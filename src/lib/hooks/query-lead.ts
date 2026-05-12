@@ -62,9 +62,11 @@ export function useCreateLead() {
     },
 onSuccess: () => {
       toast.success('Lead created successfully');
+      // Invalidate lead queries
       queryClient.invalidateQueries({ queryKey: leadKeys.lists(), refetchType: 'all' });
       // Also invalidate dashboard queries so stats update
       queryClient.invalidateQueries({ queryKey: ['dashboard'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'], refetchType: 'all' });
       queryClient.invalidateQueries({ queryKey: ['stats'], refetchType: 'all' });
       queryClient.invalidateQueries({ queryKey: ['clients'], refetchType: 'all' });
       queryClient.invalidateQueries({ queryKey: ['pipeline'], refetchType: 'all' });

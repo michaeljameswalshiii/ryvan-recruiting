@@ -79,9 +79,17 @@ export function useCreatePipeline() {
       }
       return result;
     },
-    onSuccess: () => {
+onSuccess: () => {
       toast.success('Added to pipeline successfully');
-      queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
+      // Invalidate pipeline queries
+      queryClient.invalidateQueries({ queryKey: pipelineKeys.lists(), refetchType: 'all' });
+      // Invalidate dashboard queries so stats update
+      queryClient.invalidateQueries({ queryKey: ['dashboard'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['stats'], refetchType: 'all' });
+      // Invalidate other data sources that may be affected
+      queryClient.invalidateQueries({ queryKey: ['clients'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ['leads'], refetchType: 'all' });
     },
     onError: (error) => {
       toast.error('Failed to add to pipeline', {
