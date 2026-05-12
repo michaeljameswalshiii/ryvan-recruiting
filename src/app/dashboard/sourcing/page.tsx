@@ -30,7 +30,7 @@ export default function SourcingPage() {
 // Apollo.io API configuration
   const APOLLO_API_KEY = process.env.NEXT_PUBLIC_APOLLO_API_KEY || "";
 
-  const searchCompanies = async () => {
+const searchCompanies = async () => {
     if (!query.trim()) return;
     
     setIsLoading(true);
@@ -38,46 +38,43 @@ export default function SourcingPage() {
     setHasSearched(true);
 
     try {
-if (!APOLLO_API_KEY) {
-        throw new Error("Apollo API key is not configured. Please add NEXT_PUBLIC_APOLLO_API_KEY in Vercel settings.");
-      }
+    if (!APOLLO_API_KEY) {
+      throw new Error("Apollo API key is not configured. Please add NEXT_PUBLIC_APOLLO_API_KEY in Vercel settings.");
+    }
 
-const response = await fetch("https://api.apollo.io/api/v1/mixed_companies/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Api-Key": APOLLO_API_KEY,
-        },
-        body: JSON.stringify({
-          q: query,
-          locations: [location],
-          organization_num_employees_ranges: [employeeCount],
-          per_page: 20,
-        }),
-      });
+    // Use server-side proxy to avoid CORS
+    const response = await fetch("/api/apollo/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        q: query,
+        locations: [location],
+        organization_num_employees_ranges: [employeeCount],
+        per_page: 20,
+      }),
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "Unknown error");
-        throw new Error(`Apollo API ${response.status}: ${errorText}`);
-      }
+    if (!response.ok) {
+      throw new Error("Search failed");
+    }
 
-      const data = await response.json();
-      
-      // Mixed companies search returns "organizations" in "partial_results" or "organizations"
-      const orgs = data.organizations || data.partial_results || [];
-      const companies = (orgs).map((org: any) => ({
-        id: org.id || String(Math.random()),
-        name: org.name,
-        domain: org.domain,
-        linkedin_url: org.linkedin_url,
-        city: org.city,
-        state: org.state,
-        country: org.country,
-        employee_count: org.employee_count,
-        industry: org.industry || query,
-      }));
+    const data = await response.json();
+    
+    // Mixed companies search returns "organizations" in "partial_results" or "organizations"
+    const orgs = data.organizations || data.partial_results || [];
+    const companies = (orgs).map((org: any) => ({
+      id: org.id || String(Math.random()),
+      name: org.name,
+      domain: org.domain,
+      linkedin_url: org.linkedin_url,
+      city: org.city,
+      state: org.state,
+      country: org.country,
+      employee_count: org.employee_count,
+      industry: org.industry || query,
+    }));
 
-      setResults(companies);
+    setResults(companies);
 
     } catch (err: any) {
       console.error("Apollo.io API error:", err);

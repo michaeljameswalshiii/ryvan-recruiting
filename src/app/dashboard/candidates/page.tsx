@@ -57,7 +57,7 @@ const APOLLO_API_KEY = process.env.NEXT_PUBLIC_APOLLO_API_KEY || "";
     return res.json();
   };
 
-  const searchCandidates = async () => {
+const searchCandidates = async () => {
     if (!query.trim()) return;
     
     setIsLoading(true);
@@ -69,41 +69,38 @@ const APOLLO_API_KEY = process.env.NEXT_PUBLIC_APOLLO_API_KEY || "";
         throw new Error("Apollo API key is not configured. Please add NEXT_PUBLIC_APOLLO_API_KEY in Vercel settings.");
       }
 
-const response = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Api-Key": APOLLO_API_KEY,
-        },
-        body: JSON.stringify({
-          q: query,
-          locations: [location],
-          per_page: 20,
-        }),
-      });
+    // Use server-side proxy to avoid CORS
+    const response = await fetch("/api/apollo/people", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        q: query,
+        locations: [location],
+        per_page: 20,
+      }),
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "Unknown error");
-        throw new Error(`Apollo API ${response.status}: ${errorText}`);
-      }
+    if (!response.ok) {
+      throw new Error("Search failed");
+    }
 
-      const data = await response.json();
-      
-      // Mixed people search returns "people" in "partial_results" or "people"
-      const people = data.people || data.partial_results || [];
-      const candidates = (people).map((person: any) => ({
-        id: person.id || String(Math.random()),
-        name: person.name,
-        title: person.title,
-        organization: person.organization?.name,
-        email: person.email,
-        phone: person.phone_number,
-        linkedin_url: person.linkedin_url,
-        location: person.location,
-        headline: person.headline,
-      }));
+    const data = await response.json();
+    
+    // Mixed people search returns "people" in "partial_results" or "people"
+    const people = data.people || data.partial_results || [];
+    const candidates = (people).map((person: any) => ({
+      id: person.id || String(Math.random()),
+      name: person.name,
+      title: person.title,
+      organization: person.organization?.name,
+      email: person.email,
+      phone: person.phone_number,
+      linkedin_url: person.linkedin_url,
+      location: person.location,
+      headline: person.headline,
+    }));
 
-      setResults(candidates);
+    setResults(candidates);
 
 } catch (err: any) {
       console.error("Apollo.io API error:", err);
