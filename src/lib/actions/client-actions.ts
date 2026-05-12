@@ -71,7 +71,7 @@ export async function createClient(formData: FormData) {
     tenantId = `tenant-${userId}`;
   }
 
-  const rawData = {
+const rawData = {
     name: formData.get('name') as string,
     email: formData.get('email') as string || '',
     phone: formData.get('phone') as string || '',
@@ -80,7 +80,7 @@ export async function createClient(formData: FormData) {
     industry: formData.get('industry') as string || '',
     city: formData.get('city') as string || '',
     state: formData.get('state') as string || '',
-country: formData.get('country') as string || '',
+    country: formData.get('country') as string || '',
     employee_count: formData.get('employee_count') && formData.get('employee_count') !== '' 
       ? Number(formData.get('employee_count')) 
       : undefined,
@@ -88,9 +88,12 @@ country: formData.get('country') as string || '',
     description: formData.get('description') as string || '',
   };
 
-  const validated = createClientSchema.safeParse(rawData);
+  console.log('[createClient] rawData:', JSON.stringify(rawData));
+
+const validated = createClientSchema.safeParse(rawData);
   
   if (!validated.success) {
+    console.log('[createClient] Zod validation failed:', JSON.stringify(validated.error.flatten().fieldErrors));
     return {
       error: 'Invalid input',
       details: validated.error.flatten().fieldErrors,

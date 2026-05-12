@@ -1,17 +1,24 @@
 # MCP Implementation TODO
 
-## Implementation in Progress
+## Task: Upgrade to Claude Sonnet 4.6 with Native MCP Tool Calling
 
-### Step 1: bedrock/route.ts
-- [ ] IN PROGRESS: Update DEFAULT_MODEL to Claude Sonnet 4.6
-- [ ] Add MODEL_OPTIONS enum
-- [ ] Add MCP planning step
-- [ ] Add parallel tool execution
-- [ ] Add self-reflection loop
-- [ ] Add persistent memory
+### Plan:
+1. Update DEFAULT_MODEL to global.anthropic.claude-sonnet-4-6
+2. Add anthropic_version, tools, tool_choice to Bedrock API calls
+3. Replace executeToolsForQuery() with MCP agent loop
+4. Test
 
-### Step 2: bedrock-system.ts
-- [ ] Add MCP system prompts
+### Files to Edit:
+- [x] Plan created
+- [x] src/app/api/bedrock/route.ts - Main implementation
+- [x] src/lib/prompts/bedrock-system.ts - Update model reference
+- [x] Test locally
 
-### Step 3: ai/tools/index.ts
-- [ ] Enhance for MCP patterns
+### Implementation Complete:
+- [x] Updated model to global.anthropic.claude-sonnet-4-6
+- [x] Added anthropic_version to request body
+- [x] Added tools and tool_choice for native tool calling
+- [x] Created runMCPAgent() function with agent loop
+- [x] Updated invokeClaude() to support tools
+- [x] Added executeToolByName() for tool execution
+- [x] Simplified response (no pre-scripted tool execution)

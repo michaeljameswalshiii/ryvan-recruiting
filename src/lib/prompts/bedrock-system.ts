@@ -81,7 +81,7 @@ export function getSystemPrompt(context: {
  * Default conversation context
  */
 export const defaultContext = {
-  model: 'minimax.minimax-m2.5',
+  model: 'global.anthropic.claude-sonnet-4-6',
   max_tokens: 4096,
   temperature: 0.7,
 };

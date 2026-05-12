@@ -178,14 +178,20 @@ headers: new Headers({
           });
         }
         
-        throw new Error(bedrockResult.error || "No response");
-      } catch (bedrockErr: any) {
+throw new Error(bedrockResult.error || "No response");
+      }
+      
+      catch (bedrockErr: any) {
         console.error("Bedrock failed:", bedrockErr.message);
         
-        // Fallback: simple response
+        // Get actual error message from Bedrock response
+        const errorMsg = bedrockErr.message || "AI service unavailable";
+        
+        // Fallback: return actual error for debugging
         return NextResponse.json({
-          success: true,
-          response: "I apologize, but I'm temporarily unable to process your request. Please try again.",
+          success: false,
+          error: errorMsg,
+          response: `AI unavailable: ${errorMsg}. Please check AWS credentials and try again.`,
           source: "fallback",
         });
       }

@@ -1,16 +1,15 @@
 /**
  * Bedrock AI API Route
- * Refactored with Dynamic Model Routing + MCP-Style Integration
+ * Upgraded with Claude Sonnet 4.6 + Native MCP Tool Calling
  * 
  * Features:
- * - Dynamic Model Routing:
- *   - Haiku 4.5 for simple queries (fast/cheap)
- *   - Sonnet 4.6 as default for most agentic work
- *   - Opus 4.7 for very complex multi-step tasks
- * - MCP-Style Integration:
- *   - Clear planning step: identify needed tools before execution
- *   - Self-reflection: check if results are sufficient
- *   - Targeted results: go after specific outcomes
+ * - Native MCP Tool Calling:
+ *   - Model decides when and which tools to call
+ *   - Anthropic tool_use format in API requests
+ *   - Agent loop: plan → tool use → observe → reflect → answer
+ * - Claude Sonnet 4.6 on Bedrock:
+ *   - global.anthropic.claude-sonnet-4-6 (cross-region recommended)
+ *   - Supports native tool definitions
  * - Strong TypeScript types for messages and tool results
  * - Structured logging (latency, tokens, cost)
  * - Better error handling with retries
@@ -24,8 +23,8 @@ import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedroc
 import { NextRequest, NextResponse } from "next/server";
 
 import { checkRateLimit, addRateLimitHeaders } from "@/lib/rate-limit";
-import { SYSTEM_PROMPTS } from "@/lib/prompts/bedrock-system";
-import { selectTools as chooseTools, executeTool, ToolContext, ToolResult } from "@/lib/ai/tools";
+import { SYSTEM_PROMPTS, getBasePrompt } from "@/lib/prompts/bedrock-system";
+import { getToolSchemas, executeTool, ToolContext, ToolResult, ToolParams } from "@/lib/ai/tools";
 
 // ============================================================================
 // TypeScript Interfaces
@@ -147,17 +146,21 @@ interface RequestLogMetadata {
 const MODEL_HAIKU = "us.anthropic.claude-haiku-4-2025-01-15";
 
 // Sonnet 4.6 - Default for most agentic work  
-const MODEL_SONNET = "us.anthropic.claude-sonnet-4-6-20250219";
+// Using global model for cross-region access
+const MODEL_SONNET = "global.anthropic.claude-sonnet-4-6";
 
 // Opus 4.7 - For very complex multi-step tasks
 const MODEL_OPUS = "us.anthropic.claude-opus-4-7-2025-01-15";
 
 // Fallback: Try legacy format if main models fail
-const MODEL_SONNET_FALLBACK = "anthropic.claude-sonnet-4-6-20250219";
+const MODEL_SONNET_FALLBACK = "us.anthropic.claude-sonnet-4-6-20250219";
 const MODEL_HAIKU_FALLBACK = "anthropic.claude-haiku-4-2025-01-15";
 
-// Default model (Sonnet 4.6 for agentic work)
+// Default model (Sonnet 4.6 for agentic work with native tool calling)
 const DEFAULT_MODEL = MODEL_SONNET;
+
+// Anthropic API version for Bedrock
+const ANTHROPIC_VERSION = "bedrock-2023-05-31";
 
 /**
  * Query complexity levels for dynamic routing
@@ -296,33 +299,232 @@ function getRateLimitKey(request: NextRequest, tenantId: string | null): string 
 }
 
 // ============================================================================
-// Tool Execution
+// MCP Agent Loop - Native Tool Calling
 // ============================================================================
 
 /**
- * Execute tools based on query
- * Returns map of tool name to result
+ * Anthropic-style message format for Claude API
  */
-async function executeToolsForQuery(
-  query: string,
-  toolContext: ToolContext
-): Promise<Record<string, ToolResult>> {
-  const toolsToUse = chooseTools(query);
-  const results: Record<string, ToolResult> = {};
+interface ClaudeMessage {
+  role: "system" | "user" | "assistant" | "tool_result";
+  content: string | ClaudeContent[];
+}
+
+/**
+ * Claude content block types
+ */
+type ClaudeContent = 
+  | { type: "text"; text: string }
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+  | { type: "tool_result"; tool_use_id: string; content: string };
+
+/**
+ * Tool schema for Bedrock API
+ */
+interface BedrockTool {
+  name: string;
+  description: string;
+  input_schema: {
+    type: "object";
+    properties: Record<string, { type: string; description: string }>;
+    required: string[];
+  };
+}
+
+/**
+ * Get tool schemas in Anthropic format
+ */
+function getToolSchemasForBedrock(): BedrockTool[] {
+  return [
+    {
+      name: "apollo",
+      description: "Search for candidates, people, or companies using Apollo.io. Use to find emails, phones, LinkedIn profiles for recruiting or sales.",
+      input_schema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query (job title, company, skills, industry)" },
+          location: { type: "string", description: "Location filter (city, state)" },
+          per_page: { type: "number", description: "Number of results (default 10)" },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      name: "tavily",
+      description: "Search the web for latest news, current events, weather, stock prices, or general information.",
+      input_schema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query for web search" },
+          max_results: { type: "number", description: "Maximum number of results (default 5)" },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      name: "internal_data",
+      description: "Get the user's existing leads, clients, or pipeline data from the database.",
+      input_schema: {
+        type: "object",
+        properties: {
+          data_type: { type: "string", description: "Type: leads, clients, or pipeline" },
+          action: { type: "string", description: "Action: list, get, or count" },
+        },
+        required: ["data_type"],
+      },
+    },
+  ];
+}
+
+/**
+ * Invoke Claude model with optional tools
+ */
+async function invokeClaude(
+  messages: ClaudeMessage[],
+  tools: BedrockTool[] = []
+): Promise<{ content: ClaudeContent[]; stop_reason?: string }> {
+  const selectedModel = DEFAULT_MODEL;
   
-  for (const toolName of toolsToUse) {
-    // Build input based on tool type
-    const input = toolName === "apollo" 
-      ? { query, per_page: 10 }
-      : toolName === "tavily"
-        ? { query, max_results: 5 }
-        : { query };
-    
-    const result = await executeTool(toolName, input, toolContext);
-    results[toolName] = result;
+  // Build request body
+  const body: Record<string, unknown> = {
+    anthropic_version: ANTHROPIC_VERSION,
+    max_tokens: 4096,
+    temperature: 0.7,
+    messages,
+  };
+  
+  // Add tools if provided
+  if (tools.length > 0) {
+    body.tools = tools;
+    body.tool_choice = { type: "auto" };
   }
   
-  return results;
+  const command = new InvokeModelCommand({
+    modelId: selectedModel,
+    contentType: "application/json",
+    accept: "application/json",
+    body: JSON.stringify(body),
+  });
+  
+  const response = await bedrockClient.send(command);
+  const result = JSON.parse(new TextDecoder().decode(response.body));
+  
+  return {
+    content: result.content || [],
+    stop_reason: result.stop_reason,
+  };
+}
+
+/**
+ * Execute a tool by name with parameters
+ */
+async function executeToolByName(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  toolContext: ToolContext
+): Promise<string> {
+  const query = toolInput.query as string || "";
+  
+  if (toolName === "apollo") {
+    const result = await executeTool("apollo", { query, per_page: toolInput.per_page || 10 }, toolContext);
+    if (result.success && result.data) {
+      const data = result.data as { candidates?: Array<{ name: string; email?: string; phone?: string; linkedin_url?: string; title?: string; organization?: string }> };
+      if (data.candidates?.length) {
+        return data.candidates.slice(0, 10).map(p => 
+          `${p.name} - ${p.title || ""} at ${p.organization || ""}\nEmail: ${p.email || "N/A"}\nPhone: ${p.phone || "N/A"}\nLinkedIn: ${p.linkedin_url || "N/A"}`
+        ).join("\n\n");
+      }
+      return "No candidates found";
+    }
+    return `Error: ${result.error || "Unknown error"}`;
+  }
+  
+  if (toolName === "tavily") {
+    const result = await executeTool("tavily", { query, max_results: toolInput.max_results || 5 }, toolContext);
+    if (result.success && result.data) {
+      const data = result.data as { results?: Array<{ title: string; snippet: string }> };
+      if (data.results?.length) {
+        return data.results.map((r, i) => `${i + 1}. ${r.title}\n${r.snippet}`).join("\n\n");
+      }
+      return "No results found";
+    }
+    return `Error: ${result.error || "Unknown error"}`;
+  }
+  
+  return `Tool not found: ${toolName}`;
+}
+
+/**
+ * Run MCP Agent Loop - Model decides when to use tools
+ * 
+ * @param query - User query
+ * @param toolContext - Tool execution context
+ * @returns Final response string
+ */
+async function runMCPAgent(
+  query: string,
+  toolContext: ToolContext
+): Promise<string> {
+  const systemPrompt = `You are an MCP (Multi-step Cognitive Processor) agent powered by Claude Sonnet 4.6.
+You specialize in talent sourcing and business development.
+Think step-by-step: Plan → Use tools if needed → Observe results → Reflect → Give final answer.
+Use Apollo for people/company searches when relevant. Always show contact details (emails, phones, LinkedIn).`;
+
+  const tools = getToolSchemasForBedrock();
+  
+  // Initial messages
+  let messages: ClaudeMessage[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: query },
+  ];
+  
+  const MAX_ITERATIONS = 5;
+  let iteration = 0;
+  
+  while (iteration < MAX_ITERATIONS) {
+    console.log(`MCP Agent iteration ${iteration + 1}`);
+    
+    // Invoke model with tools
+    const result = await invokeClaude(messages, tools);
+    const content = result.content;
+    
+    // Check for tool uses
+    const toolUses = content.filter((c): c is ClaudeContent & { type: "tool_use" } => 
+      typeof c === "object" && c.type === "tool_use"
+    );
+    
+    if (toolUses.length === 0) {
+      // No tools called - return final response
+      const textBlock = content.find((c): c is ClaudeContent & { type: "text" } => 
+        typeof c === "object" && c.type === "text"
+      );
+      return textBlock?.text || "No response";
+    }
+    
+    // Execute tools and add results
+    for (const tool of toolUses) {
+      console.log(`Executing tool: ${tool.name}`);
+      
+      const toolResult = await executeToolByName(tool.name, tool.input, toolContext);
+      
+      // Add tool result to messages
+      messages.push({ role: "assistant", content });
+      messages.push({
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: tool.id,
+            content: toolResult,
+          } as ClaudeContent,
+        ],
+      });
+    }
+    
+    iteration++;
+  }
+  
+  return "Max iterations reached. Please try again.";
 }
 
 // ============================================================================
@@ -703,11 +905,12 @@ try {
     const appUrl = getAppUrl(request);
 
     // ============================================================================
-    // Tool Execution
+    // MCP Agent Loop (Native Tool Calling)
     // ============================================================================
-    let toolResults: Record<string, ToolResult> = {};
+    let completion = "";
+    let toolsUsed: string[] = [];
     
-if (useTools && lastUserQuery) {
+    if (useTools && lastUserQuery) {
       // Get userId from session (via middleware header)
       const userId = request.headers.get("x-user-id");
       
@@ -717,122 +920,35 @@ if (useTools && lastUserQuery) {
         requestUrl: appUrl,
       };
       
-      toolResults = await executeToolsForQuery(lastUserQuery, toolContext);
-    }
-
-    // ============================================================================
-    // Build Messages for Model
-    // ============================================================================
-    
-    // Filter conversation
-    const conversation = buildConversationMessages(messages);
-
-    // Build system prompt
-    const systemPrompt = buildSystemPrompt(toolResults);
-
-    // Build messages for model
-    const mmMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
-      { role: "system", content: systemPrompt }
-    ];
-
-    // Add conversation messages
-    for (const msg of conversation) {
-      mmMessages.push({ role: msg.role, content: msg.content });
-    }
-
-    // Add tool results
-    const messagesWithTools = addToolResultsToMessages(mmMessages, toolResults);
-
-// ============================================================================
-    // Invoke Bedrock Model with Fallback + Timeout
-    // ============================================================================
-    
-    // Timeout settings (30 seconds for each model attempt)
-    const MODEL_TIMEOUT_MS = 30000;
-    
-    // Determine models to try in order: primary, then Haiku fallback, then legacy format
-    const modelsToTry = [selectedModel];
-    
-    // Add fallback models if primary isn't Haiku
-    if (selectedModel === MODEL_SONNET || selectedModel === MODEL_OPUS) {
-      modelsToTry.push(MODEL_HAIKU);  // Fall back to Haiku
-    } else if (selectedModel === MODEL_SONNET_FALLBACK) {
-      modelsToTry.push(MODEL_HAIKU_FALLBACK);
-    }
-    
-    // Add legacy format as final fallback
-    if (selectedModel.startsWith("us.")) {
-      modelsToTry.push(selectedModel.replace("us.", ""));
-    }
-    
-    let completion = "";
-    let finalModelUsed = "";
-    let invokeError: unknown = null;
-    
-    for (const modelId of modelsToTry) {
-      try {
-        console.log(`Trying model: ${modelId} with ${MODEL_TIMEOUT_MS}ms timeout`);
-        
-        // Create abort controller for timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-          console.error(`Model ${modelId} timed out after ${MODEL_TIMEOUT_MS}ms`);
-          controller.abort();
-        }, MODEL_TIMEOUT_MS);
-        
-        const input = {
-          modelId,
-          contentType: "application/json",
-          accept: "application/json",
-          body: JSON.stringify({
-            messages: messagesWithTools,
-            max_tokens: 4096,
-            temperature: 0.7,
-          }),
-        };
-
-        const command = new InvokeModelCommand(input);
-        
-        // Use signal for timeout (AWS SDK v3 supports AbortSignal)
-        const bedrockResponse = await bedrockClient.send(command, {
-          abortSignal: controller.signal as AbortSignal
-        });
-        
-        clearTimeout(timeoutId);
-
-        // Parse response
-        const responseBody = JSON.parse(new TextDecoder().decode(bedrockResponse.body));
-        completion = 
-          responseBody.choices?.[0]?.message?.content || 
-          responseBody.output?.message?.content?.[0]?.text ||
-          responseBody.completion || 
-          "";
-        
-        finalModelUsed = modelId;
-        console.log(`Successfully invoked model: ${modelId}`);
-        break; // Success - exit loop
-        
-      } catch (err) {
-        console.error(`Model ${modelId} failed:`, err instanceof Error ? err.message : "Unknown error");
-        invokeError = err;
-        // Continue to next model in fallback list
-      }
-    }
-    
-    // If all models failed, throw the last error
-    if (!completion && invokeError) {
-      throw invokeError;
+      console.log("Running MCP agent with native tool calling...");
+      completion = await runMCPAgent(lastUserQuery, toolContext);
+      toolsUsed = ["apollo", "tavily"]; // Log that tools were available
+    } else {
+      // Simple mode - just invoke without tools
+      console.log("Running simple model invocation without tools...");
+      const conversation = buildConversationMessages(messages);
+      const systemPrompt = SYSTEM_PROMPTS.base + "\n\n" + SYSTEM_PROMPTS.override;
+      
+      const messagesForModel: ClaudeMessage[] = [
+        { role: "system", content: systemPrompt },
+        ...conversation.map(m => ({ role: m.role, content: m.content })),
+      ];
+      
+      const result = await invokeClaude(messagesForModel, []);
+      const textBlock = result.content.find((c): c is ClaudeContent & { type: "text" } => 
+        typeof c === "object" && c.type === "text"
+      );
+      completion = textBlock?.text || "No response";
     }
 
 // ============================================================================
-    // Success Response
-    // ============================================================================
+// Success Response
+// ============================================================================
     
     const latencyMs = Date.now() - startTime;
     
-    // Extract text from messages for token estimation
-    const promptText = messagesWithTools.map(m => m.content).join(" ");
-    const promptTokens = estimateTokens(promptText);
+    // Estimate tokens (rough calculation)
+    const promptTokens = estimateTokens(lastUserQuery) + 500; // Base system prompt overhead
     const completionTokens = estimateTokens(completion);
     const tokens: TokenUsage = {
       prompt: promptTokens,
@@ -847,39 +963,15 @@ if (useTools && lastUserQuery) {
     logRequest({
       query: lastUserQuery,
       tenantId,
-      toolsUsed: Object.keys(toolResults),
+      toolsUsed,
       latencyMs,
       tokens,
       cost,
     });
 
-    // Build tool result summaries
-    const toolResultSummaries: Record<string, ToolResultSummary> = {};
-    
-    if (toolResults.apollo) {
-      const r = toolResults.apollo;
-      const data = r.data as ToolResultData;
-      toolResultSummaries.apollo = {
-        success: r.success,
-        error: r.error,
-        count: data.candidates?.length || 0,
-      };
-    }
-    
-    if (toolResults.tavily) {
-      const r = toolResults.tavily;
-      const data = r.data as ToolResultData;
-      toolResultSummaries.tavily = {
-        success: r.success,
-        error: r.error,
-        count: data.results?.length || 0,
-      };
-    }
-
-const response = NextResponse.json({
+    const response = NextResponse.json({
       response: completion,
-      toolsUsed: Object.keys(toolResults),
-      toolResults: toolResultSummaries,
+      toolsUsed,
       rateLimit: {
         remaining: rateLimitResult.remaining,
         tenantId: tenantId ? "provided" : "anonymous",
