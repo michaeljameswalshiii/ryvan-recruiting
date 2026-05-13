@@ -97,7 +97,7 @@ export default function SourcingPage() {
     }
   };
 
-  const searchCompanies = async () => {
+const searchCompanies = async () => {
     if (!query.trim()) return;
 
     setIsLoading(true);
@@ -106,42 +106,58 @@ export default function SourcingPage() {
     setResults([]);
 
     try {
-      // Use API route for better error handling
-      const response = await fetch("/api/apollo/search", {
+      // Use AI Apollo / Bedrock with native MCP tool calling
+      const response = await fetch("/api/bedrock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          q: query,
-          location: location,
-          organization_num_employees_ranges: [employeeCount],
-          per_page: 20,
+          messages: [{
+            role: "user",
+            content: `Find companies for sourcing. Query: "${query}" in ${location}, company size: ${employeeCount} employees.
+Search Apollo for companies, get their domain, LinkedIn, emails, phones.
+Return structured list: Company Name | Location | Size | Industry | Domain | LinkedIn`
+          }],
+          useTools: true,  // Use MCP agent with native tool calling
+          model: "global.anthropic.claude-sonnet-4-6"
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.details || errorData.message || errorData.error || `Apollo Error ${response.status}`);
+        throw new Error(errorData.details || errorData.message || errorData.error || `Bedrock Error ${response.status}`);
       }
 
       const data = await response.json();
-      const orgs = data.organizations || data.accounts || [];
-      const companies = orgs.map((org: any) => ({
-        id: org.id || String(Math.random()),
-        name: org.name,
-        domain: org.domain,
-        linkedin_url: org.linkedin_url,
-        city: org.city,
-        state: org.state,
-        country: org.country,
-        employee_count: org.employee_count,
-        industry: org.industry || query,
-      }));
+      
+      // Parse AI response - try to extract structured company data
+      let companies: Company[] = [];
+      
+      if (data.response) {
+        // Parse response lines looking for company info
+        const lines = data.response.split('\n').filter((l: string) => l.trim());
+        companies = lines.slice(0, 15).map((line: string, i: number) => {
+          // Try to extract parts from the line
+          const parts = line.split(/[|||,]/).map((p: string) => p.trim());
+          return {
+            id: `ai-${i}`,
+            name: parts[0] || `Company ${i}`,
+            domain: parts[4] || "",
+            linkedin_url: parts[5] || "",
+            city: location.split(',')[0],
+            state: location.split(',')[1]?.trim() || "",
+            country: "US",
+            employee_count: parseInt(employeeCount.split('-')[0]) || 100,
+            industry: query,
+          };
+        }).filter((c: Company) => c.name);
+      }
 
       setResults(companies);
+      toast.success(`Found ${companies.length} sourcing targets via AI`);
 
     } catch (err: any) {
       console.error("Search error:", err);
-      setError(`Search failed: ${err.message || "Please check your Apollo API key in Vercel"}`);
+      setError(`Search failed: ${err.message || "Check AWS Bedrock configuration"}`);
       setResults([]);
     } finally {
       setIsLoading(false);
@@ -255,9 +271,9 @@ export default function SourcingPage() {
         </p>
       </div>
 
-      {/* Status Indicator */}
+{/* Status Indicator */}
       <div className="text-xs p-2 rounded bg-green-100 border border-green-300 text-green-700">
-        ✅ Connected to Apollo API
+        ✅ AI-Powered Sourcing (Claude Sonnet 4.6 on Bedrock + Apollo)
       </div>
 
       {error && (
