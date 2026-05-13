@@ -28,26 +28,29 @@ export default function CandidatesPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const searchCandidates = async () => {
+const searchCandidates = async () => {
     if (!query.trim()) return;
 
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
+    setResults([]);
 
     try {
-      // Build clean payload
-      const payload = {
-        q: query,
-        locations: [location],
-        per_page: 20,
-      };
-
-      // Use server-side proxy to avoid CORS
-      const response = await fetch("/api/apollo/people", {
+      // Use Claude-powered search with Bedrock MCP agent
+      const response = await fetch("/api/bedrock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          messages: [{
+            role: "user",
+            content: `Search for candidates matching: "${query}" in or near "${location}". 
+Focus on finding qualified candidates with their contact info.
+Return structured results with name, title, company, location, LinkedIn, email if available.`
+          }],
+          useTools: true,
+          model: "global.anthropic.claude-sonnet-4-6"
+        }),
       });
 
       if (!response.ok) {
@@ -57,25 +60,33 @@ export default function CandidatesPage() {
 
       const data = await response.json();
 
-      // Mixed people search returns "people"
-      const people = data.people || data.accounts || [];
-      const candidates = (people).map((person: any) => ({
-        id: person.id || String(Math.random()),
-        name: person.name,
-        title: person.title,
-        organization: person.organization?.name,
-        email: person.email,
-        phone: person.phone_number,
-        linkedin_url: person.linkedin_url,
-        location: person.location,
-        headline: person.headline,
-      }));
+      // Parse AI response - extract candidate info
+      let candidates: Candidate[] = [];
+      
+      if (data.response) {
+        const lines = data.response.split('\n').filter((l: string) => l.trim());
+        candidates = lines.slice(0, 15).map((line: string, i: number) => {
+          const parts = line.split(/[|||,]/).map((p: string) => p.trim());
+          return {
+            id: `ai-${i}`,
+            name: parts[0] || `Candidate ${i}`,
+            title: parts[1] || "",
+            organization: parts[2] || "",
+            email: parts[3] || "",
+            phone: "",
+            linkedin_url: parts[4] || "",
+            location: location,
+            headline: line,
+          };
+        }).filter((c: Candidate) => c.name && c.name !== `Candidate ${c.id}`);
+      }
 
       setResults(candidates);
+      alert(`Found ${candidates.length} candidates via AI`);
 
     } catch (err: any) {
       console.error("Search error:", err);
-      setError(`Search failed: ${err.message}`);
+      setError(`Search failed: ${err.message || "Check AWS Bedrock"}`);
       setResults([]);
     } finally {
       setIsLoading(false);
