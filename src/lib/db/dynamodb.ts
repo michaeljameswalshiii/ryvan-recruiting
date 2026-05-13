@@ -130,7 +130,7 @@ export async function putItem<T>(table: string, item: T): Promise<T> {
   
   const command = new PutItemCommand({
     TableName: table,
-    Item: marshall(item),
+    Item: marshall(item, { removeUndefinedValues: true }),
   });
   
   await client.send(command);
