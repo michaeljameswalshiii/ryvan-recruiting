@@ -9,7 +9,8 @@ export const pipelineSchema = z.object({
   tenant_id: z.string().optional(),  // Set by server, not by client
   id: z.string().uuid().optional(),
   name: z.string().min(1, 'Name is required').max(100),
-  email: z.string().email().optional().or(z.literal('')),
+  // Make email optional on create - no validation required
+  email: z.string().max(100).optional().or(z.literal('')),
   phone: z.string().optional().or(z.literal('')),
   company: z.string().max(100).optional().or(z.literal('')),
   title: z.string().max(100).optional().or(z.literal('')),
