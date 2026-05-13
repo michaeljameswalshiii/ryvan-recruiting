@@ -163,10 +163,11 @@ const DEFAULT_MODEL = MODEL_SONNET;
 const ANTHROPIC_VERSION = "bedrock-2023-05-31";
 
 // Model configuration
+// NOTE: Use either temperature OR top_p, NOT both (Bedrock limitation)
 const MODEL_CONFIG = {
   maxTokens: 4096,
   temperature: 0.7,
-  topP: 0.95,
+  // topP: 0.95,  // Removed - cannot use with temperature
   maxIterations: 5,
 };
 
@@ -399,11 +400,11 @@ async function invokeClaude(
   const selectedModel = DEFAULT_MODEL;
   
 // Build request body with system prompt in correct field
+  // NOTE: Only temperature - cannot use both temperature and top_p in Bedrock
   const body: Record<string, unknown> = {
     anthropic_version: ANTHROPIC_VERSION,
     max_tokens: MODEL_CONFIG.maxTokens,
     temperature: MODEL_CONFIG.temperature,
-    top_p: MODEL_CONFIG.topP,
     messages,
   };
   
