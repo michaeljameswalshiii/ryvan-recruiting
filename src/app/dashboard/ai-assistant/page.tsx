@@ -152,8 +152,8 @@ return (
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">AI Assistant (Web)</h1>
-          <p className="text-muted-foreground">
-            Powered by MiniMax + Apollo + Tavily - Full web search
+<p className="text-muted-foreground">
+            Powered by Claude + Apollo + Tavily - Full web search
           </p>
         </div>
 {/* Apollo Connection Status Indicator */}

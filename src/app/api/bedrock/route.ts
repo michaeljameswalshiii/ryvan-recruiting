@@ -24,6 +24,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { checkRateLimit, addRateLimitHeaders } from "@/lib/rate-limit";
 import { SYSTEM_PROMPTS, getBasePrompt } from "@/lib/prompts/bedrock-system";
+import { getClaudeAssistantPrompt } from "@/lib/prompts/claude-assistant";
 import { getToolSchemas, executeTool, ToolContext, ToolResult, ToolParams } from "@/lib/ai/tools";
 
 // ============================================================================
@@ -46,6 +47,7 @@ interface BedrockRequest {
   messages: ChatMessage[];
   model?: string;
   useTools?: boolean;
+  assistantMode?: boolean;
 }
 
 /**
@@ -894,7 +896,7 @@ try {
       );
     }
     
-    const { messages, model: requestedModel, useTools = true } = body;
+const { messages, model: requestedModel, useTools = true, assistantMode = false } = body;
     
 // Validate messages exist
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -956,16 +958,33 @@ try {
     let completion = "";
     let toolsUsed: string[] = [];
     
-    if (useTools && lastUserQuery) {
+if (assistantMode) {
+      // Claude-only Assistant mode (no external tools, just conversation)
+      console.log("Running Claude Assistant mode (no tools)...");
+      const conversation = buildConversationMessages(messages);
+      const systemPrompt = SYSTEM_PROMPTS.base + "\n\n" + SYSTEM_PROMPTS.override;
+      
+      const messagesForModel: ClaudeMessage[] = [
+        { role: "system", content: systemPrompt },
+        ...conversation.map(m => ({ role: m.role, content: m.content })),
+      ];
+      
+      const result = await invokeClaude(messagesForModel, []);
+      const textBlock = result.content.find((c): c is ClaudeContent & { type: "text" } => 
+        typeof c === "object" && c.type === "text"
+      );
+      completion = textBlock?.text || "No response";
+      toolsUsed = []; // No tools in assistant mode
+    } else if (useTools && lastUserQuery) {
       // Get userId from session (via middleware header)
       const userId = request.headers.get("x-user-id");
-      
+
       const toolContext: ToolContext = {
         tenantId,
         userId,
         requestUrl: appUrl,
       };
-      
+
       console.log("Running MCP agent with native tool calling...");
       completion = await runMCPAgent(lastUserQuery, toolContext);
       toolsUsed = ["apollo", "tavily"]; // Log that tools were available

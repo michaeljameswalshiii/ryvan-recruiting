@@ -30,12 +30,16 @@
 - Tavily (web search)
 - Internal data (leads, clients, pipeline)
 
+**5. Bug Fix:**
+- Removed `top_p` parameter (cannot use with `temperature` in Bedrock)
+
 ### Testing
 ```bash
-npm run dev
-# Test /api/bedrock with queries like:
-# "Find software engineers in San Francisco"
-# "Search for AI companies in Austin"
+# Deployed URL:
+https://turnkey-optimization-18zllvdjh-michaeljameswalshiiis-projects.vercel.app
+
+# Test endpoint:
+/api/bedrock/health
 ```
 
 ### Status: COMPLETE ✅
