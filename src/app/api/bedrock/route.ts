@@ -445,7 +445,7 @@ const response = await bedrockClient.send(command);
  */
 async function executeToolByName(
   toolName: string,
-  toolInput: Record<string, unknown>,
+  toolInput: Record<string, unknown> | ToolParams,
   toolContext: ToolContext
 ): Promise<string> {
   const query = toolInput.query as string || "";

@@ -10,25 +10,18 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
-// Public routes that don't require authentication
-const PUBLIC_ROUTES = [
-  '/',
-  '/login',
-  '/signup',
-];
+// ============================================================================
+// TEMPORARY DEBUG MODE FOR BEDROCK TESTING
+// ============================================================================
 
-// API public routes (never require redirect) - auth handled in route
-const API_PUBLIC_ROUTES = [
+// All public routes - bypass auth immediately
+const PUBLIC_API_ROUTES = [
   '/api/auth',
-  '/api/bedrock',
   '/api/apollo',
   '/api/tavily',
+  '/api/bedrock',        // ← TEMP: Full access for testing
   '/api/boolean',
-];
-
-// API protected routes (require auth via middleware)
-const API_PROTECTED_ROUTES = [
-  '/api/data',
+  '/api/health',
 ];
 
 // Protected routes that require authentication
@@ -38,41 +31,17 @@ const PROTECTED_ROUTES = ['/dashboard'];
 const SESSION_COOKIE = 'turnkey-session';
 
 /**
- * Check if a route is public
+ * Check if route is public (no auth required)
  */
 function isPublicRoute(pathname: string): boolean {
-  return PUBLIC_ROUTES.some(route => 
-    pathname === route || pathname.startsWith(`${route}/`)
-  );
+  return PUBLIC_API_ROUTES.some(route => pathname.startsWith(route));
 }
 
 /**
- * Check if a route is API public (allows auth but no redirect)
- */
-function isApiPublicRoute(pathname: string): boolean {
-  return API_PUBLIC_ROUTES.some(route => pathname.startsWith(route));
-}
-
-/**
- * Check if a route is protected
+ * Check if route is protected (requires auth)
  */
 function isProtectedRoute(pathname: string): boolean {
   return PROTECTED_ROUTES.some(route => pathname.startsWith(route));
-}
-
-/**
- * Check if route needs tenant/user injection (AI routes)
- */
-function needsTenantContext(pathname: string): boolean {
-  return pathname.startsWith('/api/bedrock') || 
-         pathname.startsWith('/api/apollo');
-}
-
-/**
- * Check if route is API protected (data routes - require auth + tenant context)
- */
-function isApiProtectedRoute(pathname: string): boolean {
-  return API_PROTECTED_ROUTES.some(route => pathname.startsWith(route));
 }
 
 /**
@@ -95,62 +64,54 @@ function getSession(request: NextRequest) {
 
 /**
  * Validate session token with Cognito
- * NOTE: Uses GetUserCommand - simple and reliable
- * Consider aws-jwt-verify for faster local validation
- * 
- * Updated: Now attempts token refresh on expiration
  */
 async function validateSessionToken(accessToken: string, refreshToken?: string): Promise<boolean> {
   if (!accessToken) {
+    console.error("[VALIDATE] No access token");
     return false;
   }
   
-  // Support both server-only vars (local) and NEXT_PUBLIC_ vars (Vercel deployment)
   const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
   const clientId = process.env.COGNITO_CLIENT_ID || process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || '';
+  
+  console.log("[VALIDATE] Validating token...");
+  console.log("[VALIDATE] AWS_REGION:", region);
+  console.log("[VALIDATE] COGNITO_CLIENT_ID:", clientId ? "set" : "NOT SET");
   
   try {
     const { GetUserCommand, CognitoIdentityProviderClient } = await import('@aws-sdk/client-cognito-identity-provider');
     
     const client = new CognitoIdentityProviderClient({ region });
-    
     const command = new GetUserCommand({ AccessToken: accessToken });
     await client.send(command);
     
     return true;
   } catch (error: any) {
-    // Check if error is token expiration
+    console.error("[VALIDATE] Token validation FAILED:");
+    console.error("[VALIDATE] Error:", error?.message);
+    console.error("[VALIDATE] Code:", error?.code);
+    
+    // Try token refresh if expired
     const errorMessage = error?.message || '';
     const isExpired = errorMessage.includes('Token expired') || 
-                     errorMessage.includes('Access token has expired') ||
                      errorMessage.includes('NotAuthorizedException');
     
-// If token is expired and we have refresh token, try to refresh
-    if (isExpired && refreshToken) {
+    if (isExpired && refreshToken && clientId) {
       try {
         const { InitiateAuthCommand, CognitoIdentityProviderClient } = await import('@aws-sdk/client-cognito-identity-provider');
-        
-        if (!clientId) {
-          return false;
-        }
         
         const client = new CognitoIdentityProviderClient({ region });
         const refreshCommand = new InitiateAuthCommand({
           AuthFlow: 'REFRESH_TOKEN_AUTH',
           ClientId: clientId,
-          AuthParameters: {
-            REFRESH_TOKEN: refreshToken,
-          },
+          AuthParameters: { REFRESH_TOKEN: refreshToken },
         });
         
         const response = await client.send(refreshCommand);
-        
-        // If refresh successful, token is valid
         if (response.AuthenticationResult?.AccessToken) {
           return true;
         }
       } catch {
-        // Refresh failed
         return false;
       }
     }
@@ -159,8 +120,15 @@ async function validateSessionToken(accessToken: string, refreshToken?: string):
   }
 }
 
+// ============================================================================
+// Main Middleware
+// ============================================================================
+
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const pathname = request.nextUrl.pathname;
+
+  // === DEBUG LOGGING ===
+  console.log(`[Middleware Debug] Path: ${pathname} | Has Cookie: ${!!request.cookies.get('turnkey-session')}`);
 
   // Skip static files and Next.js internal routes
   if (
@@ -171,80 +139,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow public routes (including /login and /signup)
+  // === PUBLIC ROUTES - Immediate bypass ===
   if (isPublicRoute(pathname)) {
+    console.log(`[Middleware] Allowing public route: ${pathname}`);
     return NextResponse.next();
   }
 
-// Allow API routes through - they handle their own auth
-  if (isApiPublicRoute(pathname)) {
-    // But inject tenant context for AI routes that need it
-    if (needsTenantContext(pathname)) {
-      const session = getSession(request);
-      
-      if (session?.accessToken) {
-        // Validate token for API access
-        const isValid = await validateSessionToken(session.accessToken);
-        
-        if (!isValid) {
-          return NextResponse.json(
-            { error: 'Unauthorized' },
-            { status: 401 }
-          );
-        }
-        
-        // Inject headers for downstream use
-        const requestHeaders = new Headers(request.headers);
-        requestHeaders.set('x-tenant-id', session.tenantId || '');
-        requestHeaders.set('x-user-id', session.userId || '');
-        
-        return NextResponse.next({
-          request: { headers: requestHeaders },
-        });
-      }
-      
-      // No session - return 401
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-    
-    return NextResponse.next();
-  }
-
-  // API protected routes - require auth + inject tenant context
-  if (isApiProtectedRoute(pathname)) {
-    const session = getSession(request);
-    
-    if (!session?.accessToken) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-    
-    // Validate token
-    const isValid = await validateSessionToken(session.accessToken);
-    
-    if (!isValid) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-    
-    // Inject headers for data routes
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set('x-tenant-id', session.tenantId || '');
-    requestHeaders.set('x-user-id', session.userId || '');
-    
-    return NextResponse.next({
-      request: { headers: requestHeaders },
-    });
-  }
-
-// Check if route is protected (dashboard)
+  // === PROTECTED ROUTES (Dashboard) - Require auth ===
   if (isProtectedRoute(pathname)) {
     const session = getSession(request);
     
@@ -255,35 +156,26 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // Validate the token with Cognito (pass refresh token for auto-refresh)
+    // Validate token
     const isValid = await validateSessionToken(session.accessToken, session.refreshToken);
     
     if (!isValid) {
-      // Token invalid or expired - redirect to login
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(loginUrl);
     }
 
-    // Get tenantId from session (NEVER trust client-provided)
-    const tenantId = session.tenantId || '';
-    const userId = session.userId || '';
-
-    // Add tenant context headers for downstream use
+    // Inject headers
     const requestHeaders = new Headers(request.headers);
-    requestHeaders.set('x-tenant-id', tenantId);
-    requestHeaders.set('x-user-id', userId);
+    requestHeaders.set('x-tenant-id', session.tenantId || '');
+    requestHeaders.set('x-user-id', session.userId || '');
 
-    // Clone the response with headers
-    const response = NextResponse.next({
-      request: {
-        headers: requestHeaders,
-      },
+    return NextResponse.next({
+      request: { headers: requestHeaders },
     });
-
-    return response;
   }
 
+  // Default: allow through
   return NextResponse.next();
 }
 

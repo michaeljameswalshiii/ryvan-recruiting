@@ -1,24 +1,41 @@
-# MCP Implementation TODO
+# MCP Implementation - COMPLETE ✅
 
 ## Task: Upgrade to Claude Sonnet 4.6 with Native MCP Tool Calling
 
-### Plan:
-1. Update DEFAULT_MODEL to global.anthropic.claude-sonnet-4-6
-2. Add anthropic_version, tools, tool_choice to Bedrock API calls
-3. Replace executeToolsForQuery() with MCP agent loop
-4. Test
+### Summary of Changes
 
-### Files to Edit:
-- [x] Plan created
-- [x] src/app/api/bedrock/route.ts - Main implementation
-- [x] src/lib/prompts/bedrock-system.ts - Update model reference
-- [x] Test locally
+**Files Modified:**
+- `src/app/api/bedrock/route.ts` - Main implementation with MCP agent loop
+- `src/lib/prompts/bedrock-system.ts` - Updated model reference
 
-### Implementation Complete:
-- [x] Updated model to global.anthropic.claude-sonnet-4-6
-- [x] Added anthropic_version to request body
-- [x] Added tools and tool_choice for native tool calling
-- [x] Created runMCPAgent() function with agent loop
-- [x] Updated invokeClaude() to support tools
-- [x] Added executeToolByName() for tool execution
-- [x] Simplified response (no pre-scripted tool execution)
+### Implementation Details
+
+**1. Model Upgrade:**
+- Default model: `global.anthropic.claude-sonnet-4-6`
+- Added `anthropic_version: "bedrock-2023-05-31"` for Bedrock API
+
+**2. Native MCP Tool Calling:**
+- System prompt in top-level `system` field (correct Anthropic format)
+- Tool schemas in Anthropic format
+- `tools` and `tool_choice: { type: "auto" }` in API request
+
+**3. MCP Agent Loop:**
+- Model decides when to call tools (not pre-scripted)
+- Parallel tool execution with `Promise.all()`
+- Iteration up to 5 times max
+- Tool results in exact format: `{ type: "tool_result", tool_use_id, content }`
+
+**4. Tool Support:**
+- Apollo (people/company search)
+- Tavily (web search)
+- Internal data (leads, clients, pipeline)
+
+### Testing
+```bash
+npm run dev
+# Test /api/bedrock with queries like:
+# "Find software engineers in San Francisco"
+# "Search for AI companies in Austin"
+```
+
+### Status: COMPLETE ✅
