@@ -98,24 +98,37 @@ const handleDrop = async (status: Lead["status"]) => {
     setDraggedLead(null);
   };
 
-  const handleAddLead = async () => {
-    if (!newLeadName || !newLeadEmail) return;
+const handleAddLead = async () => {
+    if (!newLeadName || !newLeadEmail) {
+      alert("Name and Email are required");
+      return;
+    }
 
-    // Build FormData for server action - use 'stage' for pipeline
-    const formData = new FormData();
-    formData.set("name", newLeadName);
-    formData.set("email", newLeadEmail);
-    formData.set("company", newLeadCompany);
-    formData.set("phone", newLeadPhone);
-    formData.set("notes", newLeadNotes);
-    formData.set("stage", "new");
+    try {
+      // Build FormData for server action - use 'stage' for pipeline
+      const formData = new FormData();
+      formData.set("name", newLeadName);
+      formData.set("email", newLeadEmail);
+      formData.set("company", newLeadCompany || "");
+      formData.set("phone", newLeadPhone || "");
+      formData.set("notes", newLeadNotes || "");
+      formData.set("stage", "new");
 
-    // Use mutation - handles DB save + query invalidation + toast
-    await createPipelineMutation.mutateAsync(formData);
+      console.log('[PIPELINE-PAGE] Adding lead:', { name: newLeadName, email: newLeadEmail, company: newLeadCompany });
 
-    // Close dialog and reset form
-    setIsAddDialogOpen(false);
-    resetForm();
+      // Use mutation - handles DB save + query invalidation + toast
+      const result = await createPipelineMutation.mutateAsync(formData);
+      
+      console.log('[PIPELINE-PAGE] Add result:', result);
+
+      // Close dialog and reset form
+      setIsAddDialogOpen(false);
+      resetForm();
+      alert("Lead added successfully!");
+    } catch (err: any) {
+      console.error('[PIPELINE-PAGE] Add lead error:', err);
+      alert(`Failed to add lead: ${err?.message || err?.error || "Unknown error"}`);
+    }
   };
 
   const resetForm = () => {
