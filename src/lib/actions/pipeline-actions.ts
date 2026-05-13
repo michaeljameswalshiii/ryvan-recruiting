@@ -73,47 +73,71 @@ export async function getPipelineByIdAction(pipelineId: string) {
  * Create a new pipeline item
  */
 export async function createPipeline(formData: FormData) {
+  console.log('[PIPELINE-ACTION] createPipeline called');
+  
   let tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
   
+  console.log('[PIPELINE-ACTION] userId:', userId, 'tenantId:', tenantId);
+  
   if (!userId) {
+    console.error('[PIPELINE-ACTION] No userId - unauthorized');
     return { error: 'Unauthorized' };
   }
 
   // If no tenantId but user is logged in, create/use default tenant
   if (!tenantId) {
     tenantId = `tenant-${userId}`;
+    console.log('[PIPELINE-ACTION] Using fallback tenantId:', tenantId);
   }
 
+  // Get all form fields
+  const name = formData.get('name');
+  const email = formData.get('email');
+  const company = formData.get('company');
+  const phone = formData.get('phone');
+  const notes = formData.get('notes');
+  const stage = formData.get('stage') || 'new';
+  
+  console.log('[PIPELINE-ACTION] Raw input:', { name, email, company, phone, notes, stage });
+
+  // Build raw data - ensure strings, not null
   const rawData = {
-    name: formData.get('name') as string,
-    email: formData.get('email') as string || '',
-    phone: formData.get('phone') as string || '',
-    company: formData.get('company') as string || '',
-    title: formData.get('title') as string || '',
-    stage: formData.get('stage') as string || 'new',
-    source: formData.get('source') as string || '',
-    notes: formData.get('notes') as string || '',
-    linkedin_url: formData.get('linkedin_url') as string || '',
-    resume_url: formData.get('resume_url') as string || '',
-    scheduled_date: formData.get('scheduled_date') as string || '',
-    rating: formData.get('rating') ? Number(formData.get('rating')) : undefined,
+    name: String(name || ''),
+    email: String(email || ''),
+    phone: String(phone || ''),
+    company: String(company || ''),
+    title: '',
+    stage: String(stage),
+    source: '',
+    notes: String(notes || ''),
+    linkedin_url: '',
+    resume_url: '',
+    scheduled_date: '',
+    rating: undefined,
   };
 
-const validated = createPipelineSchema.safeParse(rawData);
+  console.log('[PIPELINE-ACTION] Parsed data:', JSON.stringify(rawData));
+
+  // Validate
+  const validated = createPipelineSchema.safeParse(rawData);
   
   if (!validated.success) {
-    console.log('[PIPELINE-ACTION] Validation errors:', JSON.stringify(validated.error.flatten().fieldErrors));
+    console.error('[PIPELINE-ACTION] Validation failed:', JSON.stringify(validated.error.flatten().fieldErrors));
     return {
-      error: 'Invalid input',
+      error: 'Invalid input: ' + JSON.stringify(validated.error.flatten().fieldErrors),
       details: validated.error.flatten().fieldErrors,
     };
   }
 
+  console.log('[PIPELINE-ACTION] Validation passed, creating item...');
+
   try {
     const pipeline = await createPipelineItem(tenantId, validated.data);
+    console.log('[PIPELINE-ACTION] Created successfully:', pipeline);
     return { success: true, pipeline };
   } catch (error: any) {
+    console.error('[PIPELINE-ACTION] Create error:', error);
     return { error: error.message || 'Failed to create pipeline item' };
   }
 }
