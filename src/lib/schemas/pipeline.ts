@@ -20,7 +20,8 @@ export const pipelineSchema = z.object({
   notes: z.string().max(2000).optional().or(z.literal('')),
   linkedin_url: z.string().max(200).optional().or(z.literal('')),
   resume_url: z.string().max(200).optional().or(z.literal('')),
-  scheduled_date: z.string().datetime().optional(),
+// Make scheduled_date optional with flexible validation
+  scheduled_date: z.string().optional().or(z.literal('')),
   rating: z.number().min(1).max(5).optional(),
   created_at: z.string().optional(),
   modified_at: z.string().optional(),
