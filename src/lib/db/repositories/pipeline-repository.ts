@@ -140,8 +140,21 @@ export async function createPipelineItem(tenantId: string, data: CreatePipelineI
     created_at: new Date().toISOString(),
   };
   
-  // Save to DynamoDB
-  await putItem(pipelineTable, pipeline);
+// Save to DynamoDB with error handling
+  try {
+    await putItem(pipelineTable, pipeline);
+  } catch (dbError: any) {
+    const errorMessage = dbError?.message || '';
+    console.error('[PIPELINE-REPO] Create error:', errorMessage);
+    
+    // Check for specific errors - table may not exist
+    if (errorMessage.includes('Requested resource not found') || errorMessage.includes('Table not found')) {
+      console.error('[PIPELINE-REPO] Pipeline table may not exist. Create table first or check DYNAMODB_PIPELINE_TABLE env var.');
+      throw new Error('Database table not found. Please contact support.');
+    }
+    
+    throw dbError;
+  }
   
   // Invalidate cache
   await invalidateTenantCache(tenantId);
