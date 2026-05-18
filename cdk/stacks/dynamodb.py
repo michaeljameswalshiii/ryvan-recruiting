@@ -78,11 +78,27 @@ class DataStack(Stack):
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
         )
 
-        # Data sources table
+# Data sources table
         self.sources_table = dynamodb.Table(
             self,
             "Sources",
             table_name="turnkey-sources",
+            partition_key=dynamodb.Attribute(
+                name="tenant_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
+                name="id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+        )
+
+        # Pipeline items table (MISSING - adding now)
+        self.pipeline_table = dynamodb.Table(
+            self,
+            "Pipeline",
+            table_name="turnkey-pipeline",
             partition_key=dynamodb.Attribute(
                 name="tenant_id",
                 type=dynamodb.AttributeType.STRING,
