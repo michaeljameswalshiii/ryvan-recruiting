@@ -5,10 +5,11 @@
 
 "use client";
 
+import Link from "next/link";
 import { useDashboardStats, useRecentActivity } from "@/lib/hooks/query-dashboard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, Briefcase, TrendingUp, ArrowUpRight, Building2, Calendar } from "lucide-react";
+import { Users, Briefcase, TrendingUp, ArrowUpRight, Building2, Calendar, ChevronRight } from "lucide-react";
 
 export default function DashboardPage() {
   const { stats, isLoading: statsLoading, error: statsError } = useDashboardStats();
@@ -44,93 +45,123 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards - Clickable Links */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         {/* Active Candidates */}
-        <div className="p-6 rounded-lg border border-border bg-card">
-          <div className="flex items-center justify-between pb-2">
-            <span className="text-sm font-medium">Active Candidates</span>
-            <Users className="h-5 w-5 text-blue-600" />
+        <Link href="/dashboard/candidates" className="group block">
+          <div className="p-6 rounded-lg border border-border bg-card hover:border-primary hover:shadow-md transition-all duration-200 cursor-pointer h-full">
+            <div className="flex items-center justify-between pb-2">
+              <span className="text-sm font-medium">Active Candidates</span>
+              <Users className="h-5 w-5 text-blue-600" />
+            </div>
+            {statsLoading ? (
+              <Skeleton className="h-10 w-16" />
+            ) : (
+              <>
+                <div className="text-4xl font-bold">{stats.contacts || 0}</div>
+                <p className="text-sm text-green-600 flex items-center gap-1 mt-1">
+                  <TrendingUp className="h-3 w-3" />
+                  Active pipeline
+                </p>
+              </>
+            )}
+            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+              <span>View all</span>
+              <ChevronRight className="h-4 w-4" />
+            </div>
           </div>
-          {statsLoading ? (
-            <Skeleton className="h-10 w-16" />
-          ) : (
-            <>
-              <div className="text-4xl font-bold">{stats.contacts || 0}</div>
-              <p className="text-sm text-green-600 flex items-center gap-1 mt-1">
-                <TrendingUp className="h-3 w-3" />
-                Active pipeline
-              </p>
-            </>
-          )}
-        </div>
+        </Link>
 
         {/* Companies */}
-        <div className="p-6 rounded-lg border border-border bg-card">
-          <div className="flex items-center justify-between pb-2">
-            <span className="text-sm font-medium">Companies</span>
-            <Building2 className="h-5 w-5 text-blue-600" />
+        <Link href="/dashboard/companies" className="group block">
+          <div className="p-6 rounded-lg border border-border bg-card hover:border-primary hover:shadow-md transition-all duration-200 cursor-pointer h-full">
+            <div className="flex items-center justify-between pb-2">
+              <span className="text-sm font-medium">Companies</span>
+              <Building2 className="h-5 w-5 text-blue-600" />
+            </div>
+            {statsLoading ? (
+              <Skeleton className="h-10 w-16" />
+            ) : (
+              <>
+                <div className="text-4xl font-bold">{stats.companies || 0}</div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Active clients
+                </p>
+              </>
+            )}
+            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+              <span>View all</span>
+              <ChevronRight className="h-4 w-4" />
+            </div>
           </div>
-          {statsLoading ? (
-            <Skeleton className="h-10 w-16" />
-          ) : (
-            <>
-              <div className="text-4xl font-bold">{stats.companies || 0}</div>
-              <p className="text-sm text-muted-foreground mt-1">
-                Active clients
-              </p>
-            </>
-          )}
-        </div>
+        </Link>
 
         {/* Open Jobs */}
-        <div className="p-6 rounded-lg border border-border bg-card">
-          <div className="flex items-center justify-between pb-2">
-            <span className="text-sm font-medium">Open Roles</span>
-            <Briefcase className="h-5 w-5 text-blue-600" />
+        <Link href="/dashboard/companies" className="group block">
+          <div className="p-6 rounded-lg border border-border bg-card hover:border-primary hover:shadow-md transition-all duration-200 cursor-pointer h-full">
+            <div className="flex items-center justify-between pb-2">
+              <span className="text-sm font-medium">Open Roles</span>
+              <Briefcase className="h-5 w-5 text-blue-600" />
+            </div>
+            {statsLoading ? (
+              <Skeleton className="h-10 w-16" />
+            ) : (
+              <>
+                <div className="text-4xl font-bold">{stats.openJobs || 0}</div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Positions to fill
+                </p>
+              </>
+            )}
+            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+              <span>View all</span>
+              <ChevronRight className="h-4 w-4" />
+            </div>
           </div>
-          {statsLoading ? (
-            <Skeleton className="h-10 w-16" />
-          ) : (
-            <>
-              <div className="text-4xl font-bold">{stats.openJobs || 0}</div>
-              <p className="text-sm text-muted-foreground mt-1">
-                Positions to fill
-              </p>
-            </>
-          )}
-        </div>
+        </Link>
 
         {/* Placements */}
-        <div className="p-6 rounded-lg border border-border bg-card">
-          <div className="flex items-center justify-between pb-2">
-            <span className="text-sm font-medium">Placements YTD</span>
-            <TrendingUp className="h-5 w-5 text-blue-600" />
+        <Link href="/dashboard/pipeline" className="group block">
+          <div className="p-6 rounded-lg border border-border bg-card hover:border-primary hover:shadow-md transition-all duration-200 cursor-pointer h-full">
+            <div className="flex items-center justify-between pb-2">
+              <span className="text-sm font-medium">Placements YTD</span>
+              <TrendingUp className="h-5 w-5 text-blue-600" />
+            </div>
+            {statsLoading ? (
+              <Skeleton className="h-10 w-16" />
+            ) : (
+              <>
+                <div className="text-4xl font-bold">{stats.placements || 0}</div>
+                <p className="text-sm text-green-600 flex items-center gap-1 mt-1">
+                  <TrendingUp className="h-3 w-3" />
+                  This year
+                </p>
+              </>
+            )}
+            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+              <span>View pipeline</span>
+              <ChevronRight className="h-4 w-4" />
+            </div>
           </div>
-          {statsLoading ? (
-            <Skeleton className="h-10 w-16" />
-          ) : (
-            <>
-              <div className="text-4xl font-bold">{stats.placements || 0}</div>
-              <p className="text-sm text-green-600 flex items-center gap-1 mt-1">
-                <TrendingUp className="h-3 w-3" />
-                This year
-              </p>
-            </>
-          )}
-        </div>
+        </Link>
 
         {/* Interviews This Week */}
-        <div className="p-6 rounded-lg border border-border bg-card">
-          <div className="flex items-center justify-between pb-2">
-            <span className="text-sm font-medium">Interviews This Week</span>
-            <Calendar className="h-5 w-5 text-blue-600" />
+        <Link href="/dashboard/pipeline" className="group block">
+          <div className="p-6 rounded-lg border border-border bg-card hover:border-primary hover:shadow-md transition-all duration-200 cursor-pointer h-full">
+            <div className="flex items-center justify-between pb-2">
+              <span className="text-sm font-medium">Interviews This Week</span>
+              <Calendar className="h-5 w-5 text-blue-600" />
+            </div>
+            <div className="text-4xl font-bold">0</div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Scheduled
+            </p>
+            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+              <span>View schedule</span>
+              <ChevronRight className="h-4 w-4" />
+            </div>
           </div>
-          <div className="text-4xl font-bold">0</div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Scheduled
-          </p>
-        </div>
+        </Link>
       </div>
 
       {/* Recent Activity + Quick Actions */}

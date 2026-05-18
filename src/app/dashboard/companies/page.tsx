@@ -6,8 +6,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Building2, MapPin, Users, Globe, Linkedin, Search, MoreHorizontal } from "lucide-react";
+import { Plus, Building2, MapPin, Users, Globe, Linkedin, Search, MoreHorizontal, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -329,85 +330,88 @@ const handleAddCompany = async () => {
         />
       </div>
 
-      {/* Companies Grid */}
+{/* Companies Grid - Clickable */}
       {companies.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {companies.map((company) => (
-            <div
-              key={company.id}
-              className="p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors"
+            <Link 
+              key={company.id} 
+              href={`/dashboard/companies/${company.id}`}
+              className="block group"
             >
-              <div className="flex items-start justify-between mb-3">
-                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Building2 className="h-6 w-6 text-primary" />
+              <div className="p-4 rounded-lg border border-border bg-card hover:border-primary hover:shadow-md transition-all duration-200 h-full">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Building2 className="h-6 w-6 text-primary" />
+                  </div>
+                  <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-                <button className="text-muted-foreground hover:text-foreground">
-                  <MoreHorizontal className="h-4 w-4" />
-                </button>
+
+                <h3 className="font-semibold mb-1">{company.name}</h3>
+
+                {company.industry && (
+                  <p className="text-sm text-muted-foreground mb-3">
+                    {company.industry}
+                  </p>
+                )}
+
+                <div className="space-y-2 text-sm">
+                  {company.city && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <MapPin className="h-3 w-3" />
+                      {company.city}, {company.state}
+                    </div>
+                  )}
+
+                  {company.employee_count && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Users className="h-3 w-3" />
+                      {company.employee_count} employees
+                    </div>
+                  )}
+
+                  {company.revenue && (
+                    <div className="text-primary">
+                      {company.revenue}
+                    </div>
+                  )}
+                </div>
+
+                {company.description && (
+                  <p className="mt-3 text-sm text-muted-foreground line-clamp-2">
+                    {company.description}
+                  </p>
+                )}
+
+                <div className="flex gap-2 mt-3 pt-3 border-t border-border">
+                  {company.linkedin_url && (
+                    <a
+                      href={company.linkedin_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Linkedin className="h-4 w-4" />
+                      LinkedIn
+                    </a>
+                  )}
+                  {company.domain && (
+                    <a
+                      href={`https://${company.domain}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Globe className="h-4 w-4" />
+                      Website
+                    </a>
+                  )}
+                </div>
               </div>
-
-              <h3 className="font-semibold mb-1">{company.name}</h3>
-
-              {company.industry && (
-                <p className="text-sm text-muted-foreground mb-3">
-                  {company.industry}
-                </p>
-              )}
-
-              <div className="space-y-2 text-sm">
-                {company.city && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <MapPin className="h-3 w-3" />
-                    {company.city}, {company.state}
-                  </div>
-                )}
-
-                {company.employee_count && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Users className="h-3 w-3" />
-                    {company.employee_count} employees
-                  </div>
-                )}
-
-                {company.revenue && (
-                  <div className="text-primary">
-                    {company.revenue}
-                  </div>
-                )}
-              </div>
-
-              {company.description && (
-                <p className="mt-3 text-sm text-muted-foreground line-clamp-2">
-                  {company.description}
-                </p>
-              )}
-
-              <div className="flex gap-2 mt-3 pt-3 border-t border-border">
-                {company.linkedin_url && (
-                  <a
-                    href={company.linkedin_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
-                  >
-                    <Linkedin className="h-4 w-4" />
-                    LinkedIn
-                  </a>
-                )}
-                {company.domain && (
-                  <a
-                    href={`https://${company.domain}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
-                  >
-                    <Globe className="h-4 w-4" />
-                    Website
-                  </a>
-                )}
-              </div>
-            </div>
-          ))}
+            </Link>
+))}
         </div>
       ) : (
         <div className="p-8 text-center text-muted-foreground">
