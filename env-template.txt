@@ -1,0 +1,11 @@
+# Resend Email Configuration (optional)
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxx
+RESEND_FROM_EMAIL=you@yourdomain.com
+
+# Gmail SMTP Configuration (alternative to Resend)
+EMAIL_SMTP_HOST=smtp.gmail.com
+EMAIL_SMTP_PORT=587
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASS=your-app-password
+EMAIL_FROM=your-email@gmail.com
+EMAIL_FROM_NAME=Your Name
