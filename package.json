@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "vercel-build": "next build"
+    "vercel-build": "next build",
+    "deploy": "powershell -ExecutionPolicy Bypass -File skill-deploy-vercel.ps1"
   },
   "dependencies": {
     "@apollo/client": "^3.11.8",
