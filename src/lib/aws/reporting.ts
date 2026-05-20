@@ -43,7 +43,7 @@ export interface EmbedFilter {
 }
 
 export interface EmbedUrlResult {
-  embedUrl?: string | null;
+  embedUrl?: string;
   expiration: string;
   dashboardId: string;
 }
@@ -162,20 +162,26 @@ export async function generateSecureEmbedUrl(
   dashboardId: string,
   tenantId?: string
 ): Promise<EmbedUrlResult | null> {
-  if (!tenantId) {
-    tenantId = await getSessionTenantId();
+  let resolvedTenantId: string | undefined = tenantId;
+  
+  if (!resolvedTenantId) {
+    const sessionTenantId = await getSessionTenantId();
+    // Handle null from getSessionTenantId()
+    if (sessionTenantId != null) {
+      resolvedTenantId = sessionTenantId as string;
+    }
   }
 
-  if (!tenantId) {
+  if (!resolvedTenantId) {
     console.log('[REPORTING] No tenant ID');
     return null;
   }
 
   const filters: EmbedFilter[] = [
-    { column: 'tenant_id', values: [tenantId], operator: 'EQUALS' },
+    { column: 'tenant_id', values: [resolvedTenantId], operator: 'EQUALS' },
   ];
 
-  return generateDashboardEmbedUrl({ dashboardId, tenantId, filters });
+  return generateDashboardEmbedUrl({ dashboardId, tenantId: resolvedTenantId, filters });
 }
 
 export async function listDashboards(): Promise<DashboardInfo[]> {
