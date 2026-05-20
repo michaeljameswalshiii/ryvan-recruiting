@@ -327,10 +327,10 @@ async function QuickSightEmbed() {
     );
   }
 
-  return (
+return (
     <div className="h-[600px] w-full border rounded-lg overflow-hidden">
       <iframe
-        src={embedResult.embedUrl}
+        src={embedResult.embedUrl || undefined}
         className="w-full h-full"
         allowFullScreen
       />
