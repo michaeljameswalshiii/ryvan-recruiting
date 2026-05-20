@@ -1,0 +1,17 @@
+# Ignore scripts folder - these are local setup scripts only
+scripts/
+# Ignore CDK folder - AWS infrastructure code, not needed for Next.js
+cdk/
+# Ignore documentation
+*.md
+!.gitignore
+# Ignore local config files that aren't needed for production
+*.log
+# Ignore test files
+**/*.test.ts
+**/*.spec.ts
+**/__tests__/
+# Ignore coverage
+coverage/
+# Ignore .next cache from local dev (rebuild on Vercel)
+.next/

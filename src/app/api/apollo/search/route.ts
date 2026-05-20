@@ -1,4 +1,8 @@
 import { NextRequest } from "next/server";
+import { logApolloUsage } from "@/lib/aws/athena-bedrock";
+
+// Apollo pricing per search result (approximate)
+const APOLLO_COST_PER_RESULT = 0.01;
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,7 +12,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "Api key required" }, { status: 400 });
     }
 
-const body = await request.json().catch(() => ({}));
+    const body = await request.json().catch(() => ({}));
 
     // Auto-detect industry from query for smarter filtering
     const query = (body.q || "").toLowerCase();
@@ -75,7 +79,19 @@ if (!response.ok) {
       return Response.json({ error: `Apollo API error ${response.status}`, details: errorDetails }, { status: response.status });
     }
 
-    const data = await response.json();
+const data = await response.json();
+    
+// Log Apollo usage after successful search
+    const resultsCount = data.organizations?.length || 0;
+    if (resultsCount > 0) {
+      logApolloUsage({
+        modelId: 'apollo-company-search',
+        resultsCount,
+        estimatedCost: resultsCount * APOLLO_COST_PER_RESULT,
+        queryPreview: body.q,
+      }).catch(() => {});
+    }
+    
     return Response.json(data);
 
   } catch (error: any) {

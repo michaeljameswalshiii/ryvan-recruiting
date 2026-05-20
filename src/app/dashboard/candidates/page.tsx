@@ -41,6 +41,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 
 interface Candidate {
@@ -79,6 +80,30 @@ const stageOrder = [
   "accept",
   "rejected",
 ];
+
+// Legacy status mapping - maps old statuses to pipeline stages
+// This ensures legacy data shows correctly in the pipeline
+function mapLegacyStatus(status?: string): string {
+  if (!status) return "identification";
+  
+  // Already a valid pipeline stage
+  if (pipelineStages.find(s => s.id === status)) {
+    return status;
+  }
+  
+  // Legacy "new" status -> identification
+  if (status === "new") {
+    return "identification";
+  }
+  
+  // Legacy "converted" status -> accept (converted to client)
+  if (status === "converted") {
+    return "accept";
+  }
+  
+  // Other legacy statuses -> identification
+  return "identification";
+}
 
 // Drop animation config
 const dropAnimation: DropAnimation = {
@@ -129,9 +154,14 @@ function SortableCandidateCard({
         isDragging ? "opacity-50 ring-2 ring-primary" : ""
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
+<div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <h4 className="font-medium text-sm truncate">{candidate.name}</h4>
+          <Link 
+            href={`/candidates/${candidate.id}`}
+            className="font-medium text-sm truncate hover:text-primary transition-colors"
+          >
+            {candidate.name}
+          </Link>
           {candidate.title && (
             <p className="text-xs text-muted-foreground truncate">
               {candidate.title}
@@ -193,8 +223,18 @@ function StageColumn({
   isPending: boolean;
   onSendEmail?: (candidate: Candidate) => void;
 }) {
+  // Make the column droppable using the stage id
+  const { setNodeRef, isOver } = useDroppable({
+    id: stage.id,
+  });
+
   return (
-    <div className="rounded-lg border border-border bg-card min-h-[400px] flex flex-col">
+    <div 
+      ref={setNodeRef} 
+      className={`rounded-lg border border-border bg-card min-h-[400px] flex flex-col transition-colors ${
+        isOver ? 'border-primary bg-accent/20' : ''
+      }`}
+    >
       <div className="p-3 border-b border-border">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-sm">{stage.label}</h3>
@@ -255,7 +295,7 @@ export default function CandidatesPage() {
     setActiveId(event.active.id as string);
   };
 
-  // Handle drag end - update status when dropped in different column
+// Handle drag end - update status when dropped in different column
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
@@ -271,19 +311,19 @@ export default function CandidatesPage() {
     // Check if over is a container (stage column)
     let newStatus: string | null = null;
 
-    // If dropped over a stage column (check by data attribute or id)
+    // If dropped over a stage column (check by id matching stage id)
     const overStage = pipelineStages.find((s) => s.id === over.id);
     if (overStage) {
       newStatus = overStage.id;
     } else {
-// Dropped over another candidate - find their stage
+      // Dropped over another candidate - find their stage
       const overCandidate = candidates.find((c) => c.id === over.id);
       if (overCandidate && overCandidate.status) {
         newStatus = overCandidate.status;
       }
     }
 
-    // Also check if the 'over' id contains stage info
+    // Also check if the 'over' id contains stage info (for column drop zones)
     if (!newStatus) {
       for (const stage of pipelineStages) {
         if (over.id.toString().startsWith(`column-${stage.id}`)) {
@@ -298,16 +338,22 @@ export default function CandidatesPage() {
       newStatus = "identification";
     }
 
-    const oldStatus = oldCandidate.status || "new";
+    // Get the current status from oldCandidate (already mapped)
+    const oldStatus = oldCandidate.status || "identification";
 
-    // Only update if status changed
+    // Only update if status actually changed
     if (newStatus && newStatus !== oldStatus) {
       try {
+        // Optimistically update the UI by invalidating queries after mutation
         await updateLeadStatusMutation.mutateAsync({
           leadId: candidateId,
           newStatus,
           oldStatus,
         });
+        
+        // Invalidate queries to refresh data
+        queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
+        
         toast.success(`Moved to ${pipelineStages.find((s) => s.id === newStatus)?.label || newStatus}`);
       } catch (err: any) {
         console.error("Failed to update candidate status:", err);
@@ -338,6 +384,7 @@ export default function CandidatesPage() {
 
 // Convert DB lead to Candidate interface
   // Default to "identification" for candidates with null/empty status
+  // Use mapLegacyStatus to ensure legacy statuses display correctly
   const candidates: Candidate[] = filteredCandidates.map((l: any) => ({
     id: l.id,
     name: l.name || "",
@@ -349,7 +396,7 @@ export default function CandidatesPage() {
     location: l.location || "",
     notes: l.notes || "",
     source: l.source || "",
-    status: l.status || "identification",
+    status: mapLegacyStatus(l.status),
   }));
 
   // Group candidates by status for pipeline view

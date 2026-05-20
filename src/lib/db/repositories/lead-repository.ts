@@ -19,6 +19,20 @@ import { type Lead, type CreateLeadInput, type UpdateLeadInput } from '../../sch
 // Cache TTL: 5 minutes
 const CACHE_TTL = 300;
 
+// Pipeline stages that show in the UI pipeline
+// Also include legacy statuses for backward compatibility with migrated data
+export const PIPELINE_STAGES = [
+  'identification',
+  'outreach',
+  'conversation',
+  'presented',
+  'interview',
+  'accept',
+  'rejected',
+  'new',         // Legacy - new lead not yet contacted
+  'converted',   // Legacy - lead converted to client
+];
+
 /**
  * Generate a UUID
  */
@@ -56,6 +70,26 @@ export async function getAllLeads(tenantId: string): Promise<Lead[]> {
 }
 
 /**
+ * Get leads by status
+ */
+export async function getLeadsByStatus(tenantId: string, status: string): Promise<Lead[]> {
+  return queryItems<Lead>(
+    leadsTable,
+    'tenant_id = :tenantId AND #status = :status',
+    { ':tenantId': tenantId, ':status': status },
+    { '#status': 'status' }
+  );
+}
+
+/**
+ * Get leads NOT in pipeline stages (these need to be migrated to identification)
+ */
+export async function getLeadsNotInPipeline(tenantId: string): Promise<Lead[]> {
+  const allLeads = await getAllLeads(tenantId);
+  return allLeads.filter(lead => !PIPELINE_STAGES.includes(lead.status || ''));
+}
+
+/**
  * Get a single lead by ID
  */
 export async function getLeadById(tenantId: string, leadId: string): Promise<Lead | null> {
@@ -90,11 +124,11 @@ export async function createLead(tenantId: string, data: CreateLeadInput): Promi
     id: generateId(),
     tenant_id: tenantId,
     name: validated.name,
-    email: validated.email || '',
+email: validated.email || '',
     phone: validated.phone || '',
     company: validated.company || '',
     title: validated.title || '',
-    status: validated.status || 'new',
+    status: validated.status || 'identification',
     source: validated.source || '',
     notes: validated.notes || '',
     linkedin_url: validated.linkedin_url || '',
@@ -178,7 +212,7 @@ export async function updateLead(
   values[':modified_at'] = new Date().toISOString();
   names['#modified_at'] = 'modified_at';
   
-const updated = await updateItem<Lead>(
+  const updated = await updateItem<Lead>(
     leadsTable,
     { tenant_id: tenantId, id: leadId },
     `SET ${updates.join(', ')}`,
@@ -193,6 +227,32 @@ const updated = await updateItem<Lead>(
 }
 
 /**
+ * Update multiple leads in batch - for migration purposes
+ */
+export async function updateLeadsToIdentification(
+  tenantId: string,
+  leadIds: string[]
+): Promise<{ updated: number; errors: string[] }> {
+  let updated = 0;
+  const errors: string[] = [];
+  
+  for (const leadId of leadIds) {
+    try {
+      const result = await updateLead(tenantId, leadId, { status: 'identification' });
+      if (result) {
+        updated++;
+      } else {
+        errors.push(`Lead ${leadId} not found`);
+      }
+    } catch (error: any) {
+      errors.push(`Lead ${leadId}: ${error.message}`);
+    }
+  }
+  
+  return { updated, errors };
+}
+
+/**
  * Delete a lead
  */
 export async function deleteLead(tenantId: string, leadId: string): Promise<void> {
@@ -200,4 +260,50 @@ export async function deleteLead(tenantId: string, leadId: string): Promise<void
   
   // Invalidate cache
   await invalidateTenantCache(tenantId);
+}
+
+/**
+ * Get a lead by email (for duplicate detection)
+ * Uses GSI if available, otherwise scans
+ */
+export async function getLeadByEmail(tenantId: string, email: string): Promise<Lead | null> {
+  if (!email) return null;
+  
+  const normalizedEmail = email.toLowerCase().trim();
+  
+  // Try to use GSI first (EmailIndex)
+  try {
+    const leads = await queryItems<Lead>(
+      leadsTable,
+      'tenant_id = :tenantId AND email = :email',
+      { ':tenantId': tenantId, ':email': normalizedEmail }
+    );
+    if (leads.length > 0) {
+      return leads[0];
+    }
+  } catch {
+    // GSI might not exist, fall back to scan
+  }
+  
+  // Fallback: scan all leads for this tenant (not ideal but works)
+  const allLeads = await getAllLeads(tenantId);
+  return allLeads.find(lead => 
+    lead.email?.toLowerCase() === normalizedEmail
+  ) || null;
+}
+
+/**
+ * Get a lead by LinkedIn URL (for duplicate detection)
+ */
+export async function getLeadByLinkedIn(tenantId: string, linkedinUrl: string): Promise<Lead | null> {
+  if (!linkedinUrl) return null;
+  
+  const normalizedUrl = linkedinUrl.toLowerCase().trim();
+  
+  // Scan leads for matching LinkedIn
+  const allLeads = await getAllLeads(tenantId);
+  return allLeads.find(lead => 
+    lead.linkedin_url?.toLowerCase().includes(normalizedUrl) || 
+    normalizedUrl.includes(lead.linkedin_url?.toLowerCase() || '')
+  ) || null;
 }

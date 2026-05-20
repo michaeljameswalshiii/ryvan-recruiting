@@ -25,7 +25,7 @@ const PUBLIC_API_ROUTES = [
 ];
 
 // Protected routes that require authentication
-const PROTECTED_ROUTES = ['/dashboard'];
+const PROTECTED_ROUTES = ['/dashboard', '/candidates'];
 
 // Session cookie name
 const SESSION_COOKIE = 'turnkey-session';

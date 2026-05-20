@@ -13,6 +13,7 @@ import {
   Search,
   Sparkles,
   Building,
+  Activity,
 } from "lucide-react";
 import { logout } from "@/lib/api/auth-client";
 
@@ -24,6 +25,8 @@ const navItems = [
   { href: "/dashboard/companies/sourcing", label: "Company Sourcing", icon: Building },
   { href: "/dashboard/ai-assistant", label: "AI Assistant", icon: Sparkles },
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
+  { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
+  { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
 ];
 
 interface DashboardNavProps {

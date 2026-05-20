@@ -1,37 +1,52 @@
-# MCP Implementation TODO
+# Bedrock Usage Tracking Implementation
 
-## Task: Change Default Model to Claude Sonnet 4.6 + Emulate MCP Behavior with Apollo
+## Status: Complete
 
-### Steps:
+## Files Created/Modified
 
-- [ ] 1. Update `/src/app/api/bedrock/route.ts` - Major rewrite with MCP-style agent loop
-  - [ ] Change DEFAULT_MODEL to Claude Sonnet 4.6
-  - [ ] Add model selection logic (Sonnet default, Haiku cheap, Opus heavy)
-  - [ ] Implement MCP-style planning → execution → reflection
-  - [ ] Add persistent conversation context
-  - [ ] Add parallel tool execution
-  - [ ] Add structured output for recruiting workflows
+### New Files Created:
+1. `src/lib/db/usage.ts` - Usage repository (may have duplicates, needs cleanup)
+2. `src/app/dashboard/usage/page.tsx` - Usage dashboard UI
+3. `src/app/api/usage/route.ts` - API route to log usage
 
-- [ ] 2. Update `/src/lib/prompts/bedrock-system.ts` - System prompts for Claude
-  - [ ] Update SYSTEM_PROMPTS for Claude models
-  - [ ] Add MCP-specific prompts
+### Modified Files:
+1. `src/lib/db/dynamodb.ts` - Added bedrockUsageTable
+2. `src/lib/db/index.ts` - Added usage re-export
+3. `src/components/dashboard/nav.tsx` - Added AI Usage nav link
+4. `src/lib/aws/athena-bedrock.ts` - Already has all functions
 
-- [ ] 3. Update `/src/lib/prompts/base.ts` - Base prompt update
-  - [ ] Update for Claude Sonnet 4.6
+## Optional Cleanup
 
-- [ ] 4. Update `/src/lib/ai/tools/index.ts` - Tool schemas
-  - [ ] Update for Claude compatibility
+The `src/lib/db/usage.ts` has some duplicate definitions. The athena-bedrock.ts already handles all the tracking. You can either:
+- Delete `src/lib/db/usage.ts` 
+- Or remove duplicates from it
 
-- [ ] 5. Update `/src/app/api/apollo/route.ts` - Model consistency
-  - [ ] Update to use Sonnet as default
+## Usage
 
-- [ ] 6. Update `/src/app/dashboard/ai-assistant/page.tsx` - UI model indicator
-  - [ ] Update to show Claude Sonnet 4.6
+### Logging Usage (from any AI client)
+```typescript
+// After each AI call, call:
+await fetch('/api/usage', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    modelId: 'global.anthropic.claude-sonnet-4-6',
+    inputTokens: 500,
+    outputTokens: 200,
+    queryPreview: 'Find Python developers...',
+    latencyMs: 1500,
+  })
+});
+```
 
----
+### Viewing Dashboard
+Navigate to `/dashboard/usage` or click "AI Usage" in the sidebar
 
-## Completion Checkpoint:
-- [ ] All files updated with Claude Sonnet 4.6 as default
-- [ ] MCP-style agent loop implemented in bedrock route
-- [ ] Dev server restart tested
-- [ ] All flows tested
+## Environment Variables
+
+Optional - for DynamoDB table name:
+```
+DYNAMODB_BEDROCK_USAGE_TABLE=turnkey-bedrock-usage
+```
+
+If not set, defaults to `turnkey-bedrock-usage`

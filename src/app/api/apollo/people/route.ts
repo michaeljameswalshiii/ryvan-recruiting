@@ -1,4 +1,8 @@
 import { NextRequest } from "next/server";
+import { logApolloUsage } from "@/lib/aws/athena-bedrock";
+
+// Apollo pricing per result
+const APOLLO_COST_PER_RESULT = 0.01;
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +33,19 @@ const response = await fetch("https://api.apollo.io/api/v1/mixed_people/api_sear
       return Response.json({ error: `Apollo API error ${response.status}` }, { status: response.status });
     }
 
-    const data = await response.json();
+const data = await response.json();
+    
+// Log Apollo usage after successful search
+    const resultsCount = data.people?.length || 0;
+    if (resultsCount > 0) {
+      logApolloUsage({
+        modelId: 'apollo-people-api-search',
+        resultsCount,
+        estimatedCost: resultsCount * APOLLO_COST_PER_RESULT,
+        queryPreview: body.q,
+      }).catch(() => {});
+    }
+    
     return Response.json(data);
 
   } catch (error: any) {

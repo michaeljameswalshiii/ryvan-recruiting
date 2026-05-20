@@ -1,11 +1,18 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  disableHardwareAcceleration: true,
+  // Setting output to standalone helps with deployment detection
+  output: "standalone",
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",
     },
+  },
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  eslint: {
+    ignoreDuringBuilds: false,
   },
 };
 

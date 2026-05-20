@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logApolloUsage } from "@/lib/aws/athena-bedrock";
 
 /**
  * API Route: Apollo People Search with Bedrock Fallback
@@ -23,6 +24,9 @@ import { NextRequest, NextResponse } from "next/server";
  *   "source": "apollo" | "bedrock"
  * }
  */
+
+// Apollo pricing: $0.01 per search result retrieved (approximate)
+const APOLLO_COST_PER_RESULT = 0.01;
 
 const APOLLO_API_KEY = process.env.APOLLO_API_KEY;
 
@@ -82,7 +86,7 @@ headers: new Headers({
           throw new Error(`Apollo error: ${response.status}`);
         }
 
-        const data = await response.json();
+const data = await response.json();
         
         // Format results
         const results = data.people?.map((person: any) => ({
@@ -97,6 +101,16 @@ headers: new Headers({
           headline: person.headline,
           bio: person.bio,
         })) || [];
+
+// Log Apollo usage after successful search
+        const resultsCount = results.length;
+        const apolloCost = resultsCount * APOLLO_COST_PER_RESULT;
+        logApolloUsage({
+          modelId: 'apollo-people-search',
+          resultsCount,
+          estimatedCost: apolloCost,
+          queryPreview: query,
+        }).catch(() => {});
 
         return NextResponse.json({
           success: true,

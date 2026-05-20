@@ -1,0 +1,59 @@
+/**
+ * Candidate Notes API Route
+ * POST /api/candidate/[id]/notes
+ * 
+ * @serverOnly
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { addNoteToCandidate } from '@/lib/events/candidate-events';
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Candidate ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Parse the request body
+    const body = await request.json();
+    const { noteText, createdBy } = body;
+
+    if (!noteText || noteText.trim() === '') {
+      return NextResponse.json(
+        { error: 'Note text is required' },
+        { status: 400 }
+      );
+    }
+
+    // Use provided createdBy or default to 'system'
+    const user = createdBy || 'system';
+
+    const result = await addNoteToCandidate(id, noteText, user);
+
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error || 'Failed to add note' },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      eventId: result.eventId,
+    });
+  } catch (error) {
+    console.error('[API] Failed to add note:', error);
+    return NextResponse.json(
+      { error: 'Failed to add note' },
+      { status: 500 }
+    );
+  }
+}

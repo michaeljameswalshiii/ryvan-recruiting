@@ -24,25 +24,12 @@ export default function DashboardPage() {
   // Calculate fees pipeline (contacts * $25,000)
   const feesPipeline = ((stats.contacts || 0) * 25000).toLocaleString();
 
-  return (
+return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold">Welcome back</h1>
-          <p className="text-muted-foreground">Here's what's happening — {currentDate}</p>
-        </div>
-        
-        <div className="text-right">
-          {statsLoading ? (
-            <Skeleton className="h-10 w-32" />
-          ) : (
-            <div className="text-4xl font-semibold text-green-600">
-              ${feesPipeline}
-            </div>
-          )}
-          <p className="text-sm text-muted-foreground">fees pipeline</p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold">Welcome back</h1>
+        <p className="text-muted-foreground">Here's what's happening — {currentDate}</p>
       </div>
 
       {/* Stats Cards - Clickable Links */}
@@ -232,8 +219,8 @@ export default function DashboardPage() {
               <span>Add to Pipeline</span>
               <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
             </a>
-            <a
-              href="/dashboard/sourcing"
+<a
+              href="/dashboard/companies/sourcing"
               className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent transition-colors"
             >
               <span>Source Companies</span>
