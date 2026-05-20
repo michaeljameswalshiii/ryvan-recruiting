@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "vercel-build": "next build"
   },
   "dependencies": {
     "@apollo/client": "^3.11.8",
@@ -45,6 +46,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.54.0",
+    "recharts": "^3.8.1",
     "resend": "^6.12.3",
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.6.0",

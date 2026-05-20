@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { logApolloUsage } from "@/lib/aws/athena-bedrock";
+import { logApolloUsage, logBedrockUsage } from "@/lib/aws/athena-bedrock";
+import { getSessionTenantId, getSessionUserId, getSessionUserEmail } from "@/lib/server-auth";
 
 /**
  * API Route: Apollo People Search with Bedrock Fallback
@@ -103,6 +104,10 @@ const data = await response.json();
         })) || [];
 
 // Log Apollo usage after successful search
+        const tenantId = await getSessionTenantId();
+        const userId = await getSessionUserId();
+        const userEmail = await getSessionUserEmail() || 'anonymous';
+        
         const resultsCount = results.length;
         const apolloCost = resultsCount * APOLLO_COST_PER_RESULT;
         logApolloUsage({
@@ -110,6 +115,9 @@ const data = await response.json();
           resultsCount,
           estimatedCost: apolloCost,
           queryPreview: query,
+          tenantId: tenantId || 'SYSTEM',
+          userId: userId || 'anonymous',
+          userEmail,
         }).catch(() => {});
 
         return NextResponse.json({
@@ -141,7 +149,20 @@ const data = await response.json();
             }),
           });
           
-          const bedrockResult = await bedrockRes.json();
+const bedrockResult = await bedrockRes.json();
+          
+          // Log Bedrock fallback usage
+          const inputText = query;
+          const outputText = bedrockResult.response || '';
+          logBedrockUsage({
+            modelId: 'anthropic-claude-3-haiku-20240307',
+            inputTokens: Math.ceil(inputText.length / 4),
+            outputTokens: Math.ceil(outputText.length / 4),
+            queryPreview: query,
+            toolsUsed: ['bedrock-fallback'],
+            latencyMs: 0,
+          }).catch(() => {});
+          
           return NextResponse.json({
             success: true,
             results: [],
@@ -184,7 +205,19 @@ const data = await response.json();
 
         const bedrockResult = await bedrockRes.json();
         
-        if (bedrockResult.response) {
+if (bedrockResult.response) {
+          // Log Bedrock chat usage
+          const inputText = chatMessages.map(m => m.content).join(' ');
+          const outputText = bedrockResult.response;
+          logBedrockUsage({
+            modelId: 'anthropic-claude-3-haiku-20240307',
+            inputTokens: Math.ceil(inputText.length / 4),
+            outputTokens: Math.ceil(outputText.length / 4),
+            queryPreview: message.substring(0, 100),
+            toolsUsed: ['bedrock'],
+            latencyMs: 0,
+          }).catch(() => {});
+          
           return NextResponse.json({
             success: true,
             response: bedrockResult.response,

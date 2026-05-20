@@ -207,8 +207,8 @@ console.error('[USAGE] Failed to log:', error);
 }
 
 /**
- * Log Apollo API usage (no session required)
- * Stores under a system tenant for tracking Apollo costs
+ * Log Apollo API usage
+ * Logs user/tenant context when available, falls back to system for unauthenticated
  * 
  * @param params - Apollo usage data
  */
@@ -217,17 +217,24 @@ export async function logApolloUsage(params: {
   resultsCount: number;
   estimatedCost: number;
   queryPreview: string;
+  tenantId?: string;
+  userId?: string;
+  userEmail?: string;
 }): Promise<void> {
   try {
     const timestamp = new Date().toISOString();
     
-    // Use system tenant for Apollo (no user session needed)
+    // Use actual tenant/user if provided, otherwise system
+    const tenant = params.tenantId || 'SYSTEM';
+    const user = params.userId || 'apollo';
+    const email = params.userEmail || 'apollo@system';
+    
     const record: BedrockUsageRecord = {
-      PK: 'TENANT#SYSTEM',
+      PK: `TENANT#${tenant}`,
       SK: `USAGE#APOLLO#${timestamp}`,
-      tenantId: 'SYSTEM',
-      userId: 'apollo',
-      userEmail: 'apollo@system',
+      tenantId: tenant,
+      userId: user,
+      userEmail: email,
       modelId: params.modelId,
       inputTokens: 0,
       outputTokens: params.resultsCount * 100, // Estimate tokens from results
@@ -240,7 +247,7 @@ export async function logApolloUsage(params: {
     };
     
     await putItem(bedrockUsageTable, record);
-    console.log('[APOLLO] Logged:', params.modelId, params.resultsCount, params.estimatedCost);
+    console.log('[APOLLO] Logged:', params.modelId, params.resultsCount, params.estimatedCost, 'tenant:', tenant);
   } catch (error) {
     console.error('[APOLLO] Failed to log:', error);
   }

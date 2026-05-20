@@ -20,6 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { useLeads, useCreateLead, useUpdateLead, useUpdateLeadStatus, leadKeys } from "@/lib/hooks/query-lead";
 import { toast } from "sonner";
 import { SendEmailModal, CandidateInfo } from "@/components/email/send-email-modal";
+import CandidateEditModal from "@/components/candidate-edit-modal";
+import { Pencil } from "lucide-react";
 // Drag and drop imports
 import {
   DndContext,
@@ -122,11 +124,13 @@ function SortableCandidateCard({
   onStatusChange,
   isPending,
   onSendEmail,
+  onRefresh,
 }: {
   candidate: Candidate;
   onStatusChange: (candidateId: string, newStatus: string) => void;
   isPending: boolean;
   onSendEmail?: (candidate: Candidate) => void;
+  onRefresh: () => void;
 }) {
   const {
     attributes,
@@ -184,7 +188,7 @@ function SortableCandidateCard({
         </button>
       </div>
 
-      {/* Status Badge */}
+{/* Status Badge */}
       <Badge
         variant="outline"
         className="mt-2 text-xs capitalize"
@@ -192,7 +196,8 @@ function SortableCandidateCard({
         {stageLabel}
       </Badge>
 
-<div className="flex flex-wrap gap-1 mt-2">
+      {/* Action buttons row */}
+      <div className="flex flex-wrap gap-1 mt-2">
         {candidate.email && (
           <button
             type="button"
@@ -204,6 +209,19 @@ function SortableCandidateCard({
             <span>Email</span>
           </button>
         )}
+<CandidateEditModal
+          candidate={candidate}
+          onSave={onRefresh}
+        >
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+            title="Edit Candidate"
+          >
+            <Pencil className="h-3 w-3" />
+            <span>Edit</span>
+          </button>
+        </CandidateEditModal>
       </div>
     </div>
   );
@@ -216,12 +234,14 @@ function StageColumn({
   onStatusChange,
   isPending,
   onSendEmail,
+  onRefresh,
 }: {
   stage: { id: string; label: string; color: string };
   candidates: Candidate[];
   onStatusChange: (candidateId: string, newStatus: string) => void;
   isPending: boolean;
   onSendEmail?: (candidate: Candidate) => void;
+  onRefresh: () => void;
 }) {
   // Make the column droppable using the stage id
   const { setNodeRef, isOver } = useDroppable({
@@ -248,13 +268,14 @@ function StageColumn({
           items={candidates.map((c) => c.id)}
           strategy={verticalListSortingStrategy}
         >
-          {candidates.map((candidate) => (
+{candidates.map((candidate) => (
             <SortableCandidateCard
               key={candidate.id}
               candidate={candidate}
               onStatusChange={onStatusChange}
               isPending={isPending}
               onSendEmail={onSendEmail}
+              onRefresh={onRefresh}
             />
           ))}
         </SortableContext>
@@ -362,7 +383,7 @@ export default function CandidatesPage() {
     }
   };
 
-  // Add Candidate Form State
+// Add Candidate Form State
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -373,6 +394,7 @@ export default function CandidatesPage() {
     notes: "",
   });
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [isParsingResume, setIsParsingResume] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filter candidates based on search
@@ -458,12 +480,51 @@ formDataToSend.set("source", "manual_entry");
     return currentStatus;
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.type === "application/pdf") {
-      setResumeFile(file);
-    } else if (file) {
+    if (!file) return;
+    
+    if (file.type !== "application/pdf") {
       toast.error("Please upload a PDF file");
+      return;
+    }
+
+    setResumeFile(file);
+    setIsParsingResume(true);
+
+try {
+      // Capture current form state before creating local FormData to avoid type confusion
+      const currentFormState = { ...formData };
+      
+      const fileFormData = new FormData();
+      fileFormData.append("resume", file);
+
+      const res = await fetch("/api/parse-resume", {
+        method: "POST",
+        body: fileFormData,
+      });
+
+      const result = await res.json();
+
+      if (result.success && result.data) {
+        setFormData({
+          name: result.data.name || currentFormState.name,
+          email: result.data.email || "",
+          phone: result.data.phone || "",
+          title: result.data.title || "",
+          company: result.data.company || "",
+          linkedin_url: result.data.linkedin_url || "",
+notes: result.data.notes || currentFormState.notes,
+        });
+        toast.success("Resume parsed successfully! Fields have been filled.");
+      } else {
+        toast.error(result.error || "Could not parse resume automatically");
+      }
+    } catch (err) {
+      console.error("Error parsing resume:", err);
+      toast.error("Error parsing resume");
+    } finally {
+      setIsParsingResume(false);
     }
   };
 
@@ -476,6 +537,7 @@ formDataToSend.set("source", "manual_entry");
 const resetForm = () => {
     setFormData({ name: "", email: "", phone: "", title: "", company: "", linkedin_url: "", notes: "" });
     setResumeFile(null);
+    setIsParsingResume(false);
   };
 
   // Handle send email - opens the email modal for a candidate
@@ -636,7 +698,7 @@ const resetForm = () => {
               placeholder="https://linkedin.com/in/johnsmith"
             />
           </div>
-          <div className="grid gap-2">
+<div className="grid gap-2">
             <Label htmlFor="resume">Resume (PDF)</Label>
             <div className="flex items-center gap-4">
               <input
@@ -645,16 +707,18 @@ const resetForm = () => {
                 accept=".pdf"
                 onChange={handleFileChange}
                 className="hidden"
+                disabled={isParsingResume}
               />
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
+                disabled={isParsingResume}
               >
                 <FileText className="mr-2 h-4 w-4" />
                 {resumeFile ? "Change File" : "Upload Resume"}
               </Button>
-              {resumeFile && (
+              {resumeFile && !isParsingResume && (
                 <div className="flex items-center gap-2 text-sm text-green-600">
                   {resumeFile.name}
                   <button
@@ -664,6 +728,12 @@ const resetForm = () => {
                   >
                     <X className="h-4 w-4" />
                   </button>
+                </div>
+              )}
+              {isParsingResume && (
+                <div className="text-sm text-blue-600 flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Parsing resume with AI...
                 </div>
               )}
             </div>
@@ -701,7 +771,7 @@ const resetForm = () => {
         <div className="grid grid-cols-7 gap-2">
           {pipelineStages.map((stage) => {
             const stageCandidates = candidatesByStage[stage.id] || [];
-            return (
+return (
 <StageColumn
                 key={stage.id}
                 stage={stage}
@@ -709,6 +779,7 @@ const resetForm = () => {
                 onStatusChange={() => {}}
                 isPending={updateLeadStatusMutation.isPending}
                 onSendEmail={handleSendEmail}
+                onRefresh={handleRefresh}
               />
             );
           })}
