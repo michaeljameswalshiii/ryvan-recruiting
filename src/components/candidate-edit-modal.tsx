@@ -65,7 +65,7 @@ export default function CandidateEditModal({
     }
   }, [open, candidate]);
 
-  const handleSave = async () => {
+const handleSave = async () => {
     if (!formData.name) {
       toast.error("Name is required");
       return;
@@ -74,24 +74,29 @@ export default function CandidateEditModal({
     setIsSaving(true);
 
     try {
-      const formDataToSend = new FormData();
-      formDataToSend.set("name", formData.name);
-      formDataToSend.set("email", formData.email);
-      formDataToSend.set("phone", formData.phone);
-      formDataToSend.set("title", formData.title);
-      formDataToSend.set("company", formData.company);
-      formDataToSend.set("linkedin_url", formData.linkedin_url);
-      formDataToSend.set("location", formData.location);
-      formDataToSend.set("notes", formData.notes);
-
+      // Send as JSON - the API expects JSON body
       const response = await fetch(`/api/data/leads/${candidate.id}`, {
         method: "PUT",
-        body: formDataToSend,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email || undefined,
+          phone: formData.phone || undefined,
+          title: formData.title || undefined,
+          company: formData.company || undefined,
+          linkedin_url: formData.linkedin_url || undefined,
+          location: formData.location || undefined,
+          notes: formData.notes || undefined,
+        }),
       });
 
+      const result = await response.json().catch(() => ({ error: "Invalid response" }));
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to update candidate");
+        console.error("Update lead API error:", result);
+        throw new Error(result.error || result.message || "Failed to update candidate");
       }
 
       toast.success(`${formData.name} updated successfully!`);
@@ -99,6 +104,7 @@ export default function CandidateEditModal({
       setOpen(false);
     } catch (err: any) {
       console.error("Failed to update candidate:", err);
+      // Show the actual error message
       toast.error(err.message || "Failed to update candidate");
     } finally {
       setIsSaving(false);
