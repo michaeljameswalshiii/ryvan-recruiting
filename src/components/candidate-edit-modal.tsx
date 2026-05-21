@@ -84,7 +84,6 @@ const handleSave = async () => {
           title: formData.title || undefined,
           location: formData.location || undefined,
           linkedin_url: formData.linkedin_url || undefined,
-          location: formData.location || undefined,
           notes: formData.notes || undefined,
         }),
       });
