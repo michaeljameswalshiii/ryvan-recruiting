@@ -9,7 +9,7 @@
  *
  * Output (JSON):
  * - success: boolean
- * - data: { name, email, phone, title, company, linkedin_url, location, notes }
+ * - data: { name, email, phone, title, linkedin_url, location, notes }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -73,103 +73,53 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Clean text: remove BOM, normalize line endings
+    // Clean text: remove BOM, noise, normalize line endings
     let cleanText = resumeText
       .replace(/^\uFEFF/, "") // Remove BOM
-      .replace(/\r\n?/g, "\n") // Normalize to \n
+      .replace(/mediaimage[\s\S]*?screenshot\.jpeg["']?}/g, "") // Strip image noise
+      .replace(/\r\n?/g, "\n")
       .trim();
 
-    // Pre-extract key fields using regex + line heuristics
-    const lines = cleanText.split("\n").map((l) => l.trim()).filter(Boolean);
+    // Strong regex pre-extraction (multiline-aware)
+    const nameMatch = cleanText.match(/^[A-Z][A-Z\s.,'-]{2,}(?=\s*(?:,|\n|$))/m);
+    const phoneMatch = cleanText.match(/\(\d{3}\)\s*\d{3}[-.\s]?\d{4}|\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/);
+    const emailMatch = cleanText.match(/[\w.%+-]+@[\w.-]+\.[a-zA-Z]{2,}/i);
+    const locationMatch = cleanText.match(/^[A-Za-z\s]+,\s*[A-Z]{2}/m);
+    const linkedinMatch = cleanText.match(/linkedin\.com\/in\/[\w-]+/i);
 
-    const phoneRegex = /\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
-    const emailRegex = /[\w.%+-]+@[\w.-]+\.[a-zA-Z]{2,}/;
-    const linkedinRegex = /linkedin\.com\/in\/[\w-]+/i;
-    const stateZipRegex = /\b([A-Z]{2})\s*\d{5}(?:-\d{4})?\b|\b\d{5}(?:-\d{4})?\b/;
+    const preExtracted = {
+      name: nameMatch ? nameMatch[0].trim() : "",
+      phone: phoneMatch ? phoneMatch[0] : "",
+      email: emailMatch ? emailMatch[0] : "",
+      location: locationMatch ? locationMatch[0] : "",
+      linkedin: linkedinMatch ? `https://${linkedinMatch[0]}` : "",
+    };
 
-    let extractedName = "";
-    let extractedPhone = "";
-    let extractedEmail = "";
-    let extractedLocation = "";
-    let extractedLinkedIn = "";
+    // Build prompt with enhanced schema hints
+    const prompt = `You are an expert resume parser. Extract structured data.
 
-    // Scan first 15 lines for key fields
-    for (let i = 0; i < Math.min(15, lines.length); i++) {
-      const line = lines[i];
-
-      // Name: looks like a name (title-case words, no special chars except -,.')
-      if (!extractedName && /^[A-Z][a-zA-Z\s.,'-]{2,}$/.test(line) && !line.includes("@") && !phoneRegex.test(line) && line.length < 50) {
-        extractedName = line;
-      }
-
-      // Phone number
-      if (!extractedPhone && phoneRegex.test(line)) {
-        extractedPhone = line.match(phoneRegex)?.[0] || "";
-      }
-
-      // Email
-      if (!extractedEmail && emailRegex.test(line)) {
-        extractedEmail = line.match(emailRegex)?.[0] || "";
-      }
-
-      // LinkedIn
-      if (!extractedLinkedIn && linkedinRegex.test(line)) {
-        const match = line.match(linkedinRegex);
-        extractedLinkedIn = match ? `https://${match[0]}` : "";
-      }
-
-      // Location (city, state or state + zip)
-      if (!extractedLocation && (
-        line.includes("FL") || line.includes(", FL") ||
-        line.includes("CA") || line.includes(", CA") ||
-        /,?\s*[A-Z]{2}\s*\d{5}/.test(line)
-      )) {
-        // Try to extract city, state format
-        const locationMatch = line.match(/([A-Za-z\s]+,\s*[A-Z]{2})/);
-        if (locationMatch) {
-          extractedLocation = locationMatch[1];
-        } else {
-          // Just capture the state
-          const stateMatch = line.match(/\b([A-Z]{2})\b/);
-          if (stateMatch) {
-            extractedLocation = stateMatch[1];
-          }
-        }
-      }
-    }
-
-    // Build strict AI prompt with pre-extracted hints
-    const prompt = `Extract structured data from this resume. Use the pre-extracted hints if they look correct.
-
-Pre-extracted (verify and use if reasonable):
-Name: ${extractedName || "(not detected)"}
-Phone: ${extractedPhone || "(not detected)"}
-Email: ${extractedEmail || "(not detected)"}
-Location: ${extractedLocation || "(not detected)"}
+PRE-EXTRACTED HINTS (use these if they look correct):
+Name: ${preExtracted.name || "(not detected)"}
+Phone: ${preExtracted.phone || "(not detected)"}
+Email: ${preExtracted.email || "(not detected)"}
+Location: ${preExtracted.location || "(not detected)"}
+LinkedIn: ${preExtracted.linkedin || "(not detected)"}
 
 Resume text:
-${cleanText.substring(0, 20000)}
+${cleanText.substring(0, 25000)}
 
-Return ONLY valid JSON matching this exact structure:
+Return ONLY valid JSON with this exact schema (fill every field):
 {
-  "name": "Full Name",
-  "email": "email@example.com",
-  "phone": "(555) 123-4567",
-  "title": "Most recent job title",
-  "company": "Most recent company",
-  "linkedin_url": "https://linkedin.com/in/...",
-  "location": "City, State",
-  "notes": "Professional summary (2-3 sentences) + top 5 skills + years experience"
+  "name": "...",
+  "email": "...",
+  "phone": "...",
+  "location": "...",
+  "linkedin_url": "...",
+  "title": "...",
+  "notes": "Professional summary (2-3 sentences) + top skills + years experience"
 }
 
-Examples:
-Input: John Smith, (555) 123-4567, john@example.com
-{"name": "John Smith", "email": "john@example.com", "phone": "(555) 123-4567", ...}
-
-Input: Jane Doe
-{"name": "Jane Doe", ...}
-
-Return ONLY valid JSON, no explanation or extra text.`;
+Return ONLY valid JSON, no explanation.`;
 
     // Call Apollo for parsing
     const aiResponse = await fetch(new URL(request.url).origin + "/api/apollo", {
@@ -197,13 +147,12 @@ Return ONLY valid JSON, no explanation or extra text.`;
 
     // Post-processing: fallback to pre-extracted values if AI returned empty
     const finalData = {
-      name: parsed.name || extractedName || "",
-      email: parsed.email || extractedEmail || "",
-      phone: parsed.phone || extractedPhone || "",
+      name: parsed.name || preExtracted.name || "",
+      email: parsed.email || preExtracted.email || "",
+      phone: parsed.phone || preExtracted.phone || "",
       title: parsed.title || "",
-      company: parsed.company || "",
-      linkedin_url: parsed.linkedin_url || extractedLinkedIn || "",
-      location: parsed.location || extractedLocation || "",
+      linkedin_url: parsed.linkedin_url || preExtracted.linkedin || "",
+      location: parsed.location || preExtracted.location || "",
       notes: parsed.notes || "",
     };
 
