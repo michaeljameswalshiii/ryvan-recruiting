@@ -2,10 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Sparkles, Bot, User, Copy, Check, Search, Users, List, Building2, Briefcase } from "lucide-react";
+import { Send, Sparkles, Bot, User, Copy, Check, Search, Users, List, Building2, Briefcase, ChevronDown, ChevronRight, Lightbulb, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { SaveCandidateButton, AIResultsList, AIRawResult } from "@/components/candidate-import";
 
 interface Message {
@@ -132,26 +136,104 @@ export default function AIAssistantPage() {
   
 const router = useRouter();
 
-  // === SMART QUERY EXPANSION (Claude) ===
-  const expandQuery = async (rawQuery: string, type: "people" | "companies" | "jobs"): Promise<string> => {
+  // === SMART SEARCH TOGGLE STATE ===
+  const [smartSearchEnabled, setSmartSearchEnabled] = useState(true);
+  const [expansionResult, setExpansionResult] = useState<{
+    optimizedQuery: string;
+    personTitles?: string[];
+    keywords?: string[];
+    technologies?: string[];
+    locations?: string[];
+    industries?: string[];
+    seniorities?: string[];
+  } | null>(null);
+  const [showExpansionDetails, setShowExpansionDetails] = useState(true);
+
+  // === ENHANCED SMART QUERY EXPANSION (Claude) ===
+  const expandQuery = async (rawQuery: string, type: "people" | "companies" | "jobs"): Promise<{
+    optimizedQuery: string;
+    personTitles?: string[];
+    keywords?: string[];
+    technologies?: string[];
+    locations?: string[];
+    industries?: string[];
+    seniorities?: string[];
+  }> => {
+    // Build prompt based on type
+    const typePrompt = type === "people" 
+      ? "Extract person/job titles (e.g., Software Engineer, CTO, VP of Engineering), skills/keywords, technologies, locations, industries, and experience levels (senior, mid, junior)."
+      : type === "companies"
+      ? "Extract industry, company size, locations, technologies, and keywords."
+      : "Extract job titles, locations, departments, industries, and keywords.";
+
+    const prompt = `Analyze this search query and expand it intelligently. Query: "${rawQuery}"
+
+${typePrompt}
+
+Return JSON with this exact structure:
+{
+  "optimizedQuery": "refined search string optimized for Apollo API",
+  "personTitles": ["title1", "title2"] (for people search),
+  "keywords": ["keyword1", "keyword2"],
+  "technologies": ["tech1", "tech2"],
+  "locations": ["city, state", "city, state"],
+  "industries": ["industry1", "industry2"],
+  "seniorities": ["senior", "mid", "junior"] (for people search)
+}
+
+Example for "Python developer Miami senior":
+{
+  "optimizedQuery": "Python developer Miami Florida senior",
+  "personTitles": ["Python Developer", "Backend Engineer", "Software Engineer"],
+  "keywords": ["Python", "Django", "Flask", "backend"],
+  "technologies": ["Python", "AWS", "PostgreSQL"],
+  "locations": ["Miami, FL", "Miami, Florida"],
+  "industries": ["Technology", "Software"],
+  "seniorities": ["senior", "lead"]
+}
+
+Now analyze and return JSON for: "${rawQuery}"`;
+
     try {
       const res = await fetch("/api/bedrock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [{ role: "user", content: rawQuery }],
-          assistantMode: true,
-          useTools: false
+          messages: [{ role: "user", content: prompt }],
+          assistantMode: false,
+          useTools: false,
+          format: "json"
         }),
       });
       const data = await res.json();
 
-      const expanded = data.response || rawQuery;
-      console.log(`[Smart Expand] ${type}: ${rawQuery} → ${expanded}`);
-      return expanded;
+      // Try to parse JSON from response
+      let expandedResult;
+      try {
+        const responseText = data.response || data.content || "";
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          expandedResult = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error("No JSON found");
+        }
+      } catch {
+        // Fallback - parse manually
+        expandedResult = {
+          optimizedQuery: data.response || rawQuery,
+          keywords: [rawQuery]
+        };
+      }
+
+      console.log(`[Smart Expand] ${type}: ${rawQuery} → ${expandedResult.optimizedQuery}`);
+      console.log(`[Smart Details]`, expandedResult);
+      return expandedResult;
     } catch (e) {
       console.warn("Query expansion failed, using original", e);
-      return rawQuery;
+      return {
+        optimizedQuery: rawQuery,
+        keywords: [rawQuery]
+      };
     }
   };
 
@@ -221,15 +303,33 @@ const router = useRouter();
 
     setIsSearchingPeople(true);
     setPeopleQuery(query);
+    setExpansionResult(null);
 
     try {
-      // Expand query using Claude for better results
-      const expandedQuery = await expandQuery(query, "people");
+      // Smart query expansion - get structured result
+      let expandedData;
+      if (smartSearchEnabled) {
+        expandedData = await expandQuery(query, "people");
+        setExpansionResult(expandedData);
+      } else {
+        expandedData = { optimizedQuery: query, keywords: [query] };
+      }
       
       const res = await fetch("/api/apollo/people", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ q: expandedQuery }),
+        body: JSON.stringify({ 
+          q: expandedData.optimizedQuery,
+          // Pass additional filters if smart search enabled
+          ...(smartSearchEnabled && {
+            titles: expandedData.personTitles,
+            keywords: expandedData.keywords,
+            technologies: expandedData.technologies,
+            locations: expandedData.locations,
+            industries: expandedData.industries,
+            seniorities: expandedData.seniorities,
+          })
+        }),
       });
       
       const data = await res.json();
@@ -564,8 +664,110 @@ setIsSearchingPeople(false);
           </div>
         </TabsContent>
 
-        {/* People Search Tab */}
+{/* People Search Tab */}
         <TabsContent value="people" className="space-y-4">
+          {/* Smart Search Toggle */}
+          <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-card">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
+                <Lightbulb className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-medium">Smart Search</h3>
+                <p className="text-sm text-muted-foreground">
+                  AI expands your query with job titles, skills, locations, and more
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="smart-search-toggle" className="text-sm font-medium">
+                {smartSearchEnabled ? "ON" : "OFF"}
+              </Label>
+              <Switch
+                id="smart-search-toggle"
+                checked={smartSearchEnabled}
+                onCheckedChange={setSmartSearchEnabled}
+              />
+            </div>
+          </div>
+
+{/* Expansion Details Card */}
+          {expansionResult && smartSearchEnabled && (
+            <Card className="bg-muted/50 border-primary/20">
+              <CardHeader className="pb-2">
+                <button
+                  onClick={() => setShowExpansionDetails(!showExpansionDetails)}
+                  className="flex items-center justify-between w-full text-left"
+                >
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Lightbulb className="h-4 w-4 text-amber-500" />
+                    AI Expansion Details
+                  </CardTitle>
+                  {showExpansionDetails ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </button>
+              </CardHeader>
+              {showExpansionDetails && (
+                <CardContent className="pt-0">
+                  <div className="space-y-3">
+                    {/* Optimized Query */}
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Optimized Query</p>
+                      <p className="text-sm font-medium">{expansionResult.optimizedQuery}</p>
+                    </div>
+                    
+                    {/* Tags */}
+                    <div className="flex flex-wrap gap-2">
+                      {expansionResult.personTitles && expansionResult.personTitles.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          <span className="text-xs text-muted-foreground">Titles:</span>
+                          {expansionResult.personTitles.slice(0, 3).map((t, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs">
+                              {t}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      {expansionResult.technologies && expansionResult.technologies.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          <span className="text-xs text-muted-foreground">Tech:</span>
+                          {expansionResult.technologies.slice(0, 3).map((t, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
+                              {t}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      {expansionResult.locations && expansionResult.locations.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          <span className="text-xs text-muted-foreground">Locations:</span>
+                          {expansionResult.locations.slice(0, 2).map((l, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
+                              {l}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      {expansionResult.seniorities && expansionResult.seniorities.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          <span className="text-xs text-muted-foreground">Level:</span>
+                          {expansionResult.seniorities.slice(0, 2).map((s, i) => (
+                            <Badge key={i} className="text-xs bg-amber-100 text-amber-700">
+                              {s}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+</CardContent>
+              )}
+            </Card>
+          )}
+
           {/* Search Presets */}
           <div className="flex flex-wrap gap-2">
             <span className="text-sm font-medium mr-2">Quick Search:</span>

@@ -20,9 +20,15 @@ const response = await fetch("https://api.apollo.io/api/v1/mixed_people/api_sear
         "Content-Type": "application/json",
         "x-api-key": APOLLO_API_KEY,
       },
-      body: JSON.stringify({
+body: JSON.stringify({
         q: body.q,
         locations: body.locations || [],
+        // Smart Search filters from AI expansion
+        person_titles: body.titles || [],
+        keywords: body.keywords || [],
+        technologies: body.technologies || [],
+        industries: body.industries || [],
+seniorities: body.seniorities || [],
         per_page: body.per_page || 20,
       }),
     });
