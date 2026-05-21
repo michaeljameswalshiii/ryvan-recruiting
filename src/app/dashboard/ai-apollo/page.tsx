@@ -130,7 +130,30 @@ export default function AIAssistantPage() {
   
   const [activeTab, setActiveTab] = useState("chat");
   
-  const router = useRouter();
+const router = useRouter();
+
+  // === SMART QUERY EXPANSION (Claude) ===
+  const expandQuery = async (rawQuery: string, type: "people" | "companies" | "jobs"): Promise<string> => {
+    try {
+      const res = await fetch("/api/bedrock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: rawQuery }],
+          assistantMode: true,
+          useTools: false
+        }),
+      });
+      const data = await res.json();
+
+      const expanded = data.response || rawQuery;
+      console.log(`[Smart Expand] ${type}: ${rawQuery} → ${expanded}`);
+      return expanded;
+    } catch (e) {
+      console.warn("Query expansion failed, using original", e);
+      return rawQuery;
+    }
+  };
 
   // Set welcome message after mount to avoid hydration mismatch
   useEffect(() => {
@@ -192,7 +215,7 @@ export default function AIAssistantPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // People search function
+// People search function with smart expansion
   const searchPeople = async (query: string) => {
     if (!query.trim() || isSearchingPeople) return;
 
@@ -200,10 +223,13 @@ export default function AIAssistantPage() {
     setPeopleQuery(query);
 
     try {
+      // Expand query using Claude for better results
+      const expandedQuery = await expandQuery(query, "people");
+      
       const res = await fetch("/api/apollo/people", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ q: query }),
+        body: JSON.stringify({ q: expandedQuery }),
       });
       
       const data = await res.json();
@@ -238,7 +264,7 @@ export default function AIAssistantPage() {
 setIsSearchingPeople(false);
   };
 
-  // Company search function
+// Company search function with smart expansion
   const searchCompanies = async (query: string) => {
     if (!query.trim() || isSearchingCompanies) return;
 
@@ -246,10 +272,13 @@ setIsSearchingPeople(false);
     setCompanyQuery(query);
 
     try {
+      // Expand query using Claude for better results
+      const expandedQuery = await expandQuery(query, "companies");
+      
       const res = await fetch("/api/apollo/companies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ q: query }),
+        body: JSON.stringify({ q: expandedQuery }),
       });
       
       const data = await res.json();
@@ -285,7 +314,7 @@ setIsSearchingPeople(false);
     setIsSearchingCompanies(false);
   };
 
-  // Job search function
+// Job search function with smart expansion
   const searchJobs = async (query: string) => {
     if (!query.trim() || isSearchingJobs) return;
 
@@ -293,10 +322,13 @@ setIsSearchingPeople(false);
     setJobQuery(query);
 
     try {
+      // Expand query using Claude for better results
+      const expandedQuery = await expandQuery(query, "jobs");
+      
       const res = await fetch("/api/apollo/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ q: query }),
+        body: JSON.stringify({ q: expandedQuery }),
       });
       
       const data = await res.json();
