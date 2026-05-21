@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Sparkles, Bot, User, Copy, Check, Search, Users, List } from "lucide-react";
+import { Send, Sparkles, Bot, User, Copy, Check, Search, Users, List, Building2, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -33,6 +33,40 @@ interface PersonResult {
   [key: string]: any;
 }
 
+interface CompanyResult {
+  id?: string;
+  name?: string;
+  website?: string;
+  industry?: string;
+  size?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  linkedin_url?: string;
+  facebook_url?: string;
+  twitter_url?: string;
+  description?: string;
+  headquarters_location?: string;
+  founded_year?: number;
+  annual_revenue?: string;
+  [key: string]: any;
+}
+
+interface JobResult {
+  id?: string;
+  title?: string;
+  company?: string;
+  company_id?: string;
+  location?: string;
+  department?: string;
+  description?: string;
+  posted_at?: string;
+  url?: string;
+  employees_count?: string;
+  industry?: string;
+  [key: string]: any;
+}
+
 const quickActions = [
   "Find construction companies in Boca Raton",
   "Search for latest news on AI",
@@ -55,16 +89,45 @@ const peopleSearchPresets = [
   { label: "Project Manager", query: "project manager" },
 ];
 
+const companySearchPresets = [
+  { label: "Tech Companies", query: "technology" },
+  { label: "Healthcare", query: "healthcare" },
+  { label: "Finance", query: "finance" },
+  { label: "Retail", query: "retail" },
+  { label: "Manufacturing", query: "manufacturing" },
+  { label: "Software", query: "software" },
+];
+
+const jobSearchPresets = [
+  { label: "Engineering Jobs", query: "engineering" },
+  { label: "Sales Jobs", query: "sales" },
+  { label: "Marketing Jobs", query: "marketing" },
+  { label: "Product Jobs", query: "product manager" },
+  { label: "Data Jobs", query: "data scientist" },
+  { label: "Remote Jobs", query: "remote" },
+];
+
 export default function AIAssistantPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
-  // People search state
+// People search state
   const [peopleResults, setPeopleResults] = useState<PersonResult[]>([]);
   const [peopleQuery, setPeopleQuery] = useState("");
   const [isSearchingPeople, setIsSearchingPeople] = useState(false);
+  
+  // Company search state
+  const [companyResults, setCompanyResults] = useState<CompanyResult[]>([]);
+  const [companyQuery, setCompanyQuery] = useState("");
+  const [isSearchingCompanies, setIsSearchingCompanies] = useState(false);
+  
+  // Job search state
+  const [jobResults, setJobResults] = useState<JobResult[]>([]);
+  const [jobQuery, setJobQuery] = useState("");
+  const [isSearchingJobs, setIsSearchingJobs] = useState(false);
+  
   const [activeTab, setActiveTab] = useState("chat");
   
   const router = useRouter();
@@ -172,7 +235,97 @@ export default function AIAssistantPage() {
       setPeopleResults([]);
     }
 
-    setIsSearchingPeople(false);
+setIsSearchingPeople(false);
+  };
+
+  // Company search function
+  const searchCompanies = async (query: string) => {
+    if (!query.trim() || isSearchingCompanies) return;
+
+    setIsSearchingCompanies(true);
+    setCompanyQuery(query);
+
+    try {
+      const res = await fetch("/api/apollo/companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q: query }),
+      });
+      
+      const data = await res.json();
+      
+      if (data.companies && Array.isArray(data.companies)) {
+        // Map Apollo companies to our format
+        const mappedResults: CompanyResult[] = data.companies.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          website: c.website,
+          industry: c.industry,
+          size: c.size,
+          city: c.city,
+          state: c.state,
+          country: c.country,
+          linkedin_url: c.linkedin_url,
+          facebook_url: c.facebook_url,
+          twitter_url: c.twitter_url,
+          description: c.description,
+          headquarters_location: c.headquarters_location,
+          founded_year: c.founded_year,
+          annual_revenue: c.annual_revenue,
+        }));
+        setCompanyResults(mappedResults);
+      } else {
+        setCompanyResults([]);
+      }
+    } catch (err) {
+      console.error("Company search error:", err);
+      setCompanyResults([]);
+    }
+
+    setIsSearchingCompanies(false);
+  };
+
+  // Job search function
+  const searchJobs = async (query: string) => {
+    if (!query.trim() || isSearchingJobs) return;
+
+    setIsSearchingJobs(true);
+    setJobQuery(query);
+
+    try {
+      const res = await fetch("/api/apollo/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q: query }),
+      });
+      
+      const data = await res.json();
+      
+      if (data.jobs && Array.isArray(data.jobs)) {
+        // Map jobs to our format
+        const mappedResults: JobResult[] = data.jobs.map((j: any) => ({
+          id: j.id,
+          title: j.title,
+          company: j.company,
+          company_id: j.company_id,
+          location: j.location,
+          department: j.department,
+          description: j.description,
+          posted_at: j.posted_at,
+          url: j.url,
+          employees_count: j.employees_count,
+          industry: j.industry,
+        }));
+        setJobResults(mappedResults);
+      } else {
+        setJobResults([]);
+      }
+    } catch (err) {
+      console.error("Job search error:", err);
+      setJobResults([]);
+    }
+
+    setIsSearchingJobs(false);
   };
 
   const runSourcingSearch = async (query: string) => {
@@ -234,7 +387,7 @@ export default function AIAssistantPage() {
         </div>
       </div>
 
-      {/* Tabs for Chat vs People Search */}
+{/* Tabs for Chat vs People Search */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="chat" className="flex items-center gap-2">
@@ -244,6 +397,14 @@ export default function AIAssistantPage() {
           <TabsTrigger value="people" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             People Search
+          </TabsTrigger>
+          <TabsTrigger value="companies" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            Companies
+          </TabsTrigger>
+          <TabsTrigger value="jobs" className="flex items-center gap-2">
+            <Briefcase className="h-4 w-4" />
+            Open Roles
           </TabsTrigger>
         </TabsList>
 
@@ -415,7 +576,7 @@ export default function AIAssistantPage() {
             </Button>
           </div>
 
-          {/* Results */}
+{/* Results */}
           {peopleResults.length > 0 ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -477,6 +638,224 @@ export default function AIAssistantPage() {
             <div className="text-center py-8 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>Search for people to add to your candidates</p>
+              <p className="text-sm mt-2">Use the presets above or enter a custom search</p>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Companies Tab */}
+        <TabsContent value="companies" className="space-y-4">
+          {/* Search Presets */}
+          <div className="flex flex-wrap gap-2">
+            <span className="text-sm font-medium mr-2">Quick Search:</span>
+            {companySearchPresets.map((preset) => (
+              <Button
+                key={preset.query}
+                variant="outline"
+                size="sm"
+                onClick={() => searchCompanies(preset.query)}
+                disabled={isSearchingCompanies}
+              >
+                <Search className="mr-2 h-3 w-3" />
+                {preset.label}
+              </Button>
+            ))}
+          </div>
+
+          {/* Search Input */}
+          <div className="flex gap-2">
+            <Input
+              placeholder="Search for companies (e.g., technology companies Miami)..."
+              value={companyQuery}
+              onChange={(e) => setCompanyQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !isSearchingCompanies) {
+                  searchCompanies(companyQuery);
+                }
+              }}
+              disabled={isSearchingCompanies}
+            />
+            <Button onClick={() => searchCompanies(companyQuery)} disabled={isSearchingCompanies}>
+              {isSearchingCompanies ? (
+                <span className="animate-pulse">Searching...</span>
+              ) : (
+                <>
+                  <Search className="h-4 w-4 mr-2" />
+                  Search
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Results */}
+          {companyResults.length > 0 ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Found {companyResults.length} companies
+                </p>
+              </div>
+              
+              {/* Results Grid */}
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {companyResults.map((company, index) => (
+                  <div 
+                    key={company.id || index}
+                    className="border rounded-lg p-4 hover:shadow-md transition-shadow bg-card"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold truncate">
+                          {company.name || 'Unknown Company'}
+                        </h3>
+                        {company.industry && (
+                          <p className="text-sm text-muted-foreground truncate">
+                            {company.industry}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      {company.size && (
+                        <p className="truncate">👥 {company.size} employees</p>
+                      )}
+                      {company.website && (
+                        <a 
+                          href={company.website} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="truncate text-blue-600 hover:underline block"
+                        >
+                          🌐 {company.website}
+                        </a>
+                      )}
+                      {company.headquarters_location && (
+                        <p className="truncate">📍 {company.headquarters_location}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : companyQuery && !isSearchingCompanies ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No results found. Try a different search query.</p>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Search for companies to add to your pipeline</p>
+              <p className="text-sm mt-2">Use the presets above or enter a custom search</p>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Jobs Tab */}
+        <TabsContent value="jobs" className="space-y-4">
+          {/* Search Presets */}
+          <div className="flex flex-wrap gap-2">
+            <span className="text-sm font-medium mr-2">Quick Search:</span>
+            {jobSearchPresets.map((preset) => (
+              <Button
+                key={preset.query}
+                variant="outline"
+                size="sm"
+                onClick={() => searchJobs(preset.query)}
+                disabled={isSearchingJobs}
+              >
+                <Search className="mr-2 h-3 w-3" />
+                {preset.label}
+              </Button>
+            ))}
+          </div>
+
+          {/* Search Input */}
+          <div className="flex gap-2">
+            <Input
+              placeholder="Search for open roles (e.g., software engineer remote)..."
+              value={jobQuery}
+              onChange={(e) => setJobQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !isSearchingJobs) {
+                  searchJobs(jobQuery);
+                }
+              }}
+              disabled={isSearchingJobs}
+            />
+            <Button onClick={() => searchJobs(jobQuery)} disabled={isSearchingJobs}>
+              {isSearchingJobs ? (
+                <span className="animate-pulse">Searching...</span>
+              ) : (
+                <>
+                  <Search className="h-4 w-4 mr-2" />
+                  Search
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Results */}
+          {jobResults.length > 0 ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Found {jobResults.length} open positions
+                </p>
+              </div>
+              
+              {/* Results Grid */}
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {jobResults.map((job, index) => (
+                  <div 
+                    key={job.id || index}
+                    className="border rounded-lg p-4 hover:shadow-md transition-shadow bg-card"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold truncate">
+                          {job.title || 'Open Role'}
+                        </h3>
+                        {job.company && (
+                          <p className="text-sm text-muted-foreground truncate">
+                            {job.company}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      {job.location && (
+                        <p className="truncate">📍 {job.location}</p>
+                      )}
+                      {job.department && (
+                        <p className="truncate">🏢 {job.department}</p>
+                      )}
+                      {job.url && (
+                        <a 
+                          href={job.url}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="truncate text-blue-600 hover:underline block"
+                        >
+                          🔗 View Job
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : jobQuery && !isSearchingJobs ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Briefcase className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No results found. Try a different search query.</p>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Briefcase className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Search for open roles to track</p>
               <p className="text-sm mt-2">Use the presets above or enter a custom search</p>
             </div>
           )}
