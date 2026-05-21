@@ -43,6 +43,7 @@
     "date-fns": "^4.1.0",
     "groq": "^5.24.0",
     "lucide-react": "^0.468.0",
+    "mammoth": "^1.12.0",
     "next": "15.1.11",
     "nodemailer": "^8.0.7",
     "pdfjs-dist": "^5.7.284",
