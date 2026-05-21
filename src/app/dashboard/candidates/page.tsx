@@ -50,11 +50,10 @@ interface Candidate {
   id: string;
   name: string;
   title?: string;
-  company?: string;
+  location?: string;
   email?: string;
   phone?: string;
   linkedin_url?: string;
-  location?: string;
   notes?: string;
   source?: string;
   status?: string;
@@ -171,9 +170,9 @@ function SortableCandidateCard({
               {candidate.title}
             </p>
           )}
-          {candidate.company && (
+          {candidate.location && (
             <p className="text-xs text-muted-foreground truncate">
-              {candidate.company}
+              {candidate.location}
             </p>
           )}
         </div>
@@ -389,7 +388,7 @@ export default function CandidatesPage() {
     email: "",
     phone: "",
     title: "",
-    company: "",
+    location: "",
     linkedin_url: "",
     notes: "",
   });
@@ -400,7 +399,7 @@ export default function CandidatesPage() {
   // Filter candidates based on search
   const filteredCandidates = leads.filter((lead: any) =>
     lead.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    lead.company?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    lead.location?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     lead.title?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -411,11 +410,10 @@ export default function CandidatesPage() {
     id: l.id,
     name: l.name || "",
     title: l.title || "",
-    company: l.company || "",
+    location: l.location || "",
     email: l.email || "",
     phone: l.phone || "",
     linkedin_url: l.linkedin_url || "",
-    location: l.location || "",
     notes: l.notes || "",
     source: l.source || "",
     status: mapLegacyStatus(l.status),
@@ -436,7 +434,7 @@ export default function CandidatesPage() {
       formDataToSend.set("email", formData.email);
       formDataToSend.set("phone", formData.phone);
       formDataToSend.set("title", formData.title);
-      formDataToSend.set("company", formData.company);
+      formDataToSend.set("location", formData.location);
       formDataToSend.set("linkedin_url", formData.linkedin_url);
       formDataToSend.set("notes", formData.notes);
 formDataToSend.set("source", "manual_entry");
@@ -451,7 +449,7 @@ formDataToSend.set("source", "manual_entry");
 
       toast.success(`${formData.name} added successfully!`);
       setIsAddDialogOpen(false);
-      setFormData({ name: "", email: "", phone: "", title: "", company: "", linkedin_url: "", notes: "" });
+      setFormData({ name: "", email: "", phone: "", title: "", location: "", linkedin_url: "", notes: "" });
       setResumeFile(null);
     } catch (err: any) {
       console.error("Failed to add candidate:", err);
@@ -512,7 +510,7 @@ try {
           email: result.data.email || "",
           phone: result.data.phone || "",
           title: result.data.title || "",
-          company: result.data.company || "",
+          location: result.data.location || "",
           linkedin_url: result.data.linkedin_url || "",
 notes: result.data.notes || currentFormState.notes,
         });
@@ -535,7 +533,7 @@ notes: result.data.notes || currentFormState.notes,
   };
 
 const resetForm = () => {
-    setFormData({ name: "", email: "", phone: "", title: "", company: "", linkedin_url: "", notes: "" });
+    setFormData({ name: "", email: "", phone: "", title: "", location: "", linkedin_url: "", notes: "" });
     setResumeFile(null);
     setIsParsingResume(false);
   };
@@ -660,12 +658,12 @@ const resetForm = () => {
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="company">Company</Label>
+            <Label htmlFor="location">Location</Label>
             <Input
-              id="company"
-              value={formData.company}
-              onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-              placeholder="Acme Corp"
+              id="location"
+              value={formData.location}
+              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              placeholder="Miami, FL"
             />
           </div>
           <div className="grid grid-cols-2 gap-2">

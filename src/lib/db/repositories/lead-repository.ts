@@ -1,7 +1,7 @@
 /**
  * Lead Repository
  * Server-only data access layer for leads
- * 
+ *
  * @serverOnly
  */
 
@@ -49,23 +49,23 @@ function generateId(): string {
  */
 export async function getAllLeads(tenantId: string): Promise<Lead[]> {
   const cacheKey = makeCacheKey(tenantId, 'leads', 'all');
-  
+
   // Try cache first
   const cached = await getCached<Lead[]>(cacheKey);
   if (cached) {
     return cached;
   }
-  
+
   // Query from DynamoDB
   const leads = await queryItems<Lead>(
     leadsTable,
     'tenant_id = :tenantId',
     { ':tenantId': tenantId }
   );
-  
+
   // Cache the result
   await setCached(cacheKey, leads, CACHE_TTL);
-  
+
   return leads;
 }
 
@@ -94,23 +94,23 @@ export async function getLeadsNotInPipeline(tenantId: string): Promise<Lead[]> {
  */
 export async function getLeadById(tenantId: string, leadId: string): Promise<Lead | null> {
   const cacheKey = makeCacheKey(tenantId, 'leads', leadId);
-  
+
   // Try cache first
   const cached = await getCached<Lead>(cacheKey);
   if (cached) {
     return cached;
   }
-  
+
   // Get from DynamoDB
   const lead = await getItem<Lead>(leadsTable, {
     tenant_id: tenantId,
     id: leadId,
   });
-  
+
   if (lead) {
     await setCached(cacheKey, lead, CACHE_TTL);
   }
-  
+
   return lead;
 }
 
@@ -119,14 +119,14 @@ export async function getLeadById(tenantId: string, leadId: string): Promise<Lea
  */
 export async function createLead(tenantId: string, data: CreateLeadInput): Promise<Lead> {
   const validated = data;
-  
+
   const lead: Lead = {
     id: generateId(),
     tenant_id: tenantId,
     name: validated.name,
-email: validated.email || '',
+    email: validated.email || '',
     phone: validated.phone || '',
-    company: validated.company || '',
+    location: validated.location || '',
     title: validated.title || '',
     status: validated.status || 'identification',
     source: validated.source || '',
@@ -134,13 +134,13 @@ email: validated.email || '',
     linkedin_url: validated.linkedin_url || '',
     created_at: new Date().toISOString(),
   };
-  
+
   // Save to DynamoDB
   await putItem(leadsTable, lead);
-  
+
   // Invalidate cache
   await invalidateTenantCache(tenantId);
-  
+
   return lead;
 }
 
@@ -156,7 +156,7 @@ export async function updateLead(
   const updates: string[] = [];
   const values: Record<string, unknown> = {};
   const names: Record<string, string> = {};
-  
+
   if (data.name !== undefined) {
     updates.push('#name = :name');
     values[':name'] = data.name;
@@ -172,10 +172,10 @@ export async function updateLead(
     values[':phone'] = data.phone;
     names['#phone'] = 'phone';
   }
-  if (data.company !== undefined) {
-    updates.push('#company = :company');
-    values[':company'] = data.company;
-    names['#company'] = 'company';
+  if (data.location !== undefined) {
+    updates.push('#location = :location');
+    values[':location'] = data.location;
+    names['#location'] = 'location';
   }
   if (data.title !== undefined) {
     updates.push('#title = :title');
@@ -202,16 +202,16 @@ export async function updateLead(
     values[':linkedin_url'] = data.linkedin_url;
     names['#linkedin_url'] = 'linkedin_url';
   }
-  
+
   if (updates.length === 0) {
     return getLeadById(tenantId, leadId);
   }
-  
+
   // Always update modified_at
   updates.push('#modified_at = :modified_at');
   values[':modified_at'] = new Date().toISOString();
   names['#modified_at'] = 'modified_at';
-  
+
   const updated = await updateItem<Lead>(
     leadsTable,
     { tenant_id: tenantId, id: leadId },
@@ -219,10 +219,10 @@ export async function updateLead(
     values,
     names
   );
-  
+
   // Invalidate cache
   await invalidateTenantCache(tenantId);
-  
+
   return updated;
 }
 
@@ -235,7 +235,7 @@ export async function updateLeadsToIdentification(
 ): Promise<{ updated: number; errors: string[] }> {
   let updated = 0;
   const errors: string[] = [];
-  
+
   for (const leadId of leadIds) {
     try {
       const result = await updateLead(tenantId, leadId, { status: 'identification' });
@@ -248,7 +248,7 @@ export async function updateLeadsToIdentification(
       errors.push(`Lead ${leadId}: ${error.message}`);
     }
   }
-  
+
   return { updated, errors };
 }
 
@@ -257,20 +257,19 @@ export async function updateLeadsToIdentification(
  */
 export async function deleteLead(tenantId: string, leadId: string): Promise<void> {
   await deleteItem(leadsTable, { tenant_id: tenantId, id: leadId });
-  
+
   // Invalidate cache
   await invalidateTenantCache(tenantId);
 }
 
 /**
  * Get a lead by email (for duplicate detection)
- * Uses GSI if available, otherwise scans
  */
 export async function getLeadByEmail(tenantId: string, email: string): Promise<Lead | null> {
   if (!email) return null;
-  
+
   const normalizedEmail = email.toLowerCase().trim();
-  
+
   // Try to use GSI first (EmailIndex)
   try {
     const leads = await queryItems<Lead>(
@@ -284,10 +283,10 @@ export async function getLeadByEmail(tenantId: string, email: string): Promise<L
   } catch {
     // GSI might not exist, fall back to scan
   }
-  
+
   // Fallback: scan all leads for this tenant (not ideal but works)
   const allLeads = await getAllLeads(tenantId);
-  return allLeads.find(lead => 
+  return allLeads.find(lead =>
     lead.email?.toLowerCase() === normalizedEmail
   ) || null;
 }
@@ -297,13 +296,13 @@ export async function getLeadByEmail(tenantId: string, email: string): Promise<L
  */
 export async function getLeadByLinkedIn(tenantId: string, linkedinUrl: string): Promise<Lead | null> {
   if (!linkedinUrl) return null;
-  
+
   const normalizedUrl = linkedinUrl.toLowerCase().trim();
-  
+
   // Scan leads for matching LinkedIn
   const allLeads = await getAllLeads(tenantId);
-  return allLeads.find(lead => 
-    lead.linkedin_url?.toLowerCase().includes(normalizedUrl) || 
+  return allLeads.find(lead =>
+    lead.linkedin_url?.toLowerCase().includes(normalizedUrl) ||
     normalizedUrl.includes(lead.linkedin_url?.toLowerCase() || '')
   ) || null;
 }

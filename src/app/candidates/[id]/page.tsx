@@ -17,7 +17,7 @@ import {
   Mail, 
   Phone, 
   Linkedin, 
-  Building, 
+  Building2, MapPin, 
   Briefcase, 
   Calendar, 
   User,
@@ -221,11 +221,11 @@ function OverviewTab({ candidate }: { candidate: Lead }) {
           </div>
         )}
         
-        {/* Company */}
-        {candidate.company && (
+        {/* Location */}
+        {candidate.location && (
           <div className="flex items-center gap-3">
-            <Building className="h-4 w-4 text-muted-foreground" />
-            <span>{candidate.company}</span>
+            <MapPin className="h-4 w-4 text-muted-foreground" />
+            <span>{candidate.location}</span>
           </div>
         )}
         

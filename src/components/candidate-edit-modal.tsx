@@ -13,11 +13,10 @@ interface Candidate {
   id: string;
   name: string;
   title?: string;
-  company?: string;
+  location?: string;
   email?: string;
   phone?: string;
   linkedin_url?: string;
-  location?: string;
   notes?: string;
   source?: string;
   status?: string;
@@ -43,9 +42,8 @@ export default function CandidateEditModal({
     email: "",
     phone: "",
     title: "",
-    company: "",
-    linkedin_url: "",
     location: "",
+    linkedin_url: "",
     notes: "",
   });
 
@@ -57,7 +55,6 @@ export default function CandidateEditModal({
         email: candidate.email || "",
         phone: candidate.phone || "",
         title: candidate.title || "",
-        company: candidate.company || "",
         linkedin_url: candidate.linkedin_url || "",
         location: candidate.location || "",
         notes: candidate.notes || "",
@@ -85,7 +82,7 @@ const handleSave = async () => {
           email: formData.email || undefined,
           phone: formData.phone || undefined,
           title: formData.title || undefined,
-          company: formData.company || undefined,
+          location: formData.location || undefined,
           linkedin_url: formData.linkedin_url || undefined,
           location: formData.location || undefined,
           notes: formData.notes || undefined,
@@ -119,7 +116,6 @@ const handleSave = async () => {
         email: candidate.email || "",
         phone: candidate.phone || "",
         title: candidate.title || "",
-        company: candidate.company || "",
         linkedin_url: candidate.linkedin_url || "",
         location: candidate.location || "",
         notes: candidate.notes || "",
@@ -186,16 +182,6 @@ const handleSave = async () => {
             />
           </div>
 
-          {/* Company */}
-          <div className="grid gap-2">
-            <Label htmlFor="edit-company">Company</Label>
-            <Input
-              id="edit-company"
-              value={formData.company}
-              onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-              placeholder="Acme Corp"
-            />
-          </div>
 
           {/* Email and Phone - side by side */}
           <div className="grid grid-cols-2 gap-2">
