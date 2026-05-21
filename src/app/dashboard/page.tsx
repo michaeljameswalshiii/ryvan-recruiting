@@ -219,11 +219,6 @@ return (
               <span>Add to Pipeline</span>
               <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
             </a>
-<a
-              href="/dashboard/companies/sourcing"
-              className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent transition-colors"
-            >
-          </div>
         </div>
       </div>
     </div>
