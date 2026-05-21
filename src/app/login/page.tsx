@@ -15,7 +15,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-          <h1 className="text-2xl font-bold">TurnkeyOptimization</h1>
+<h1 className="text-2xl font-bold">TurnkeyOptimization</h1>
           <p className="text-muted-foreground mt-2">Sign in to your account</p>
         </div>
 

@@ -23,6 +23,7 @@ import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedroc
 import { NextRequest, NextResponse } from "next/server";
 
 import { checkRateLimit, addRateLimitHeaders } from "@/lib/rate-limit";
+import { logBedrockUsage } from "@/lib/aws/athena-bedrock";
 import { SYSTEM_PROMPTS, getBasePrompt } from "@/lib/prompts/bedrock-system";
 import { getClaudeAssistantPrompt } from "@/lib/prompts/claude-assistant";
 import { getToolSchemas, executeTool, ToolContext, ToolResult, ToolParams } from "@/lib/ai/tools";
@@ -1021,7 +1022,7 @@ if (assistantMode) {
       total: promptTokens + completionTokens,
     };
     
-    // Estimate cost
+// Estimate cost
     const cost = estimateCost(promptTokens, completionTokens);
     
     // Log success with token usage
@@ -1033,6 +1034,16 @@ if (assistantMode) {
       tokens,
       cost,
     });
+
+    // Log to DynamoDB for dashboard usage tracking
+    logBedrockUsage({
+      modelId: selectedModel,
+      inputTokens: promptTokens,
+      outputTokens: completionTokens,
+      queryPreview: lastUserQuery.substring(0, 200),
+      toolsUsed,
+      latencyMs,
+    }).catch(err => console.error('[USAGE] Failed to log:', err));
 
     const response = NextResponse.json({
       response: completion,

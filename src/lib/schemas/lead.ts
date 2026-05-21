@@ -13,10 +13,11 @@ export const leadSchema = z.object({
   phone: z.string().optional().or(z.literal('')),
   company: z.string().max(100).optional().or(z.literal('')),
   title: z.string().max(100).optional().or(z.literal('')),
-  status: z.enum(['new', 'contacted', 'qualified', 'interested', 'not_interested', 'converted']).default('new'),
+  // Pipeline stages: identification is the first/default stage for new candidates
+  status: z.enum(['identification', 'outreach', 'conversation', 'presented', 'interview', 'accept', 'rejected', 'new', 'contacted', 'qualified', 'interested', 'not_interested', 'converted']).default('identification'),
   source: z.string().max(50).optional().or(z.literal('')),
   notes: z.string().max(2000).optional().or(z.literal('')),
-linkedin_url: z.string().max(200).optional().or(z.literal('')),
+  linkedin_url: z.string().max(200).optional().or(z.literal('')),
   created_at: z.string().optional(),
   modified_at: z.string().optional(),
 });
@@ -31,7 +32,7 @@ export const updateLeadSchema = leadSchema.partial();
 export const leadQuerySchema = z.object({
   limit: z.number().int().min(1).max(100).default(50),
   cursor: z.string().optional(),
-  status: z.enum(['new', 'contacted', 'qualified', 'interested', 'not_interested', 'converted']).optional(),
+  status: z.enum(['identification', 'outreach', 'conversation', 'presented', 'interview', 'accept', 'rejected', 'new', 'contacted', 'qualified', 'interested', 'not_interested', 'converted']).optional(),
 });
 
 // Type exports

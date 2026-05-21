@@ -32,6 +32,9 @@ const clientsTable = process.env.DYNAMODB_CLIENTS_TABLE || 'turnkey-clients';
 const leadsTable = process.env.DYNAMODB_LEADS_TABLE || 'turnkey-leads';
 const pipelineTable = process.env.DYNAMODB_PIPELINE_TABLE || 'turnkey-pipeline';
 const sourcesTable = process.env.DYNAMODB_SOURCES_TABLE || 'turnkey-sources';
+const emailLogsTable = process.env.DYNAMODB_EMAIL_LOGS_TABLE || 'turnkey-email-logs';
+const eventsTable = process.env.DYNAMODB_EVENTS_TABLE || 'turnkey-events';
+const bedrockUsageTable = process.env.DYNAMODB_BEDROCK_USAGE_TABLE || 'turnkey-bedrock-usage';
 
 // ============================================================================
 // Client
@@ -69,6 +72,8 @@ const tableNames = {
   leads: leadsTable,
   pipeline: pipelineTable,
   sources: sourcesTable,
+  emailLogs: emailLogsTable,
+  events: eventsTable,
 } as const;
 
 // ============================================================================
@@ -261,4 +266,7 @@ export {
   leadsTable,
   pipelineTable,
   sourcesTable,
+  emailLogsTable,
+  eventsTable,
+  bedrockUsageTable,
 };

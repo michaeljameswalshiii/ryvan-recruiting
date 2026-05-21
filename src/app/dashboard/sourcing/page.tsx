@@ -1,58 +1,67 @@
 /**
- * Sourcing Page
- * Search companies via Apollo API and add to pipeline
+ * Candidate Sourcing Page
+ * Search candidates (people) via AI Apollo and add to pipeline as leads
  */
 
 "use client";
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Search, Loader2, Building2, MapPin, Users } from "lucide-react";
+import { Search, Loader2, User, MapPin, Briefcase, Mail, Phone, Linkedin, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { SimpleDialog } from "@/components/ui/simple-dialog";
 import { useCreateLead } from "@/lib/hooks/query-lead";
 import { toast } from "sonner";
 
-interface Company {
+interface Candidate {
   id: string;
   name: string;
-  domain?: string;
+  first_name?: string;
+  last_name?: string;
+  title?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
   linkedin_url?: string;
   city?: string;
   state?: string;
   country?: string;
-  employee_count?: number;
   industry?: string;
+  skills?: string[];
 }
 
-export default function SourcingPage() {
+export default function CandidateSourcingPage() {
   const queryClient = useQueryClient();
-  const [query, setQuery] = useState("construction");
-  const [location, setLocation] = useState("Boca Raton, FL");
-  const [employeeCount, setEmployeeCount] = useState("1-100");
+  const [query, setQuery] = useState("");
+  const [location, setLocation] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [results, setResults] = useState<Company[]>([]);
+  const [results, setResults] = useState<Candidate[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  
+  // Preview modal state
+  const [previewCandidate, setPreviewCandidate] = useState<Candidate | null>(null);
 
   // Create lead mutation hook
   const createLead = useCreateLead();
 
-  const addToPipeline = async (company: Company) => {
-    // Build lead data object
+  const addToPipeline = async (candidate: Candidate) => {
+    // Build lead data object - create as a candidate lead
     const leadData = {
-      name: company.name || "",
-      company: company.name || "",
-      title: "Decision Maker / Owner",
-      email: company.domain ? `info@${company.domain}` : "",
-      phone: "",
-      source: "apollo_sourcing",
+      name: candidate.name || `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim(),
+      company: candidate.company || "",
+      title: candidate.title || "Decision Maker",
+      email: candidate.email || "",
+      phone: candidate.phone || "",
+      source: "apollo_candidate_sourcing",
       status: "new",
-      linkedin_url: company.linkedin_url || "",
-      city: company.city || "",
-      state: company.state || "",
-      industry: company.industry || "",
+      linkedin_url: candidate.linkedin_url || "",
+      city: candidate.city || "",
+      state: candidate.state || "",
+      industry: candidate.industry || "",
     };
 
     try {
@@ -63,7 +72,7 @@ export default function SourcingPage() {
       });
 
       if (!sessionRes.ok) {
-        toast.error("Please log in to add companies to pipeline");
+        toast.error("Please log in to add candidates to pipeline");
         window.location.href = "/login?redirect=/dashboard/sourcing";
         return;
       }
@@ -71,7 +80,7 @@ export default function SourcingPage() {
       const session = await sessionRes.json();
 
       if (!session?.userId) {
-        toast.error("Please log in to add companies to pipeline");
+        toast.error("Please log in to add candidates to pipeline");
         window.location.href = "/login?redirect=/dashboard/sourcing";
         return;
       }
@@ -85,20 +94,23 @@ export default function SourcingPage() {
       // Use mutation - handles DB save + query invalidation + toast
       await createLead.mutateAsync(formData);
 
-      toast.success(`Added ${company.name} to Pipeline!`);
+      toast.success(`Added ${leadData.name} to Candidates Pipeline!`);
     } catch (err: any) {
       console.error("Failed to add lead:", err);
       if (err.message?.includes("401")) {
         toast.error("Session expired. Please log in again.");
         window.location.href = "/login?redirect=/dashboard/sourcing";
       } else {
-        toast.error(`Failed to add ${company.name}. Please try again.`);
+        toast.error(`Failed to add ${candidate.name}. Please try again.`);
       }
     }
   };
 
-const searchCompanies = async () => {
-    if (!query.trim()) return;
+  const searchCandidates = async () => {
+    if (!query.trim()) {
+      toast.error("Please enter a search query");
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -106,16 +118,17 @@ const searchCompanies = async () => {
     setResults([]);
 
     try {
-      // Use AI Apollo / Bedrock with native MCP tool calling
+      // Use AI Apollo / Bedrock with native MCP tool calling for people search
       const response = await fetch("/api/bedrock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [{
             role: "user",
-            content: `Find companies for sourcing. Query: "${query}" in ${location}, company size: ${employeeCount} employees.
-Search Apollo for companies, get their domain, LinkedIn, emails, phones.
-Return structured list: Company Name | Location | Size | Industry | Domain | LinkedIn`
+            content: `Find candidates for hiring/sourcing. Search: "${query}" ${location ? `in ${location}` : ''}.
+Search Apollo for people, get their names, titles, companies, emails, phones, LinkedIn profiles.
+Return structured list: Name | Title | Company | Location | Email | Phone | LinkedIn
+Focus on finding decision makers, executives, and professionals.`
           }],
           useTools: true,  // Use MCP agent with native tool calling
           model: "global.anthropic.claude-sonnet-4-6"
@@ -129,31 +142,35 @@ Return structured list: Company Name | Location | Size | Industry | Domain | Lin
 
       const data = await response.json();
       
-      // Parse AI response - try to extract structured company data
-      let companies: Company[] = [];
+      // Parse AI response - try to extract structured candidate data
+      let candidates: Candidate[] = [];
       
       if (data.response) {
-        // Parse response lines looking for company info
+        // Parse response lines looking for person info
         const lines = data.response.split('\n').filter((l: string) => l.trim());
-        companies = lines.slice(0, 15).map((line: string, i: number) => {
+        candidates = lines.slice(0, 15).map((line: string, i: number) => {
           // Try to extract parts from the line
           const parts = line.split(/[|||,]/).map((p: string) => p.trim());
           return {
             id: `ai-${i}`,
-            name: parts[0] || `Company ${i}`,
-            domain: parts[4] || "",
-            linkedin_url: parts[5] || "",
-            city: location.split(',')[0],
-            state: location.split(',')[1]?.trim() || "",
+            name: parts[0] || `Candidate ${i}`,
+            first_name: parts[0]?.split(' ')[0] || "",
+last_name: parts[0]?.split(' ').slice(1).join(' ') || "",
+            title: parts[1] || "",
+            company: parts[2] || "",
+            city: location?.split(',')[0] || parts[3] || "",
+            state: location?.split(',')[1]?.trim() || parts[4] || "",
             country: "US",
-            employee_count: parseInt(employeeCount.split('-')[0]) || 100,
+            email: parts[5] || "",
+            phone: parts[6] || "",
+            linkedin_url: parts[7] || "",
             industry: query,
           };
-        }).filter((c: Company) => c.name);
+        }).filter((c: Candidate) => c.name && c.name !== `Candidate ${c.id?.split('-')[1]}`);
       }
 
-      setResults(companies);
-      toast.success(`Found ${companies.length} sourcing targets via AI`);
+      setResults(candidates);
+      toast.success(`Found ${candidates.length} candidates via AI`);
 
     } catch (err: any) {
       console.error("Search error:", err);
@@ -167,53 +184,37 @@ Return structured list: Company Name | Location | Size | Industry | Domain | Lin
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Sourcing</h1>
+        <h1 className="text-3xl font-bold">Candidate Sourcing</h1>
         <p className="text-muted-foreground">
-          Find companies to target for business development.
+          Find candidates to add to your pipeline using AI-powered search.
         </p>
       </div>
 
       {/* Search Form */}
       <div className="p-6 rounded-lg border border-border bg-card">
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
-            <Label htmlFor="query">Keyword</Label>
+            <Label htmlFor="query">Job Title / Skills / Keywords</Label>
             <Input
               id="query"
-              placeholder="construction company, dental clinic, hvac, staffing agency, software firm..."
+              placeholder="e.g. software engineer, sales director, marketing manager, CEO..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && searchCandidates()}
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="location">Location</Label>
             <Input
               id="location"
-              placeholder="Boca Raton, FL"
+              placeholder="e.g. San Francisco, CA or Remote"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && searchCandidates()}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="employeeCount">Company Size</Label>
-            <select
-              id="employeeCount"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={employeeCount}
-              onChange={(e) => setEmployeeCount(e.target.value)}
-            >
-              <option value="1-10">1-10 employees</option>
-              <option value="11-50">11-50 employees</option>
-              <option value="51-200">51-200 employees</option>
-              <option value="201-500">201-500 employees</option>
-              <option value="501-1000">501-1000 employees</option>
-              <option value="1001-5000">1001-5000 employees</option>
-              <option value="5001-10000">5001-10000 employees</option>
-              <option value="10001+">10001+ employees</option>
-            </select>
-          </div>
           <div className="flex items-end">
-            <Button onClick={searchCompanies} disabled={isLoading} className="w-full">
+            <Button onClick={searchCandidates} disabled={isLoading} className="w-full">
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -222,7 +223,7 @@ Return structured list: Company Name | Location | Size | Industry | Domain | Lin
               ) : (
                 <>
                   <Search className="mr-2 h-4 w-4" />
-                  Search
+                  Search Candidates
                 </>
               )}
             </Button>
@@ -234,46 +235,54 @@ Return structured list: Company Name | Location | Size | Industry | Domain | Lin
           <Button
             variant="outline"
             size="sm"
-            onClick={() => { setQuery("construction"); setEmployeeCount("1-100"); searchCompanies(); }}
+            onClick={() => { setQuery("software engineer"); setLocation(""); searchCandidates(); }}
             disabled={isLoading}
           >
-            🏗️ Construction
+            💻 Software Engineers
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => { setQuery("dental clinic"); setEmployeeCount("1-50"); searchCompanies(); }}
+            onClick={() => { setQuery("sales director"); setLocation(""); searchCandidates(); }}
             disabled={isLoading}
           >
-            🦷 Dental/Medical
+            💰 Sales Directors
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => { setQuery("software"); setEmployeeCount("1-100"); searchCompanies(); }}
+            onClick={() => { setQuery("marketing manager"); setLocation(""); searchCandidates(); }}
             disabled={isLoading}
           >
-            💻 Software & IT
+            📢 Marketing Managers
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => { setQuery("staffing agency"); setEmployeeCount("1-50"); searchCompanies(); }}
+            onClick={() => { setQuery("CEO"); setLocation(""); searchCandidates(); }}
             disabled={isLoading}
           >
-            👥 Staffing
+            👔 CEOs / Founders
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setQuery("product manager"); setLocation(""); searchCandidates(); }}
+            disabled={isLoading}
+          >
+            📦 Product Managers
           </Button>
         </div>
 
         {/* Tip */}
         <p className="text-xs text-muted-foreground mt-2">
-          Tip: Use specific terms like "dental clinic", "general contractor", "HVAC company", "staffing agency"
+          Tip: Use specific job titles like "software engineer", "sales director", "marketing manager"
         </p>
       </div>
 
-{/* Status Indicator */}
+      {/* Status Indicator */}
       <div className="text-xs p-2 rounded bg-green-100 border border-green-300 text-green-700">
-        ✅ AI-Powered Sourcing (Claude Sonnet 4.6 on Bedrock + Apollo)
+        ✅ AI-Powered Candidate Search (Claude Sonnet 4.6 on Bedrock + Apollo)
       </div>
 
       {error && (
@@ -287,46 +296,46 @@ Return structured list: Company Name | Location | Size | Industry | Domain | Lin
         <div className="rounded-lg border border-border">
           <div className="p-4 border-b border-border">
             <h2 className="text-lg font-semibold">
-              Found {results.length} companies
+              Found {results.length} candidates
             </h2>
           </div>
           <div className="divide-y divide-border">
-            {results.map((company) => (
+            {results.map((candidate) => (
               <div
-                key={company.id}
+                key={candidate.id}
                 className="p-4 flex items-center justify-between hover:bg-accent/50"
               >
                 <div className="flex items-center gap-4">
                   <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Building2 className="h-5 w-5 text-primary" />
+                    <User className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-medium">{company.name}</h3>
+                    <h3 className="font-medium">{candidate.name}</h3>
                     <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                      {company.city && (
+                      {candidate.title && (
+                        <span className="flex items-center gap-1">
+                          <Briefcase className="h-3 w-3" />
+                          {candidate.title}
+                        </span>
+                      )}
+                      {candidate.company && (
+                        <span className="text-primary">
+                          {candidate.company}
+                        </span>
+                      )}
+                      {candidate.city && (
                         <span className="flex items-center gap-1">
                           <MapPin className="h-3 w-3" />
-                          {company.city}, {company.state}
-                        </span>
-                      )}
-                      {company.employee_count && (
-                        <span className="flex items-center gap-1">
-                          <Users className="h-3 w-3" />
-                          {company.employee_count} employees
-                        </span>
-                      )}
-                      {company.industry && (
-                        <span className="text-primary">
-                          {company.industry}
+                          {candidate.city}, {candidate.state}
                         </span>
                       )}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {company.linkedin_url && (
+                  {candidate.linkedin_url && (
                     <a
-                      href={company.linkedin_url}
+                      href={candidate.linkedin_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-3 py-1 text-sm text-primary hover:underline"
@@ -337,10 +346,10 @@ Return structured list: Company Name | Location | Size | Industry | Domain | Lin
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => addToPipeline(company)}
-                    disabled={createLead.isPending}
+                    onClick={() => setPreviewCandidate(candidate)}
                   >
-                    {createLead.isPending ? "Adding..." : "Add to Pipeline"}
+                    <UserPlus className="mr-1 h-4 w-4" />
+                    Add to Pipeline
                   </Button>
                 </div>
               </div>
@@ -351,16 +360,132 @@ Return structured list: Company Name | Location | Size | Industry | Domain | Lin
 
       {hasSearched && results.length === 0 && !isLoading && (
         <div className="p-8 text-center text-muted-foreground">
-          No companies found. Try adjusting your search criteria.
+          No candidates found. Try adjusting your search criteria.
         </div>
       )}
 
       {!hasSearched && (
         <div className="p-8 text-center text-muted-foreground">
           <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p>Enter your search criteria above to find companies.</p>
+          <p>Enter your search criteria above to find candidates.</p>
         </div>
       )}
+
+      {/* Candidate Preview Modal */}
+      <SimpleDialog
+        open={!!previewCandidate}
+        onOpenChange={(open) => !open && setPreviewCandidate(null)}
+        title="Add Candidate to Pipeline"
+        description="Review candidate details before adding to your pipeline."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setPreviewCandidate(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (previewCandidate) {
+                  addToPipeline(previewCandidate);
+                  setPreviewCandidate(null);
+                }
+              }}
+              disabled={createLead.isPending}
+            >
+              {createLead.isPending ? "Adding..." : "Confirm & Add to Pipeline"}
+            </Button>
+          </>
+        }
+      >
+        {previewCandidate && (
+          <div className="space-y-4">
+            {/* Credit Notice */}
+            <div className="p-3 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+              💡 Adding this candidate will consume 1 sourcing credit from Apollo
+            </div>
+
+            {/* Candidate Details */}
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <User className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg">{previewCandidate.name}</h3>
+                  {previewCandidate.title && (
+                    <p className="text-sm text-muted-foreground">{previewCandidate.title}</p>
+                  )}
+                  {previewCandidate.company && (
+                    <Badge variant="secondary" className="mt-1">
+                      {previewCandidate.company}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-muted/50">
+                {previewCandidate.email && (
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <a
+                      href={`mailto:${previewCandidate.email}`}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      {previewCandidate.email}
+                    </a>
+                  </div>
+                )}
+                {previewCandidate.phone && (
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-muted-foreground" />
+                    <a
+                      href={`tel:${previewCandidate.phone}`}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      {previewCandidate.phone}
+                    </a>
+                  </div>
+                )}
+                {previewCandidate.city && (
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">
+                      {previewCandidate.city}, {previewCandidate.state}
+                    </span>
+                  </div>
+                )}
+                {previewCandidate.linkedin_url && (
+                  <div className="flex items-center gap-2">
+                    <Linkedin className="h-4 w-4 text-muted-foreground" />
+                    <a
+                      href={previewCandidate.linkedin_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      LinkedIn Profile
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Lead Details That Will Be Created */}
+              <div className="p-4 rounded-lg border border-border">
+                <h4 className="text-sm font-medium mb-3">Lead Details</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Source:</span>
+                    <Badge variant="outline">Apollo Candidate Sourcing</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Status:</span>
+                    <Badge>New</Badge>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </SimpleDialog>
     </div>
   );
 }

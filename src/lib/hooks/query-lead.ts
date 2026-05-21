@@ -14,7 +14,8 @@ import {
   getLeads, 
   createLead, 
   updateLeadAction, 
-  deleteLeadAction 
+  deleteLeadAction,
+  updateLeadStatus 
 } from '@/lib/actions/lead-actions';
 
 // Query keys - used for cache invalidation
@@ -52,9 +53,13 @@ export function useLeads() {
 export function useCreateLead() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+return useMutation({
     mutationFn: async (formData: FormData) => {
       const result = await createLead(formData);
+      // Handle undefined or null responses
+      if (!result) {
+        throw new Error('No response from server');
+      }
       if (result.error) {
         throw new Error(result.error);
       }
@@ -86,9 +91,12 @@ onSuccess: () => {
 export function useUpdateLead() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+return useMutation({
     mutationFn: async ({ leadId, formData }: { leadId: string; formData: FormData }) => {
       const result = await updateLeadAction(leadId, formData);
+      if (!result) {
+        throw new Error('No response from server');
+      }
       if (result.error) {
         throw new Error(result.error);
       }
@@ -114,9 +122,12 @@ export function useUpdateLead() {
 export function useDeleteLead() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+return useMutation({
     mutationFn: async (leadId: string) => {
       const result = await deleteLeadAction(leadId);
+      if (!result) {
+        throw new Error('No response from server');
+      }
       if (result.error) {
         throw new Error(result.error);
       }
@@ -128,6 +139,38 @@ export function useDeleteLead() {
     },
     onError: (error) => {
       toast.error('Failed to delete lead', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      });
+    },
+  });
+}
+
+/**
+ * Update lead status (for drag-and-drop)
+ * Updates status in DynamoDB and records STATUS_CHANGE event
+ */
+export function useUpdateLeadStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ leadId, newStatus, oldStatus }: { leadId: string; newStatus: string; oldStatus: string }) => {
+      const result = await updateLeadStatus(leadId, newStatus, oldStatus);
+      if (!result) {
+        throw new Error('No response from server');
+      }
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    onSuccess: (_, variables) => {
+      toast.success(`Moved to ${variables.newStatus}`);
+      queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['stats'] });
+    },
+    onError: (error) => {
+      toast.error('Failed to move candidate', {
         description: error instanceof Error ? error.message : 'Please try again',
       });
     },

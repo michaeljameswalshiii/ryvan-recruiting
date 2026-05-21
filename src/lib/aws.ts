@@ -358,7 +358,7 @@ export async function createLead(lead: {
       name: { S: lead.name },
       email: { S: lead.email },
       company: { S: lead.company || "" },
-      status: { S: lead.status || "new" },
+status: { S: lead.status || "identification" },
       notes: { S: lead.notes || "" },
     },
   });

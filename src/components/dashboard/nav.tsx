@@ -12,17 +12,21 @@ import {
   LogOut,
   Search,
   Sparkles,
+  Building,
+  Activity,
 } from "lucide-react";
 import { logout } from "@/lib/api/auth-client";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
-  { href: "/dashboard/sourcing", label: "Sourcing", icon: Search },
   { href: "/dashboard/candidates", label: "Candidates", icon: Users },
-  { href: "/dashboard/pipeline", label: "Pipeline", icon: Kanban },
+  { href: "/dashboard/sourcing", label: "Candidate Sourcing", icon: Search },
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
+  { href: "/dashboard/companies/sourcing", label: "Company Sourcing", icon: Building },
   { href: "/dashboard/ai-assistant", label: "AI Assistant", icon: Sparkles },
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
+  { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
+  { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
 ];
 
 interface DashboardNavProps {
@@ -47,7 +51,7 @@ const handleSignOut = async () => {
   return (
     <nav className="w-64 h-screen bg-sidebar border-r border-border fixed left-0 top-0 flex flex-col">
       <div className="p-6 border-b border-border">
-        <h1 className="text-xl font-bold">TurnkeyOpt</h1>
+<h1 className="text-xl font-bold">AgoraOS</h1>
       </div>
 
       <div className="flex-1 p-4 space-y-1">
