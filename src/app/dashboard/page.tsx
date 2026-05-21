@@ -223,9 +223,6 @@ return (
               href="/dashboard/companies/sourcing"
               className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent transition-colors"
             >
-              <span>Source Companies</span>
-              <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
-            </a>
           </div>
         </div>
       </div>
