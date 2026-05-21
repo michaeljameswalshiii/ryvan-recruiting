@@ -24,7 +24,7 @@ export default function DashboardPage() {
   // Calculate fees pipeline (contacts * $25,000)
   const feesPipeline = ((stats.contacts || 0) * 25000).toLocaleString();
 
-  return (
+return (
     <div className="space-y-8">
       {/* Header */}
       <div>
@@ -219,6 +219,7 @@ export default function DashboardPage() {
               <span>Add to Pipeline</span>
               <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
             </a>
+          </div>
         </div>
       </div>
     </div>
