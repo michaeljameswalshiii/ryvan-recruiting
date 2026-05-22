@@ -1,25 +1,21 @@
-# Candidate Detail Page Implementation
+# Parse Resume Enhancement TODO
 
-## Steps:
-- [ ] 1. Create new API route: src/app/api/candidate/[id]/route.ts
-- [ ] 2. Create Tabs component for the page
-- [ ] 3. Create the candidate detail page: src/app/candidates/[id]/page.tsx
-- [ ] 4. Deploy the application
+## Steps to Complete
 
-## Implementation Details:
+### 1. Enhanced parse-resume Route Implementation
+- [x] Update system prompt with explicit garbage rejection rules
+- [x] Add pre-extracted hints template for user prompt
+- [x] More aggressive text cleaning (page headers, mediaimage noise)
+- [x] Switch to Bedrock with temperature 0.0
+- [ ] Test with noisy resumes
 
-### 1. API Route (src/app/api/candidate/[id]/route.ts)
-- GET endpoint to fetch single candidate by ID
-- Uses getLeadById from lead-repository
+### 2. Implementation Details
+- [x] Read current parse-resume route
+- [x] Review Bedrock integration options
+- [x] Build successful - no compilation errors
 
-### 2. Tabs Component
-- Create a simple Tabs component using existing UI primitives
-- TabsList, TabsTrigger, TabsContent
-
-### 3. Candidate Detail Page
-- App Router page with dynamic [id] parameter
-- Header with candidate info, photo, status badge
-- Tab sections: Overview, Timeline (EventTimeline), Notes, Emails, Details
-- Send Email button → SendEmailModal
-- Back button to candidates list
-- Loading skeleton & error states
+### 3. Testing
+- [ ] Test with clean resume PDF
+- [ ] Test with noisy resume (mediaimage artifacts)
+- [ ] Test with page headers
+- [ ] Verify JSON output accuracy
