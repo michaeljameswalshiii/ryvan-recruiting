@@ -868,7 +868,7 @@ setJobResults(mappedResults);
           </p>
         </div>
 
-        {expansionResult.industries?.length > 0 && (
+{(expansionResult.industries?.length ?? 0) > 0 && (
           <div>
             <p className="text-muted-foreground mb-1">Industries:</p>
             <div className="flex flex-wrap gap-1">
