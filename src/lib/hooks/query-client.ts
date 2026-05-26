@@ -15,6 +15,7 @@ import {
   getClientByIdAction, 
   createClient, 
   updateClientAction, 
+  updateClientStatusAction,
   deleteClientAction 
 } from '@/lib/actions/client-actions';
 
@@ -145,10 +146,60 @@ export function useDeleteClient() {
       toast.success('Client deleted successfully');
       queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
     },
-    onError: (error) => {
+onError: (error) => {
       toast.error('Failed to delete client', {
         description: error instanceof Error ? error.message : 'Please try again',
       });
+    },
+  });
+}
+
+/**
+ * Update client status (for pipeline drag-drop)
+ * Optimistic update for smooth drag-drop experience
+ */
+export function useUpdateClientStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ clientId, newStatus }: { clientId: string; newStatus: string }) => {
+      const result = await updateClientStatusAction(clientId, newStatus);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    onMutate: async ({ clientId, newStatus }) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: clientKeys.lists() });
+
+      // Snapshot the previous value
+      const previousClients = queryClient.getQueryData(clientKeys.lists());
+
+      // Optimistically update the cache
+      queryClient.setQueriesData<any[]>({ queryKey: clientKeys.lists() }, (old) => {
+        if (!old) return old;
+        return old.map(client => 
+          client.id === clientId 
+            ? { ...client, status: newStatus } 
+            : client
+        );
+      });
+
+      return { previousClients };
+    },
+    onError: (error, _variables, context) => {
+      // Rollback on error
+      if (context?.previousClients) {
+        queryClient.setQueryData(clientKeys.lists(), context.previousClients);
+      }
+      toast.error('Failed to update status', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      });
+    },
+    onSettled: () => {
+      // Refetch to ensure consistency
+      queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
     },
   });
 }

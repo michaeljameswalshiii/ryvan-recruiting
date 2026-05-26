@@ -92,7 +92,8 @@ export async function createClient(tenantId: string, data: CreateClientInput): P
     employee_count: data.employee_count,
     revenue: data.revenue || '',
     description: data.description || '',
-    linkedin_url: data.linkedin_url || '',
+linkedin_url: data.linkedin_url || '',
+    status: data.status || 'identification',
     created_at: new Date().toISOString(),
   };
   
@@ -102,7 +103,38 @@ export async function createClient(tenantId: string, data: CreateClientInput): P
   // Invalidate cache
   await invalidateTenantCache(tenantId);
   
-  return client;
+return client;
+}
+
+/**
+ * Get all clients for a tenant filtered by status (in-memory filter)
+ * Note: Requires fetching all clients first, then filtering
+ */
+export async function getClientsByStatus(tenantId: string, status: string): Promise<Client[]> {
+  const allClients = await getAllClients(tenantId);
+  return allClients.filter(client => client.status === status);
+}
+
+/**
+ * Update client status
+ */
+export async function updateClientStatus(
+  tenantId: string,
+  clientId: string,
+  newStatus: string
+): Promise<Client | null> {
+  const updated = await updateItem<Client>(
+    clientsTable,
+    { tenant_id: tenantId, id: clientId },
+    'SET #status = :status, #modified_at = :modified_at',
+    { ':status': newStatus, ':modified_at': new Date().toISOString() },
+    { '#status': 'status', '#modified_at': 'modified_at' }
+  );
+  
+  // Invalidate cache
+  await invalidateTenantCache(tenantId);
+  
+  return updated;
 }
 
 /**
@@ -178,10 +210,15 @@ export async function updateClient(
     values[':description'] = data.description;
     names['#description'] = 'description';
   }
-  if (data.linkedin_url !== undefined) {
+if (data.linkedin_url !== undefined) {
     updates.push('#linkedin_url = :linkedin_url');
     values[':linkedin_url'] = data.linkedin_url;
     names['#linkedin_url'] = 'linkedin_url';
+  }
+  if (data.status !== undefined) {
+    updates.push('#status = :status');
+    values[':status'] = data.status;
+    names['#status'] = 'status';
   }
   
   if (updates.length === 0) {

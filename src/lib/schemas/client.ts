@@ -5,6 +5,17 @@ import { z } from 'zod';
  * Validation schema for client/company data
  */
 
+// Pipeline stages (same as leads/candidates)
+export const clientStatusEnum = z.enum([
+  'identification',
+  'outreach', 
+  'conversation',
+  'presented',
+  'interview',
+  'accept',
+  'rejected',
+]);
+
 export const clientSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(1, 'Name is required').max(100),
@@ -21,6 +32,7 @@ domain: z.string().max(100).optional().or(z.literal('')),
   description: z.string().max(500).optional().or(z.literal('')),
 linkedin_url: z.string().max(200).optional().or(z.literal('')),
   notes: z.string().max(2000).optional().or(z.literal('')),
+  status: clientStatusEnum.default('identification'),
 });
 
 // Create input (without id - generated on server)
@@ -36,6 +48,7 @@ export const clientQuerySchema = z.object({
 });
 
 // Type exports
+export type ClientStatus = z.infer<typeof clientStatusEnum>;
 export type Client = z.infer<typeof clientSchema> & {
   tenant_id: string;
   created_at?: string;

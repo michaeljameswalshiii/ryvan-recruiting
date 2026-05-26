@@ -100,9 +100,21 @@ export default function CompanyDetailPage() {
           <div className="h-14 w-14 rounded-lg bg-primary/10 flex items-center justify-center">
             <Building2 className="h-7 w-7 text-primary" />
           </div>
-          <div>
+<div>
             <h1 className="text-2xl font-bold">{company.name}</h1>
             <div className="flex items-center gap-2 text-muted-foreground">
+              {company.status && (
+                <Badge variant={company.status === 'rejected' ? 'destructive' : company.status === 'accept' ? 'default' : 'outline'}>
+                  {company.status === 'identification' ? 'Identification' : 
+                   company.status === 'outreach' ? 'Attempted Outreach' : 
+                   company.status === 'conversation' ? 'Conversation' : 
+                   company.status === 'presented' ? 'Candidate Presented' : 
+                   company.status === 'interview' ? 'Interview' : 
+                   company.status === 'accept' ? 'Accept' : 
+                   company.status === 'rejected' ? 'Rejected' : 
+                   company.status}
+                </Badge>
+              )}
               {company.industry && <Badge variant="secondary">{company.industry}</Badge>}
               {company.city && (
                 <span className="flex items-center gap-1 text-sm">
