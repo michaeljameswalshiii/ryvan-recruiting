@@ -178,7 +178,7 @@ const router = useRouter();
   } | null>(null);
   const [showExpansionDetails, setShowExpansionDetails] = useState(true);
 
-  // === ENHANCED SMART QUERY EXPANSION (Claude) ===
+// === ENHANCED SMART QUERY EXPANSION (Claude) ===
   const expandQuery = async (rawQuery: string, type: "people" | "companies" | "jobs"): Promise<{
     optimizedQuery: string;
     personTitles?: string[];
@@ -188,40 +188,35 @@ const router = useRouter();
     industries?: string[];
     seniorities?: string[];
   }> => {
-    // Build prompt based on type
-    const typePrompt = type === "people" 
-      ? "Extract person/job titles (e.g., Software Engineer, CTO, VP of Engineering), skills/keywords, technologies, locations, industries, and experience levels (senior, mid, junior)."
-      : type === "companies"
-      ? "Extract industry, company size, locations, technologies, and keywords."
-      : "Extract job titles, locations, departments, industries, and keywords.";
+    let typePrompt = "";
 
-    const prompt = `Analyze this search query and expand it intelligently. Query: "${rawQuery}"
+    if (type === "companies") {
+      typePrompt = "Focus on company-related terms: industries (healthcare, technology, finance, etc.), company types (SaaS, clinic, hospital, startup, enterprise), locations, size hints, and keywords.";
+    } else if (type === "people") {
+      typePrompt = "Extract job titles, seniorities (senior, lead, VP, director, manager), skills, technologies, locations, and industries.";
+    } else {
+      typePrompt = "Extract job titles, departments, seniority levels, technologies, locations, and industries.";
+    }
+
+    const prompt = `You are an expert recruiter and Boolean search specialist.
+
+Query: "${rawQuery}"
 
 ${typePrompt}
 
-Return JSON with this exact structure:
+Return clean, optimized JSON with this structure:
 {
-  "optimizedQuery": "refined search string optimized for Apollo API",
-  "personTitles": ["title1", "title2"] (for people search),
+  "optimizedQuery": "best possible search string for Apollo",
   "keywords": ["keyword1", "keyword2"],
-  "technologies": ["tech1", "tech2"],
-  "locations": ["city, state", "city, state"],
   "industries": ["industry1", "industry2"],
-  "seniorities": ["senior", "mid", "junior"] (for people search)
+  "locations": ["city, state", "city, state"],
+  "technologies": ["tech1", "tech2"],
+  "personTitles": ["title1", "title2"],   // only for people
+  "seniorities": ["senior", "mid", "lead"], // only for people
+  "explanation": "short reasoning"
 }
 
-Example for "Python developer Miami senior":
-{
-  "optimizedQuery": "Python developer Miami Florida senior",
-  "personTitles": ["Python Developer", "Backend Engineer", "Software Engineer"],
-  "keywords": ["Python", "Django", "Flask", "backend"],
-  "technologies": ["Python", "AWS", "PostgreSQL"],
-  "locations": ["Miami, FL", "Miami, Florida"],
-  "industries": ["Technology", "Software"],
-  "seniorities": ["senior", "lead"]
-}
-
-Now analyze and return JSON for: "${rawQuery}"`;
+Make "optimizedQuery" as effective as possible for Apollo's search engine.`;
 
     try {
       const res = await fetch("/api/bedrock", {
@@ -234,34 +229,33 @@ Now analyze and return JSON for: "${rawQuery}"`;
           format: "json"
         }),
       });
-      const data = await res.json();
 
-      // Try to parse JSON from response
+      const data = await res.json();
+      const responseText = data.response || data.content || "";
+
       let expandedResult;
-      try {
-        const responseText = data.response || data.content || "";
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+
+      if (jsonMatch) {
+        try {
           expandedResult = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error("No JSON found");
+        } catch {
+          expandedResult = { optimizedQuery: rawQuery };
         }
-      } catch {
-        // Fallback - parse manually
-        expandedResult = {
-          optimizedQuery: data.response || rawQuery,
-          keywords: [rawQuery]
-        };
+      } else {
+        expandedResult = { optimizedQuery: rawQuery };
       }
 
-      console.log(`[Smart Expand] ${type}: ${rawQuery} → ${expandedResult.optimizedQuery}`);
-      console.log(`[Smart Details]`, expandedResult);
+      console.log(`[Smart Expand ${type}] ${rawQuery} → ${expandedResult.optimizedQuery}`);
       return expandedResult;
+
     } catch (e) {
-      console.warn("Query expansion failed, using original", e);
+      console.warn("Query expansion failed:", e);
       return {
         optimizedQuery: rawQuery,
-        keywords: [rawQuery]
+        keywords: [rawQuery],
+        industries: [],
+        locations: []
       };
     }
   };
