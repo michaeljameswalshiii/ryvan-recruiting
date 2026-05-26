@@ -402,11 +402,9 @@ setIsSearchingPeople(false);
     setCompanyQuery(query);
 
     try {
-      let expandedData = { optimizedQuery: query, industries: [], locations: [], keywords: [] };
-
-      if (smartSearchEnabled) {
-        expandedData = await expandQuery(query, "companies");
-      }
+const expandedData = smartSearchEnabled 
+        ? await expandQuery(query, "companies")
+        : { optimizedQuery: query, industries: [] as string[], locations: [] as string[], keywords: [] as string[] };
 
 const payload: any = {
         q: expandedData.optimizedQuery,
