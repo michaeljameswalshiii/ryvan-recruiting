@@ -92,3 +92,74 @@ export interface RecordEventResponse {
   eventId?: string;
   error?: string;
 }
+
+// ============================================================================
+// Company Events Types
+// ============================================================================
+
+// Company Event Types
+export type CompanyEventType = 
+  | 'NOTE' 
+  | 'STATUS_CHANGE'
+  | 'COMPANY_ADDED'
+  | 'CONTACT_ADDED';
+
+// Company Event metadata for different event types
+export interface CompanyNoteMetadata {
+  noteText: string;
+  changedBy: string;
+}
+
+export interface CompanyStatusChangeMetadata {
+  oldStatus?: string;
+  newStatus: string;
+  changedBy: string;
+}
+
+export interface CompanyAddedMetadata {
+  companyName: string;
+  addedBy: string;
+}
+
+export interface ContactAddedMetadata {
+  contactName: string;
+  addedBy: string;
+}
+
+// Union type for all company event metadata
+export type CompanyEventMetadata = 
+  | CompanyNoteMetadata 
+  | CompanyStatusChangeMetadata 
+  | CompanyAddedMetadata
+  | ContactAddedMetadata;
+
+// The full company event record stored in DynamoDB
+export interface CompanyEvent {
+  PK: string;           // COMPANY#{companyId}
+  SK: string;           // EVENT#{timestamp}
+  companyId: string;
+  eventType: CompanyEventType;
+  title: string;
+  description?: string;
+  metadata: Record<string, any>;
+  createdAt: string;     // ISO timestamp
+  createdBy: string;   // user email or id
+}
+
+// Result type for querying company events
+export interface CompanyEventResult extends Omit<CompanyEvent, 'PK' | 'SK'> {
+  id: string;
+  timestamp: string;
+}
+
+// Company Events Response types
+export interface GetCompanyEventsResponse {
+  events: CompanyEventResult[];
+  hasMore: boolean;
+}
+
+export interface RecordCompanyEventResponse {
+  success: boolean;
+  eventId?: string;
+  error?: string;
+}

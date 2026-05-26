@@ -8,12 +8,19 @@
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useClient } from "@/lib/hooks/query-client";
 import { useLeads } from "@/lib/hooks/query-lead";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Building2, MapPin, Users, Globe, Linkedin, Mail, Phone, ArrowLeft, FileText, Clock, Briefcase, User, StickyNote } from "lucide-react";
+
+// Dynamic import for EventTimeline to avoid SSR issues
+const CompanyEventTimeline = dynamic(() => 
+  import("@/components/company/EventTimeline").then(mod => mod.CompanyEventTimeline), 
+  { ssr: false, loading: () => <div>Loading timeline...</div> }
+);
 
 // Tab configuration
 const tabs = [
@@ -282,60 +289,12 @@ function OverviewTab({ company }: { company: any }) {
   );
 }
 
-// History Tab Component
+// History Tab Component - Now uses EventTimeline
 function HistoryTab({ company }: { company: any }) {
-  const activities = [
-    {
-      id: "1",
-      action: "Company created",
-      date: company.created_at,
-      icon: Building2,
-    },
-  ];
-
   return (
     <div className="space-y-4">
       <h3 className="font-semibold">Activity Timeline</h3>
-      
-      <div className="relative space-y-4">
-        {/* Timeline line */}
-        <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border" />
-        
-        {activities.map((activity, index) => {
-          const Icon = activity.icon;
-          return (
-            <div key={activity.id} className="relative flex gap-4 pl-10">
-              {/* Timeline dot */}
-              <div className="absolute left-2.5 top-1 h-3 w-3 rounded-full bg-primary border-2 border-background" />
-              
-              <div className="flex-1 p-4 rounded-lg border border-border bg-card">
-                <div className="flex items-center gap-3">
-                  <Icon className="h-5 w-5 text-primary" />
-                  <span className="font-medium">{activity.action}</span>
-                </div>
-                {activity.date && (
-                  <p className="text-sm text-muted-foreground mt-2">
-                    {new Date(activity.date).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {activities.length === 0 && (
-        <div className="text-center py-8 text-muted-foreground">
-          <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p>No activity recorded yet</p>
-        </div>
-      )}
+      <CompanyEventTimeline companyId={company.id} />
     </div>
   );
 }
@@ -449,35 +408,13 @@ function ContactsTab({ leads }: { leads: any[] }) {
   );
 }
 
-// Notes Tab Component
+// Notes Tab Component - Uses EventTimeline for notes
 function NotesTab({ company }: { company: any }) {
   return (
     <div className="space-y-4">
       <h3 className="font-semibold">Notes & Comments</h3>
-      
-      {company.description ? (
-        <div className="p-4 rounded-lg border border-border bg-card">
-          <div className="flex items-start gap-3">
-            <StickyNote className="h-5 w-5 text-primary mt-1" />
-            <div>
-              <p className="text-muted-foreground leading-relaxed">
-                {company.description}
-              </p>
-              {company.updated_at && (
-                <p className="text-xs text-muted-foreground mt-3">
-                  Last updated: {new Date(company.updated_at).toLocaleDateString()}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="text-center py-8 text-muted-foreground">
-          <StickyNote className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p>No notes for this company yet</p>
-          <p className="text-sm mt-1">Description and details will appear here</p>
-        </div>
-      )}
+      {/* Reuse EventTimeline for notes */}
+      <CompanyEventTimeline companyId={company.id} />
     </div>
   );
 }

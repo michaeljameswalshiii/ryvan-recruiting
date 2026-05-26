@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     console.log('Seeding test data for tenant:', tenantId);
 
-    // Create test companies
+// Create test companies
     const testCompanies = [
       {
         name: 'TechCorp Solutions',
@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
         employee_count: 250,
         revenue: '$50M-$100M',
         description: 'Enterprise software solutions company',
+        status: 'identification' as const,
       },
       {
         name: 'Innovate Health',
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest) {
         employee_count: 500,
         revenue: '$100M-$250M',
         description: 'Digital health platform',
+        status: 'outreach' as const,
       },
       {
         name: 'FinanceFlow Inc',
@@ -63,6 +65,7 @@ export async function POST(request: NextRequest) {
         employee_count: 150,
         revenue: '$25M-$50M',
         description: 'Financial technology services',
+        status: 'conversation' as const,
       },
     ];
 

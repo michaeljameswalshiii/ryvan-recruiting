@@ -9,7 +9,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Building2, MapPin, Users, Globe, Linkedin, Search, ExternalLink, Pencil } from "lucide-react";
+import { Plus, Building2, MapPin, Users, Globe, Linkedin, Search, ExternalLink, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,8 +18,10 @@ import { SimpleDialog } from "@/components/ui/simple-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 // Use TanStack Query hooks - server actions for DB access
-import { useClients, useCreateClient, useUpdateClient, useUpdateClientStatus, clientKeys } from "@/lib/hooks/query-client";
+import { useClients, useCreateClient, useUpdateClient, useUpdateClientStatus, useDeleteClient, clientKeys } from "@/lib/hooks/query-client";
 import { toast } from "sonner";
+// Company components
+import { CompanyEditModal } from "@/components/company";
 // Drag and drop imports
 import {
   DndContext,
@@ -112,9 +114,13 @@ const dropAnimation: DropAnimation = {
 function SortableCompanyCard({
   company,
   onRefresh,
+  onEdit,
+  onDelete,
 }: {
   company: Company;
   onRefresh: () => void;
+  onEdit?: (company: Company) => void;
+  onDelete?: (companyId: string) => void;
 }) {
   const {
     attributes,
@@ -130,9 +136,25 @@ function SortableCompanyCard({
     transition,
   };
 
-  // Get stage label from status
+// Get stage label from status
   const stageLabel =
     pipelineStages.find((s) => s.id === company.status)?.label || company.status || "New";
+
+  // Handle edit click
+  const handleEditClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onEdit?.(company);
+  };
+
+  // Handle delete click
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (confirm(`Are you sure you want to delete "${company.name}"?`)) {
+      onDelete?.(company.id);
+    }
+  };
 
   return (
     <div
@@ -181,8 +203,30 @@ function SortableCompanyCard({
         {stageLabel}
       </Badge>
 
-      {/* Action links row */}
+{/* Action links row */}
       <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-border">
+        {/* Edit button */}
+        {onEdit && (
+          <button
+            onClick={handleEditClick}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            title="Edit Company"
+          >
+            <Pencil className="h-3 w-3" />
+            <span>Edit</span>
+          </button>
+        )}
+        {/* Delete button */}
+        {onDelete && (
+          <button
+            onClick={handleDeleteClick}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive"
+            title="Delete Company"
+          >
+            <Trash2 className="h-3 w-3" />
+            <span>Delete</span>
+          </button>
+        )}
         {company.linkedin_url && (
           <a
             href={company.linkedin_url}
@@ -226,10 +270,14 @@ function StageColumn({
   stage,
   companies,
   onRefresh,
+  onEdit,
+  onDelete,
 }: {
   stage: { id: string; label: string; color: string };
   companies: Company[];
   onRefresh: () => void;
+  onEdit?: (company: Company) => void;
+  onDelete?: (companyId: string) => void;
 }) {
   // Make the column droppable using the stage id
   const { setNodeRef, isOver } = useDroppable({
@@ -261,6 +309,8 @@ function StageColumn({
               key={company.id}
               company={company}
               onRefresh={onRefresh}
+              onEdit={onEdit}
+              onDelete={onDelete}
             />
           ))}
         </SortableContext>
@@ -289,11 +339,38 @@ const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     })
   );
 
-  // Use TanStack Query hooks - fetches from DB via server actions
+// Use TanStack Query hooks - fetches from DB via server actions
   const { data: clients = [], isLoading, error } = useClients();
   const createClientMutation = useCreateClient();
   const updateClientMutation = useUpdateClient();
   const updateClientStatusMutation = useUpdateClientStatus();
+  const deleteClientMutation = useDeleteClient();
+
+  // Edit modal state
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // Edit modal handlers
+  const handleEditCompany = (company: Company) => {
+    setEditingCompany(company);
+    setIsEditModalOpen(true);
+  };
+
+  const handleDeleteCompany = async (companyId: string) => {
+    if (!confirm("Are you sure you want to delete this company?")) return;
+    
+    try {
+      await deleteClientMutation.mutateAsync(companyId);
+      toast.success("Company deleted successfully");
+    } catch (err: any) {
+      console.error("Failed to delete company:", err);
+      toast.error(err.message || "Failed to delete company");
+    }
+  };
+
+  const handleModalSave = () => {
+    queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
+  };
 
   // Form state
   const [newCompanyName, setNewCompanyName] = useState("");
@@ -665,11 +742,13 @@ description="Add a new target company to your list. New companies start in Ident
           {pipelineStages.map((stage) => {
             const stageCompanies = companiesByStage[stage.id] || [];
             return (
-              <StageColumn
+<StageColumn
                 key={stage.id}
                 stage={stage}
                 companies={stageCompanies}
                 onRefresh={handleRefresh}
+                onEdit={handleEditCompany}
+                onDelete={handleDeleteCompany}
               />
             );
           })}
@@ -698,7 +777,7 @@ description="Add a new target company to your list. New companies start in Ident
         </DragOverlay>
       </DndContext>
 
-      {companies.length === 0 && (
+{companies.length === 0 && (
         <div className="p-8 text-center text-muted-foreground">
           <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
           <p>No companies yet.</p>
@@ -708,6 +787,14 @@ description="Add a new target company to your list. New companies start in Ident
           </Button>
         </div>
       )}
+
+{/* Edit Company Modal */}
+      <CompanyEditModal
+        open={isEditModalOpen}
+        onOpenChange={setIsEditModalOpen}
+        company={editingCompany ?? undefined}
+        onSave={handleModalSave}
+      />
     </div>
   );
 }

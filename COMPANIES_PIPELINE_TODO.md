@@ -74,6 +74,6 @@ const pipelineStages = [
 4. `src/lib/hooks/query-client.ts` - Added useUpdateClientStatus
 
 ## Testing
-- [ ] Verify new companies get default 'identification' status
-- [ ] Test drag-drop between stages
-- [ ] Verify status persists after page refresh
+- [x] Verify new companies get default 'identification' status
+- [x] Test drag-drop between stages
+- [x] Verify status persists after page refresh
