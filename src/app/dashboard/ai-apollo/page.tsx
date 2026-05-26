@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Sparkles, Bot, User, Copy, Check, Search, Users, List, Building2, Briefcase, ChevronDown, ChevronRight, Lightbulb, SlidersHorizontal } from "lucide-react";
+import { Send, Sparkles, Bot, User, Copy, Check, Search, Users, List, Building2, Briefcase, ChevronDown, ChevronRight, Lightbulb, SlidersHorizontal, Clock, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -127,12 +128,40 @@ export default function AIAssistantPage() {
   const [companyQuery, setCompanyQuery] = useState("");
   const [isSearchingCompanies, setIsSearchingCompanies] = useState(false);
   
-  // Job search state
+// Job search state
   const [jobResults, setJobResults] = useState<JobResult[]>([]);
   const [jobQuery, setJobQuery] = useState("");
   const [isSearchingJobs, setIsSearchingJobs] = useState(false);
   
   const [activeTab, setActiveTab] = useState("chat");
+  
+  // ====================== SEARCH HISTORY ======================
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('apolloSearchHistory');
+    if (saved) setSearchHistory(JSON.parse(saved));
+  }, []);
+
+  const saveToHistory = (query: string) => {
+    if (!query?.trim()) return;
+    const newHistory = [query, ...searchHistory.filter(q => q !== query)].slice(0, 15);
+    setSearchHistory(newHistory);
+    localStorage.setItem('apolloSearchHistory', JSON.stringify(newHistory));
+  };
+
+const clearHistory = () => {
+    setSearchHistory([]);
+    localStorage.removeItem('apolloSearchHistory');
+  };
+
+  // Handle keyboard events for textarea: Enter = search, Shift+Enter = new line
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>, searchFn: (q: string) => void, query: string) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      searchFn(query);
+    }
+  };
   
 const router = useRouter();
 
@@ -352,7 +381,8 @@ Now analyze and return JSON for: "${rawQuery}"`;
           industry: p.industry,
           skills: p.skills,
         }));
-        setPeopleResults(mappedResults);
+setPeopleResults(mappedResults);
+        saveToHistory(query);
       } else {
         setPeopleResults([]);
       }
@@ -402,7 +432,8 @@ setIsSearchingPeople(false);
           founded_year: c.founded_year,
           annual_revenue: c.annual_revenue,
         }));
-        setCompanyResults(mappedResults);
+setCompanyResults(mappedResults);
+        saveToHistory(query);
       } else {
         setCompanyResults([]);
       }
@@ -448,7 +479,8 @@ setIsSearchingPeople(false);
           employees_count: j.employees_count,
           industry: j.industry,
         }));
-        setJobResults(mappedResults);
+setJobResults(mappedResults);
+        saveToHistory(query);
       } else {
         setJobResults([]);
       }
@@ -785,20 +817,18 @@ setIsSearchingPeople(false);
             ))}
           </div>
 
-          {/* Search Input */}
+{/* Search Input with Textarea for multi-line */}
           <div className="flex gap-2">
-            <Input
-              placeholder="Search for people (e.g., Python developer Miami)..."
+            <Textarea
+              placeholder="Search for people (e.g., Python developer Miami with 5+ years experience in fintech)..."
               value={peopleQuery}
               onChange={(e) => setPeopleQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !isSearchingPeople) {
-                  searchPeople(peopleQuery);
-                }
-              }}
+              onKeyDown={(e) => handleKeyDown(e, searchPeople, peopleQuery)}
+              rows={4}
+              className="resize-y min-h-[100px] text-base"
               disabled={isSearchingPeople}
             />
-            <Button onClick={() => searchPeople(peopleQuery)} disabled={isSearchingPeople}>
+            <Button onClick={() => searchPeople(peopleQuery)} disabled={isSearchingPeople || !peopleQuery.trim()} className="self-start mt-1 h-10">
               {isSearchingPeople ? (
                 <span className="animate-pulse">Searching...</span>
               ) : (
@@ -809,6 +839,35 @@ setIsSearchingPeople(false);
               )}
             </Button>
           </div>
+
+          {/* Search History */}
+          {searchHistory.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Clock className="h-4 w-4" /> Recent Searches
+                </span>
+                <Button variant="ghost" size="sm" onClick={clearHistory}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {searchHistory.slice(0, 6).map((past, i) => (
+                  <Button
+                    key={i}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setPeopleQuery(past);
+                      searchPeople(past);
+                    }}
+                  >
+                    {past.length > 45 ? past.substring(0, 42) + "..." : past}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
 
 {/* Results */}
           {peopleResults.length > 0 ? (
@@ -896,20 +955,18 @@ setIsSearchingPeople(false);
             ))}
           </div>
 
-          {/* Search Input */}
+{/* Search Input with Textarea for multi-line */}
           <div className="flex gap-2">
-            <Input
-              placeholder="Search for companies (e.g., technology companies Miami)..."
+            <Textarea
+              placeholder="Search for companies (e.g., technology companies in Miami with 50+ employees)..."
               value={companyQuery}
               onChange={(e) => setCompanyQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !isSearchingCompanies) {
-                  searchCompanies(companyQuery);
-                }
-              }}
+              onKeyDown={(e) => handleKeyDown(e, searchCompanies, companyQuery)}
+              rows={4}
+              className="resize-y min-h-[100px] text-base"
               disabled={isSearchingCompanies}
             />
-            <Button onClick={() => searchCompanies(companyQuery)} disabled={isSearchingCompanies}>
+            <Button onClick={() => searchCompanies(companyQuery)} disabled={isSearchingCompanies || !companyQuery.trim()} className="self-start mt-1 h-10">
               {isSearchingCompanies ? (
                 <span className="animate-pulse">Searching...</span>
               ) : (
@@ -920,6 +977,35 @@ setIsSearchingPeople(false);
               )}
             </Button>
           </div>
+
+          {/* Search History */}
+          {searchHistory.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Clock className="h-4 w-4" /> Recent Searches
+                </span>
+                <Button variant="ghost" size="sm" onClick={clearHistory}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {searchHistory.slice(0, 6).map((past, i) => (
+                  <Button
+                    key={i}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCompanyQuery(past);
+                      searchCompanies(past);
+                    }}
+                  >
+                    {past.length > 45 ? past.substring(0, 42) + "..." : past}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Results */}
           {companyResults.length > 0 ? (
@@ -1005,20 +1091,18 @@ setIsSearchingPeople(false);
             ))}
           </div>
 
-          {/* Search Input */}
+{/* Search Input with Textarea for multi-line */}
           <div className="flex gap-2">
-            <Input
-              placeholder="Search for open roles (e.g., software engineer remote)..."
+            <Textarea
+              placeholder="Search for open roles (e.g., senior software engineer remote in fintech)..."
               value={jobQuery}
               onChange={(e) => setJobQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !isSearchingJobs) {
-                  searchJobs(jobQuery);
-                }
-              }}
+              onKeyDown={(e) => handleKeyDown(e, searchJobs, jobQuery)}
+              rows={4}
+              className="resize-y min-h-[100px] text-base"
               disabled={isSearchingJobs}
             />
-            <Button onClick={() => searchJobs(jobQuery)} disabled={isSearchingJobs}>
+            <Button onClick={() => searchJobs(jobQuery)} disabled={isSearchingJobs || !jobQuery.trim()} className="self-start mt-1 h-10">
               {isSearchingJobs ? (
                 <span className="animate-pulse">Searching...</span>
               ) : (
@@ -1029,6 +1113,35 @@ setIsSearchingPeople(false);
               )}
             </Button>
           </div>
+
+          {/* Search History */}
+          {searchHistory.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Clock className="h-4 w-4" /> Recent Searches
+                </span>
+                <Button variant="ghost" size="sm" onClick={clearHistory}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {searchHistory.slice(0, 6).map((past, i) => (
+                  <Button
+                    key={i}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setJobQuery(past);
+                      searchJobs(past);
+                    }}
+                  >
+                    {past.length > 45 ? past.substring(0, 42) + "..." : past}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Results */}
           {jobResults.length > 0 ? (
