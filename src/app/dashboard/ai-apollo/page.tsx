@@ -1,4 +1,4 @@
-"use client";
+0"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -135,8 +135,13 @@ export default function AIAssistantPage() {
   
   const [activeTab, setActiveTab] = useState("chat");
   
-  // ====================== SEARCH HISTORY ======================
+// ====================== SEARCH HISTORY ======================
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
+
+  // ====================== DEBUG STATES ======================
+  const [showDebug, setShowDebug] = useState(false);
+  const [showRawResponse, setShowRawResponse] = useState(false);
+  const [rawResponse, setRawResponse] = useState<any>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('apolloSearchHistory');
@@ -301,7 +306,10 @@ Make "optimizedQuery" as effective as possible for Apollo's search engine.`;
         useSearch: false 
       }),
     });
-    const result = await res.json();
+const result = await res.json();
+
+    // Store raw response for debug panel
+    setRawResponse(result);
 
     const assistantMessage: Message = {
       id: (Date.now() + 1).toString(),
@@ -355,7 +363,10 @@ Make "optimizedQuery" as effective as possible for Apollo's search engine.`;
         }),
       });
       
-      const data = await res.json();
+const data = await res.json();
+      
+      // Store raw response for debug panel
+      setRawResponse(data);
       
       if (data.people && Array.isArray(data.people)) {
         // Map Apollo people to our format
@@ -418,7 +429,10 @@ const payload: any = {
         body: JSON.stringify(payload),
       });
       
-      const data = await res.json();
+const data = await res.json();
+      
+      // Store raw response for debug panel
+      setRawResponse(data);
       
       if (data.companies && Array.isArray(data.companies) && data.companies.length > 0) {
         setCompanyResults(data.companies);
@@ -460,7 +474,10 @@ const payload: any = {
         }),
       });
       
-      const data = await res.json();
+const data = await res.json();
+      
+      // Store raw response for debug panel
+      setRawResponse(data);
       
       if (data.jobs && Array.isArray(data.jobs)) {
         // Map jobs to our format
@@ -743,7 +760,7 @@ setJobResults(mappedResults);
                 checked={smartSearchEnabled}
                 onCheckedChange={setSmartSearchEnabled}
               />
-            </div>
+</div>
           </div>
 
 {/* Expansion Details Card */}
@@ -822,6 +839,88 @@ setJobResults(mappedResults);
               )}
             </Card>
           )}
+
+{/* DEBUG PANEL - What the AI is actually searching */}
+{smartSearchEnabled && expansionResult && (
+  <Card className="bg-muted/50 border-primary/30">
+    <CardHeader className="pb-3">
+      <div className="flex items-center justify-between">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Lightbulb className="h-4 w-4 text-amber-500" />
+          AI Search Debug
+        </CardTitle>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => setShowDebug(!showDebug)}
+        >
+          {showDebug ? "Hide" : "Show"}
+        </Button>
+      </div>
+    </CardHeader>
+    
+    {showDebug && (
+      <CardContent className="text-xs space-y-4">
+        <div>
+          <p className="text-muted-foreground mb-1">FINAL QUERY SENT TO APOLLO:</p>
+          <p className="font-mono bg-background p-3 rounded border break-all">
+            {expansionResult.optimizedQuery}
+          </p>
+        </div>
+
+        {expansionResult.industries?.length > 0 && (
+          <div>
+            <p className="text-muted-foreground mb-1">Industries:</p>
+            <div className="flex flex-wrap gap-1">
+              {expansionResult.industries.map((item: string, i: number) => (
+                <Badge key={i} variant="outline">{item}</Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {expansionResult.locations?.length > 0 && (
+          <div>
+            <p className="text-muted-foreground mb-1">Locations:</p>
+            <div className="flex flex-wrap gap-1">
+              {expansionResult.locations.map((item: string, i: number) => (
+                <Badge key={i} variant="outline">{item}</Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {expansionResult.keywords?.length > 0 && (
+          <div>
+            <p className="text-muted-foreground mb-1">Keywords:</p>
+            <div className="flex flex-wrap gap-1">
+              {expansionResult.keywords.map((item: string, i: number) => (
+                <Badge key={i} variant="secondary">{item}</Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    )}
+  </Card>
+)}
+
+{/* Raw Response Button and Panel */}
+<div className="flex items-center gap-2">
+  <Button 
+    variant="outline" 
+    size="sm" 
+    onClick={() => setShowRawResponse(!showRawResponse)}
+  >
+    {showRawResponse ? "Hide Raw Response" : "Show Raw API Response"}
+  </Button>
+</div>
+
+{showRawResponse && rawResponse && (
+  <Card className="bg-black text-green-400 font-mono text-xs p-4 overflow-auto max-h-96">
+    <pre>{JSON.stringify(rawResponse, null, 2)}</pre>
+  </Card>
+)}
 
           {/* Search Presets */}
           <div className="flex flex-wrap gap-2">
