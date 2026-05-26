@@ -136,16 +136,138 @@ export default function AIAssistantPage() {
     // Paste your original
   };
 
-  const searchPeople = async (query: string) => {
-    // Paste your full original searchPeople function
+const searchPeople = async (query: string) => {
+    if (!query.trim() || isSearchingPeople) return;
+
+    setIsSearchingPeople(true);
+    setPeopleQuery(query);
+    setExpansionResult(null);
+
+    try {
+      let expandedData = { optimizedQuery: query };
+
+      if (smartSearchEnabled) {
+        expandedData = await expandQuery(query, "people");
+        setExpansionResult(expandedData);
+      }
+
+      const res = await fetch("/api/apollo/people", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          q: expandedData.optimizedQuery,
+          // Rich filters - this dramatically improves results
+          ...(smartSearchEnabled && {
+            titles: expandedData.personTitles || [],
+            keywords: expandedData.keywords || [],
+            technologies: expandedData.technologies || [],
+            locations: expandedData.locations || [],
+            industries: expandedData.industries || [],
+            seniorities: expandedData.seniorities || [],
+          })
+        }),
+      });
+
+      const data = await res.json();
+      
+      if (data.people && Array.isArray(data.people)) {
+        setPeopleResults(data.people);
+        saveToHistory(query);
+      } else {
+        setPeopleResults([]);
+      }
+    } catch (err) {
+      console.error("People search error:", err);
+      setPeopleResults([]);
+    }
+
+    setIsSearchingPeople(false);
   };
 
   const searchCompanies = async (query: string) => {
-    // Paste your full original searchCompanies function
+    if (!query.trim() || isSearchingCompanies) return;
+
+    setIsSearchingCompanies(true);
+    setCompanyQuery(query);
+
+    try {
+      let expandedData = { optimizedQuery: query };
+
+      if (smartSearchEnabled) {
+        expandedData = await expandQuery(query, "companies");
+      }
+
+      const res = await fetch("/api/apollo/companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          q: expandedData.optimizedQuery,
+          // Rich filters for companies
+          ...(smartSearchEnabled && {
+            industries: expandedData.industries || [],
+            locations: expandedData.locations || [],
+            keywords: expandedData.keywords || [],
+          })
+        }),
+      });
+
+      const data = await res.json();
+      
+      if (data.companies && Array.isArray(data.companies)) {
+        setCompanyResults(data.companies);
+        saveToHistory(query);
+      } else {
+        setCompanyResults([]);
+      }
+    } catch (err) {
+      console.error("Company search error:", err);
+      setCompanyResults([]);
+    }
+
+    setIsSearchingCompanies(false);
   };
 
   const searchJobs = async (query: string) => {
-    // Paste your full original searchJobs function
+    if (!query.trim() || isSearchingJobs) return;
+
+    setIsSearchingJobs(true);
+    setJobQuery(query);
+
+    try {
+      let expandedData = { optimizedQuery: query };
+
+      if (smartSearchEnabled) {
+        expandedData = await expandQuery(query, "jobs");
+      }
+
+      const res = await fetch("/api/apollo/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          q: expandedData.optimizedQuery,
+          // Rich filters for jobs
+          ...(smartSearchEnabled && {
+            keywords: expandedData.keywords || [],
+            locations: expandedData.locations || [],
+            industries: expandedData.industries || [],
+          })
+        }),
+      });
+
+      const data = await res.json();
+      
+      if (data.jobs && Array.isArray(data.jobs)) {
+        setJobResults(data.jobs);
+        saveToHistory(query);
+      } else {
+        setJobResults([]);
+      }
+    } catch (err) {
+      console.error("Job search error:", err);
+      setJobResults([]);
+    }
+
+    setIsSearchingJobs(false);
   };
 
   const runSourcingSearch = async (query: string) => {
