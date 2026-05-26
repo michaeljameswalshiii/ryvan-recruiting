@@ -402,46 +402,34 @@ setIsSearchingPeople(false);
     setCompanyQuery(query);
 
     try {
-      // Only expand if smart search is enabled
-      const expandedData = smartSearchEnabled 
-        ? await expandQuery(query, "companies")
-        : { optimizedQuery: query, keywords: [], industries: [], locations: [] };
-      
+      let expandedData = { optimizedQuery: query, industries: [], locations: [], keywords: [] };
+
+      if (smartSearchEnabled) {
+        expandedData = await expandQuery(query, "companies");
+      }
+
+      const payload = {
+        q: expandedData.optimizedQuery,
+        per_page: 25,
+      };
+
+      // Add rich filters if available
+      if (smartSearchEnabled) {
+        if (expandedData.industries?.length) payload.industries = expandedData.industries;
+        if (expandedData.locations?.length) payload.locations = expandedData.locations;
+        if (expandedData.keywords?.length) payload.keywords = expandedData.keywords;
+      }
+
       const res = await fetch("/api/apollo/companies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          q: expandedData.optimizedQuery,
-          ...(smartSearchEnabled && {
-            industries: expandedData.industries || [],
-            locations: expandedData.locations || [],
-            keywords: expandedData.keywords || [],
-          })
-        }),
+        body: JSON.stringify(payload),
       });
       
       const data = await res.json();
       
-      if (data.companies && Array.isArray(data.companies)) {
-        // Map Apollo companies to our format
-        const mappedResults: CompanyResult[] = data.companies.map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          website: c.website,
-          industry: c.industry,
-          size: c.size,
-          city: c.city,
-          state: c.state,
-          country: c.country,
-          linkedin_url: c.linkedin_url,
-          facebook_url: c.facebook_url,
-          twitter_url: c.twitter_url,
-          description: c.description,
-          headquarters_location: c.headquarters_location,
-          founded_year: c.founded_year,
-          annual_revenue: c.annual_revenue,
-        }));
-setCompanyResults(mappedResults);
+      if (data.companies && Array.isArray(data.companies) && data.companies.length > 0) {
+        setCompanyResults(data.companies);
         saveToHistory(query);
       } else {
         setCompanyResults([]);
