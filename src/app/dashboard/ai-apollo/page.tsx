@@ -1,5 +1,7 @@
 'use client';
 
+// --significant changes made on 05.26.26--
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Send, Sparkles, Bot, User, Copy, Check, Search, Users, Building2, Briefcase, ChevronDown, ChevronRight, Lightbulb, Clock, Trash2 } from "lucide-react";
