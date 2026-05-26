@@ -21,7 +21,6 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { href: "/dashboard/candidates", label: "Candidates", icon: Users },
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
-  { href: "/dashboard/ai-assistant", label: "AI Assistant", icon: Sparkles },
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
   { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
