@@ -408,7 +408,7 @@ setIsSearchingPeople(false);
         expandedData = await expandQuery(query, "companies");
       }
 
-      const payload = {
+const payload: any = {
         q: expandedData.optimizedQuery,
         per_page: 25,
       };
