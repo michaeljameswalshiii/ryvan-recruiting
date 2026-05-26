@@ -76,11 +76,18 @@ export default function AIAssistantPage() {
     }
   };
 
-  // ==================== YOUR EXISTING FUNCTIONS ====================
-  // (Keep all your functions: sendMessage, expandQuery, searchPeople, searchCompanies, searchJobs, etc.)
+  // ==================== YOUR ORIGINAL FUNCTIONS (kept intact) ====================
+  // Paste all your original functions here (sendMessage, expandQuery, searchPeople, etc.)
 
-  // Paste all your existing functions here (from the previous version you had)
+  const sendMessage = async (content: string) => { /* your original code */ };
+  const expandQuery = async (rawQuery: string, type: "people" | "companies" | "jobs") => { /* your original code */ };
+  const searchPeople = async (query: string) => { /* your original code */ };
+  const searchCompanies = async (query: string) => { /* your original code */ };
+  const searchJobs = async (query: string) => { /* your original code */ };
+  const runSourcingSearch = async (query: string) => { /* your original code */ };
+  const copyToClipboard = (content: string, id: string) => { /* your original code */ };
 
+  // ==================== RENDER ====================
   return (
     <div className="space-y-6 h-[calc(100vh-8rem)] flex flex-col">
       <div className="flex items-center justify-between">
@@ -104,14 +111,13 @@ export default function AIAssistantPage() {
 
         {/* Chat Tab */}
         <TabsContent value="chat" className="space-y-4">
-          {/* Your existing chat tab content goes here */}
+          {/* Paste your original Chat tab content here */}
         </TabsContent>
 
-        {/* PEOPLE SEARCH */}
+        {/* People Search Tab */}
         <TabsContent value="people" className="space-y-4">
-          {/* Smart Search Toggle + Presets (keep your existing code) */}
+          {/* Smart Search Toggle + Quick Presets (paste your original code) */}
 
-          {/* Improved Search Bar */}
           <div className="flex gap-3">
             <Textarea
               placeholder="Search for people (e.g., Python developer Miami with 5+ years experience in fintech, leadership skills...)"
@@ -157,10 +163,10 @@ export default function AIAssistantPage() {
             </div>
           )}
 
-          {/* Your existing results section */}
+          {/* Your original results section for people */}
         </TabsContent>
 
-        {/* COMPANIES TAB */}
+        {/* Companies Tab */}
         <TabsContent value="companies" className="space-y-4">
           <div className="flex gap-3">
             <Textarea
@@ -208,7 +214,7 @@ export default function AIAssistantPage() {
           )}
         </TabsContent>
 
-        {/* JOBS TAB */}
+        {/* Jobs Tab */}
         <TabsContent value="jobs" className="space-y-4">
           <div className="flex gap-3">
             <Textarea
