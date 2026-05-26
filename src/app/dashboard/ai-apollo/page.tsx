@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Send, Sparkles, Bot, User, Copy, Check, Search, Users, Building2, Briefcase, ChevronDown, ChevronRight, Lightbulb, Clock, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,8 +23,47 @@ interface PersonResult { [key: string]: any; }
 interface CompanyResult { [key: string]: any; }
 interface JobResult { [key: string]: any; }
 
+const quickActions = [
+  "Find construction companies in Boca Raton",
+  "Search for latest news on AI",
+  "What is the weather in Miami?",
+  "Find software companies in South Florida",
+];
+
+const sourcingActions = [
+  { label: "Python Developer Miami", query: "Python developer Miami" },
+  { label: "React Developer Remote", query: "React developer remote" },
+  { label: "AWS Engineer South Florida", query: "AWS engineer South Florida" },
+];
+
+const peopleSearchPresets = [
+  { label: "Python Developer", query: "Python developer" },
+  { label: "React Developer", query: "React developer" },
+  { label: "Full Stack Engineer", query: "full stack engineer" },
+  { label: "DevOps Engineer", query: "devops engineer" },
+  { label: "Data Scientist", query: "data scientist" },
+  { label: "Project Manager", query: "project manager" },
+];
+
+const companySearchPresets = [
+  { label: "Tech Companies", query: "technology" },
+  { label: "Healthcare", query: "healthcare" },
+  { label: "Finance", query: "finance" },
+  { label: "Retail", query: "retail" },
+  { label: "Manufacturing", query: "manufacturing" },
+  { label: "Software", query: "software" },
+];
+
+const jobSearchPresets = [
+  { label: "Engineering Jobs", query: "engineering" },
+  { label: "Sales Jobs", query: "sales" },
+  { label: "Marketing Jobs", query: "marketing" },
+  { label: "Product Jobs", query: "product manager" },
+  { label: "Data Jobs", query: "data scientist" },
+  { label: "Remote Jobs", query: "remote" },
+];
+
 export default function AIAssistantPage() {
-  // ==================== STATES ====================
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -76,18 +116,45 @@ export default function AIAssistantPage() {
     }
   };
 
-  // ==================== YOUR ORIGINAL FUNCTIONS (kept intact) ====================
-  // Paste all your original functions here (sendMessage, expandQuery, searchPeople, etc.)
+  // ==================== PASTE YOUR ORIGINAL FUNCTIONS BELOW THIS LINE ====================
+  // ==================== ORIGINAL FUNCTIONS (copy your original ones here) ====================
+  const router = useRouter();
 
-  const sendMessage = async (content: string) => { /* your original code */ };
-  const expandQuery = async (rawQuery: string, type: "people" | "companies" | "jobs") => { /* your original code */ };
-  const searchPeople = async (query: string) => { /* your original code */ };
-  const searchCompanies = async (query: string) => { /* your original code */ };
-  const searchJobs = async (query: string) => { /* your original code */ };
-  const runSourcingSearch = async (query: string) => { /* your original code */ };
-  const copyToClipboard = (content: string, id: string) => { /* your original code */ };
+  // === ENHANCED SMART QUERY EXPANSION (keep your original) ===
+  const expandQuery = async (rawQuery: string, type: "people" | "companies" | "jobs") => {
+    // Paste your full original expandQuery function here
+  };
 
-  // ==================== RENDER ====================
+  // Chat functions
+  const sendMessage = async (content: string) => {
+    // Paste your full original sendMessage function here
+  };
+
+  const copyToClipboard = (content: string, id: string) => {
+    // Paste your original
+  };
+
+  const searchPeople = async (query: string) => {
+    // Paste your full original searchPeople function
+  };
+
+  const searchCompanies = async (query: string) => {
+    // Paste your full original searchCompanies function
+  };
+
+  const searchJobs = async (query: string) => {
+    // Paste your full original searchJobs function
+  };
+
+  const runSourcingSearch = async (query: string) => {
+    // Paste your original
+  };
+
+  const handleSuccess = (candidateId: string) => {
+    console.log("Candidate created:", candidateId);
+  };
+
+  // ==================== MAIN RETURN ====================
   return (
     <div className="space-y-6 h-[calc(100vh-8rem)] flex flex-col">
       <div className="flex items-center justify-between">
@@ -109,15 +176,16 @@ export default function AIAssistantPage() {
           <TabsTrigger value="jobs">Open Roles</TabsTrigger>
         </TabsList>
 
-        {/* Chat Tab */}
+        {/* Chat Tab - Paste your full original chat tab here */}
         <TabsContent value="chat" className="space-y-4">
-          {/* Paste your original Chat tab content here */}
+          {/* Quick Actions, Sourcing Actions, Messages area, Input field - keep as is */}
         </TabsContent>
 
-        {/* People Search Tab */}
+        {/* ==================== PEOPLE SEARCH TAB ==================== */}
         <TabsContent value="people" className="space-y-4">
-          {/* Smart Search Toggle + Quick Presets (paste your original code) */}
+          {/* Smart Search Toggle + Expansion Details + Quick Presets - keep your original code */}
 
+          {/* IMPROVED MULTI-LINE SEARCH BAR */}
           <div className="flex gap-3">
             <Textarea
               placeholder="Search for people (e.g., Python developer Miami with 5+ years experience in fintech, leadership skills...)"
@@ -163,10 +231,10 @@ export default function AIAssistantPage() {
             </div>
           )}
 
-          {/* Your original results section for people */}
+          {/* Your original results section for people goes here */}
         </TabsContent>
 
-        {/* Companies Tab */}
+        {/* COMPANIES TAB - Improved Search */}
         <TabsContent value="companies" className="space-y-4">
           <div className="flex gap-3">
             <Textarea
@@ -187,7 +255,7 @@ export default function AIAssistantPage() {
             </Button>
           </div>
 
-          {/* Search History */}
+          {/* Search History (same as people) */}
           {searchHistory.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -214,7 +282,7 @@ export default function AIAssistantPage() {
           )}
         </TabsContent>
 
-        {/* Jobs Tab */}
+        {/* JOBS TAB - Improved Search */}
         <TabsContent value="jobs" className="space-y-4">
           <div className="flex gap-3">
             <Textarea
