@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { Send, Sparkles, Bot, User, Copy, Check, Search, Users, List, Building2, Briefcase, ChevronDown, ChevronRight, Lightbulb, SlidersHorizontal, Clock, Trash2 } from "lucide-react";
+import { Send, Sparkles, Bot, User, Copy, Check, Search, Users, Building2, Briefcase, ChevronDown, ChevronRight, Lightbulb, Clock, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -23,11 +22,40 @@ interface PersonResult { [key: string]: any; }
 interface CompanyResult { [key: string]: any; }
 interface JobResult { [key: string]: any; }
 
-// ... (keep all your quickActions, presets, etc.)
+// Keep all your existing presets and quick actions
+const quickActions = [ /* ... your existing quickActions ... */ ];
+const peopleSearchPresets = [ /* ... your presets ... */ ];
+const companySearchPresets = [ /* ... */ ];
+const jobSearchPresets = [ /* ... */ ];
 
 export default function AIAssistantPage() {
-  // ... (keep all your existing state variables)
+  // ==================== EXISTING STATES ====================
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Search states
+  const [peopleResults, setPeopleResults] = useState<PersonResult[]>([]);
+  const [peopleQuery, setPeopleQuery] = useState("");
+  const [isSearchingPeople, setIsSearchingPeople] = useState(false);
+
+  const [companyResults, setCompanyResults] = useState<CompanyResult[]>([]);
+  const [companyQuery, setCompanyQuery] = useState("");
+  const [isSearchingCompanies, setIsSearchingCompanies] = useState(false);
+
+  const [jobResults, setJobResults] = useState<JobResult[]>([]);
+  const [jobQuery, setJobQuery] = useState("");
+  const [isSearchingJobs, setIsSearchingJobs] = useState(false);
+
+  const [activeTab, setActiveTab] = useState("chat");
+
+  // Smart Search
+  const [smartSearchEnabled, setSmartSearchEnabled] = useState(true);
+  const [expansionResult, setExpansionResult] = useState<any>(null);
+  const [showExpansionDetails, setShowExpansionDetails] = useState(true);
+
+  // ==================== SEARCH HISTORY ====================
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
 
   useEffect(() => {
@@ -54,7 +82,7 @@ export default function AIAssistantPage() {
     }
   };
 
-  // ... (keep all your existing functions: sendMessage, expandQuery, searchPeople, searchCompanies, searchJobs, etc.)
+  // ... Keep all your existing functions (sendMessage, expandQuery, searchPeople, searchCompanies, searchJobs, etc.)
 
   return (
     <div className="space-y-6 h-[calc(100vh-8rem)] flex flex-col">
@@ -65,177 +93,4 @@ export default function AIAssistantPage() {
         </div>
         <div className="flex items-center gap-2 text-sm">
           <span className="w-2 h-2 rounded-full bg-green-500"></span>
-          <span className="text-muted-foreground">Apollo Connected</span>
-        </div>
-      </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="chat">Chat</TabsTrigger>
-          <TabsTrigger value="people">People Search</TabsTrigger>
-          <TabsTrigger value="companies">Companies</TabsTrigger>
-          <TabsTrigger value="jobs">Open Roles</TabsTrigger>
-        </TabsList>
-
-        {/* Chat Tab - unchanged */}
-        <TabsContent value="chat" className="space-y-4">
-          {/* ... your existing chat tab code ... */}
-        </TabsContent>
-
-        {/* ==================== PEOPLE SEARCH TAB ==================== */}
-        <TabsContent value="people" className="space-y-4">
-          {/* Smart Search Toggle + Quick Search Presets (keep as is) */}
-
-          {/* Improved Multi-line Search */}
-          <div className="flex gap-3">
-            <Textarea
-              placeholder="Search for people (e.g., Python developer Miami with 5+ years experience in fintech, leadership skills...)"
-              value={peopleQuery}
-              onChange={(e) => setPeopleQuery(e.target.value)}
-              onKeyDown={(e) => handleKeyDown(e, searchPeople, peopleQuery)}
-              rows={5}
-              className="resize-y min-h-[140px] text-base"
-              disabled={isSearchingPeople}
-            />
-            <Button 
-              onClick={() => searchPeople(peopleQuery)} 
-              disabled={isSearchingPeople || !peopleQuery.trim()} 
-              className="self-start mt-1 h-12 px-8"
-            >
-              {isSearchingPeople ? "Searching..." : <Search className="h-5 w-5" />}
-            </Button>
-          </div>
-
-          {/* Search History */}
-          {searchHistory.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Clock className="h-4 w-4" /> Recent Searches
-                </span>
-                <Button variant="ghost" size="sm" onClick={clearHistory}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {searchHistory.slice(0, 6).map((past, i) => (
-                  <Button
-                    key={i}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => { setPeopleQuery(past); searchPeople(past); }}
-                  >
-                    {past.length > 45 ? past.substring(0, 42) + "..." : past}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Results section - keep as is */}
-          {/* ... your existing results code ... */}
-        </TabsContent>
-
-        {/* ==================== COMPANIES TAB ==================== */}
-        <TabsContent value="companies" className="space-y-4">
-          <div className="flex gap-3">
-            <Textarea
-              placeholder="Search for companies (e.g., SaaS companies in fintech, Series B, Austin...)"
-              value={companyQuery}
-              onChange={(e) => setCompanyQuery(e.target.value)}
-              onKeyDown={(e) => handleKeyDown(e, searchCompanies, companyQuery)}
-              rows={5}
-              className="resize-y min-h-[140px] text-base"
-              disabled={isSearchingCompanies}
-            />
-            <Button 
-              onClick={() => searchCompanies(companyQuery)} 
-              disabled={isSearchingCompanies || !companyQuery.trim()} 
-              className="self-start mt-1 h-12 px-8"
-            >
-              {isSearchingCompanies ? "Searching..." : <Search className="h-5 w-5" />}
-            </Button>
-          </div>
-
-          {/* Search History - same as above */}
-          {searchHistory.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Clock className="h-4 w-4" /> Recent Searches
-                </span>
-                <Button variant="ghost" size="sm" onClick={clearHistory}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {searchHistory.slice(0, 6).map((past, i) => (
-                  <Button
-                    key={i}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => { setCompanyQuery(past); searchCompanies(past); }}
-                  >
-                    {past.length > 45 ? past.substring(0, 42) + "..." : past}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Results */}
-        </TabsContent>
-
-        {/* ==================== JOBS TAB ==================== */}
-        <TabsContent value="jobs" className="space-y-4">
-          <div className="flex gap-3">
-            <Textarea
-              placeholder="Search for open roles (e.g., senior software engineer remote in fintech, $140k+...)"
-              value={jobQuery}
-              onChange={(e) => setJobQuery(e.target.value)}
-              onKeyDown={(e) => handleKeyDown(e, searchJobs, jobQuery)}
-              rows={5}
-              className="resize-y min-h-[140px] text-base"
-              disabled={isSearchingJobs}
-            />
-            <Button 
-              onClick={() => searchJobs(jobQuery)} 
-              disabled={isSearchingJobs || !jobQuery.trim()} 
-              className="self-start mt-1 h-12 px-8"
-            >
-              {isSearchingJobs ? "Searching..." : <Search className="h-5 w-5" />}
-            </Button>
-          </div>
-
-          {/* Search History - same */}
-          {searchHistory.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Clock className="h-4 w-4" /> Recent Searches
-                </span>
-                <Button variant="ghost" size="sm" onClick={clearHistory}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {searchHistory.slice(0, 6).map((past, i) => (
-                  <Button
-                    key={i}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => { setJobQuery(past); searchJobs(past); }}
-                  >
-                    {past.length > 45 ? past.substring(0, 42) + "..." : past}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Results */}
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
+          <span className
