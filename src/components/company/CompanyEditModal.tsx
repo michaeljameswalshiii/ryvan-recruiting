@@ -51,17 +51,17 @@ export default function CompanyEditModal({
   company,
   onSave,
   children,
-  open: externalOpen,
-  onOpenChange: externalOnOpenChange,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: CompanyEditModalProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Use external props if provided, otherwise use internal state
-  const isControlled = externalOpen !== undefined;
-  const open = isControlled ? externalOpen : internalOpen;
+  // Use controlled props if provided, otherwise use internal state
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
   const setOpen = isControlled 
-    ? (value: boolean) => externalOnOpenChange?.(value)
+    ? (value: boolean) => controlledOnOpenChange?.(value)
     : setInternalOpen;
 
   // Form state - initialize with company data
