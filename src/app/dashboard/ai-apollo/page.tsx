@@ -402,18 +402,20 @@ setIsSearchingPeople(false);
     setCompanyQuery(query);
 
     try {
-      // Expand query using Claude for better results
-      const expandedQuery = await expandQuery(query, "companies");
+      // Only expand if smart search is enabled
+      const expandedData = smartSearchEnabled 
+        ? await expandQuery(query, "companies")
+        : { optimizedQuery: query, keywords: [], industries: [], locations: [] };
       
-const res = await fetch("/api/apollo/companies", {
+      const res = await fetch("/api/apollo/companies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          q: expandedQuery.optimizedQuery,
+          q: expandedData.optimizedQuery,
           ...(smartSearchEnabled && {
-            industries: expandedQuery.industries || [],
-            locations: expandedQuery.locations || [],
-            keywords: expandedQuery.keywords || [],
+            industries: expandedData.industries || [],
+            locations: expandedData.locations || [],
+            keywords: expandedData.keywords || [],
           })
         }),
       });
@@ -460,18 +462,20 @@ setCompanyResults(mappedResults);
     setJobQuery(query);
 
     try {
-      // Expand query using Claude for better results
-      const expandedQuery = await expandQuery(query, "jobs");
+      // Only expand if smart search is enabled
+      const expandedData = smartSearchEnabled 
+        ? await expandQuery(query, "jobs")
+        : { optimizedQuery: query, keywords: [], locations: [], industries: [] };
       
-const res = await fetch("/api/apollo/jobs", {
+      const res = await fetch("/api/apollo/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          q: expandedQuery.optimizedQuery,
+          q: expandedData.optimizedQuery,
           ...(smartSearchEnabled && {
-            keywords: expandedQuery.keywords || [],
-            locations: expandedQuery.locations || [],
-            industries: expandedQuery.industries || [],
+            keywords: expandedData.keywords || [],
+            locations: expandedData.locations || [],
+            industries: expandedData.industries || [],
           })
         }),
       });
@@ -552,7 +556,7 @@ setJobResults(mappedResults);
 
   return (
     <div className="space-y-6 h-[calc(100vh-8rem)] flex flex-col">
-      <div className="flex items-center justify-between">
+<div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">AI Apollo</h1>
           <p className="text-muted-foreground">
@@ -564,6 +568,31 @@ setJobResults(mappedResults);
           <span className="text-muted-foreground">Apollo Connected</span>
         </div>
       </div>
+
+{/* Global Smart Search Toggle */}
+<div className="flex items-center justify-between p-4 rounded-lg border border-border bg-card mb-6">
+  <div className="flex items-center gap-3">
+    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
+      <Lightbulb className="h-5 w-5 text-primary" />
+    </div>
+    <div>
+      <h3 className="font-medium">Smart Search</h3>
+      <p className="text-sm text-muted-foreground">
+        AI automatically expands your query with titles, skills, locations, industries, and more
+      </p>
+    </div>
+  </div>
+  <div className="flex items-center gap-3">
+    <Label htmlFor="smart-search-toggle" className="text-sm font-medium">
+      {smartSearchEnabled ? "AI Enhanced" : "Basic Search"}
+    </Label>
+    <Switch
+      id="smart-search-toggle"
+      checked={smartSearchEnabled}
+      onCheckedChange={setSmartSearchEnabled}
+    />
+  </div>
+</div>
 
 {/* Tabs for Chat vs People Search */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
