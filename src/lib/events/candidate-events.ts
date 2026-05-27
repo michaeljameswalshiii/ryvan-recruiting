@@ -9,13 +9,90 @@
 
 import { putItem, queryItems, eventsTable } from '../db/dynamodb';
 import type {
-  EventType,
   EventDetails,
   CandidateEvent,
   CandidateEventResult,
   GetEventsResponse,
   RecordEventResponse,
+  PaginationCursor,
+  CandidateEventType,
 } from './types';
+
+// ============================================================================
+// Constants & Configuration
+// ============================================================================
+
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 100;
+
+// ============================================================================
+// Structured Logging
+// ============================================================================
+
+type LogLevel = 'info' | 'warn' | 'error' | 'debug';
+
+function logEvent(
+  level: LogLevel,
+  message: string,
+  meta?: {
+    candidateId?: string;
+    eventType?: string;
+    error?: Error;
+    [key: string]: unknown;
+  }
+): void {
+  const timestamp = new Date().toISOString();
+  const logEntry = {
+    timestamp,
+    level,
+    service: 'candidate-events',
+    message,
+    ...meta,
+  };
+  
+  // Use console methods based on level
+  switch (level) {
+    case 'error':
+      console.error(`[EVENTS] ${message}`, JSON.stringify(meta));
+      break;
+    case 'warn':
+      console.warn(`[EVENTS] ${message}`, JSON.stringify(meta));
+      break;
+    case 'debug':
+      console.debug(`[EVENTS] ${message}`, JSON.stringify(meta));
+      break;
+    default:
+      console.log(`[EVENTS] ${message}`, JSON.stringify(meta));
+  }
+}
+
+// ============================================================================
+// Retry Logic
+// ============================================================================
+
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxAttempts: number = MAX_RETRY_ATTEMPTS,
+  baseDelay: number = RETRY_BASE_DELAY_MS
+): Promise<T> {
+  let lastError: Error | undefined;
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      logEvent('warn', `Attempt ${attempt}/${maxAttempts} failed`, { error: lastError });
+      
+      if (attempt < maxAttempts) {
+        const delay = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw lastError || new Error('Operation failed after retries');
+}
 
 /**
  * Record an event for a candidate
@@ -28,7 +105,7 @@ import type {
  */
 export async function recordEvent(
   candidateId: string,
-  eventType: EventType,
+  eventType: CandidateEventType,
   details: EventDetails,
   createdBy: string
 ): Promise<RecordEventResponse> {
@@ -39,7 +116,8 @@ export async function recordEvent(
     const event: CandidateEvent = {
       PK: `CANDIDATE#${candidateId}`,
       SK: `EVENT#${timestamp}`,
-      candidateId,
+      entityId: candidateId,
+      entityType: 'candidate',
       eventType,
       title: details.title,
       description: details.description,
@@ -64,24 +142,42 @@ export async function recordEvent(
 }
 
 /**
- * Get all events for a candidate
+ * Get all events for a candidate with optional filtering and pagination
  * 
  * @param candidateId - The candidate ID
- * @param limit - Optional limit for number of events to return
+ * @param options - Optional filtering and pagination options
  * @returns List of events sorted by newest first
  */
 export async function getCandidateEvents(
   candidateId: string,
-  limit?: number
+  options?: {
+    limit?: number;
+    cursor?: PaginationCursor;
+    eventTypes?: CandidateEventType[];
+    startDate?: string;
+    endDate?: string;
+  }
 ): Promise<GetEventsResponse> {
   try {
+    const { limit, cursor, eventTypes, startDate, endDate } = options || {};
+    
+    // Build query expression
+    let queryExpr = 'PK = :pk AND begins_with(SK, :skPrefix)';
+    const exprValues: Record<string, string> = {
+      ':pk': `CANDIDATE#${candidateId}`,
+      ':skPrefix': 'EVENT#',
+    };
+
+    // Apply cursor pagination if provided
+    if (cursor) {
+      queryExpr += ' AND SK < :cursorSK';
+      exprValues[':cursorSK'] = cursor.timestamp;
+    }
+
     const events = await queryItems<CandidateEvent>(
       eventsTable,
-      'PK = :pk AND begins_with(SK, :skPrefix)',
-      {
-        ':pk': `CANDIDATE#${candidateId}`,
-        ':skPrefix': 'EVENT#',
-      }
+      queryExpr,
+      exprValues
     );
 
     // Sort by timestamp descending (newest first)
@@ -89,14 +185,35 @@ export async function getCandidateEvents(
       b.SK.localeCompare(a.SK)
     );
 
-    // Apply limit if provided
-    const limitedEvents = limit ? sortedEvents.slice(0, limit) : sortedEvents;
+    // Filter by event types if provided
+    let filteredEvents = sortedEvents;
+    if (eventTypes && eventTypes.length > 0) {
+      filteredEvents = sortedEvents.filter(event => 
+        eventTypes.includes(event.eventType as CandidateEventType)
+      );
+    }
 
-    // Convert to result format
-    const eventResults: CandidateEventResult[] = limitedEvents.map(event => ({
+    // Filter by date range if provided
+    if (startDate || endDate) {
+      filteredEvents = filteredEvents.filter(event => {
+        const eventDate = event.createdAt;
+        if (startDate && eventDate < startDate) return false;
+        if (endDate && eventDate > endDate) return false;
+        return true;
+      });
+    }
+
+    // Apply limit if provided (fetch extra to check hasMore)
+    const fetchLimit = (limit || 50) + 1;
+    const paginatedEvents = filteredEvents.slice(0, fetchLimit);
+    const hasMore = paginatedEvents.length > (limit || 50);
+
+// Convert to result format
+    const eventResults: CandidateEventResult[] = paginatedEvents.slice(0, limit).map(event => ({
       id: event.SK.replace('EVENT#', ''),
-      candidateId: event.candidateId,
-      eventType: event.eventType,
+      entityId: event.entityId,
+      entityType: 'candidate',
+      eventType: event.eventType as CandidateEventType,
       title: event.title,
       description: event.description,
       metadata: event.metadata,
@@ -105,9 +222,21 @@ export async function getCandidateEvents(
       timestamp: event.SK.replace('EVENT#', ''),
     }));
 
+    // Build next cursor if there are more results
+    let nextCursor: PaginationCursor | undefined;
+    if (hasMore && eventResults.length > 0) {
+      const lastEvent = eventResults[eventResults.length - 1];
+      nextCursor = {
+        timestamp: lastEvent.timestamp,
+        eventId: lastEvent.id,
+      };
+    }
+
     return {
       events: eventResults,
-      hasMore: limit ? events.length > limit : false,
+      hasMore,
+      nextCursor,
+      totalCount: filteredEvents.length,
     };
   } catch (error) {
     console.error('[EVENTS] Failed to get events:', error);
@@ -274,7 +403,7 @@ export async function recordCandidateImported(
     ? `Imported from ${source} (${confidencePercent}% confidence)`
     : `Imported from ${source}`;
 
-  return recordEvent(
+return recordEvent(
     candidateId,
     'CANDIDATE_IMPORTED',
     {
@@ -289,5 +418,344 @@ export async function recordCandidateImported(
       },
     },
     importedBy
+  );
+}
+
+/**
+ * Record a stage change event
+ * 
+ * @param candidateId - The candidate ID
+ * @param oldStage - Previous stage
+ * @param newStage - New stage
+ * @param createdBy - User who changed the stage
+ * @param pipelineId - Optional pipeline ID
+ * @returns Result with success status
+ */
+export async function recordStageChange(
+  candidateId: string,
+  oldStage: string,
+  newStage: string,
+  createdBy: string,
+  pipelineId?: string
+): Promise<RecordEventResponse> {
+  return recordEvent(
+    candidateId,
+    'STAGE_CHANGE',
+    {
+      title: 'Stage Changed',
+      description: `${oldStage || 'None'} → ${newStage}`,
+      metadata: {
+        oldStage,
+        newStage,
+        pipelineId,
+        changedBy: createdBy,
+      },
+    },
+    createdBy
+  );
+}
+
+/**
+ * Record a task created event
+ * 
+ * @param candidateId - The candidate ID
+ * @param taskId - The task ID
+ * @param taskTitle - The task title
+ * @param createdBy - User who created the task
+ * @param dueDate - Optional due date
+ * @param assignedTo - Optional assignee
+ * @returns Result with success status
+ */
+export async function recordTaskCreated(
+  candidateId: string,
+  taskId: string,
+  taskTitle: string,
+  createdBy: string,
+  dueDate?: string,
+  assignedTo?: string
+): Promise<RecordEventResponse> {
+  return recordEvent(
+    candidateId,
+    'TASK_CREATED',
+    {
+      title: 'Task Created',
+      description: taskTitle,
+      metadata: {
+        taskId,
+        taskTitle,
+        dueDate,
+        assignedTo,
+        createdBy,
+      },
+    },
+    createdBy
+  );
+}
+
+/**
+ * Record a task completed event
+ * 
+ * @param candidateId - The candidate ID
+ * @param taskId - The task ID
+ * @param taskTitle - The task title
+ * @param completedBy - User who completed the task
+ * @param outcome - Optional outcome/completion notes
+ * @returns Result with success status
+ */
+export async function recordTaskCompleted(
+  candidateId: string,
+  taskId: string,
+  taskTitle: string,
+  completedBy: string,
+  outcome?: string
+): Promise<RecordEventResponse> {
+  return recordEvent(
+    candidateId,
+    'TASK_COMPLETED',
+    {
+      title: 'Task Completed',
+      description: taskTitle,
+      metadata: {
+        taskId,
+        taskTitle,
+        outcome,
+        completedBy,
+      },
+    },
+    completedBy
+  );
+}
+
+/**
+ * Record a candidate viewed event
+ * 
+ * @param candidateId - The candidate ID
+ * @param viewerId - The viewer ID
+ * @param createdBy - User who viewed (or system)
+ * @param options - Optional parameters (viewerEmail, source)
+ * @returns Result with success status
+ */
+export async function recordCandidateViewed(
+  candidateId: string,
+  viewerId: string,
+  createdBy: string,
+  options?: {
+    viewerEmail?: string;
+    source?: string;
+  }
+): Promise<RecordEventResponse> {
+  const { viewerEmail, source } = options || {};
+  const sourceDescription = source ? ` via ${source}` : '';
+  return recordEvent(
+    candidateId,
+    'CANDIDATE_VIEWED',
+    {
+      title: 'Candidate Viewed',
+      description: `Viewed by ${viewerEmail || viewerId}${sourceDescription}`,
+      metadata: {
+        viewerId,
+        viewerEmail,
+        source,
+        viewedAt: new Date().toISOString(),
+      },
+    },
+    createdBy
+  );
+}
+
+/**
+ * Record a candidate assigned event
+ * 
+ * @param candidateId - The candidate ID
+ * @param assignedTo - User being assigned to
+ * @param createdBy - User who performed the assignment
+ * @param options - Optional parameters (previousOwner)
+ * @returns Result with success status
+ */
+export async function recordCandidateAssigned(
+  candidateId: string,
+  assignedTo: string,
+  createdBy: string,
+  options?: {
+    previousOwner?: string;
+  }
+): Promise<RecordEventResponse> {
+  const { previousOwner } = options || {};
+  const description = previousOwner 
+    ? `Reassigned from ${previousOwner} to ${assignedTo}`
+    : `Assigned to ${assignedTo}`;
+  
+  return recordEvent(
+    candidateId,
+    'CANDIDATE_ASSIGNED',
+    {
+      title: 'Candidate Assigned',
+      description,
+      metadata: {
+        assignedTo,
+        previousOwner,
+        assignedAt: new Date().toISOString(),
+      },
+    },
+    createdBy
+  );
+}
+
+/**
+ * Record a call completed event
+ * 
+ * @param candidateId - The candidate ID
+ * @param callDate - Date of the call
+ * @param createdBy - User who completed the call
+ * @param options - Optional parameters (callType, duration, outcome, notes)
+ * @returns Result with success status
+ */
+export async function recordCallCompleted(
+  candidateId: string,
+  callDate: string,
+  createdBy: string,
+  options?: {
+    callType?: string;
+    duration?: number;
+    outcome?: string;
+    notes?: string;
+  }
+): Promise<RecordEventResponse> {
+  const { callType, duration, outcome, notes } = options || {};
+  const durationStr = duration ? `${Math.floor(duration / 60)} min` : 'N/A';
+  const description = `${callType || 'Call'} - ${outcome || 'Completed'} (${durationStr})`;
+  
+  return recordEvent(
+    candidateId,
+    'CALL_COMPLETED',
+    {
+      title: 'Call Completed',
+      description,
+      metadata: {
+        callDate,
+        callType,
+        duration,
+        outcome,
+        notes,
+        changedBy: createdBy,
+      },
+    },
+    createdBy
+  );
+}
+
+/**
+ * Record an email opened event
+ * 
+ * @param candidateId - The candidate ID
+ * @param emailSubject - Subject of the email
+ * @param emailTo - Recipient email address
+ * @param createdBy - User or system who recorded
+ * @param options - Optional parameters (messageId)
+ * @returns Result with success status
+ */
+export async function recordEmailOpened(
+  candidateId: string,
+  emailSubject: string,
+  emailTo: string,
+  createdBy: string,
+  options?: {
+    messageId?: string;
+  }
+): Promise<RecordEventResponse> {
+  const { messageId } = options || {};
+  return recordEvent(
+    candidateId,
+    'EMAIL_OPENED',
+    {
+      title: 'Email Opened',
+      description: `Subject: ${emailSubject}`,
+      metadata: {
+        emailSubject,
+        emailTo,
+        messageId,
+        openedAt: new Date().toISOString(),
+      },
+    },
+    createdBy
+  );
+}
+
+/**
+ * Record an email clicked event
+ * 
+ * @param candidateId - The candidate ID
+ * @param emailSubject - Subject of the email
+ * @param emailTo - Recipient email address
+ * @param createdBy - User or system who recorded
+ * @param options - Optional parameters (messageId, urlClicked)
+ * @returns Result with success status
+ */
+export async function recordEmailClicked(
+  candidateId: string,
+  emailSubject: string,
+  emailTo: string,
+  createdBy: string,
+  options?: {
+    messageId?: string;
+    urlClicked?: string;
+  }
+): Promise<RecordEventResponse> {
+  const { messageId, urlClicked } = options || {};
+  return recordEvent(
+    candidateId,
+    'EMAIL_CLICKED',
+    {
+      title: 'Email Link Clicked',
+      description: `Subject: ${emailSubject}`,
+      metadata: {
+        emailSubject,
+        emailTo,
+        messageId,
+        urlClicked,
+        clickedAt: new Date().toISOString(),
+      },
+    },
+    createdBy
+  );
+}
+
+/**
+ * Record a pipeline move event
+ * 
+ * @param candidateId - The candidate ID
+ * @param fromStage - Previous stage
+ * @param toStage - New stage
+ * @param pipelineId - Pipeline ID
+ * @param createdBy - User who moved
+ * @param options - Optional parameters (reason)
+ * @returns Result with success status
+ */
+export async function recordPipelineMove(
+  candidateId: string,
+  fromStage: string,
+  toStage: string,
+  pipelineId: string,
+  createdBy: string,
+  options?: {
+    reason?: string;
+  }
+): Promise<RecordEventResponse> {
+  const { reason } = options || {};
+  return recordEvent(
+    candidateId,
+    'PIPELINE_MOVE',
+    {
+      title: 'Pipeline Stage Moved',
+      description: `${fromStage} → ${toStage}`,
+      metadata: {
+        fromStage,
+        toStage,
+        pipelineId,
+        reason,
+        movedBy: createdBy,
+      },
+    },
+    createdBy
   );
 }

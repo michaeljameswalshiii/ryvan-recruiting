@@ -8,7 +8,7 @@
 'use server';
 
 import { getSessionTenantId, getSessionUserId } from '../server-auth';
-import { getAllClients, createClient as createClientRepo, getClientById, updateClient, updateClientStatus, deleteClient } from '../db/repositories/client-repository';
+import { getAllClients, createClient as createClientRepo, getClientById, updateClient, deleteClient } from '../db/repositories/client-repository';
 import { createClientSchema, updateClientSchema } from '../schemas/client';
 
 /**
@@ -74,7 +74,6 @@ export async function createClient(formData: FormData) {
 const rawData = {
     name: formData.get('name') as string,
     email: formData.get('email') as string || '',
-    status: formData.get('status') as string || 'identification',
     phone: formData.get('phone') as string || '',
     company: formData.get('company') as string || '',
     domain: formData.get('domain') as string || '',
@@ -161,7 +160,7 @@ export async function deleteClientAction(clientId: string) {
     return { error: 'Unauthorized' };
   }
 
-try {
+  try {
     await deleteClient(tenantId, clientId);
     return { success: true };
   } catch (error: any) {
@@ -170,17 +169,23 @@ try {
 }
 
 /**
- * Update client status (for pipeline drag-drop)
+ * Update client status (for pipeline movement)
  */
-export async function updateClientStatusAction(clientId: string, newStatus: string) {
+export async function updateClientStatusAction(clientId: string, status: string) {
   const tenantId = await getSessionTenantId();
   
   if (!tenantId) {
     return { error: 'Unauthorized' };
   }
 
+  // Validate status is one of the allowed values
+  const validStatuses = ['identification', 'outreach', 'conversation', 'presented', 'meeting', 'proposal', 'closed_won', 'lost'];
+  if (!validStatuses.includes(status)) {
+    return { error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` };
+  }
+
   try {
-    const client = await updateClientStatus(tenantId, clientId, newStatus);
+    const client = await updateClient(tenantId, clientId, { status: status as any });
     return { success: true, client };
   } catch (error: any) {
     return { error: error.message || 'Failed to update client status' };

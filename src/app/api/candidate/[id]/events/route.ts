@@ -27,7 +27,7 @@ export async function GET(
     const limit = searchParams.get('limit');
     const limitNum = limit ? parseInt(limit, 10) : undefined;
 
-    const result = await getCandidateEvents(id, limitNum);
+const result = await getCandidateEvents(id, { limit: limitNum });
 
     return NextResponse.json({
       events: result.events,

@@ -1,20 +1,30 @@
-// Test Apollo API
-const testApollo = async () => {
-  try {
-    const response = await fetch('http://localhost:3000/api/apollo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: 'AWS developer',
-        per_page: 5,
-        location: 'Jacksonville Beach, FL'
-      })
-    });
-    const data = await response.json();
-    console.log(JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error('Error:', e.message);
+// Test Apollo API key - multiple header formats
+const API_KEY = "***REMOVED***";
+
+async function testApollo() {
+  // Try different header formats Apollo accepts
+  const headers = [
+    { "Api-Key": API_KEY },
+    { "x-api-key": API_KEY },
+    { "apollo-api-key": API_KEY },
+  ];
+  
+  for (const h of headers) {
+    console.log("Trying header:", Object.keys(h)[0]);
+    try {
+      const res = await fetch("https://api.apollo.io/api/v1/people/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...h },
+        body: JSON.stringify({ q: "software engineer", per_page: 1 }),
+      });
+      const data = await res.json();
+      console.log("  Status:", res.status);
+      console.log("  Result:", JSON.stringify(data, null, 2).substring(0, 500));
+      if (data.people) break; // Success!
+    } catch (err) {
+      console.error("  Error:", err.message);
+    }
   }
-};
+}
 
 testApollo();
