@@ -71,10 +71,16 @@ export default function CandidateDetailPage({ params }: Props) {
       const response = await fetch(`/api/data/leads/${id}`, {
         cache: "no-store",
       });
+      
       if (!response.ok) {
-        throw new Error("Failed to load candidate");
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to load candidate");
       }
-      const data = await response.json();
+      
+      const result = await response.json();
+      // API returns { lead: {...} }
+      const data = result.lead;
+      
       if (data) {
         setFormData({
           id: data.id || "",
@@ -91,9 +97,9 @@ export default function CandidateDetailPage({ params }: Props) {
           createdAt: data.created_at || "",
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load candidate:", err);
-      toast.error("Failed to load candidate");
+      toast.error(err.message || "Failed to load candidate");
     } finally {
       setLoading(false);
     }
@@ -108,11 +114,8 @@ export default function CandidateDetailPage({ params }: Props) {
 
   // Generate avatar initials
   const avatarInitials = formData.name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+    ? formData.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+    : "";
 
   // Handle save
   const handleSave = async () => {
@@ -142,13 +145,14 @@ export default function CandidateDetailPage({ params }: Props) {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to save candidate");
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to save candidate");
       }
 
       toast.success("Candidate saved successfully!");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to save candidate:", err);
-      toast.error("Failed to save candidate");
+      toast.error(err.message || "Failed to save candidate");
     } finally {
       setSaving(false);
     }
@@ -163,14 +167,15 @@ export default function CandidateDetailPage({ params }: Props) {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to delete candidate");
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to delete candidate");
       }
 
       toast.success("Candidate deleted successfully!");
       router.push("/candidates");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to delete candidate:", err);
-      toast.error("Failed to delete candidate");
+      toast.error(err.message || "Failed to delete candidate");
     } finally {
       setDeleting(false);
       setShowDeleteDialog(false);
@@ -189,7 +194,7 @@ export default function CandidateDetailPage({ params }: Props) {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" asChild>
               <Link href="/candidates">
@@ -205,23 +210,25 @@ export default function CandidateDetailPage({ params }: Props) {
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 className="text-3xl font-semibold tracking-tight bg-transparent border-none outline-none w-full placeholder:text-gray-400"
-                placeholder="Candidate Name"
+                placeholder="Enter candidate name..."
               />
               <input
                 type="text"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 className="text-sm text-gray-600 bg-transparent border-none outline-none w-full placeholder:text-gray-400"
-                placeholder="Job Title"
+                placeholder="Enter job title..."
               />
             </div>
           </div>
-          <Button asChild>
-            <Link href={`mailto:${formData.email}`}>
-              <Mail className="h-4 w-4 mr-2" />
-              Send Email
-            </Link>
-          </Button>
+          <div className="flex justify-end mt-4">
+            <Button asChild>
+              <a href={`mailto:${formData.email}`}>
+                <Mail className="h-4 w-4 mr-2" />
+                Send Email
+              </a>
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -300,7 +307,7 @@ export default function CandidateDetailPage({ params }: Props) {
           </CardContent>
         </Card>
 
-        {/* Resume */}
+        {/* Resume - Show when resumeUrl exists */}
         {formData.resumeUrl && (
           <Card>
             <CardHeader>
