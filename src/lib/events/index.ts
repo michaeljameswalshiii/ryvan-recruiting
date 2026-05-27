@@ -6,13 +6,9 @@
  * @serverOnly
  */
 
-'use server';
-
-// Core types
+// Core types (no 'use server' needed for types)
 export * from './types';
 
-// Candidate events
+// Server functions (these have 'use server' internally)
 export * from './candidate-events';
-
-// Company events (newly added)
 export * from './company-events';
