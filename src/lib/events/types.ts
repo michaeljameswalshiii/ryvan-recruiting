@@ -1,158 +1,113 @@
 /**
- * Candidate Events Types
+ * Shared Event Types
  * 
  * @serverOnly
  */
 
-// Event Types
-export type EventType = 
-  | 'EMAIL_SENT' 
-  | 'NOTE' 
-  | 'STATUS_CHANGE' 
-  | 'INTERVIEW_SCHEDULED'
-  | 'CANDIDATE_IMPORTED';
+// ==================== Common Types ====================
 
-// Event metadata for different event types
-export interface EmailSentMetadata {
-  emailSubject?: string;
-  emailTo?: string;
-  emailFrom?: string;
-  templateId?: string;
-  messageId?: string;
-}
-
-export interface NoteMetadata {
-  noteText: string;
-  changedBy: string;
-}
-
-export interface StatusChangeMetadata {
-  oldStatus?: string;
-  newStatus: string;
-  changedBy: string;
-}
-
-export interface InterviewScheduledMetadata {
-  interviewDate?: string;
-  interviewType?: string;
-  interviewers?: string[];
-  changedBy?: string;
-}
-
-// Metadata for candidate imported from AI/Apollo
-export interface ImportedMetadata {
-  source: string;           // 'apollo', 'ai_search', 'manual', etc.
-  confidence?: number;       // AI confidence score (0-1)
-  rawData?: any;           // Original raw data from AI
-  searchQuery?: string;    // Original search query used
-  importedBy: string;      // User who imported
-}
-
-// Union type for all metadata
-export type EventMetadata = 
-  | EmailSentMetadata 
-  | NoteMetadata 
-  | StatusChangeMetadata 
-  | InterviewScheduledMetadata;
-
-// Event details for creating events
 export interface EventDetails {
   title: string;
-  description?: string;
+  description: string;
   metadata?: Record<string, any>;
 }
 
-// The full event record stored in DynamoDB
+// ==================== Candidate Events ====================
+
+export type CandidateEventType =
+  | 'EMAIL_SENT'
+  | 'EMAIL_OPENED'
+  | 'EMAIL_CLICKED'
+  | 'NOTE'
+  | 'CANDIDATE_IMPORTED'
+  | 'CANDIDATE_CREATED'
+  | 'CANDIDATE_VIEWED'
+  | 'STATUS_CHANGED'
+  | 'INTERVIEW_SCHEDULED'
+  | 'INTERVIEW_COMPLETED'
+  | 'TASK_CREATED'
+  | 'TASK_COMPLETED';
+
 export interface CandidateEvent {
-  PK: string;           // CANDIDATE#{candidateId}
-  SK: string;           // EVENT#{timestamp}
+  PK: string;
+  SK: string;
   candidateId: string;
-  eventType: EventType;
+  eventType: CandidateEventType;
   title: string;
-  description?: string;
+  description: string;
   metadata: Record<string, any>;
-  createdAt: string;     // ISO timestamp
-  createdBy: string;   // user email or id
+  createdAt: string;
+  createdBy: string;
 }
 
-// Result type for querying events
-export interface CandidateEventResult extends Omit<CandidateEvent, 'PK' | 'SK'> {
+export interface CandidateEventResult {
   id: string;
+  candidateId: string;
+  eventType: CandidateEventType;
+  title: string;
+  description: string;
+  metadata: Record<string, any>;
+  createdAt: string;
+  createdBy: string;
   timestamp: string;
 }
 
-// Response types
-export interface GetEventsResponse {
+export interface GetCandidateEventsResponse {
   events: CandidateEventResult[];
   hasMore: boolean;
 }
 
-export interface RecordEventResponse {
+export interface RecordCandidateEventResponse {
   success: boolean;
   eventId?: string;
   error?: string;
 }
 
-// ============================================================================
-// Company Events Types
-// ============================================================================
+// ==================== Company Events ====================
 
-// Company Event Types
-export type CompanyEventType = 
-  | 'NOTE' 
-  | 'STATUS_CHANGE'
-  | 'COMPANY_ADDED'
-  | 'CONTACT_ADDED';
+export type CompanyEventType =
+  | 'EMAIL_SENT'
+  | 'EMAIL_OPENED'
+  | 'EMAIL_CLICKED'
+  | 'NOTE'
+  | 'COMPANY_IMPORTED'
+  | 'COMPANY_CREATED'
+  | 'COMPANY_VIEWED'
+  | 'CONTACT_ADDED'
+  | 'CONTACT_REMOVED'
+  | 'DEAL_CREATED'
+  | 'DEAL_STAGE_CHANGED'
+  | 'DEAL_WON'
+  | 'DEAL_LOST'
+  | 'TASK_CREATED'
+  | 'TASK_COMPLETED'
+  | 'meeting_scheduled'
+  | 'CALL_COMPLETED';
 
-// Company Event metadata for different event types
-export interface CompanyNoteMetadata {
-  noteText: string;
-  changedBy: string;
-}
-
-export interface CompanyStatusChangeMetadata {
-  oldStatus?: string;
-  newStatus: string;
-  changedBy: string;
-}
-
-export interface CompanyAddedMetadata {
-  companyName: string;
-  addedBy: string;
-}
-
-export interface ContactAddedMetadata {
-  contactName: string;
-  addedBy: string;
-}
-
-// Union type for all company event metadata
-export type CompanyEventMetadata = 
-  | CompanyNoteMetadata 
-  | CompanyStatusChangeMetadata 
-  | CompanyAddedMetadata
-  | ContactAddedMetadata;
-
-// The full company event record stored in DynamoDB
 export interface CompanyEvent {
-  PK: string;           // COMPANY#{companyId}
-  SK: string;           // EVENT#{timestamp}
+  PK: string;
+  SK: string;
   companyId: string;
   eventType: CompanyEventType;
   title: string;
-  description?: string;
+  description: string;
   metadata: Record<string, any>;
-  createdAt: string;     // ISO timestamp
-  createdBy: string;   // user email or id
+  createdAt: string;
+  createdBy: string;
 }
 
-// Result type for querying company events
-export interface CompanyEventResult extends Omit<CompanyEvent, 'PK' | 'SK'> {
+export interface CompanyEventResult {
   id: string;
+  companyId: string;
+  eventType: CompanyEventType;
+  title: string;
+  description: string;
+  metadata: Record<string, any>;
+  createdAt: string;
+  createdBy: string;
   timestamp: string;
 }
 
-// Company Events Response types
 export interface GetCompanyEventsResponse {
   events: CompanyEventResult[];
   hasMore: boolean;
