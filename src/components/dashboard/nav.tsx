@@ -48,7 +48,7 @@ const handleSignOut = async () => {
   return (
     <nav className="w-64 h-screen bg-sidebar border-r border-border fixed left-0 top-0 flex flex-col">
       <div className="p-6 border-b border-border">
-<h1 className="text-xl font-bold">AgoraOS</h1>
+<h1 className="text-xl font-bold">RyVan Recruiting</h1>
       </div>
 
       <div className="flex-1 p-4 space-y-1">

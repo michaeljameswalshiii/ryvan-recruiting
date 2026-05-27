@@ -14,19 +14,21 @@ export default function Home() {
         // User is logged in, go to dashboard
         redirect("/dashboard");
       } else {
-        // Not authenticated, stay on home (login page)
-        setIsLoading(false);
+        // Not authenticated, redirect to login page
+        redirect("/login");
       }
     }).catch(() => {
-      // Error checking auth, stay on home
-      setIsLoading(false);
+      // Error checking auth, redirect to login
+      redirect("/login");
     });
   }, []);
 
-  if (isLoading) {
-    return null;
-  }
-
-  // Stay on home page (login/register) if not authenticated
-  return null;
+  // Show loading while checking auth
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  );
 }

@@ -36,15 +36,16 @@ interface CompanyEditModalProps {
   onOpenChange?: (open: boolean) => void;
 }
 
-// Pipeline stages (same as candidates)
+// Pipeline stages (companies - 8 stages from schema)
 const pipelineStages = [
   { id: "identification", label: "Identification" },
-  { id: "outreach", label: "Attempted Outreach" },
+  { id: "outreach", label: "Outreach" },
   { id: "conversation", label: "Conversation" },
-  { id: "presented", label: "Candidate Presented" },
-  { id: "interview", label: "Interview" },
-  { id: "accept", label: "Accept" },
-  { id: "rejected", label: "Rejected" },
+  { id: "presented", label: "Presented" },
+  { id: "meeting", label: "Meeting" },
+  { id: "proposal", label: "Proposal" },
+  { id: "closed_won", label: "Closed Won" },
+  { id: "lost", label: "Lost" },
 ];
 
 export default function CompanyEditModal({

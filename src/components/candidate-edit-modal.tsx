@@ -9,6 +9,17 @@ import { SimpleDialog } from "@/components/ui/simple-dialog";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
+// Candidate pipeline stages - matches the candidates page
+const candidateStages = [
+  { id: "identification", label: "Identification" },
+  { id: "outreach", label: "Attempted Outreach" },
+  { id: "conversation", label: "Conversation" },
+  { id: "presented", label: "Candidate Presented" },
+  { id: "interview", label: "Interview" },
+  { id: "accept", label: "Accept" },
+  { id: "rejected", label: "Rejected" },
+];
+
 interface Candidate {
   id: string;
   name: string;
@@ -36,7 +47,7 @@ export default function CandidateEditModal({
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Form state - initialize with candidate data
+// Form state - initialize with candidate data
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -45,6 +56,7 @@ export default function CandidateEditModal({
     location: "",
     linkedin_url: "",
     notes: "",
+    status: "identification",
   });
 
   // Reset form when modal opens or candidate changes
@@ -58,6 +70,7 @@ export default function CandidateEditModal({
         linkedin_url: candidate.linkedin_url || "",
         location: candidate.location || "",
         notes: candidate.notes || "",
+        status: candidate.status || "identification",
       });
     }
   }, [open, candidate]);
@@ -77,7 +90,7 @@ const handleSave = async () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
+body: JSON.stringify({
           name: formData.name,
           email: formData.email || undefined,
           phone: formData.phone || undefined,
@@ -85,6 +98,7 @@ const handleSave = async () => {
           location: formData.location || undefined,
           linkedin_url: formData.linkedin_url || undefined,
           notes: formData.notes || undefined,
+          status: formData.status || undefined,
         }),
       });
 
@@ -107,7 +121,7 @@ const handleSave = async () => {
     }
   };
 
-  const handleOpenChange = (isOpen: boolean) => {
+const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
       // Reset form when closing
       setFormData({
@@ -118,6 +132,7 @@ const handleSave = async () => {
         linkedin_url: candidate.linkedin_url || "",
         location: candidate.location || "",
         notes: candidate.notes || "",
+        status: candidate.status || "identification",
       });
     }
     setOpen(isOpen);
@@ -227,7 +242,7 @@ const handleSave = async () => {
             />
           </div>
 
-          {/* Notes */}
+{/* Notes */}
           <div className="grid gap-2">
             <Label htmlFor="edit-notes">Notes</Label>
             <Textarea
@@ -237,6 +252,23 @@ const handleSave = async () => {
               placeholder="Additional notes about this candidate..."
               rows={4}
             />
+          </div>
+
+          {/* Pipeline Stage */}
+          <div className="grid gap-2">
+            <Label htmlFor="edit-status">Pipeline Stage</Label>
+            <select
+              id="edit-status"
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {candidateStages.map((stage) => (
+                <option key={stage.id} value={stage.id}>
+                  {stage.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </SimpleDialog>

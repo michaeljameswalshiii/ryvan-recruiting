@@ -120,7 +120,7 @@ export async function getLeadById(tenantId: string, leadId: string): Promise<Lea
 export async function createLead(tenantId: string, data: CreateLeadInput): Promise<Lead> {
   const validated = data;
 
-  const lead: Lead = {
+const lead: Lead = {
     id: generateId(),
     tenant_id: tenantId,
     name: validated.name,
@@ -132,6 +132,7 @@ export async function createLead(tenantId: string, data: CreateLeadInput): Promi
     source: validated.source || '',
     notes: validated.notes || '',
     linkedin_url: validated.linkedin_url || '',
+    resume_url: validated.resume_url || '',
     created_at: new Date().toISOString(),
   };
 
@@ -197,10 +198,15 @@ export async function updateLead(
     values[':notes'] = data.notes;
     names['#notes'] = 'notes';
   }
-  if (data.linkedin_url !== undefined) {
+if (data.linkedin_url !== undefined) {
     updates.push('#linkedin_url = :linkedin_url');
     values[':linkedin_url'] = data.linkedin_url;
     names['#linkedin_url'] = 'linkedin_url';
+  }
+  if (data.resume_url !== undefined) {
+    updates.push('#resume_url = :resume_url');
+    values[':resume_url'] = data.resume_url;
+    names['#resume_url'] = 'resume_url';
   }
 
   if (updates.length === 0) {

@@ -17,6 +17,7 @@ export const leadSchema = z.object({
   source: z.string().max(50).optional().or(z.literal('')),
   notes: z.string().max(2000).optional().or(z.literal('')),
   linkedin_url: z.string().max(200).optional().or(z.literal('')),
+  resume_url: z.string().max(500).optional().or(z.literal('')),
   created_at: z.string().optional(),
   modified_at: z.string().optional(),
 });
