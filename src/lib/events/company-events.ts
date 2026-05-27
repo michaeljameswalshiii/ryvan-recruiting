@@ -1,6 +1,6 @@
 /**
  * Company Events Service
- * Records and retrieves company events (notes, status changes) from DynamoDB
+ * Records and retrieves company events from DynamoDB
  * 
  * @serverOnly
  */
@@ -18,13 +18,7 @@ import type {
 } from './types';
 
 /**
- * Record an event for a company
- * 
- * @param companyId - The company ID
- * @param eventType - Type of event (NOTE, STATUS_CHANGE, etc.)
- * @param details - Event details (title, description, metadata)
- * @param createdBy - User email or ID who created the event
- * @returns Result with success status and event ID
+ * Core function - Record any company event
  */
 export async function recordCompanyEvent(
   companyId: string,
@@ -50,25 +44,18 @@ export async function recordCompanyEvent(
 
     await putItem(eventsTable, event);
 
-    return {
-      success: true,
-      eventId,
-    };
+    return { success: true, eventId };
   } catch (error) {
-    console.error('[COMPANY_EVENTS] Failed to record event:', error);
+    console.error('[COMPANY EVENTS] Failed to record event:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to record event',
+      error: error instanceof Error ? error.message : 'Failed to record company event',
     };
   }
 }
 
 /**
- * Get all events for a company
- * 
- * @param companyId - The company ID
- * @param limit - Optional limit for number of events to return
- * @returns List of events sorted by newest first
+ * Get events for a company
  */
 export async function getCompanyEvents(
   companyId: string,
@@ -84,15 +71,9 @@ export async function getCompanyEvents(
       }
     );
 
-    // Sort by timestamp descending (newest first)
-    const sortedEvents = events.sort((a, b) => 
-      b.SK.localeCompare(a.SK)
-    );
-
-    // Apply limit if provided
+    const sortedEvents = events.sort((a, b) => b.SK.localeCompare(a.SK));
     const limitedEvents = limit ? sortedEvents.slice(0, limit) : sortedEvents;
 
-    // Convert to result format
     const eventResults: CompanyEventResult[] = limitedEvents.map(event => ({
       id: event.SK.replace('EVENT#', ''),
       companyId: event.companyId,
@@ -110,132 +91,223 @@ export async function getCompanyEvents(
       hasMore: limit ? events.length > limit : false,
     };
   } catch (error) {
-    console.error('[COMPANY_EVENTS] Failed to get events:', error);
-    return {
-      events: [],
-      hasMore: false,
-    };
+    console.error('[COMPANY EVENTS] Failed to get events:', error);
+    return { events: [], hasMore: false };
   }
 }
 
-/**
- * Add a note to a company
- * 
- * @param companyId - The company ID
- * @param noteText - The note text
- * @param createdBy - User email or ID who added the note
- * @returns Result with success status
- */
+/* ==================== Helper Functions for All Company Events ==================== */
+
 export async function addNoteToCompany(
   companyId: string,
   noteText: string,
   createdBy: string
 ): Promise<RecordCompanyEventResponse> {
-  if (!noteText || noteText.trim() === '') {
-    return {
-      success: false,
-      error: 'Note text is required',
-    };
-  }
+  if (!noteText?.trim()) return { success: false, error: 'Note text is required' };
 
   return recordCompanyEvent(
     companyId,
     'NOTE',
-    {
-      title: 'Note Added',
-      description: noteText.substring(0, 100) + (noteText.length > 100 ? '...' : ''),
-      metadata: {
-        noteText,
-        changedBy: createdBy,
-      },
-    },
+    { title: 'Note Added', description: noteText.substring(0, 150) + (noteText.length > 150 ? '...' : ''), metadata: { noteText, changedBy: createdBy } },
     createdBy
   );
 }
 
-/**
- * Record a status change event
- * 
- * @param companyId - The company ID
- * @param oldStatus - Previous status
- * @param newStatus - New status
- * @param createdBy - User who changed the status
- * @returns Result with success status
- */
-export async function recordCompanyStatusChange(
+export async function recordEmailSentToCompany(
   companyId: string,
-  oldStatus: string,
-  newStatus: string,
+  emailSubject: string,
+  emailTo: string,
+  createdBy: string,
+  metadata?: Record<string, any>
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'EMAIL_SENT', {
+    title: 'Email Sent',
+    description: `Subject: ${emailSubject}`,
+    metadata: { emailSubject, emailTo, changedBy: createdBy, ...metadata }
+  }, createdBy);
+}
+
+export async function recordEmailOpenedForCompany(
+  companyId: string,
+  emailSubject: string,
   createdBy: string
 ): Promise<RecordCompanyEventResponse> {
-  return recordCompanyEvent(
-    companyId,
-    'STATUS_CHANGE',
-    {
-      title: 'Status Changed',
-      description: `${oldStatus || 'None'} → ${newStatus}`,
-      metadata: {
-        oldStatus,
-        newStatus,
-        changedBy: createdBy,
-      },
-    },
-    createdBy
-  );
+  return recordCompanyEvent(companyId, 'EMAIL_OPENED', {
+    title: 'Email Opened',
+    description: `Opened: ${emailSubject}`,
+    metadata: { emailSubject, changedBy: createdBy }
+  }, createdBy);
 }
 
-/**
- * Record a company added event
- * 
- * @param companyId - The company ID
- * @param companyName - Name of the company
- * @param addedBy - User who added the company
- * @returns Result with success status
- */
-export async function recordCompanyAdded(
+export async function recordEmailClickedForCompany(
+  companyId: string,
+  emailSubject: string,
+  linkClicked: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'EMAIL_CLICKED', {
+    title: 'Email Link Clicked',
+    description: `Clicked in: ${emailSubject}`,
+    metadata: { emailSubject, linkClicked, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordCompanyImported(
+  companyId: string,
+  source: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'COMPANY_IMPORTED', {
+    title: 'Company Imported',
+    description: `Imported from ${source}`,
+    metadata: { source, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordCompanyCreated(
   companyId: string,
   companyName: string,
-  addedBy: string
+  createdBy: string
 ): Promise<RecordCompanyEventResponse> {
-  return recordCompanyEvent(
-    companyId,
-    'COMPANY_ADDED',
-    {
-      title: 'Company Added',
-      description: `${companyName} was added to the pipeline`,
-      metadata: {
-        companyName,
-        addedBy,
-      },
-    },
-    addedBy
-  );
+  return recordCompanyEvent(companyId, 'COMPANY_CREATED', {
+    title: 'Company Created',
+    description: `Company "${companyName}" was created`,
+    metadata: { companyName, changedBy: createdBy }
+  }, createdBy);
 }
 
-/**
- * Record a contact added event
- * 
- * @param companyId - The company ID
- * @param contactName - Name of the contact
- * @param addedBy - User who added the contact
- * @returns Result with success status
- */
-export async function recordContactAdded(
+export async function recordCompanyViewed(
+  companyId: string,
+  viewerName: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'COMPANY_VIEWED', {
+    title: 'Company Viewed',
+    description: `Viewed by ${viewerName}`,
+    metadata: { viewerName, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordContactAddedToCompany(
   companyId: string,
   contactName: string,
-  addedBy: string
+  createdBy: string
 ): Promise<RecordCompanyEventResponse> {
-  return recordCompanyEvent(
-    companyId,
-    'CONTACT_ADDED',
-    {
-      title: 'Contact Added',
-      description: `${contactName} was added as a contact`,
-      metadata: {
-        contactName,
-        addedBy,
-      },
-    },
-    addedBy
-  );
+  return recordCompanyEvent(companyId, 'CONTACT_ADDED', {
+    title: 'Contact Added',
+    description: `Added contact: ${contactName}`,
+    metadata: { contactName, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordContactRemovedFromCompany(
+  companyId: string,
+  contactName: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'CONTACT_REMOVED', {
+    title: 'Contact Removed',
+    description: `Removed contact: ${contactName}`,
+    metadata: { contactName, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordDealCreated(
+  companyId: string,
+  dealName: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'DEAL_CREATED', {
+    title: 'Deal Created',
+    description: `Deal "${dealName}" created`,
+    metadata: { dealName, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordDealStageChanged(
+  companyId: string,
+  dealName: string,
+  fromStage: string,
+  toStage: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'DEAL_STAGE_CHANGED', {
+    title: 'Deal Stage Changed',
+    description: `${dealName} moved from ${fromStage} to ${toStage}`,
+    metadata: { dealName, fromStage, toStage, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordDealWon(
+  companyId: string,
+  dealName: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'DEAL_WON', {
+    title: 'Deal Won',
+    description: `Deal "${dealName}" won`,
+    metadata: { dealName, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordDealLost(
+  companyId: string,
+  dealName: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'DEAL_LOST', {
+    title: 'Deal Lost',
+    description: `Deal "${dealName}" lost`,
+    metadata: { dealName, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordTaskCreated(
+  companyId: string,
+  taskTitle: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'TASK_CREATED', {
+    title: 'Task Created',
+    description: taskTitle,
+    metadata: { taskTitle, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordTaskCompleted(
+  companyId: string,
+  taskTitle: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'TASK_COMPLETED', {
+    title: 'Task Completed',
+    description: taskTitle,
+    metadata: { taskTitle, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordMeetingScheduled(
+  companyId: string,
+  meetingTitle: string,
+  scheduledTime: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'meeting_scheduled', {
+    title: 'Meeting Scheduled',
+    description: `${meetingTitle} at ${scheduledTime}`,
+    metadata: { meetingTitle, scheduledTime, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordCallCompleted(
+  companyId: string,
+  callTitle: string,
+  duration?: number,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'CALL_COMPLETED', {
+    title: 'Call Completed',
+    description: callTitle,
+    metadata: { callTitle, duration, changedBy: createdBy }
+  }, createdBy);
 }
