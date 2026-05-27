@@ -1,165 +1,392 @@
-import { notFound } from 'next/navigation';
-import { getSessionTenantId } from '@/lib/server-auth';
-import { getLeadById } from '@/lib/db/repositories/lead-repository';
-import { EventTimeline } from '@/components/candidate/EventTimeline';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { ArrowLeft, Mail, Edit } from 'lucide-react';
+"use client";
 
-interface Candidate {
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ResumeViewer } from "@/components/candidate/ResumeViewer";
+import { SimpleDialog } from "@/components/ui/simple-dialog";
+import { toast } from "sonner";
+import { ArrowLeft, Mail, Trash2, Save, Loader2 } from "lucide-react";
+
+interface CandidateData {
   id: string;
   name: string;
   email: string;
-  phone?: string;
-  title?: string;
-  company?: string;
-  linkedin?: string;
-  resumeUrl?: string;
+  phone: string;
+  title: string;
+  company: string;
+  linkedin: string;
   status: string;
-  source?: string;
-  tenant_id: string;
+  source: string;
+  resumeUrl: string;
+  notes: string;
   createdAt: string;
 }
 
+const pipelineStages = [
+  { id: "identification", label: "Identification" },
+  { id: "outreach", label: "Attempted Outreach" },
+  { id: "conversation", label: "Conversation" },
+  { id: "presented", label: "Candidate Presented" },
+  { id: "interview", label: "Interview" },
+  { id: "accept", label: "Accept" },
+  { id: "rejected", label: "Rejected" },
+];
+
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default async function CandidateDetailPage({ params }: Props) {
-  const candidateId = params.id;
+export default function CandidateDetailPage({ params }: Props) {
+  const router = useRouter();
+  const [candidateId, setCandidateId] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [formData, setFormData] = useState<CandidateData>({
+    id: "",
+    name: "",
+    email: "",
+    phone: "",
+    title: "",
+    company: "",
+    linkedin: "",
+    status: "identification",
+    source: "",
+    resumeUrl: "",
+    notes: "",
+    createdAt: "",
+  });
 
-  // === TENANT AUTHENTICATION (security) ===
-  const tenantId = await getSessionTenantId();
-  if (!tenantId) {
-    notFound();
-  }
+  // Load candidate data via API
+  const loadCandidate = useCallback(async (id: string) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/data/leads/${id}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to load candidate");
+      }
+      const data = await response.json();
+      if (data) {
+        setFormData({
+          id: data.id || "",
+          name: data.name || "",
+          email: data.email || "",
+          phone: data.phone || "",
+          title: data.title || "",
+          company: data.location || "",
+          linkedin: data.linkedin_url || "",
+          status: data.status || "identification",
+          source: data.source || "",
+          resumeUrl: data.resume_url || "",
+          notes: data.notes || "",
+          createdAt: data.created_at || "",
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load candidate:", err);
+      toast.error("Failed to load candidate");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  // Fetch candidate with tenant isolation
-  const candidate = await getLeadById(tenantId, candidateId);
+  useEffect(() => {
+    params.then(({ id }) => {
+      setCandidateId(id);
+      loadCandidate(id);
+    });
+  }, [params, loadCandidate]);
 
-  if (!candidate) {
-    notFound();
-  }
+  // Generate avatar initials
+  const avatarInitials = formData.name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 
-  // Format candidate data for display
-  const candidateData: Candidate = {
-    id: candidate.id || '',
-    name: candidate.name || '',
-    email: candidate.email || '',
-    phone: candidate.phone || '',
-    title: candidate.title || '',
-    company: candidate.location || '',
-    linkedin: candidate.linkedin_url || '',
-    resumeUrl: candidate.resume_url || '',
-    status: candidate.status || 'identification',
-    source: candidate.source || '',
-    tenant_id: tenantId,
-    createdAt: candidate.created_at || '',
+  // Handle save
+  const handleSave = async () => {
+    if (!formData.name) {
+      toast.error("Name is required");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/data/leads/${candidateId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email || undefined,
+          phone: formData.phone || undefined,
+          title: formData.title || undefined,
+          location: formData.company || undefined,
+          linkedin_url: formData.linkedin || undefined,
+          status: formData.status,
+          resume_url: formData.resumeUrl || undefined,
+          notes: formData.notes || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save candidate");
+      }
+
+      toast.success("Candidate saved successfully!");
+    } catch (err) {
+      console.error("Failed to save candidate:", err);
+      toast.error("Failed to save candidate");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  // Handle delete
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/data/leads/${candidateId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete candidate");
+      }
+
+      toast.success("Candidate deleted successfully!");
+      router.push("/candidates");
+    } catch (err) {
+      console.error("Failed to delete candidate:", err);
+      toast.error("Failed to delete candidate");
+    } finally {
+      setDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" asChild>
-              <a href="/candidates">
+              <Link href="/candidates">
                 <ArrowLeft className="h-5 w-5" />
-              </a>
+              </Link>
             </Button>
-
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center text-2xl font-semibold text-white">
-                {candidateData.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-              </div>
-              <div>
-                <h1 className="text-3xl font-semibold tracking-tight">{candidateData.name}</h1>
-                <div className="flex items-center gap-3 text-sm text-gray-600">
-                  <span>{candidateData.title}</span>
-                  {candidateData.company && (
-                    <>
-                      <span className="text-gray-400">•</span>
-                      <span>{candidateData.company}</span>
-                    </>
-                  )}
-                </div>
-              </div>
+            <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-2xl font-semibold text-white shadow">
+              {avatarInitials || "?"}
+            </div>
+            <div className="flex-1">
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="text-3xl font-semibold tracking-tight bg-transparent border-none outline-none w-full placeholder:text-gray-400"
+                placeholder="Candidate Name"
+              />
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                className="text-sm text-gray-600 bg-transparent border-none outline-none w-full placeholder:text-gray-400"
+                placeholder="Job Title"
+              />
             </div>
           </div>
-
-          <div className="flex gap-3">
-            <Button asChild>
-              <a href={`mailto:${candidateData.email}`}>
-                <Mail className="mr-2 h-4 w-4" /> Send Email
-              </a>
-            </Button>
-            <Button variant="outline">
-              <Edit className="mr-2 h-4 w-4" /> Edit
-            </Button>
-          </div>
-        </div>
-
-        {/* Simple Tabs */}
-        <div className="max-w-6xl mx-auto px-6 border-b">
-          <nav className="flex gap-8 text-sm">
-            {['Overview', 'Timeline', 'Notes', 'Emails', 'Details'].map(tab => (
-              <a
-                key={tab}
-                href={`#${tab.toLowerCase()}`}
-                className="py-4 border-b-2 border-transparent hover:border-gray-300 data-[active=true]:border-blue-600 data-[active=true]:text-blue-600 font-medium"
-                data-active={tab === 'Timeline'}
-              >
-                {tab}
-              </a>
-            ))}
-          </nav>
+          <Button asChild>
+            <Link href={`mailto:${formData.email}`}>
+              <Mail className="h-4 w-4 mr-2" />
+              Send Email
+            </Link>
+          </Button>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto p-6 space-y-8">
-        {/* Overview */}
-        <section id="overview" className="grid md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 bg-white p-6 rounded-xl border">
-            <h2 className="font-semibold mb-4">Contact Information</h2>
-            <div className="space-y-3 text-sm">
-              <p><strong>Email:</strong> <a href={`mailto:${candidateData.email}`} className="text-blue-600 hover:underline">{candidateData.email}</a></p>
-              {candidateData.phone && <p><strong>Phone:</strong> {candidateData.phone}</p>}
-              {candidateData.linkedin && <p><strong>LinkedIn:</strong> <a href={candidateData.linkedin} target="_blank" className="text-blue-600 hover:underline">View Profile</a></p>}
-              {candidateData.resumeUrl && <p><strong>Resume:</strong> <a href={candidateData.resumeUrl} target="_blank" className="text-blue-600 hover:underline">Download</a></p>}
+      {/* Main Content */}
+      <div className="max-w-4xl mx-auto p-4 space-y-4 pb-24">
+        {/* Candidate Details Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Candidate Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="john@company.com"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="(555) 123-4567"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="company">Company</Label>
+                <Input
+                  id="company"
+                  value={formData.company}
+                  onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                  placeholder="Company Name"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="linkedin">LinkedIn</Label>
+                <Input
+                  id="linkedin"
+                  value={formData.linkedin}
+                  onChange={(e) => setFormData({ ...formData, linkedin: e.target.value })}
+                  placeholder="https://linkedin.com/in/..."
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="status">Status</Label>
+                <select
+                  id="status"
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {pipelineStages.map((stage) => (
+                    <option key={stage.id} value={stage.id}>
+                      {stage.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="source">Source</Label>
+                <Input
+                  id="source"
+                  value={formData.source}
+                  onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+                  placeholder="Source"
+                  disabled
+                />
+              </div>
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="bg-white p-6 rounded-xl border">
-            <Badge className="mb-4 capitalize">{candidateData.status}</Badge>
-            <div className="text-sm space-y-2">
-              <p><strong>Source:</strong> {candidateData.source || 'Unknown'}</p>
-              <p><strong>Added:</strong> {new Date(candidateData.createdAt).toLocaleDateString()}</p>
-            </div>
-          </div>
-        </section>
+        {/* Resume */}
+        {formData.resumeUrl && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Resume</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="h-[600px]">
+                <ResumeViewer url={formData.resumeUrl} />
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Timeline */}
-        <section id="timeline">
-          <EventTimeline candidateId={candidateData.id} />
-        </section>
-
-        {/* Placeholder tabs */}
-        <section id="notes" className="bg-white p-6 rounded-xl border">
-          <h2 className="font-semibold mb-4">Notes</h2>
-          <p className="text-gray-500">Notes will appear here (already stored in events table).</p>
-        </section>
-
-        <section id="emails" className="bg-white p-6 rounded-xl border">
-          <h2 className="font-semibold mb-4">Email History</h2>
-          <p className="text-gray-500">Coming soon...</p>
-        </section>
-
-        <section id="details" className="bg-white p-6 rounded-xl border">
-          <h2 className="font-semibold mb-4">Raw Data</h2>
-          <pre className="text-xs bg-gray-100 p-4 rounded overflow-auto">{JSON.stringify(candidateData, null, 2)}</pre>
-        </section>
+        {/* Notes */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Notes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="Add notes about this candidate..."
+              rows={6}
+            />
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Fixed Bottom Bar */}
+      <div className="fixed bottom-0 right-0 left-0 md:left-64 bg-white border-t p-4 z-10">
+        <div className="max-w-4xl mx-auto flex justify-end gap-3">
+          <Button
+            variant="destructive"
+            onClick={() => setShowDeleteDialog(true)}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4 mr-2" />
+            )}
+            Delete Candidate
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save Changes
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Delete Confirmation Dialog */}
+      <SimpleDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        title="Delete Candidate"
+        description={`Are you sure you want to delete ${formData.name}? This action cannot be undone.`}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          This will permanently remove the candidate from your database.
+        </p>
+      </SimpleDialog>
     </div>
   );
 }
