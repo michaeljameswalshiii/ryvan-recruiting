@@ -140,11 +140,11 @@ loading={
               </div>
             }
           >
-            <Page
+<Page
               pageNumber={pageNumber}
               scale={scale}
-              renderTextLayer={true}
-              renderAnnotationLayer={true}
+              renderTextLayer={false}
+              renderAnnotationLayer={false}
             />
           </Document>
         </div>
