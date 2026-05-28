@@ -14,6 +14,7 @@ import {
   Sparkles,
   Building,
   Activity,
+  Database,
 } from "lucide-react";
 import { logout } from "@/lib/api/auth-client";
 
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
   { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
+  { href: "/dashboard/dynamodb", label: "DynamoDB Viewer", icon: Database },
 ];
 
 interface DashboardNavProps {

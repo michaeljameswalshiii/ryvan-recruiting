@@ -15,6 +15,7 @@ import {
   DeleteItemCommand,
   QueryCommand,
   ScanCommand,
+  ListTablesCommand,
 } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 
@@ -203,6 +204,46 @@ export async function scanItems<T>(
     FilterExpression: filterExpression,
     ExpressionAttributeValues: expressionValues ? marshall(expressionValues) : undefined,
     ExpressionAttributeNames: expressionNames,
+  });
+  
+  const response = await client.send(command);
+  
+  if (!response.Items || response.Items.length === 0) {
+    return [];
+  }
+  
+  return response.Items.map(item => unmarshall(item) as T);
+}
+
+/**
+ * List all available DynamoDB tables
+ */
+export async function listTables(): Promise<string[]> {
+  const client = getClient();
+  
+  const command = new ListTablesCommand({});
+  
+  const response = await client.send(command);
+  
+  if (!response.TableNames || response.TableNames.length === 0) {
+    return [];
+  }
+  
+  return response.TableNames;
+}
+
+/**
+ * Scan table with limit for viewer
+ */
+export async function scanTableWithLimit<T>(
+  table: string,
+  limit: number = 100
+): Promise<T[]> {
+  const client = getClient();
+  
+  const command = new ScanCommand({
+    TableName: table,
+    Limit: limit,
   });
   
   const response = await client.send(command);
