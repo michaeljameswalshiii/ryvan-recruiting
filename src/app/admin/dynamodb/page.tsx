@@ -137,18 +137,21 @@ export default function DynamoDBViewerPage() {
 
   const columns = getColumns();
 
-  // Get primary key fields for a table
+// Get primary key fields for a table
+  // Note: Tables with tenant-based access use composite keys (tenant_id + id)
   const getKeyFields = (tableName: string): string[] => {
     const keyFieldsMap: Record<string, string[]> = {
       "turnkey-tenants": ["id"],
       "turnkey-profiles": ["id"],
-      "turnkey-clients": ["id"],
-      "turnkey-leads": ["id"],
-      "turnkey-candidates": ["id"],
-      "turnkey-pipeline": ["id"],
+      // Composite key tables - require BOTH tenant_id and id for DynamoDB
+      "turnkey-clients": ["tenant_id", "id"],
+      "turnkey-leads": ["tenant_id", "id"],
+      "turnkey-pipeline": ["tenant_id", "id"],
       "turnkey-sources": ["id"],
       "turnkey-email-logs": ["id"],
       "turnkey-events": ["id"],
+      // Check candidates table - may vary
+      "turnkey-candidates": ["id"],
     };
     return keyFieldsMap[tableName] || ["id"];
   };

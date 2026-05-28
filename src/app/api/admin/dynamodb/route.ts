@@ -55,6 +55,13 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// Tables that require composite key (tenant_id + id)
+const COMPOSITE_KEY_TABLES = [
+  "turnkey-clients",
+  "turnkey-leads", 
+  "turnkey-pipeline",
+];
+
 export async function PATCH(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -75,6 +82,16 @@ export async function PATCH(request: NextRequest) {
         { error: "Key and updates are required" },
         { status: 400 }
       );
+    }
+
+    // Validate composite key tables have all required key fields
+    if (COMPOSITE_KEY_TABLES.includes(tableName)) {
+      if (!key.tenant_id || !key.id) {
+        return NextResponse.json(
+          { error: `Table '${tableName}' requires both tenant_id and id in key` },
+          { status: 400 }
+        );
+      }
     }
 
     console.log("[DYNAMODB] Updating item in table:", tableName);
