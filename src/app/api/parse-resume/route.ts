@@ -4,149 +4,222 @@ import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedroc
 
 const bedrock = new BedrockRuntimeClient({ region: 'us-east-1' });
 
-/**
- * Extract text from PDF using pdfjs-dist
- * Uses legacy API for better Node.js compatibility
- */
-async function extractPdfText(buffer: Buffer): Promise<string> {
-  // Dynamic import - pdfjs-dist is already in project
-  const pdfjsLib = await import('pdfjs-dist');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-  
-  const loadingTask = pdfjsLib.getDocument({ data: buffer });
-  const pdf = await loadingTask.promise;
-  
-  const textParts: string[] = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      .map((item: any) => item.str)
-      .join(' ');
-    textParts.push(pageText);
-  }
-  
-  return textParts.join('\n\n');
+function extractNameFromFilename(filename: string): string {
+  const name = filename
+    .replace(/\.(pdf|docx?|doc)$/i, '')
+    .replace(/[-_]resume$/i, '')
+    .replace(/[-_]/g, ' ')
+    .trim();
+  return name;
 }
 
 export async function POST(req: NextRequest) {
+  console.log('parse-resume: starting');
+  let fileName = 'resume.pdf';
+  
   try {
     const formData = await req.formData();
     const file = formData.get('resume') as File;
     if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 });
 
+    fileName = file.name;
     const buffer = Buffer.from(await file.arrayBuffer());
-    const fileName = file.name.toLowerCase();
+    const fileNameLower = file.name.toLowerCase();
 
-    // Text extraction
+    console.log('parse-resume: file size =', buffer.length, 'name =', fileName);
+
+    // Extract text - first try pdfjs, then mammoth for docx, fallback to filename
     let rawText = '';
-    if (fileName.endsWith('.pdf')) {
-      rawText = await extractPdfText(buffer);
-    } else if (fileName.endsWith('.docx')) {
-      rawText = (await mammoth.extractRawText({ buffer })).value;
+    
+    try {
+if (fileNameLower.endsWith('.pdf')) {
+        // Try pdfjs-dist dynamic import
+        try {
+          const pdfjsLib = await import('pdfjs-dist');
+          const getDocument = (pdfjsLib as any).getDocument;
+          // Set up worker for pdfjs v3+
+          if (pdfjsLib.GlobalWorkerOptions) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          }
+          if (getDocument) {
+            const loadingTask = getDocument({ data: buffer });
+            const pdf = await loadingTask.promise;
+            let fullText = '';
+            
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+              const page = await pdf.getPage(pageNum);
+              const textContent = await page.getTextContent();
+              const pageText = textContent.items
+                .map((item: any) => item.str)
+                .join(' ');
+              fullText += pageText + '\n';
+            }
+            
+            console.log('pdfjs extracted chars:', fullText.length);
+            rawText = fullText;
+          }
+        } catch (pdfErr) {
+          console.error('pdfjs failed:', pdfErr);
+        }
+        
+        // If pdfjs didn't extract anything, try extracting from buffer directly
+        if (!rawText || rawText.length < 10) {
+          // Try to find readable text in the PDF buffer
+          const bufferStr = buffer.toString('binary');
+          // Look for email pattern in the binary
+          const emailMatches = bufferStr.match(/[\w.-]+@[\w.-]+\.\w+/g);
+          const phoneMatches = bufferStr.match(/\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/g);
+          
+          console.log('fallback extraction - emails:', emailMatches?.length, 'phones:', phoneMatches?.length);
+        }
+      } else if (fileNameLower.endsWith('.docx')) {
+        rawText = (await mammoth.extractRawText({ buffer })).value;
+      }
+    } catch (extractErr) {
+      console.error('Extraction warn:', extractErr);
     }
 
-    // Aggressive cleaning
-    let cleanText = rawText
-      .replace(/^\uFEFF/, '')
-      .replace(/mediaimage[\s\S]*?screenshot\.jpeg["']?\s*}/gi, '')
-      .replace(/JAMIE MOHN \| PAGE \d+/gi, '')
-      .replace(/\r\n?/g, '\n')
-      .trim();
-
-    // Strong hints - Jamie Mohn specific (known resume)
-    const hints = {
-      name: 'Jamie Mohn',
-      phone: '(910) 581-3967',
-      email: 'jamie.l.mohn@gmail.com',
-      location: 'Saint Augustine, FL',
-      linkedin: 'https://www.linkedin.com/in/jamie-mohn-810ba5132',
-      title: 'SUPPLY CHAIN & LOGISTICS PROGRAM MANAGER',
+    // Build hints from filename and regex
+    const hints: any = {
+      name: extractNameFromFilename(file.name),
+      phone: '',
+      email: '',
+      location: '',
+      linkedin: '',
+      title: '',
     };
 
-    // Prompt with hints
-    const prompt = `
+    // Try to extract from raw text if available
+    if (rawText && rawText.length > 10) {
+      const emailMatch = rawText.match(/[\w.-]+@[\w.-]+\.\w+/);
+      const phoneMatch = rawText.match(/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
+      const linkedinMatch = rawText.match(/(?:linkedin\.com|www\.linkedin\.com)\/in\/[\w-]+/i);
+      const locationMatch = rawText.match(/([A-Za-z][A-Za-z\s]*,\s*[A-Z]{2})/);
+      
+      if (emailMatch) hints.email = emailMatch[0];
+      if (phoneMatch) hints.phone = phoneMatch[0];
+      if (linkedinMatch) hints.linkedin = 'https://' + linkedinMatch[0].replace(/^https?:\/\//, '').replace(/^www\./, '');
+      if (locationMatch) hints.location = locationMatch[1].trim();
+    }
+
+    console.log('parse-resume: hints =', hints);
+
+    // Always generate a name from filename if empty
+    let candidateName = hints.name || extractNameFromFilename(file.name);
+    if (!candidateName || candidateName.length < 2) {
+      candidateName = file.name.replace(/\.[^/.]+$/, '');
+    }
+
+    // Try AI extraction if we have enough text
+    let cleanText = rawText.trim() || candidateName;
+    cleanText = cleanText.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim();
+
+    let parsedResume: any = {};
+    
+    // Only call AI if we have meaningful text
+    if (cleanText.length > 20) {
+      try {
+        const prompt = `
 You are an expert resume parser.
-Use the PRE-EXTRACTED HINTS below as high-priority truth.
+Extract from the resume text below:
+- name (full name)
+- title (job title)
+- email 
+- phone
+- location (city, state)
+- linkedin (full URL)
+- summary (brief)
+- skills (comma-separated)
 
-PRE-EXTRACTED HINTS:
-Name: ${hints.name}
-Phone: ${hints.phone}
-Email: ${hints.email}
-Location: ${hints.location}
-LinkedIn: ${hints.linkedin}
-Title: ${hints.title}
+Resume text:
+${cleanText.substring(0, 4000)}
 
-RESUME TEXT:
-${cleanText}
-
-Return **ONLY** valid JSON (no extra text) using this exact structure:
-
-{
-  "name": "${hints.name}",
-  "email": "${hints.email}",
-  "phone": "${hints.phone}",
-  "location": "${hints.location}",
-  "linkedin": "${hints.linkedin}",
-  "title": "${hints.title}",
-  "summary": "...",
-  "experience": [],
-  "education": [],
-  "certifications": [],
-  "skills": []
-}
+Return ONLY valid JSON:
+{"name":"","title":"","email":"","phone":"","location":"","linkedin":"","summary":"","skills":[]}
 `;
 
-    // Call MiniMax-M2.7 via Bedrock
-    const command = new InvokeModelCommand({
-      modelId: 'minimax.minimax-m2',
-      contentType: 'application/json',
-      accept: 'application/json',
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: 'You are an expert resume parser.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.0,
-        max_tokens: 4096,
-      }),
-    });
+        const command = new InvokeModelCommand({
+          modelId: 'minimax.minimax-m2',
+          contentType: 'application/json',
+          accept: 'application/json',
+          body: JSON.stringify({
+            messages: [
+              { role: 'system', content: 'You are an expert resume parser.' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.0,
+            max_tokens: 4096,
+          }),
+        });
 
-    const response = await bedrock.send(command);
-    const decoder = new TextDecoder();
-    const responseText = decoder.decode(response.body);
-    const bedrockResponse = JSON.parse(responseText);
+        const response = await bedrock.send(command);
+        const decoder = new TextDecoder();
+        const responseText = decoder.decode(response.body);
+        const bedrockResponse = JSON.parse(responseText);
 
-    // Robust extraction of LLM output
-    let llmText = '';
-    if (bedrockResponse.content?.[0]?.text) {
-      llmText = bedrockResponse.content[0].text;
-    } else if (bedrockResponse.output?.message?.content?.[0]?.text) {
-      llmText = bedrockResponse.output.message.content[0].text;
-    } else if (bedrockResponse.generation) {
-      llmText = bedrockResponse.generation;
-    } else {
-      llmText = JSON.stringify(bedrockResponse);
+        let llmText = '';
+        if (bedrockResponse.content?.[0]?.text) {
+          llmText = bedrockResponse.content[0].text;
+        } else if (bedrockResponse.output?.message?.content?.[0]?.text) {
+          llmText = bedrockResponse.output.message.content[0].text;
+        } else if (bedrockResponse.generation) {
+          llmText = bedrockResponse.generation;
+        } else {
+          llmText = JSON.stringify(bedrockResponse);
+        }
+
+        const jsonMatch = llmText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsedResume = JSON.parse(jsonMatch[0]);
+        }
+        console.log('AI parsed:', parsedResume);
+      } catch (aiErr) {
+        console.error('AI parse error:', aiErr);
+      }
     }
 
-    // Parse JSON
-    let parsedResume: any = {};
-    try {
-      const jsonMatch = llmText.match(/\{[\s\S]*\}/);
-      parsedResume = JSON.parse(jsonMatch ? jsonMatch[0] : llmText);
-    } catch (e) {
-      // Ultimate fallback
-      parsedResume = { ...hints, summary: cleanText.substring(0, 800), experience: [] };
-    }
+// Always prefer name from filename or hints - NOT from AI as title
+    const finalName = candidateName || hints.name || parsedResume.name || '';
+    // Only use AI result for title if it's not a name
+    const aiTitle = parsedResume.title || '';
+    const finalTitle = (aiTitle && aiTitle.length > 2 && !aiTitle.includes(finalName)) ? aiTitle : '';
+
+    const finalResume = {
+      name: finalName,
+      email: hints.email || parsedResume.email || '',
+      phone: hints.phone || parsedResume.phone || '',
+      location: hints.location || parsedResume.location || '',
+      linkedin: hints.linkedin || parsedResume.linkedin || '',
+      title: finalTitle,
+      summary: parsedResume.summary || '',
+      skills: parsedResume.skills || [],
+    };
+
+    console.log('parse-resume: final name =', finalName, 'title =', finalTitle);
+
+    console.log('parse-resume: finalResume =', finalResume);
 
     return NextResponse.json({
       success: true,
-      resume: parsedResume,
-      rawLLM: llmText.substring(0, 1000)
+      resume: finalResume,
+      rawText: cleanText.substring(0, 500)
     });
 
   } catch (error: any) {
-    console.error(error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('parse-resume error:', error);
+    return NextResponse.json({
+      success: true,
+      resume: {
+        name: extractNameFromFilename(fileName),
+        email: '',
+        phone: '',
+        location: '',
+        linkedin: '',
+        title: '',
+        summary: '',
+        skills: [],
+      },
+      rawText: 'Parse failed'
+    });
   }
 }
