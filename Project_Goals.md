@@ -102,6 +102,46 @@ Blend best-in-class workflow efficiency, robust pipeline management, and deep AI
 
 **Long-term**: Marketplace of AI agents, advanced analytics, team collaboration features.
 
+## AI Development Workflow & Operating Parameters
+
+We use **MiniMax M2.7** (via Blackbox AI, Claude Code Extension, or MiniMax VS Code Assistant) as the primary agent for development.
+
+### Core Operating Principles (for optimal speed + quality)
+
+- **Primary Model**: `MiniMax-M2.7` (or `MiniMax-M2.7-highspeed` when speed is critical)
+- **Default Mode**: Builder / Agentic mode (not just chat)
+- **Multi-Agent Usage**:
+  - Use `/multi-agent` or the parallel agent checkbox for complex features (Events, Apollo fixes, matching engine, etc.).
+  - Always run at least 2–3 agents in parallel + Chairman review for critical code.
+  - Leverage native Agent Teams when available.
+
+- **Project Context**:
+  - Always keep `AGENT_GUIDELINES.md` or `PROJECT_GOALS.md` in context.
+  - Use `@filename` for relevant files.
+  - Drop a `.blackbox/skills/` or `agent.md` file with recurring patterns (DynamoDB single-table, tenant isolation, etc.).
+
+- **Quality Guardrails**:
+  - Temperature: 0.0–0.3 for code generation (deterministic).
+  - Require TypeScript strict mode, proper error handling, and tenant isolation on every change.
+  - Mandatory: Add/update tests or manual verification steps.
+  - All new features must reference relevant sections from PROJECT_GOALS.md or EVENTS_ARCHITECTURE.md.
+
+- **Workflow Commands** (Blackbox / MiniMax):
+  - `/multi-agent` → for parallel execution + Chairman merge.
+  - Plan → Build → Review cycle for every non-trivial task.
+  - Use MCP tools where available for DynamoDB inspection, API calls, etc.
+
+- **Branching Rule**:
+  - All agent-generated code goes into feature branches prefixed with `m2.7/` or `blackbox/`.
+  - Human review + manual test before merging to main.
+
+### Success Metrics for AI-Assisted Development
+- Average feature implementation time < 4 hours for medium complexity.
+- < 10% rework rate after PR review.
+- Consistent tenant isolation and code quality.
+
+This setup maximizes both velocity and reliability.
+
 ---
 
 *Last Updated*: May 2025  
