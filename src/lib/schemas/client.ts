@@ -17,8 +17,43 @@ const companyStageValues = [
   'lost'
 ] as const;
 
+// -----------------------------------------------------------------------------
+// Contact Schema
+// -----------------------------------------------------------------------------
+
+export const contactSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, 'Name is required').max(100),
+  title: z.string().max(100).optional().or(z.literal('')),
+  email: z.string().email().optional().or(z.literal('')),
+  phone: z.string().max(20).optional().or(z.literal('')),
+  isPrimary: z.boolean().default(false),
+  notes: z.string().max(500).optional().or(z.literal('')),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+
+export type Contact = z.infer<typeof contactSchema>;
+
+// Create input (without id - generated on server)
+export const createContactSchema = contactSchema.omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+  isPrimary: true  // Default to false
+}).extend({
+  isPrimary: z.boolean().default(false),
+});
+
+// Update input (all fields optional)
+export const updateContactSchema = contactSchema.partial().omit({ id: true });
+
+// -----------------------------------------------------------------------------
+// Client Schema
+// -----------------------------------------------------------------------------
+
 export const clientSchema = z.object({
-  id: z.string().uuid().optional(),
+  id: z.string().optional(),
   name: z.string().min(1, 'Name is required').max(100),
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional().or(z.literal('')),
@@ -33,8 +68,12 @@ export const clientSchema = z.object({
   description: z.string().max(500).optional().or(z.literal('')),
   linkedin_url: z.string().max(200).optional().or(z.literal('')),
   notes: z.string().max(2000).optional().or(z.literal('')),
-// Pipeline status field
+  // Pipeline status field
   status: z.enum(companyStageValues).optional(),
+  // Multiple contacts support
+  contacts: z.array(contactSchema).optional(),
+  // Primary contact (denormalized for quick access - first primary or first in list)
+  primaryContactId: z.string().optional(),
 });
 
 // Export company stages constant for use in UI (rename to avoid conflict)

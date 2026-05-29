@@ -212,6 +212,31 @@ export async function recordContactRemovedFromCompany(
   }, createdBy);
 }
 
+export async function recordContactUpdatedForCompany(
+  companyId: string,
+  contactName: string,
+  changes: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'CONTACT_UPDATED', {
+    title: 'Contact Updated',
+    description: `Updated ${contactName}: ${changes}`,
+    metadata: { contactName, changes, changedBy: createdBy }
+  }, createdBy);
+}
+
+export async function recordPrimaryContactSetForCompany(
+  companyId: string,
+  contactName: string,
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  return recordCompanyEvent(companyId, 'PRIMARY_CONTACT_SET', {
+    title: 'Primary Contact Set',
+    description: `${contactName} set as primary contact`,
+    metadata: { contactName, changedBy: createdBy }
+  }, createdBy);
+}
+
 export async function recordDealCreated(
   companyId: string,
   dealName: string,
@@ -302,8 +327,8 @@ export async function recordMeetingScheduled(
 export async function recordCallCompleted(
   companyId: string,
   callTitle: string,
-  duration?: number,
-  createdBy: string
+  createdBy: string,
+  duration?: number
 ): Promise<RecordCompanyEventResponse> {
   return recordCompanyEvent(companyId, 'CALL_COMPLETED', {
     title: 'Call Completed',

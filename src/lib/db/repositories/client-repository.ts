@@ -14,7 +14,7 @@ import {
   clientsTable,
 } from '../dynamodb';
 import { getCached, setCached, invalidateTenantCache, makeCacheKey } from '../../cache';
-import { type Client, type CreateClientInput, type UpdateClientInput } from '../../schemas/client';
+import { type Client, type CreateClientInput, type UpdateClientInput, type Contact } from '../../schemas/client';
 
 // Cache TTL: 5 minutes
 const CACHE_TTL = 300;
@@ -221,4 +221,223 @@ export async function deleteClient(tenantId: string, clientId: string): Promise<
   
   // Invalidate cache
   await invalidateTenantCache(tenantId);
+}
+
+// -----------------------------------------------------------------------------
+// Contact Management
+// -----------------------------------------------------------------------------
+
+/**
+ * Add a contact to a client
+ */
+export async function addContactToClient(
+  tenantId: string,
+  clientId: string,
+  contact: Omit<Contact, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<Client | null> {
+  const client = await getClientById(tenantId, clientId);
+  if (!client) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const newContact: Contact = {
+    id: generateId(),
+    ...contact,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  // Get existing contacts or initialize empty array
+  const existingContacts = client.contacts || [];
+  
+  // If setting as primary, unset other primaries
+  let updatedContacts = existingContacts;
+  if (contact.isPrimary) {
+    updatedContacts = existingContacts.map(c => ({
+      ...c,
+      isPrimary: false,
+      updatedAt: now,
+    }));
+  }
+
+  // Add new contact
+  updatedContacts = [...updatedContacts, newContact];
+
+  // Determine primary contact ID
+  let primaryContactId = client.primaryContactId;
+  if (contact.isPrimary || !primaryContactId) {
+    primaryContactId = newContact.id;
+  }
+
+  return updateItem<Client>(
+    clientsTable,
+    { tenant_id: tenantId, id: clientId },
+    'SET #contacts = :contacts, #primaryContactId = :primaryContactId, #modified_at = :modified_at',
+    {
+      ':contacts': updatedContacts,
+      ':primaryContactId': primaryContactId,
+      ':modified_at': now,
+    },
+    {
+      '#contacts': 'contacts',
+      '#primaryContactId': 'primaryContactId',
+      '#modified_at': 'modified_at',
+    }
+  );
+}
+
+/**
+ * Update a contact on a client
+ */
+export async function updateClientContact(
+  tenantId: string,
+  clientId: string,
+  contactId: string,
+  data: Partial<Omit<Contact, 'id' | 'createdAt'>> 
+): Promise<Client | null> {
+  const client = await getClientById(tenantId, clientId);
+  if (!client) {
+    return null;
+  }
+
+  const contacts = client.contacts || [];
+  const contactIndex = contacts.findIndex(c => c.id === contactId);
+  if (contactIndex === -1) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const updatedContacts = [...contacts];
+  
+  // Handle primary flag change
+  if (data.isPrimary !== undefined) {
+    if (data.isPrimary) {
+      // Unset all other primaries
+      updatedContacts.forEach((c, i) => {
+        if (c.isPrimary && i !== contactIndex) {
+          updatedContacts[i] = { ...c, isPrimary: false, updatedAt: now };
+        }
+      });
+    }
+  }
+
+  // Update the contact
+  updatedContacts[contactIndex] = {
+    ...updatedContacts[contactIndex],
+    ...data,
+    updatedAt: now,
+  };
+
+// Determine primary contact ID
+  let primaryContactId = client.primaryContactId;
+  if (data.isPrimary === true) {
+    primaryContactId = contactId;
+  } else if (data.isPrimary === false && client.primaryContactId === contactId) {
+    // Find new primary
+    const newPrimary = updatedContacts.find(c => c.isPrimary && c.id !== contactId);
+    primaryContactId = newPrimary?.id;
+  }
+
+  const result = await updateItem<Client>(
+    clientsTable,
+    { tenant_id: tenantId, id: clientId },
+    'SET #contacts = :contacts, #primaryContactId = :primaryContactId, #modified_at = :modified_at',
+    {
+      ':contacts': updatedContacts,
+      ':primaryContactId': primaryContactId ?? null,
+      ':modified_at': now,
+    },
+    {
+      '#contacts': 'contacts',
+      '#primaryContactId': 'primaryContactId',
+      '#modified_at': 'modified_at',
+    }
+  );
+
+  // Invalidate cache
+  await invalidateTenantCache(tenantId);
+
+  return result;
+}
+
+/**
+ * Remove a contact from a client
+ */
+export async function removeClientContact(
+  tenantId: string,
+  clientId: string,
+  contactId: string
+): Promise<Client | null> {
+  const client = await getClientById(tenantId, clientId);
+  if (!client) {
+    return null;
+  }
+
+const contacts = (client.contacts || []).filter(c => c.id !== contactId);
+  
+  // Determine if we need to update primary contact ID
+  let primaryContactId: string | undefined = client.primaryContactId;
+  if (client.primaryContactId === contactId) {
+    const newPrimary = contacts.find(c => c.isPrimary);
+    primaryContactId = newPrimary?.id;
+  }
+
+  const now = new Date().toISOString();
+
+  const result = await updateItem<Client>(
+    clientsTable,
+    { tenant_id: tenantId, id: clientId },
+    'SET #contacts = :contacts, #primaryContactId = :primaryContactId, #modified_at = :modified_at',
+    {
+      ':contacts': contacts,
+      ':primaryContactId': primaryContactId ?? null,
+      ':modified_at': now,
+    },
+    {
+      '#contacts': 'contacts',
+      '#primaryContactId': 'primaryContactId',
+      '#modified_at': 'modified_at',
+    }
+  );
+
+  // Invalidate cache
+  await invalidateTenantCache(tenantId);
+
+  return result;
+}
+
+/**
+ * Set primary contact for a client
+ */
+export async function setPrimaryContact(
+  tenantId: string,
+  clientId: string,
+  contactId: string
+): Promise<Client | null> {
+  return updateClientContact(tenantId, clientId, contactId, { isPrimary: true });
+}
+
+/**
+ * Get primary contact for a client
+ */
+export async function getPrimaryContact(
+  tenantId: string,
+  clientId: string
+): Promise<Contact | null> {
+  const client = await getClientById(tenantId, clientId);
+  if (!client) {
+    return null;
+  }
+
+  const contacts = client.contacts || [];
+  
+  // First try to find explicit primary
+  const primary = contacts.find(c => c.isPrimary);
+  if (primary) {
+    return primary;
+  }
+
+  // Fall back to first contact
+  return contacts[0] || null;
 }
