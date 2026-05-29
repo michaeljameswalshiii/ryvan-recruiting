@@ -15,8 +15,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, RefreshCw, Database, Table as TableIcon, Save, X, Pencil, Check } from "lucide-react";
+import { Search, RefreshCw, Database, Table as TableIcon, Save, X, Pencil, Check, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
@@ -332,10 +333,12 @@ export default function DynamoDBViewerPage() {
 
   return (
     <div className="container mx-auto py-8 space-y-6">
-      {/* Header */}
+{/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Database className="h-8 w-8 text-primary" />
+          <Link href="/admin" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeft className="h-8 w-8 text-primary" />
+          </Link>
           <div>
             <h1 className="text-3xl font-bold">DynamoDB Viewer</h1>
             <p className="text-muted-foreground">View and edit DynamoDB tables</p>
