@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { EventTimeline } from "@/components/candidate/EventTimeline";
+import EventTimeline from "@/components/EventTimeline";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { ArrowLeft, Mail, Edit, User, FileText } from "lucide-react";
 
 interface Candidate {
   id: string;
+  tenantId?: string;
   name: string;
   email: string;
   phone?: string;
@@ -179,9 +180,13 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
           </div>
         )}
 
-        {/* Timeline Tab */}
+{/* Timeline Tab */}
         {activeTab === "timeline" && (
-          <EventTimeline candidateId={candidate.id} />
+          <EventTimeline 
+            entityType="candidate" 
+            entityId={candidate.id} 
+            tenantId={candidate.tenantId || "default"}
+          />
         )}
 
         {/* Resume Tab */}
