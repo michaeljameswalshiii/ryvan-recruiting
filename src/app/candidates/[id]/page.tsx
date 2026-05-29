@@ -64,23 +64,21 @@ export default function CandidateDetailPage({ params }: Props) {
     createdAt: "",
   });
 
-  // Load candidate data via API
   const loadCandidate = useCallback(async (id: string) => {
     try {
       setLoading(true);
       const response = await fetch(`/api/data/leads/${id}`, {
         cache: "no-store",
       });
-      
+
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.error || "Failed to load candidate");
       }
-      
+
       const result = await response.json();
-      // API returns { lead: {...} }
       const data = result.lead;
-      
+
       if (data) {
         setFormData({
           id: data.id || "",
@@ -112,12 +110,10 @@ export default function CandidateDetailPage({ params }: Props) {
     });
   }, [params, loadCandidate]);
 
-  // Generate avatar initials
   const avatarInitials = formData.name
     ? formData.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "";
 
-  // Handle save
   const handleSave = async () => {
     if (!formData.name) {
       toast.error("Name is required");
@@ -158,7 +154,6 @@ export default function CandidateDetailPage({ params }: Props) {
     }
   };
 
-  // Handle delete
   const handleDelete = async () => {
     setDeleting(true);
     try {
@@ -172,7 +167,7 @@ export default function CandidateDetailPage({ params }: Props) {
       }
 
       toast.success("Candidate deleted successfully!");
-      router.push("/candidates");
+router.push("/candidates");
     } catch (err: any) {
       console.error("Failed to delete candidate:", err);
       toast.error(err.message || "Failed to delete candidate");
@@ -192,12 +187,11 @@ export default function CandidateDetailPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" asChild>
-              <Link href="/candidates">
+<Link href="/candidates">
                 <ArrowLeft className="h-5 w-5" />
               </Link>
             </Button>
@@ -232,9 +226,7 @@ export default function CandidateDetailPage({ params }: Props) {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="max-w-4xl mx-auto p-4 space-y-4 pb-24">
-        {/* Candidate Details Card */}
         <Card>
           <CardHeader>
             <CardTitle>Candidate Details</CardTitle>
@@ -307,7 +299,6 @@ export default function CandidateDetailPage({ params }: Props) {
           </CardContent>
         </Card>
 
-        {/* Resume - Show when resumeUrl exists */}
         {formData.resumeUrl && (
           <Card>
             <CardHeader>
@@ -321,7 +312,6 @@ export default function CandidateDetailPage({ params }: Props) {
           </Card>
         )}
 
-        {/* Notes */}
         <Card>
           <CardHeader>
             <CardTitle>Notes</CardTitle>
@@ -337,7 +327,6 @@ export default function CandidateDetailPage({ params }: Props) {
         </Card>
       </div>
 
-      {/* Fixed Bottom Bar */}
       <div className="fixed bottom-0 right-0 left-0 md:left-64 bg-white border-t p-4 z-10">
         <div className="max-w-4xl mx-auto flex justify-end gap-3">
           <Button
@@ -368,7 +357,6 @@ export default function CandidateDetailPage({ params }: Props) {
         </div>
       </div>
 
-      {/* Delete Confirmation Dialog */}
       <SimpleDialog
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}

@@ -504,19 +504,20 @@ try {
 
       const result = await res.json();
 
-      if (result.success && result.data) {
+if (result.success && result.resume) {
         setFormData({
-          name: result.data.name || currentFormState.name,
-          email: result.data.email || "",
-          phone: result.data.phone || "",
-          title: result.data.title || "",
-          location: result.data.location || "",
-          linkedin_url: result.data.linkedin_url || "",
-notes: result.data.notes || currentFormState.notes,
+          name: result.resume.name || currentFormState.name,
+          email: result.resume.email || "",
+          phone: result.resume.phone || "",
+          title: result.resume.title || "",
+          location: result.resume.location || "",
+          linkedin_url: result.resume.linkedin || "",
+          notes: currentFormState.notes,
         });
         toast.success("Resume parsed successfully! Fields have been filled.");
       } else {
-        toast.error(result.error || "Could not parse resume automatically");
+        // Even if parsing failed, don't show error - user can enter manually
+        console.log("Resume parse result:", result);
       }
     } catch (err) {
       console.error("Error parsing resume:", err);

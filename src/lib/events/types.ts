@@ -6,6 +6,8 @@
 
 // ==================== Common Types ====================
 
+export type EntityType = 'candidate' | 'company';
+
 export interface EventDetails {
   title: string;
   description: string;
@@ -23,15 +25,28 @@ export type CandidateEventType =
   | 'CANDIDATE_CREATED'
   | 'CANDIDATE_VIEWED'
   | 'STATUS_CHANGED'
+  | 'STAGE_CHANGED'
   | 'INTERVIEW_SCHEDULED'
   | 'INTERVIEW_COMPLETED'
   | 'TASK_CREATED'
-  | 'TASK_COMPLETED';
+  | 'TASK_COMPLETED'
+  | 'CANDIDATE_ASSIGNED'
+  | 'CALL_COMPLETED'
+  | 'PIPELINE_MOVE';
 
 export interface CandidateEvent {
-  PK: string;
-  SK: string;
-  candidateId: string;
+  // DynamoDB keys
+  PK: string;                    // ENTITY#candidate#abc123
+  SK: string;                    // EVENT#2025-05-29T20:15:33.456Z
+  GSI1PK: string;               // TENANT#tenant-xyz
+  GSI1SK: string;               // EVENT#2025-05-29T20:15:33.456Z
+  
+  // Tenant isolation
+  tenantId: string;
+  entityType: EntityType;
+  entityId: string;
+  
+  // Event data
   eventType: CandidateEventType;
   title: string;
   description: string;
@@ -41,8 +56,15 @@ export interface CandidateEvent {
 }
 
 export interface CandidateEventResult {
+  // ID and keys
   id: string;
-  candidateId: string;
+  entityId: string;
+  entityType: EntityType;
+  
+  // Tenant isolation
+  tenantId: string;
+  
+  // Event data
   eventType: CandidateEventType;
   title: string;
   description: string;
@@ -52,9 +74,36 @@ export interface CandidateEventResult {
   timestamp: string;
 }
 
+// Helper to generate event keys
+export const eventKeys = {
+  forEntity: (type: EntityType, id: string) => `ENTITY#${type}#${id}`,
+  eventSK: (timestamp?: string) => `EVENT#${timestamp || new Date().toISOString()}`,
+  tenantGSI: (tenantId: string) => `TENANT#${tenantId}`,
+};
+
+export interface PaginationCursor {
+  timestamp: string;
+  eventId?: string;
+}
+
+export interface GetEventsResponse {
+  events: CandidateEventResult[];
+  hasMore: boolean;
+  nextCursor?: PaginationCursor;
+  totalCount?: number;
+}
+
 export interface GetCandidateEventsResponse {
   events: CandidateEventResult[];
   hasMore: boolean;
+  nextCursor?: PaginationCursor;
+  totalCount?: number;
+}
+
+export interface RecordEventResponse {
+  success: boolean;
+  eventId?: string;
+  error?: string;
 }
 
 export interface RecordCandidateEventResponse {

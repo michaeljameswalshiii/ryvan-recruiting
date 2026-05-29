@@ -95,7 +95,26 @@ async function withRetry<T>(
 }
 
 /**
+ * Get session tenant ID for event recording
+ * Used for tenant isolation in event storage
+ */
+async function getEventTenantId(): Promise<string> {
+  // Try to get tenant from session, fallback to extracting from user
+  const { getSessionTenantId, getSessionUserId } = await import('../server-auth');
+  const tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+  
+  // If no tenant ID but user is logged in, use default tenant
+  if (!tenantId && userId) {
+    return `tenant-${userId}`;
+  }
+  
+  return tenantId || 'default-tenant';
+}
+
+/**
  * Record an event for a candidate
+ * Includes tenant isolation via GSI1PK for tenant-wide queries
  * 
  * @param candidateId - The candidate ID
  * @param eventType - Type of event (EMAIL_SENT, NOTE, etc.)
@@ -112,10 +131,16 @@ export async function recordEvent(
   try {
     const timestamp = new Date().toISOString();
     const eventId = `${candidateId}-${timestamp}`;
+    
+    // Get tenant ID for isolation
+    const tenantId = await getEventTenantId();
 
     const event: CandidateEvent = {
-      PK: `CANDIDATE#${candidateId}`,
+      PK: `ENTITY#candidate#${candidateId}`,
       SK: `EVENT#${timestamp}`,
+      GSI1PK: `TENANT#${tenantId}`,
+      GSI1SK: `EVENT#${timestamp}`,
+      tenantId,
       entityId: candidateId,
       entityType: 'candidate',
       eventType,

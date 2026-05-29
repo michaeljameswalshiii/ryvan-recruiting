@@ -1,4 +1,4 @@
-from aws_cdk import Stack, aws_dynamodb as dynamodb
+from aws_cdk import Stack, RemovalPolicy, aws_dynamodb as dynamodb
 from constructs import Construct
 
 
@@ -94,7 +94,7 @@ class DataStack(Stack):
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
         )
 
-        # Pipeline items table (MISSING - adding now)
+# Pipeline items table (MISSING - adding now)
         self.pipeline_table = dynamodb.Table(
             self,
             "Pipeline",
@@ -108,4 +108,35 @@ class DataStack(Stack):
                 type=dynamodb.AttributeType.STRING,
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+        )
+
+        # Events table for tracking all status changes, notes, emails, and activities
+        self.events_table = dynamodb.Table(
+            self,
+            "Events",
+            table_name="turnkey-events",
+            partition_key=dynamodb.Attribute(
+                name="PK",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
+                name="SK",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.RETAIN,  # Important for audit data
+        )
+
+        # GSI1 for tenant-wide activity feed queries
+        self.events_table.add_global_secondary_index(
+            index_name="TenantEventsIndex",
+            partition_key=dynamodb.Attribute(
+                name="GSI1PK",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
+                name="GSI1SK",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            projection_type=dynamodb.ProjectionType.ALL,
         )
