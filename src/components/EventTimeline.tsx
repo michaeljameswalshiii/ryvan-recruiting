@@ -1,6 +1,27 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { 
+  StickyNote, 
+  Mail, 
+  Eye, 
+  ArrowRight, 
+  Calendar, 
+  CheckCircle2,
+  UserPlus,
+  Search,
+  FileText,
+  Building2,
+  UserMinus,
+  Briefcase,
+  TrendingUp,
+  TrendingDown,
+  Trophy,
+  XCircle,
+  Handshake,
+  Phone,
+  Clock
+} from 'lucide-react';
 
 // ============================================================================
 // Types - Reusable for both Candidates and Companies
@@ -143,37 +164,85 @@ export default function EventTimeline({
     }
   };
 
-  // Get icon and color for event type
-  function getEventConfig(eventType: EventType): { icon: string; color: string; label: string } {
-    const configs: Record<EventType, { icon: string; color: string; label: string }> = {
-      // Common
-      NOTE: { icon: '📝', color: 'bg-yellow-100 text-yellow-800', label: 'Note' },
-      EMAIL_SENT: { icon: '📧', color: 'bg-blue-100 text-blue-800', label: 'Email Sent' },
-      EMAIL_OPENED: { icon: '👁️', color: 'bg-cyan-100 text-cyan-800', label: 'Email Opened' },
-      EMAIL_CLICKED: { icon: '🖱️', color: 'bg-indigo-100 text-indigo-800', label: 'Link Clicked' },
-      
-      // Candidate
-      STATUS_CHANGED: { icon: '🔄', color: 'bg-purple-100 text-purple-800', label: 'Status Changed' },
-      STAGE_CHANGED: { icon: '📋', color: 'bg-violet-100 text-violet-800', label: 'Stage Changed' },
-      INTERVIEW_SCHEDULED: { icon: '📅', color: 'bg-green-100 text-green-800', label: 'Interview' },
-      INTERVIEW_COMPLETED: { icon: '✅', color: 'bg-emerald-100 text-emerald-800', label: 'Interview Done' },
-      CANDIDATE_CREATED: { icon: '👤', color: 'bg-slate-100 text-slate-800', label: 'Added' },
-      CANDIDATE_VIEWED: { icon: '🔍', color: 'bg-gray-100 text-gray-800', label: 'Viewed' },
-      RESUME_UPLOADED: { icon: '📄', color: 'bg-red-100 text-red-800', label: 'Resume' },
-      
-      // Company
-      COMPANY_CREATED: { icon: '🏢', color: 'bg-slate-100 text-slate-800', label: 'Added' },
-      CONTACT_ADDED: { icon: '👥', color: 'bg-teal-100 text-teal-800', label: 'Contact Added' },
-      CONTACT_REMOVED: { icon: '👋', color: 'bg-orange-100 text-orange-800', label: 'Contact Removed' },
-      DEAL_CREATED: { icon: '💼', color: 'bg-amber-100 text-amber-800', label: 'Deal' },
-      DEAL_STAGE_CHANGED: { icon: '📈', color: 'bg-lime-100 text-lime-800', label: 'Deal Stage' },
-      DEAL_WON: { icon: '🏆', color: 'bg-yellow-100 text-yellow-800', label: 'Deal Won' },
-      DEAL_LOST: { icon: '❌', color: 'bg-red-100 text-red-800', label: 'Deal Lost' },
-      MEETING_SCHEDULED: { icon: '🤝', color: 'bg-cyan-100 text-cyan-800', label: 'Meeting' },
-      CALL_COMPLETED: { icon: '📞', color: 'bg-green-100 text-green-800', label: 'Call Done' },
+// Get icon component for event type
+  function getEventIcon(eventType: EventType) {
+    const icons: Record<EventType, React.ReactNode> = {
+      NOTE: <StickyNote className="w-4 h-4" />,
+      EMAIL_SENT: <Mail className="w-4 h-4" />,
+      EMAIL_OPENED: <Eye className="w-4 h-4" />,
+      EMAIL_CLICKED: <ArrowRight className="w-4 h-4" />,
+      STATUS_CHANGED: <ArrowRight className="w-4 h-4" />,
+      STAGE_CHANGED: <ArrowRight className="w-4 h-4" />,
+      INTERVIEW_SCHEDULED: <Calendar className="w-4 h-4" />,
+      INTERVIEW_COMPLETED: <CheckCircle2 className="w-4 h-4" />,
+      CANDIDATE_CREATED: <UserPlus className="w-4 h-4" />,
+      CANDIDATE_VIEWED: <Search className="w-4 h-4" />,
+      RESUME_UPLOADED: <FileText className="w-4 h-4" />,
+      COMPANY_CREATED: <Building2 className="w-4 h-4" />,
+      CONTACT_ADDED: <UserPlus className="w-4 h-4" />,
+      CONTACT_REMOVED: <UserMinus className="w-4 h-4" />,
+      DEAL_CREATED: <Briefcase className="w-4 h-4" />,
+      DEAL_STAGE_CHANGED: <TrendingUp className="w-4 h-4" />,
+      DEAL_WON: <Trophy className="w-4 h-4" />,
+      DEAL_LOST: <XCircle className="w-4 h-4" />,
+      MEETING_SCHEDULED: <Handshake className="w-4 h-4" />,
+      CALL_COMPLETED: <Phone className="w-4 h-4" />,
     };
-    
-    return configs[eventType] || { icon: '📋', color: 'bg-gray-100 text-gray-800', label: 'Event' };
+    return icons[eventType] || <Clock className="w-4 h-4" />;
+  }
+
+  // Get color class for event type
+  function getEventColor(eventType: EventType): string {
+    const colors: Record<EventType, string> = {
+      NOTE: 'bg-yellow-100 text-yellow-800',
+      EMAIL_SENT: 'bg-blue-100 text-blue-800',
+      EMAIL_OPENED: 'bg-cyan-100 text-cyan-800',
+      EMAIL_CLICKED: 'bg-indigo-100 text-indigo-800',
+      STATUS_CHANGED: 'bg-purple-100 text-purple-800',
+      STAGE_CHANGED: 'bg-violet-100 text-violet-800',
+      INTERVIEW_SCHEDULED: 'bg-green-100 text-green-800',
+      INTERVIEW_COMPLETED: 'bg-emerald-100 text-emerald-800',
+      CANDIDATE_CREATED: 'bg-slate-100 text-slate-800',
+      CANDIDATE_VIEWED: 'bg-gray-100 text-gray-800',
+      RESUME_UPLOADED: 'bg-red-100 text-red-800',
+      COMPANY_CREATED: 'bg-slate-100 text-slate-800',
+      CONTACT_ADDED: 'bg-teal-100 text-teal-800',
+      CONTACT_REMOVED: 'bg-orange-100 text-orange-800',
+      DEAL_CREATED: 'bg-amber-100 text-amber-800',
+      DEAL_STAGE_CHANGED: 'bg-lime-100 text-lime-800',
+      DEAL_WON: 'bg-yellow-100 text-yellow-800',
+      DEAL_LOST: 'bg-red-100 text-red-800',
+      MEETING_SCHEDULED: 'bg-cyan-100 text-cyan-800',
+      CALL_COMPLETED: 'bg-green-100 text-green-800',
+    };
+    return colors[eventType] || 'bg-gray-100 text-gray-800';
+  }
+
+  // Get label for event type
+  function getEventLabel(eventType: EventType): string {
+    const labels: Record<EventType, string> = {
+      NOTE: 'Note',
+      EMAIL_SENT: 'Email Sent',
+      EMAIL_OPENED: 'Email Opened',
+      EMAIL_CLICKED: 'Link Clicked',
+      STATUS_CHANGED: 'Status Changed',
+      STAGE_CHANGED: 'Stage Changed',
+      INTERVIEW_SCHEDULED: 'Interview',
+      INTERVIEW_COMPLETED: 'Interview Done',
+      CANDIDATE_CREATED: 'Added',
+      CANDIDATE_VIEWED: 'Viewed',
+      RESUME_UPLOADED: 'Resume',
+      COMPANY_CREATED: 'Added',
+      CONTACT_ADDED: 'Contact Added',
+      CONTACT_REMOVED: 'Contact Removed',
+      DEAL_CREATED: 'Deal',
+      DEAL_STAGE_CHANGED: 'Deal Stage',
+      DEAL_WON: 'Deal Won',
+      DEAL_LOST: 'Deal Lost',
+      MEETING_SCHEDULED: 'Meeting',
+      CALL_COMPLETED: 'Call Done',
+    };
+    return labels[eventType] || 'Event';
   }
 
   // Format date with relative time
@@ -265,23 +334,25 @@ export default function EventTimeline({
               className="absolute left-6 top-4 bottom-4 w-0.5 bg-border" 
             />
             
-            <div className="flex flex-col gap-4">
+<div className="flex flex-col gap-4">
               {events.map((event) => {
-                const config = getEventConfig(event.eventType as EventType);
+                const eventColor = getEventColor(event.eventType as EventType);
+                const eventLabel = getEventLabel(event.eventType as EventType);
+                const eventIcon = getEventIcon(event.eventType as EventType);
                 return (
                   <div key={event.id} className="flex gap-3 relative">
                     {/* Timeline Dot */}
                     <div 
-                      className={`relative w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${config.color}`}
+                      className={`relative w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${eventColor}`}
                     >
-                      {config.icon}
+                      {eventIcon}
                     </div>
                     
                     {/* Event Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${config.color}`}>
-                          {config.label}
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${eventColor}`}>
+                          {eventLabel}
                         </span>
                         <span className="text-xs text-muted-foreground">
                           {formatDate(event.createdAt)}
