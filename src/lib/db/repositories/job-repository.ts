@@ -1,0 +1,441 @@
+/**
+ * Job Repository
+ * Server-only data access layer for Jobs
+ * Jobs link Companies to Candidates with tracking of candidate stages
+ *
+ * @serverOnly
+ */
+
+import {
+  getItem,
+  queryItems,
+  putItem,
+  deleteItem,
+  updateItem,
+  jobsTable,
+} from '../dynamodb';
+import { getCached, setCached, invalidateTenantCache, makeCacheKey } from '../../cache';
+import { 
+  type Job, 
+  type CreateJobInput, 
+  type UpdateJobInput,
+  type LinkedCandidate,
+  type LinkCandidateInput,
+  type UpdateCandidateStageInput,
+  jobCandidateStages,
+  jobStatuses,
+} from '../../schemas/job';
+
+// Cache TTL: 5 minutes
+const CACHE_TTL = 300;
+
+/**
+ * Generate a UUID
+ */
+function generateId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
+ * Get all jobs for a tenant
+ */
+export async function getAllJobs(tenantId: string): Promise<Job[]> {
+  const cacheKey = makeCacheKey(tenantId, 'jobs', 'all');
+
+  // Try cache first
+  const cached = await getCached<Job[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  // Query from DynamoDB
+  const jobs = await queryItems<Job>(
+    jobsTable,
+    'tenant_id = :tenantId',
+    { ':tenantId': tenantId }
+  );
+
+  // Cache the result
+  await setCached(cacheKey, jobs, CACHE_TTL);
+
+  return jobs;
+}
+
+/**
+ * Get jobs by status (Open, Closed, On Hold)
+ */
+export async function getJobsByStatus(tenantId: string, status: string): Promise<Job[]> {
+  return queryItems<Job>(
+    jobsTable,
+    'tenant_id = :tenantId AND #status = :status',
+    { ':tenantId': tenantId, ':status': status },
+    { '#status': 'status' }
+  );
+}
+
+/**
+ * Get open jobs for a tenant
+ */
+export async function getOpenJobs(tenantId: string): Promise<Job[]> {
+  const allJobs = await getAllJobs(tenantId);
+  return allJobs.filter(job => job.status === 'Open');
+}
+
+/**
+ * Get a single job by ID
+ */
+export async function getJobById(tenantId: string, jobId: string): Promise<Job | null> {
+  const cacheKey = makeCacheKey(tenantId, 'jobs', jobId);
+
+  // Try cache first
+  const cached = await getCached<Job>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  // Get from DynamoDB
+  const job = await getItem<Job>(jobsTable, {
+    tenant_id: tenantId,
+    id: jobId,
+  });
+
+  if (job) {
+    await setCached(cacheKey, job, CACHE_TTL);
+  }
+
+  return job;
+}
+
+/**
+ * Get all jobs for a specific company
+ */
+export async function getJobsForCompany(tenantId: string, companyId: string): Promise<Job[]> {
+  const allJobs = await getAllJobs(tenantId);
+  return allJobs.filter(job => job.companyId === companyId);
+}
+
+/**
+ * Get all jobs where a candidate is linked
+ */
+export async function getJobsForCandidate(tenantId: string, candidateId: string): Promise<Job[]> {
+  const allJobs = await getAllJobs(tenantId);
+  return allJobs.filter(job => 
+    job.candidates?.some(c => c.candidateId === candidateId)
+  );
+}
+
+/**
+ * Create a new job
+ */
+export async function createJob(tenantId: string, data: CreateJobInput): Promise<Job> {
+  const now = new Date().toISOString();
+
+  const job: Job = {
+    id: generateId(),
+    tenant_id: tenantId,
+    title: data.title,
+    description: data.description || '',
+    location: data.location || '',
+    salaryRange: data.salaryRange || '',
+    employmentType: data.employmentType || 'Full-time',
+    companyId: data.companyId,
+    companyName: data.companyName,
+    status: data.status || 'Open',
+    candidates: [],
+    created_at: now,
+    modified_at: now,
+  };
+
+  // Save to DynamoDB
+  await putItem(jobsTable, job);
+
+  // Invalidate cache
+  await invalidateTenantCache(tenantId);
+
+  return job;
+}
+
+/**
+ * Update a job
+ */
+export async function updateJob(
+  tenantId: string,
+  jobId: string,
+  data: UpdateJobInput
+): Promise<Job | null> {
+  // Build update expression
+  const updates: string[] = [];
+  const values: Record<string, unknown> = {};
+  const names: Record<string, string> = {};
+
+  if (data.title !== undefined) {
+    updates.push('#title = :title');
+    values[':title'] = data.title;
+    names['#title'] = 'title';
+  }
+  if (data.description !== undefined) {
+    updates.push('#description = :description');
+    values[':description'] = data.description;
+    names['#description'] = 'description';
+  }
+  if (data.location !== undefined) {
+    updates.push('#location = :location');
+    values[':location'] = data.location;
+    names['#location'] = 'location';
+  }
+  if (data.salaryRange !== undefined) {
+    updates.push('#salaryRange = :salaryRange');
+    values[':salaryRange'] = data.salaryRange;
+    names['#salaryRange'] = 'salaryRange';
+  }
+  if (data.employmentType !== undefined) {
+    updates.push('#employmentType = :employmentType');
+    values[':employmentType'] = data.employmentType;
+    names['#employmentType'] = 'employmentType';
+  }
+  if (data.companyId !== undefined) {
+    updates.push('#companyId = :companyId');
+    values[':companyId'] = data.companyId;
+    names['#companyId'] = 'companyId';
+  }
+  if (data.companyName !== undefined) {
+    updates.push('#companyName = :companyName');
+    values[':companyName'] = data.companyName;
+    names['#companyName'] = 'companyName';
+  }
+  if (data.status !== undefined) {
+    updates.push('#status = :status');
+    values[':status'] = data.status;
+    names['#status'] = 'status';
+  }
+
+  if (updates.length === 0) {
+    return getJobById(tenantId, jobId);
+  }
+
+  // Always update modified_at
+  updates.push('#modified_at = :modified_at');
+  values[':modified_at'] = new Date().toISOString();
+  names['#modified_at'] = 'modified_at';
+
+  const updated = await updateItem<Job>(
+    jobsTable,
+    { tenant_id: tenantId, id: jobId },
+    `SET ${updates.join(', ')}`,
+    values,
+    names
+  );
+
+  // Invalidate cache
+  await invalidateTenantCache(tenantId);
+
+  return updated;
+}
+
+/**
+ * Link a candidate to a job
+ */
+export async function linkCandidateToJob(
+  tenantId: string,
+  jobId: string,
+  data: LinkCandidateInput
+): Promise<Job | null> {
+  const job = await getJobById(tenantId, jobId);
+  
+  if (!job) {
+    throw new Error('Job not found');
+  }
+
+  // Check if candidate already linked
+  if (job.candidates?.some(c => c.candidateId === data.candidateId)) {
+    throw new Error('Candidate already linked to this job');
+  }
+
+  // Add the new candidate to the array
+  const newCandidate: LinkedCandidate = {
+    candidateId: data.candidateId,
+    candidateName: data.candidateName,
+    candidateEmail: data.candidateEmail || '',
+    stage: data.stage || 'Applied',
+    dateApplied: new Date().toISOString(),
+    notes: data.notes || '',
+  };
+
+  const updated = await updateItem<Job>(
+    jobsTable,
+    { tenant_id: tenantId, id: jobId },
+    'SET #candidates = :candidates, #modified_at = :modified_at',
+    {
+      ':candidates': [...(job.candidates || []), newCandidate],
+      ':modified_at': new Date().toISOString(),
+    },
+    {
+      '#candidates': 'candidates',
+      '#modified_at': 'modified_at',
+    }
+  );
+
+  // Invalidate cache
+  await invalidateTenantCache(tenantId);
+
+  return updated;
+}
+
+/**
+ * Unlink a candidate from a job
+ */
+export async function unlinkCandidateFromJob(
+  tenantId: string,
+  jobId: string,
+  candidateId: string
+): Promise<Job | null> {
+  const job = await getJobById(tenantId, jobId);
+  
+  if (!job) {
+    throw new Error('Job not found');
+  }
+
+  // Remove the candidate from the array
+  const updatedCandidates = (job.candidates || []).filter(
+    c => c.candidateId !== candidateId
+  );
+
+  const updated = await updateItem<Job>(
+    jobsTable,
+    { tenant_id: tenantId, id: jobId },
+    'SET #candidates = :candidates, #modified_at = :modified_at',
+    {
+      ':candidates': updatedCandidates,
+      ':modified_at': new Date().toISOString(),
+    },
+    {
+      '#candidates': 'candidates',
+      '#modified_at': 'modified_at',
+    }
+  );
+
+  // Invalidate cache
+  await invalidateTenantCache(tenantId);
+
+  return updated;
+}
+
+/**
+ * Update a candidate's stage in a job
+ */
+export async function updateCandidateStageInJob(
+  tenantId: string,
+  jobId: string,
+  data: UpdateCandidateStageInput
+): Promise<Job | null> {
+  const job = await getJobById(tenantId, jobId);
+  
+  if (!job) {
+    throw new Error('Job not found');
+  }
+
+  // Update the candidate's stage in the array
+  const updatedCandidates = (job.candidates || []).map(c => {
+    if (c.candidateId === data.candidateId) {
+      return {
+        ...c,
+        stage: data.stage,
+        notes: data.notes !== undefined ? data.notes : c.notes,
+      };
+    }
+    return c;
+  });
+
+  const updated = await updateItem<Job>(
+    jobsTable,
+    { tenant_id: tenantId, id: jobId },
+    'SET #candidates = :candidates, #modified_at = :modified_at',
+    {
+      ':candidates': updatedCandidates,
+      ':modified_at': new Date().toISOString(),
+    },
+    {
+      '#candidates': 'candidates',
+      '#modified_at': 'modified_at',
+    }
+  );
+
+  // Invalidate cache
+  await invalidateTenantCache(tenantId);
+
+  return updated;
+}
+
+/**
+ * Delete a job
+ */
+export async function deleteJob(tenantId: string, jobId: string): Promise<void> {
+  await deleteItem(jobsTable, { tenant_id: tenantId, id: jobId });
+
+  // Invalidate cache
+  await invalidateTenantCache(tenantId);
+}
+
+/**
+ * Get count of candidates by stage for a job
+ */
+export async function getCandidateCountByStage(
+  tenantId: string,
+  jobId: string
+): Promise<Record<string, number>> {
+  const job = await getJobById(tenantId, jobId);
+  
+  if (!job) {
+    return {};
+  }
+
+  const counts: Record<string, number> = {};
+  
+  for (const stage of jobCandidateStages) {
+    counts[stage] = 0;
+  }
+
+  for (const candidate of job.candidates || []) {
+    if (counts[candidate.stage] !== undefined) {
+      counts[candidate.stage]++;
+    }
+  }
+
+  return counts;
+}
+
+/**
+ * Get job statistics for a tenant
+ */
+export async function getJobStats(tenantId: string): Promise<{
+  totalJobs: number;
+  openJobs: number;
+  closedJobs: number;
+  jobsWithCandidates: number;
+  totalCandidateApplications: number;
+}> {
+  const allJobs = await getAllJobs(tenantId);
+
+  let totalCandidateApplications = 0;
+  let jobsWithCandidates = 0;
+
+  for (const job of allJobs) {
+    const candidateCount = job.candidates?.length || 0;
+    totalCandidateApplications += candidateCount;
+    if (candidateCount > 0) {
+      jobsWithCandidates++;
+    }
+  }
+
+  return {
+    totalJobs: allJobs.length,
+    openJobs: allJobs.filter(j => j.status === 'Open').length,
+    closedJobs: allJobs.filter(j => j.status === 'Closed').length,
+    jobsWithCandidates,
+    totalCandidateApplications,
+  };
+}

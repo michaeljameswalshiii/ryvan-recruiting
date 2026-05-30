@@ -354,7 +354,6 @@ function HistoryTab({ company }: { company: any }) {
 
 // Jobs Tab Component - Now using Jobs module
 import { useJobsForCompany } from "@/lib/hooks/query-job";
-import Link from "next/link";
 
 function JobsTab({ companyId, companyName }: { companyId: string; companyName: string }) {
   const { data: jobs = [], isLoading, error } = useJobsForCompany(companyId);
