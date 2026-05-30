@@ -482,15 +482,21 @@ const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    if (file.type !== "application/pdf") {
-      toast.error("Please upload a PDF file");
+    // Validate file type - accept PDF and Word documents
+    const fileNameLower = file.name.toLowerCase();
+    const isPdf = file.type === "application/pdf" || fileNameLower.endsWith('.pdf');
+    const isWord = file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || 
+                  fileNameLower.endsWith('.docx');
+    
+    if (!isPdf && !isWord) {
+      toast.error("Please upload a PDF or Word (.docx) file");
       return;
     }
 
     setResumeFile(file);
     setIsParsingResume(true);
 
-try {
+    try {
       // Capture current form state before creating local FormData to avoid type confusion
       const currentFormState = { ...formData };
       
@@ -504,7 +510,7 @@ try {
 
       const result = await res.json();
 
-if (result.success && result.resume) {
+      if (result.success && result.resume) {
         setFormData({
           name: result.resume.name || currentFormState.name,
           email: result.resume.email || "",
@@ -514,7 +520,10 @@ if (result.success && result.resume) {
           linkedin_url: result.resume.linkedin || "",
           notes: currentFormState.notes,
         });
-        toast.success("Resume parsed successfully! Fields have been filled.");
+        const methodText = result.extractionMethod ? ` (${result.extractionMethod})` : '';
+        toast.success(`Resume parsed successfully!${methodText} Fields have been filled.`);
+      } else if (result.error) {
+        toast.error(result.error);
       } else {
         // Even if parsing failed, don't show error - user can enter manually
         console.log("Resume parse result:", result);
@@ -698,12 +707,12 @@ const resetForm = () => {
             />
           </div>
 <div className="grid gap-2">
-            <Label htmlFor="resume">Resume (PDF)</Label>
+            <Label htmlFor="resume">Resume (PDF or Word)</Label>
             <div className="flex items-center gap-4">
               <input
                 type="file"
                 ref={fileInputRef}
-                accept=".pdf"
+                accept=".pdf,.docx"
                 onChange={handleFileChange}
                 className="hidden"
                 disabled={isParsingResume}

@@ -22,10 +22,12 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { href: "/dashboard/candidates", label: "Candidates", icon: Users },
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
+  { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
+  { href: "/dashboard/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
   { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
-{ href: "/admin/dynamodb", label: "DynamoDB Viewer", icon: Database },
+  { href: "/admin/dynamodb", label: "DynamoDB Viewer", icon: Database },
 ];
 
 interface DashboardNavProps {

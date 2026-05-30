@@ -4,6 +4,13 @@ import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedroc
 
 const bedrock = new BedrockRuntimeClient({ region: 'us-east-1' });
 
+// Supported file types for resume upload
+const SUPPORTED_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+const SUPPORTED_EXTENSIONS = ['.pdf', '.docx'];
+
+/**
+ * Extract name from filename by cleaning up common patterns
+ */
 function extractNameFromFilename(filename: string): string {
   const name = filename
     .replace(/\.(pdf|docx?|doc)$/i, '')
@@ -13,6 +20,53 @@ function extractNameFromFilename(filename: string): string {
   return name;
 }
 
+/**
+ * Extract contact info using regex patterns from raw text
+ */
+function extractContactInfo(rawText: string): {
+  email: string;
+  phone: string;
+  linkedin: string;
+  location: string;
+} {
+  const result = {
+    email: '',
+    phone: '',
+    linkedin: '',
+    location: '',
+  };
+
+  if (!rawText || rawText.length < 10) {
+    return result;
+  }
+
+  // Email pattern
+  const emailMatch = rawText.match(/[\w.-]+@[\w.-]+\.\w+/);
+  if (emailMatch) {
+    result.email = emailMatch[0];
+  }
+
+  // Phone patterns - various formats
+  const phoneMatch = rawText.match(/(?:\+1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
+  if (phoneMatch) {
+    result.phone = phoneMatch[0];
+  }
+
+  // LinkedIn URL
+  const linkedinMatch = rawText.match(/(?:linkedin\.com|www\.linkedin\.com)\/in\/[\w-]+/i);
+  if (linkedinMatch) {
+    result.linkedin = 'https://' + linkedinMatch[0].replace(/^https?:\/\//, '').replace(/^www\./, '');
+  }
+
+  // Location - city, state format
+  const locationMatch = rawText.match(/([A-Za-z][A-Za-z\s]*,\s*[A-Z]{2})/);
+  if (locationMatch) {
+    result.location = locationMatch[1].trim();
+  }
+
+  return result;
+}
+
 export async function POST(req: NextRequest) {
   console.log('parse-resume: starting');
   let fileName = 'resume.pdf';
@@ -20,19 +74,32 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get('resume') as File;
-    if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 });
+    if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+
+    // Validate file type
+    const fileType = file.type?.toLowerCase() || '';
+    const fileNameLower = file.name.toLowerCase();
+    const hasValidExtension = SUPPORTED_EXTENSIONS.some(ext => fileNameLower.endsWith(ext));
+    const hasValidType = SUPPORTED_TYPES.includes(fileType);
+    
+    if (!hasValidExtension && !hasValidType) {
+      console.log('parse-resume: unsupported file type', file.type, fileName);
+      return NextResponse.json({ 
+        error: 'Unsupported file type. Please upload PDF or Word (.docx) files.' 
+      }, { status: 400 });
+    }
 
     fileName = file.name;
     const buffer = Buffer.from(await file.arrayBuffer());
-    const fileNameLower = file.name.toLowerCase();
 
-    console.log('parse-resume: file size =', buffer.length, 'name =', fileName);
+    console.log('parse-resume: file size =', buffer.length, 'name =', fileName, 'type =', file.type);
 
-    // Extract text - first try pdfjs, then mammoth for docx, fallback to filename
+    // Extract text based on file type
     let rawText = '';
+    let extractionMethod = '';
     
     try {
-if (fileNameLower.endsWith('.pdf')) {
+      if (fileNameLower.endsWith('.pdf')) {
         // Try pdfjs-dist dynamic import
         try {
           const pdfjsLib = await import('pdfjs-dist');
@@ -56,31 +123,53 @@ if (fileNameLower.endsWith('.pdf')) {
             }
             
             console.log('pdfjs extracted chars:', fullText.length);
-            rawText = fullText;
+            if (fullText.length > 20) {
+              rawText = fullText;
+              extractionMethod = 'pdfjs';
+            }
           }
         } catch (pdfErr) {
           console.error('pdfjs failed:', pdfErr);
         }
         
-        // If pdfjs didn't extract anything, try extracting from buffer directly
+        // Fallback: if pdfjs didn't work, try binary text extraction
         if (!rawText || rawText.length < 10) {
-          // Try to find readable text in the PDF buffer
-          const bufferStr = buffer.toString('binary');
-          // Look for email pattern in the binary
-          const emailMatches = bufferStr.match(/[\w.-]+@[\w.-]+\.\w+/g);
-          const phoneMatches = bufferStr.match(/\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/g);
-          
-          console.log('fallback extraction - emails:', emailMatches?.length, 'phones:', phoneMatches?.length);
+          try {
+            const bufferStr = buffer.toString('binary');
+            const emailMatches = bufferStr.match(/[\w.-]+@[\w.-]+\.\w+/g);
+            const phoneMatches = bufferStr.match(/\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/g);
+            
+            if (emailMatches?.length || phoneMatches?.length) {
+              console.log('binary fallback extraction - emails:', emailMatches?.length, 'phones:', phoneMatches?.length);
+              const parts: string[] = [];
+              if (emailMatches) parts.push(...emailMatches);
+              if (phoneMatches) parts.push(...phoneMatches);
+              rawText = parts.join(' ');
+              extractionMethod = 'binary-fallback';
+            }
+          } catch (binaryErr) {
+            console.error('binary extraction failed:', binaryErr);
+          }
         }
       } else if (fileNameLower.endsWith('.docx')) {
-        rawText = (await mammoth.extractRawText({ buffer })).value;
+        // Use mammoth for Word documents
+        try {
+          const result = await mammoth.extractRawText({ buffer });
+          rawText = result.value;
+          extractionMethod = 'mammoth';
+          console.log('mammoth extracted chars:', rawText.length);
+        } catch (mammothErr) {
+          console.error('mammoth failed:', mammothErr);
+        }
       }
     } catch (extractErr) {
       console.error('Extraction warn:', extractErr);
     }
 
-    // Build hints from filename and regex
-    const hints: any = {
+    console.log('parse-resume: extraction method =', extractionMethod, 'chars =', rawText.length);
+
+    // Build hints from filename and regex extraction
+    const hints = {
       name: extractNameFromFilename(file.name),
       phone: '',
       email: '',
@@ -89,17 +178,13 @@ if (fileNameLower.endsWith('.pdf')) {
       title: '',
     };
 
-    // Try to extract from raw text if available
+    // Extract contact info from raw text if available
     if (rawText && rawText.length > 10) {
-      const emailMatch = rawText.match(/[\w.-]+@[\w.-]+\.\w+/);
-      const phoneMatch = rawText.match(/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
-      const linkedinMatch = rawText.match(/(?:linkedin\.com|www\.linkedin\.com)\/in\/[\w-]+/i);
-      const locationMatch = rawText.match(/([A-Za-z][A-Za-z\s]*,\s*[A-Z]{2})/);
-      
-      if (emailMatch) hints.email = emailMatch[0];
-      if (phoneMatch) hints.phone = phoneMatch[0];
-      if (linkedinMatch) hints.linkedin = 'https://' + linkedinMatch[0].replace(/^https?:\/\//, '').replace(/^www\./, '');
-      if (locationMatch) hints.location = locationMatch[1].trim();
+      const contactInfo = extractContactInfo(rawText);
+      hints.email = contactInfo.email;
+      hints.phone = contactInfo.phone;
+      hints.linkedin = contactInfo.linkedin;
+      hints.location = contactInfo.location;
     }
 
     console.log('parse-resume: hints =', hints);
@@ -116,8 +201,8 @@ if (fileNameLower.endsWith('.pdf')) {
 
     let parsedResume: any = {};
     
-    // Only call AI if we have meaningful text
-    if (cleanText.length > 20) {
+    // Only call AI if we have meaningful text (more than just extracted patterns)
+    if (cleanText.length > 50) {
       try {
         const prompt = `
 You are an expert resume parser.
@@ -128,11 +213,11 @@ Extract from the resume text below:
 - phone
 - location (city, state)
 - linkedin (full URL)
-- summary (brief)
-- skills (comma-separated)
+- summary (brief professional summary)
+- skills (comma-separated list)
 
 Resume text:
-${cleanText.substring(0, 4000)}
+${cleanText.substring(0, 5000)}
 
 Return ONLY valid JSON:
 {"name":"","title":"","email":"","phone":"","location":"","linkedin":"","summary":"","skills":[]}
@@ -170,7 +255,11 @@ Return ONLY valid JSON:
 
         const jsonMatch = llmText.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          parsedResume = JSON.parse(jsonMatch[0]);
+          try {
+            parsedResume = JSON.parse(jsonMatch[0]);
+          } catch (parseJsonErr) {
+            console.error('Failed to parse AI JSON:', parseJsonErr);
+          }
         }
         console.log('AI parsed:', parsedResume);
       } catch (aiErr) {
@@ -178,11 +267,10 @@ Return ONLY valid JSON:
       }
     }
 
-// Always prefer name from filename or hints - NOT from AI as title
+    // Merge results: prefer regex/hints over AI, but use AI title only if it looks like a title
     const finalName = candidateName || hints.name || parsedResume.name || '';
-    // Only use AI result for title if it's not a name
     const aiTitle = parsedResume.title || '';
-    const finalTitle = (aiTitle && aiTitle.length > 2 && !aiTitle.includes(finalName)) ? aiTitle : '';
+    const finalTitle = (aiTitle && aiTitle.length > 2 && aiTitle.length < 100 && !aiTitle.includes(finalName)) ? aiTitle : '';
 
     const finalResume = {
       name: finalName,
@@ -197,18 +285,18 @@ Return ONLY valid JSON:
 
     console.log('parse-resume: final name =', finalName, 'title =', finalTitle);
 
-    console.log('parse-resume: finalResume =', finalResume);
-
     return NextResponse.json({
       success: true,
       resume: finalResume,
+      extractionMethod,
       rawText: cleanText.substring(0, 500)
     });
 
   } catch (error: any) {
     console.error('parse-resume error:', error);
     return NextResponse.json({
-      success: true,
+      success: false,
+      error: error.message || 'Failed to parse resume',
       resume: {
         name: extractNameFromFilename(fileName),
         email: '',
@@ -218,8 +306,7 @@ Return ONLY valid JSON:
         title: '',
         summary: '',
         skills: [],
-      },
-      rawText: 'Parse failed'
-    });
+      }
+    }, { status: 500 });
   }
 }

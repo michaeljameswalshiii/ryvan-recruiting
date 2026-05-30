@@ -181,12 +181,12 @@ export default function CompanyDetailPage() {
         </nav>
       </div>
 
-      {/* Tab Content */}
+{/* Tab Content */}
       <div className="min-h-[400px]">
         {activeTab === "overview" && <OverviewTab company={company} />}
         {activeTab === "history" && <HistoryTab company={company} />}
-        {activeTab === "jobs" && <JobsTab leads={companyLeads} companyName={company.name} />}
-{activeTab === "contacts" && <ContactsTab company={company} leads={companyLeads} />}
+        {activeTab === "jobs" && <JobsTab companyId={company.id} companyName={company.name} />}
+        {activeTab === "contacts" && <ContactsTab company={company} leads={companyLeads} />}
         {activeTab === "notes" && <NotesTab company={company} />}
       </div>
     </div>
@@ -352,42 +352,91 @@ function HistoryTab({ company }: { company: any }) {
   );
 }
 
-// Jobs Tab Component
-function JobsTab({ leads, companyName }: { leads: any[]; companyName: string }) {
+// Jobs Tab Component - Now using Jobs module
+import { useJobsForCompany } from "@/lib/hooks/query-job";
+import Link from "next/link";
+
+function JobsTab({ companyId, companyName }: { companyId: string; companyName: string }) {
+  const { data: jobs = [], isLoading, error } = useJobsForCompany(companyId);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="font-semibold">Open Jobs at {companyName}</h3>
+          <Badge variant="secondary">Loading...</Badge>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <h3 className="font-semibold">Open Jobs at {companyName}</h3>
+        <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10">
+          <p className="text-sm text-destructive">Failed to load jobs</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="font-semibold">Open Roles at {companyName}</h3>
-        <Badge variant="secondary">{leads.length} positions</Badge>
+        <h3 className="font-semibold">Open Jobs at {companyName}</h3>
+        <Badge variant="secondary">{jobs.length} positions</Badge>
       </div>
       
-      {leads.length > 0 ? (
+      {jobs.length > 0 ? (
         <div className="grid gap-4">
-          {leads.map((lead: any) => (
-            <div key={lead.id} className="p-4 rounded-lg border border-border bg-card">
+          {jobs.map((job: any) => (
+            <Link 
+              key={job.id} 
+              href={`/dashboard/jobs?id=${job.id}`}
+              className="block p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors"
+            >
               <div className="flex items-start justify-between">
                 <div>
-                  <h4 className="font-medium">{lead.title || "Position"}</h4>
+                  <h4 className="font-medium">{job.title || "Position"}</h4>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Source: {lead.source || "Direct"}
+                    {job.location || "Location not specified"}
                   </p>
+                  {job.salaryRange && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Salary: {job.salaryRange}
+                    </p>
+                  )}
                 </div>
                 <Badge variant={
-                  lead.status === "new" ? "default" :
-                  lead.status === "contacted" ? "secondary" :
-                  lead.status === "qualified" ? "outline" : "secondary"
+                  job.status === "Open" ? "default" :
+                  job.status === "On Hold" ? "outline" :
+                  job.status === "Closed" ? "secondary" : "secondary"
                 }>
-                  {lead.status || "New"}
+                  {job.status || "Open"}
                 </Badge>
               </div>
-            </div>
+              {job.candidates && job.candidates.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-border">
+                  <p className="text-sm text-muted-foreground">
+                    {job.candidates.length} candidate{job.candidates.length !== 1 ? 's' : ''} linked
+                  </p>
+                </div>
+              )}
+            </Link>
           ))}
         </div>
       ) : (
         <div className="text-center py-8 text-muted-foreground">
           <Briefcase className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p>No open roles recorded for this company</p>
-          <p className="text-sm mt-1">Add contacts or leads associated with this company</p>
+          <p>No open jobs for this company</p>
+          <p className="text-sm mt-1">Create a new job to get started</p>
+          <Button asChild className="mt-4">
+            <Link href="/dashboard/jobs">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Job
+            </Link>
+          </Button>
         </div>
       )}
     </div>

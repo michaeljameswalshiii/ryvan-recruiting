@@ -17,6 +17,7 @@ interface SendEmailModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   candidate: CandidateInfo | null;
+  onSend?: (subject: string, body: string) => Promise<void>;
 }
 
 const EMAIL_TEMPLATES = [
@@ -27,7 +28,7 @@ const EMAIL_TEMPLATES = [
   { id: "custom", label: "Custom Message", subject: "" },
 ];
 
-export function SendEmailModal({ open, onOpenChange, candidate }: SendEmailModalProps) {
+export function SendEmailModal({ open, onOpenChange, candidate, onSend }: SendEmailModalProps) {
   const [subject, setSubject] = React.useState("");
   const [message, setMessage] = React.useState("");
   const [sending, setSending] = React.useState(false);
@@ -114,9 +115,18 @@ Turnkey Optimization Team`);
         }),
       });
 
-      const data = await response.json();
+const data = await response.json();
 
       if (data.success) {
+        // Call the onSend callback if provided (for event recording)
+        if (onSend) {
+          try {
+            await onSend(subject, message);
+          } catch (callbackErr) {
+            console.error('Error in onSend callback:', callbackErr);
+          }
+        }
+        
         setSent(true);
         setTimeout(() => {
           onOpenChange(false);

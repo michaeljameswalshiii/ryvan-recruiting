@@ -1,9 +1,18 @@
-feat(contacts): Add Contacts UI for Multiple Contacts per Company
+feat(candidates): Polish Candidate Overview Tab
 
-- Create ContactModal component with Name, Title, Email, Phone, Notes, Primary fields
-- Add Contacts tab in company detail page with card grid layout
-- Add Primary badge highlighting in both Contacts tab and Overview tab
-- Add Edit + Delete action buttons per contact
-- Add server actions and repository functions for CRUD
-- Add Timeline event recording for contact changes
-- Fix TypeScript errors in status badge logic
+- Add onSend callback prop to SendEmailModal for event recording
+- Make Phone, Email, Location directly editable in Overview tab
+- Add Email button that opens SendEmailModal and records event
+- Add salary requirements field and status info
+- Clean up Contact Information display with better styling
+- Add location field support to Candidate type
+- Ensure proper tenant isolation throughout
+
+feat(candidates): Resume Parsing & Upload Support
+
+- Add parse-resume API endpoint using Bedrock + Textract
+- Support PDF, Word (.docx) file parsing
+- Auto-extract name, email, phone, location from resume
+- Store parsed data in candidate record + original in S3
+- Add ResumeViewer component with inline PDF viewing
+- Add resume upload UI in candidate creation

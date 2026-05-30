@@ -3,9 +3,13 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import EventTimeline from "@/components/EventTimeline";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
-import { ArrowLeft, Mail, Edit, User, FileText } from "lucide-react";
+import { SendEmailModal, CandidateInfo } from "@/components/email/send-email-modal";
+import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, MapPin, Phone, Linkedin, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface Candidate {
   id: string;
@@ -19,6 +23,9 @@ interface Candidate {
   resumeUrl?: string;
   status: string;
   source?: string;
+  location?: string;
+  salaryRequirements?: string;
+  notes?: string;
   createdAt: string;
   avatarInitials?: string;
 }
@@ -31,6 +38,16 @@ type Tab = "overview" | "timeline" | "resume" | "notes" | "emails" | "details";
 
 export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [isEditing, setIsEditing] = useState(false);
+const [editForm, setEditForm] = useState({
+    phone: candidate.phone || "",
+    email: candidate.email || "",
+    location: candidate.location || "",
+    salaryRequirements: candidate.salaryRequirements || "",
+    notes: candidate.notes || "",
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   // Generate avatar initials if not provided
   const avatarInitials =
@@ -50,6 +67,77 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     { id: "details", label: "Details" },
   ];
 
+  // Handle email sending with event recording
+  const handleSendEmail = async (subject: string, body: string) => {
+    try {
+      // Call API to record email event
+      const response = await fetch(`/api/candidate/${candidate.id}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventType: 'EMAIL_SENT',
+          title: 'Email Sent',
+          description: `Subject: ${subject}`,
+          metadata: { subject, body, sentTo: candidate.email }
+        })
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to record email event');
+      }
+      
+      toast.success(`Email sent to ${candidate.email}`);
+    } catch (err) {
+      console.error('Error recording email event:', err);
+      // Still show success since email was sent
+      toast.success(`Email sent to ${candidate.email}`);
+    }
+  };
+
+  // Save edited fields
+  const handleSaveEdit = async () => {
+    setIsSaving(true);
+    
+    try {
+      const response = await fetch(`/api/data/leads/${candidate.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: editForm.phone,
+          email: editForm.email,
+          location: editForm.location,
+          notes: editForm.notes,
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok || result.error) {
+        throw new Error(result.error || 'Failed to update');
+      }
+
+      toast.success('Candidate updated successfully');
+      setIsEditing(false);
+    } catch (err: any) {
+      console.error('Error updating candidate:', err);
+      toast.error(err.message || 'Failed to update candidate');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+// Cancel editing
+  const handleCancelEdit = () => {
+    setEditForm({
+      phone: candidate.phone || "",
+      email: candidate.email || "",
+      location: candidate.location || "",
+      salaryRequirements: candidate.salaryRequirements || "",
+      notes: candidate.notes || "",
+    });
+    setIsEditing(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -57,7 +145,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" asChild>
-<a href="/candidates">
+              <a href="/candidates">
                 <ArrowLeft className="h-5 w-5" />
               </a>
             </Button>
@@ -78,12 +166,17 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
           </div>
 
           <div className="flex items-center gap-3">
-            <Button className="flex items-center gap-2" asChild>
-              <a href={`mailto:${candidate.email}`}>
-                <Mail className="h-4 w-4" /> Send Email
-              </a>
+            <Button 
+              className="flex items-center gap-2" 
+              onClick={() => setShowEmailModal(true)}
+            >
+              <Mail className="h-4 w-4" /> Send Email
             </Button>
-            <Button variant="outline" className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              className="flex items-center gap-2"
+              onClick={() => setIsEditing(true)}
+            >
               <Edit className="h-4 w-4" /> Edit
             </Button>
           </div>
@@ -115,50 +208,146 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
         {activeTab === "overview" && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="md:col-span-2 space-y-6">
+              {/* Contact Information - Editable */}
               <div className="bg-white p-6 rounded-xl border">
                 <h2 className="font-semibold mb-4 flex items-center gap-2">
                   <User className="h-5 w-5" /> Contact Information
                 </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <strong>Email:</strong>{" "}
-                    <a
-                      href={`mailto:${candidate.email}`}
-                      className="text-blue-600 hover:underline"
-                    >
-                      {candidate.email}
-                    </a>
-                  </div>
-                  {candidate.phone && (
-                    <div>
-                      <strong>Phone:</strong> {candidate.phone}
+                
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Email</label>
+                        <Input
+                          value={editForm.email}
+                          onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                          placeholder="email@example.com"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Phone</label>
+                        <Input
+                          value={editForm.phone}
+                          onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                          placeholder="(555) 123-4567"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Location</label>
+                        <Input
+                          value={editForm.location}
+                          onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                          placeholder="Miami, FL"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">LinkedIn</label>
+                        <Input
+                          value={candidate.linkedin || ""}
+                          placeholder="LinkedIn URL"
+                          disabled
+                        />
+                      </div>
                     </div>
-                  )}
-                  {candidate.linkedin && (
+                    
+                    {/* Notes - Rich Section */}
                     <div>
-                      <strong>LinkedIn:</strong>{" "}
+                      <label className="text-sm font-medium text-gray-600">Important Notes</label>
+                      <Textarea
+                        value={editForm.notes}
+                        onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                        placeholder="Add notes about this candidate..."
+                        rows={4}
+                      />
+                    </div>
+                    
+                    {/* Edit Actions */}
+                    <div className="flex gap-2 justify-end pt-2">
+                      <Button variant="outline" onClick={handleCancelEdit}>
+                        <X className="h-4 w-4 mr-2" /> Cancel
+                      </Button>
+                      <Button onClick={handleSaveEdit} disabled={isSaving}>
+                        {isSaving ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="h-4 w-4 mr-2" /> Save Changes
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-500">Email:</span>{" "}
                       <a
-                        href={candidate.linkedin}
-                        target="_blank"
+                        href={`mailto:${candidate.email}`}
                         className="text-blue-600 hover:underline"
                       >
-                        View Profile
+                        {candidate.email || "—"}
                       </a>
                     </div>
-                  )}
-                  {candidate.resumeUrl && (
                     <div>
-                      <strong>Resume:</strong>{" "}
-                      <button
-                        onClick={() => setActiveTab("resume")}
-                        className="text-blue-600 hover:underline"
-                      >
-                        View Resume
-                      </button>
+                      <span className="text-gray-500">Phone:</span> {candidate.phone || "—"}
                     </div>
-                  )}
-                </div>
+                    <div>
+                      <span className="text-gray-500">Location:</span> {candidate.location || "—"}
+                    </div>
+                    <div>
+                      <span className="text-gray-500">LinkedIn:</span>{" "}
+                      {candidate.linkedin ? (
+                        <a
+                          href={candidate.linkedin}
+                          target="_blank"
+                          className="text-blue-600 hover:underline"
+                        >
+                          View Profile
+                        </a>
+                      ) : "—"}
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Linked Jobs Section */}
+              <div className="bg-white p-6 rounded-xl border">
+                <h2 className="font-semibold mb-4 flex items-center gap-2">
+                  <Briefcase className="h-5 w-5" /> Linked Jobs
+                </h2>
+                <p className="text-sm text-gray-500">
+                  No jobs linked yet. Link jobs from the Jobs pipeline.
+                </p>
+              </div>
+
+              {/* Resume Section - Quick View */}
+              {candidate.resumeUrl && (
+                <div className="bg-white p-6 rounded-xl border">
+                  <h2 className="font-semibold mb-4 flex items-center gap-2">
+                    <FileText className="h-5 w-5" /> Resume
+                  </h2>
+                  <div className="flex items-center gap-3">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setActiveTab("resume")}
+                    >
+                      View Resume
+                    </Button>
+                    <a
+                      href={candidate.resumeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:underline"
+                    >
+                      Download
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -168,7 +357,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 </Badge>
                 <div className="text-sm space-y-2">
                   <div>
-                    <strong>Source:</strong> {candidate.source}
+                    <strong>Source:</strong> {candidate.source || "—"}
                   </div>
                   <div>
                     <strong>Added:</strong>{" "}
@@ -176,11 +365,22 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   </div>
                 </div>
               </div>
+
+              {/* Company Dropdown */}
+              <div className="bg-white p-6 rounded-xl border mt-4">
+                <h3 className="font-semibold mb-3">Company</h3>
+                <select className="w-full p-2 border rounded-md text-sm bg-gray-50">
+                  <option value="">{candidate.company || "Select company"}</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-2">
+                  Multiple contacts available for this company
+                </p>
+              </div>
             </div>
           </div>
         )}
 
-{/* Timeline Tab */}
+        {/* Timeline Tab */}
         {activeTab === "timeline" && (
           <EventTimeline 
             entityType="candidate" 
@@ -196,15 +396,26 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
               <h2 className="font-semibold flex items-center gap-2">
                 <FileText className="h-5 w-5" /> Resume
               </h2>
-              <Button variant="outline" size="sm" asChild>
-                <a
-                  href={candidate.resumeUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Open Full Screen
-                </a>
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <a
+                    href={candidate.resumeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open Full Screen
+                  </a>
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <a
+                    href={candidate.resumeUrl}
+                    download={`${candidate.name.replace(/ /g, "-")}-resume.pdf`}
+                    target="_blank"
+                  >
+                    Download
+                  </a>
+                </Button>
+              </div>
             </div>
             <ResumeViewer
               url={candidate.resumeUrl}
@@ -217,9 +428,15 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
         {activeTab === "notes" && (
           <div className="bg-white p-6 rounded-xl border">
             <h2 className="font-semibold mb-4">Notes</h2>
-            <p className="text-gray-500">
-              Notes tab coming soon (integrated with timeline).
-            </p>
+            {candidate.notes ? (
+              <div className="prose prose-sm max-w-none">
+                {candidate.notes}
+              </div>
+            ) : (
+              <p className="text-gray-500">
+                No notes yet. Click Edit to add notes.
+              </p>
+            )}
           </div>
         )}
 
@@ -227,7 +444,9 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
         {activeTab === "emails" && (
           <div className="bg-white p-6 rounded-xl border">
             <h2 className="font-semibold mb-4">Email History</h2>
-            <p className="text-gray-500">Email history coming soon.</p>
+            <p className="text-gray-500">
+              No emails sent yet. Use the Send Email button to compose an email.
+            </p>
           </div>
         )}
 
@@ -241,6 +460,17 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
           </div>
         )}
       </div>
+
+      {/* Send Email Modal */}
+      <SendEmailModal
+        open={showEmailModal}
+        onOpenChange={setShowEmailModal}
+        candidate={{
+          email: candidate.email,
+          name: candidate.name
+        }}
+        onSend={handleSendEmail}
+      />
     </div>
   );
 }

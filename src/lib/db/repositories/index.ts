@@ -34,5 +34,8 @@ export * from './client-repository';
 // Lead repository - re-export all
 export * from './lead-repository';
 
+// Job repository - re-export all
+export * from './job-repository';
+
 // Pipeline repository - re-export all
 export * from './pipeline-repository';

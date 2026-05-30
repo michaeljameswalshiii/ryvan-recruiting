@@ -31,6 +31,7 @@ const tenantsTable = process.env.DYNAMODB_TENANTS_TABLE || 'turnkey-tenants';
 const profilesTable = process.env.DYNAMODB_PROFILES_TABLE || 'turnkey-profiles';
 const clientsTable = process.env.DYNAMODB_CLIENTS_TABLE || 'turnkey-clients';
 const leadsTable = process.env.DYNAMODB_LEADS_TABLE || 'turnkey-leads';
+const jobsTable = process.env.DYNAMODB_JOBS_TABLE || 'turnkey-jobs';
 const pipelineTable = process.env.DYNAMODB_PIPELINE_TABLE || 'turnkey-pipeline';
 const sourcesTable = process.env.DYNAMODB_SOURCES_TABLE || 'turnkey-sources';
 const emailLogsTable = process.env.DYNAMODB_EMAIL_LOGS_TABLE || 'turnkey-email-logs';
@@ -71,6 +72,7 @@ const tableNames = {
   profiles: profilesTable,
   clients: clientsTable,
   leads: leadsTable,
+  jobs: jobsTable,
   pipeline: pipelineTable,
   sources: sourcesTable,
   emailLogs: emailLogsTable,
@@ -305,6 +307,7 @@ export {
   profilesTable,
   clientsTable,
   leadsTable,
+  jobsTable,
   pipelineTable,
   sourcesTable,
   emailLogsTable,
