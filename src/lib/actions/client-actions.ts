@@ -191,3 +191,126 @@ export async function updateClientStatusAction(clientId: string, status: string)
     return { error: error.message || 'Failed to update client status' };
   }
 }
+
+// ---------------------------------------------------------------------
+// Contact Management Actions
+// ---------------------------------------------------------------------
+
+import { addContactToClient, updateClientContact, removeClientContact } from '../db/repositories/client-repository';
+import { createContactSchema } from '../schemas/client';
+import { recordContactAddedToCompany, recordContactUpdatedForCompany, recordContactRemovedFromCompany, recordPrimaryContactSetForCompany } from '../events/company-events';
+
+/**
+ * Add a contact to a client
+ */
+export async function addContactAction(clientId: string, contactData: {
+  name: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  isPrimary?: boolean;
+  notes?: string;
+}) {
+  const tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+  
+  if (!tenantId || !userId) {
+    return { error: 'Unauthorized' };
+  }
+
+  const validated = createContactSchema.safeParse({
+    ...contactData,
+    isPrimary: contactData.isPrimary || false,
+  });
+
+  if (!validated.success) {
+    return {
+      error: 'Invalid input',
+      details: validated.error.flatten().fieldErrors,
+    };
+  }
+
+  try {
+    const client = await addContactToClient(tenantId, clientId, validated.data);
+    
+    if (!client) {
+      return { error: 'Client not found' };
+    }
+
+    // Record event
+    await recordContactAddedToCompany(clientId, contactData.name, userId);
+    
+    if (contactData.isPrimary) {
+      await recordPrimaryContactSetForCompany(clientId, contactData.name, userId);
+    }
+
+    return { success: true, client };
+  } catch (error: any) {
+    return { error: error.message || 'Failed to add contact' };
+  }
+}
+
+/**
+ * Update a contact on a client
+ */
+export async function updateContactAction(clientId: string, contactId: string, contactData: {
+  name?: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  isPrimary?: boolean;
+  notes?: string;
+}) {
+  const tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+  
+  if (!tenantId || !userId) {
+    return { error: 'Unauthorized' };
+  }
+
+  try {
+    const client = await updateClientContact(tenantId, clientId, contactId, contactData);
+    
+    if (!client) {
+      return { error: 'Client or contact not found' };
+    }
+
+    // Record event
+    await recordContactUpdatedForCompany(clientId, contactData.name || 'Contact', 'details updated', userId);
+    
+    if (contactData.isPrimary) {
+      await recordPrimaryContactSetForCompany(clientId, contactData.name || 'Contact', userId);
+    }
+
+    return { success: true, client };
+  } catch (error: any) {
+    return { error: error.message || 'Failed to update contact' };
+  }
+}
+
+/**
+ * Remove a contact from a client
+ */
+export async function removeContactAction(clientId: string, contactId: string, contactName: string = 'Contact') {
+  const tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+  
+  if (!tenantId || !userId) {
+    return { error: 'Unauthorized' };
+  }
+
+  try {
+    const client = await removeClientContact(tenantId, clientId, contactId);
+    
+    if (!client) {
+      return { error: 'Client or contact not found' };
+    }
+
+    // Record event
+    await recordContactRemovedFromCompany(clientId, contactName, userId);
+
+    return { success: true, client };
+  } catch (error: any) {
+    return { error: error.message || 'Failed to remove contact' };
+  }
+}

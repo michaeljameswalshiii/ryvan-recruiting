@@ -16,7 +16,10 @@ import {
   createClient, 
   updateClientAction, 
   updateClientStatusAction,
-  deleteClientAction 
+  deleteClientAction,
+  addContactAction,
+  updateContactAction,
+  removeContactAction
 } from '@/lib/actions/client-actions';
 
 // Query keys - used for cache invalidation
@@ -176,6 +179,105 @@ export function useUpdateClientStatus() {
     },
     onError: (error) => {
       toast.error('Failed to update status', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------
+// Contact Management Hooks
+// ---------------------------------------------------------------------
+
+/**
+ * Add a contact to a client
+ */
+export function useAddContact() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ clientId, contactData }: { clientId: string; contactData: {
+      name: string;
+      title?: string;
+      email?: string;
+      phone?: string;
+      isPrimary?: boolean;
+      notes?: string;
+    }}) => {
+      const result = await addContactAction(clientId, contactData);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    onSuccess: (_, variables) => {
+      toast.success('Contact added successfully');
+      queryClient.invalidateQueries({ queryKey: clientKeys.detail(variables.clientId) });
+      queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
+    },
+    onError: (error) => {
+      toast.error('Failed to add contact', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      });
+    },
+  });
+}
+
+/**
+ * Update a contact on a client
+ */
+export function useUpdateContact() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ clientId, contactId, contactData }: { clientId: string; contactId: string; contactData: {
+      name?: string;
+      title?: string;
+      email?: string;
+      phone?: string;
+      isPrimary?: boolean;
+      notes?: string;
+    }}) => {
+      const result = await updateContactAction(clientId, contactId, contactData);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    onSuccess: (_, variables) => {
+      toast.success('Contact updated successfully');
+      queryClient.invalidateQueries({ queryKey: clientKeys.detail(variables.clientId) });
+      queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
+    },
+    onError: (error) => {
+      toast.error('Failed to update contact', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      });
+    },
+  });
+}
+
+/**
+ * Remove a contact from a client
+ */
+export function useRemoveContact() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ clientId, contactId, contactName }: { clientId: string; contactId: string; contactName?: string }) => {
+      const result = await removeContactAction(clientId, contactId, contactName);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    onSuccess: (_, variables) => {
+      toast.success('Contact removed successfully');
+      queryClient.invalidateQueries({ queryKey: clientKeys.detail(variables.clientId) });
+      queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
+    },
+    onError: (error) => {
+      toast.error('Failed to remove contact', {
         description: error instanceof Error ? error.message : 'Please try again',
       });
     },

@@ -14,7 +14,10 @@ import { useLeads } from "@/lib/hooks/query-lead";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Building2, MapPin, Users, Globe, Linkedin, Mail, Phone, ArrowLeft, FileText, Clock, Briefcase, User, StickyNote } from "lucide-react";
+import { ContactModal } from "@/components/company";
+import { useRemoveContact } from "@/lib/hooks/query-client";
+import { Building2, MapPin, Users, Globe, Linkedin, Mail, Phone, ArrowLeft, FileText, Clock, Briefcase, User, StickyNote, Plus, Star, Edit2, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 // Dynamic import for EventTimeline to avoid SSR issues
 const CompanyEventTimeline = dynamic(() => 
@@ -109,16 +112,17 @@ export default function CompanyDetailPage() {
           </div>
 <div>
             <h1 className="text-2xl font-bold">{company.name}</h1>
-            <div className="flex items-center gap-2 text-muted-foreground">
+<div className="flex items-center gap-2 text-muted-foreground">
               {company.status && (
-                <Badge variant={company.status === 'rejected' ? 'destructive' : company.status === 'accept' ? 'default' : 'outline'}>
+                <Badge variant={company.status === 'closed_won' ? 'default' : company.status === 'lost' ? 'destructive' : 'outline'}>
                   {company.status === 'identification' ? 'Identification' : 
                    company.status === 'outreach' ? 'Attempted Outreach' : 
                    company.status === 'conversation' ? 'Conversation' : 
                    company.status === 'presented' ? 'Candidate Presented' : 
-                   company.status === 'interview' ? 'Interview' : 
-                   company.status === 'accept' ? 'Accept' : 
-                   company.status === 'rejected' ? 'Rejected' : 
+                   company.status === 'meeting' ? 'Meeting' : 
+                   company.status === 'proposal' ? 'Proposal' : 
+                   company.status === 'closed_won' ? 'Closed Won' : 
+                   company.status === 'lost' ? 'Lost' : 
                    company.status}
                 </Badge>
               )}
@@ -182,7 +186,7 @@ export default function CompanyDetailPage() {
         {activeTab === "overview" && <OverviewTab company={company} />}
         {activeTab === "history" && <HistoryTab company={company} />}
         {activeTab === "jobs" && <JobsTab leads={companyLeads} companyName={company.name} />}
-        {activeTab === "contacts" && <ContactsTab leads={companyLeads} />}
+{activeTab === "contacts" && <ContactsTab company={company} leads={companyLeads} />}
         {activeTab === "notes" && <NotesTab company={company} />}
       </div>
     </div>
@@ -191,6 +195,10 @@ export default function CompanyDetailPage() {
 
 // Overview Tab Component
 function OverviewTab({ company }: { company: any }) {
+  // Get primary contact from contacts array
+  const contacts = company.contacts || [];
+  const primaryContact = contacts.find((c: any) => c.isPrimary) || contacts[0];
+
   return (
     <div className="grid gap-6 md:grid-cols-2">
       {/* Basic Info */}
@@ -273,6 +281,51 @@ function OverviewTab({ company }: { company: any }) {
         </div>
       </div>
 
+      {/* Primary Contact - Show prominently */}
+      {primaryContact && (
+        <div className="md:col-span-2 p-6 rounded-lg border border-border bg-card space-y-4">
+          <h3 className="font-semibold flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Primary Contact
+            <Badge variant="secondary" className="ml-2 bg-yellow-100 text-yellow-800">
+              <Star className="h-3 w-3 mr-1" />
+              Primary
+            </Badge>
+          </h3>
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+              <User className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <p className="font-medium">{primaryContact.name}</p>
+              {primaryContact.title && (
+                <p className="text-sm text-muted-foreground">{primaryContact.title}</p>
+              )}
+              <div className="flex flex-wrap gap-3 mt-1">
+                {primaryContact.email && (
+                  <a 
+                    href={`mailto:${primaryContact.email}`}
+                    className="flex items-center gap-1 text-sm text-primary hover:underline"
+                  >
+                    <Mail className="h-3 w-3" />
+                    {primaryContact.email}
+                  </a>
+                )}
+                {primaryContact.phone && (
+                  <a 
+                    href={`tel:${primaryContact.phone}`}
+                    className="flex items-center gap-1 text-sm text-primary hover:underline"
+                  >
+                    <Phone className="h-3 w-3" />
+                    {primaryContact.phone}
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Description */}
       {company.description && (
         <div className="md:col-span-2 p-6 rounded-lg border border-border bg-card space-y-4">
@@ -342,55 +395,165 @@ function JobsTab({ leads, companyName }: { leads: any[]; companyName: string }) 
 }
 
 // Contacts Tab Component
-function ContactsTab({ leads }: { leads: any[] }) {
+function ContactsTab({ company }: { company: any; leads: any[] }) {
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingContact, setEditingContact] = useState<any>(null);
+  const [deletingContact, setDeletingContact] = useState<any>(null);
+  const removeContactMutation = useRemoveContact();
+
+  const contacts = company.contacts || [];
+
+  const handleEdit = (contact: any) => {
+    setEditingContact(contact);
+  };
+
+  const handleDelete = async () => {
+    if (!deletingContact) return;
+    
+    try {
+      await removeContactMutation.mutateAsync({
+        clientId: company.id,
+        contactId: deletingContact.id,
+        contactName: deletingContact.name,
+      });
+      setDeletingContact(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete contact');
+    }
+  };
+
+  const refreshData = () => {
+    // The query client cache will be invalidated by the mutation
+    // This is just to close the modal
+  };
+
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold">Hiring Managers & Contacts</h3>
-      
-      {leads.length > 0 ? (
+      {/* Header with Add Contact button */}
+      <div className="flex justify-between items-center">
+        <h3 className="font-semibold">Contacts</h3>
+        <Button onClick={() => setShowAddModal(true)} className="flex items-center gap-2">
+          <Plus className="h-4 w-4" />
+          Add Contact
+        </Button>
+      </div>
+
+      {/* Contact Modal for Adding */}
+      <ContactModal
+        clientId={company.id}
+        open={showAddModal}
+        onOpenChange={(open) => {
+          setShowAddModal(open);
+          if (!open) refreshData();
+        }}
+        onSave={() => {
+          setShowAddModal(false);
+          refreshData();
+        }}
+      />
+
+      {/* Contact Modal for Editing */}
+      {editingContact && (
+        <ContactModal
+          clientId={company.id}
+          contact={editingContact}
+          open={!!editingContact}
+          onOpenChange={(open) => {
+            if (!open) setEditingContact(null);
+            else refreshData();
+          }}
+          onSave={() => {
+            setEditingContact(null);
+            refreshData();
+          }}
+        />
+      )}
+
+      {/* Delete Confirmation */}
+      {deletingContact && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setDeletingContact(null)} />
+          <div className="relative z-10 w-full max-w-md mx-4 bg-background rounded-lg border shadow-lg p-6">
+            <h3 className="text-lg font-semibold">Delete Contact</h3>
+            <p className="text-muted-foreground mt-2">
+              Are you sure you want to delete {deletingContact.name}? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="outline" onClick={() => setDeletingContact(null)} disabled={removeContactMutation.isPending}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleDelete} disabled={removeContactMutation.isPending}>
+                {removeContactMutation.isPending ? 'Deleting...' : 'Delete'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Contacts List */}
+      {contacts.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2">
-          {leads.map((lead: any) => (
-            <div key={lead.id} className="p-4 rounded-lg border border-border bg-card">
+          {contacts.map((contact: any) => (
+            <div key={contact.id} className="p-4 rounded-lg border border-border bg-card">
               <div className="flex items-start gap-3">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                   <User className="h-5 w-5 text-primary" />
                 </div>
-                <div className="flex-1">
-                  <h4 className="font-medium">{lead.name || "Unknown Contact"}</h4>
-                  {lead.title && (
-                    <p className="text-sm text-muted-foreground">{lead.title}</p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-medium">{contact.name}</h4>
+                    {contact.isPrimary && (
+                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-xs">
+                        <Star className="h-3 w-3 mr-1" />
+                        Primary
+                      </Badge>
+                    )}
+                  </div>
+                  {contact.title && (
+                    <p className="text-sm text-muted-foreground">{contact.title}</p>
                   )}
                   
                   <div className="flex flex-wrap gap-2 mt-3">
-                    {lead.email && (
+                    {contact.email && (
                       <a 
-                        href={`mailto:${lead.email}`}
+                        href={`mailto:${contact.email}`}
                         className="flex items-center gap-1 text-sm text-primary hover:underline"
                       >
                         <Mail className="h-3 w-3" />
-                        Email
+                        {contact.email}
                       </a>
                     )}
-                    {lead.phone && (
+                    {contact.phone && (
                       <a 
-                        href={`tel:${lead.phone}`}
+                        href={`tel:${contact.phone}`}
                         className="flex items-center gap-1 text-sm text-primary hover:underline"
                       >
                         <Phone className="h-3 w-3" />
-                        Call
+                        {contact.phone}
                       </a>
                     )}
-                    {lead.linkedin_url && (
-                      <a 
-                        href={lead.linkedin_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-sm text-primary hover:underline"
-                      >
-                        <Linkedin className="h-3 w-3" />
-                        LinkedIn
-                      </a>
-                    )}
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2 mt-3 pt-3 border-t border-border">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => handleEdit(contact)}
+                      className="h-7 px-2 text-xs"
+                    >
+                      <Edit2 className="h-3 w-3 mr-1" />
+                      Edit
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => setDeletingContact(contact)}
+                      className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Delete
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -398,10 +561,13 @@ function ContactsTab({ leads }: { leads: any[] }) {
           ))}
         </div>
       ) : (
-        <div className="text-center py-8 text-muted-foreground">
+        <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
           <User className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p>No contacts associated with this company</p>
-          <p className="text-sm mt-1">Add leads to track hiring managers here</p>
+          <p>No contacts yet. Add one to get started.</p>
+          <Button onClick={() => setShowAddModal(true)} className="mt-4">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Contact
+          </Button>
         </div>
       )}
     </div>
