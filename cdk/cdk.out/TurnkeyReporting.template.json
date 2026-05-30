@@ -1,0 +1,215 @@
+{
+ "Resources": {
+  "QuickSightEmbeddingRole2653CF88": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "quicksight.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Description": "Role for QuickSight dashboard embedding",
+    "MaxSessionDuration": 43200,
+    "RoleName": "QuickSightEmbeddingRole"
+   },
+   "Metadata": {
+    "aws:cdk:path": "TurnkeyReporting/QuickSightEmbeddingRole/Resource"
+   }
+  },
+  "QuickSightEmbeddingRoleDefaultPolicy84F34A29": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "quicksight:GenerateEmbedUrl",
+        "quicksight:GetDashboard",
+        "quicksight:ListDashboards",
+        "quicksight:ListAnalyses"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        "arn:aws:quicksight:us-east-1:635449373837:dashboard/*",
+        "arn:aws:quicksight:us-east-1:635449373837:analysis/*"
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "QuickSightEmbeddingRoleDefaultPolicy84F34A29",
+    "Roles": [
+     {
+      "Ref": "QuickSightEmbeddingRole2653CF88"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "TurnkeyReporting/QuickSightEmbeddingRole/DefaultPolicy/Resource"
+   }
+  },
+  "GlueCrawlerRole4AA4B387": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "glue.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Description": "Role for Glue crawler to read DynamoDB",
+    "MaxSessionDuration": 43200,
+    "RoleName": "TurnkeyGlueCrawlerRole"
+   },
+   "Metadata": {
+    "aws:cdk:path": "TurnkeyReporting/GlueCrawlerRole/Resource"
+   }
+  },
+  "GlueCrawlerRoleDefaultPolicy44958AC9": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:DescribeTable",
+        "dynamodb:Scan"
+       ],
+       "Effect": "Allow",
+       "Resource": "arn:aws:dynamodb:us-east-1:635449373837:table/turnkey-*"
+      },
+      {
+       "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        "arn:aws:s3:::aws-glue-*",
+        "arn:aws:s3:::aws-glue-*/*"
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "GlueCrawlerRoleDefaultPolicy44958AC9",
+    "Roles": [
+     {
+      "Ref": "GlueCrawlerRole4AA4B387"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "TurnkeyReporting/GlueCrawlerRole/DefaultPolicy/Resource"
+   }
+  },
+  "AthenaWorkgroup": {
+   "Type": "AWS::Athena::WorkGroup",
+   "Properties": {
+    "Name": "turnkey-analytics",
+    "State": "ENABLED",
+    "WorkGroupConfiguration": {
+     "EnforceWorkGroupConfiguration": false,
+     "ResultConfiguration": {
+      "OutputLocation": "s3://turnkey-analytics-635449373837/athena-results/"
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "TurnkeyReporting/AthenaWorkgroup"
+   }
+  },
+  "BedrockInvocationLogs9E813CF7": {
+   "Type": "AWS::Logs::LogGroup",
+   "Properties": {
+    "LogGroupName": "/aws/bedrock/modelinvocations"
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "TurnkeyReporting/BedrockInvocationLogs/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/zWMvQ6CMBRGn4W9vYoYfQAGFxMIDo6m1gK1pZf0J4Q0fXdj0emc8w3fAcrTGfYFWxzlL0W1fEK8ecYVYYt7RMkmiB1qQereZLaoJV+/uVkizI/CMKh7c0erLhbDTDQODuIVhy3r3vw9JdIJh8Hy/NkEPwef339rIu3qRzS7CsojVMXbSUltMF5OArqNH0vB5KK3AAAA"
+   },
+   "Metadata": {
+    "aws:cdk:path": "TurnkeyReporting/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "QuickSightEmbedRoleArn": {
+   "Description": "ARN of QuickSight embedding role",
+   "Value": {
+    "Fn::GetAtt": [
+     "QuickSightEmbeddingRole2653CF88",
+     "Arn"
+    ]
+   }
+  },
+  "GlueCrawlerRoleArn": {
+   "Description": "ARN of Glue crawler role",
+   "Value": {
+    "Fn::GetAtt": [
+     "GlueCrawlerRole4AA4B387",
+     "Arn"
+    ]
+   }
+  },
+  "AthenaWorkgroupName": {
+   "Description": "Name of Athena workgroup",
+   "Value": "turnkey-analytics"
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

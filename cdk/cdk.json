@@ -1,5 +1,5 @@
 {
-  "app": "python C:/Users/micha/Downloads/TurnkeyOptimization/cdk/app.py",
+  "app": "python C:/Users/micha/Desktop/turnkey-optimization/cdk/app.py",
   "watch": {
     "include": [
       "**"

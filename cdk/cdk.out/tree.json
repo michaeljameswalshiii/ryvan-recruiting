@@ -1,0 +1,960 @@
+{
+  "version": "tree-0.1",
+  "tree": {
+    "id": "App",
+    "path": "",
+    "children": {
+      "TurnkeyAuth": {
+        "id": "TurnkeyAuth",
+        "path": "TurnkeyAuth",
+        "children": {
+          "TurnkeyUserPool": {
+            "id": "TurnkeyUserPool",
+            "path": "TurnkeyAuth/TurnkeyUserPool",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "TurnkeyAuth/TurnkeyUserPool/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::Cognito::UserPool",
+                  "aws:cdk:cloudformation:props": {
+                    "accountRecoverySetting": {
+                      "recoveryMechanisms": [
+                        {
+                          "name": "verified_phone_number",
+                          "priority": 1
+                        },
+                        {
+                          "name": "verified_email",
+                          "priority": 2
+                        }
+                      ]
+                    },
+                    "adminCreateUserConfig": {
+                      "allowAdminCreateUserOnly": false
+                    },
+                    "autoVerifiedAttributes": [
+                      "email"
+                    ],
+                    "emailVerificationMessage": "The verification code to your new account is {####}",
+                    "emailVerificationSubject": "Verify your new account",
+                    "schema": [
+                      {
+                        "name": "email",
+                        "mutable": false,
+                        "required": true
+                      },
+                      {
+                        "name": "name",
+                        "mutable": true,
+                        "required": false
+                      }
+                    ],
+                    "smsVerificationMessage": "The verification code to your new account is {####}",
+                    "usernameAttributes": [
+                      "email"
+                    ],
+                    "userPoolName": "turnkey-optimization-pool",
+                    "verificationMessageTemplate": {
+                      "defaultEmailOption": "CONFIRM_WITH_CODE",
+                      "emailMessage": "The verification code to your new account is {####}",
+                      "emailSubject": "Verify your new account",
+                      "smsMessage": "The verification code to your new account is {####}"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_cognito.CfnUserPool",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_cognito.UserPool",
+              "version": "2.167.0"
+            }
+          },
+          "TurnkeyWebClient": {
+            "id": "TurnkeyWebClient",
+            "path": "TurnkeyAuth/TurnkeyWebClient",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "TurnkeyAuth/TurnkeyWebClient/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::Cognito::UserPoolClient",
+                  "aws:cdk:cloudformation:props": {
+                    "allowedOAuthFlows": [
+                      "code"
+                    ],
+                    "allowedOAuthFlowsUserPoolClient": true,
+                    "allowedOAuthScopes": [
+                      "email",
+                      "openid",
+                      "profile"
+                    ],
+                    "callbackUrLs": [
+                      "https://example.com"
+                    ],
+                    "explicitAuthFlows": [
+                      "ALLOW_USER_PASSWORD_AUTH",
+                      "ALLOW_USER_SRP_AUTH",
+                      "ALLOW_REFRESH_TOKEN_AUTH"
+                    ],
+                    "supportedIdentityProviders": [
+                      "COGNITO"
+                    ],
+                    "userPoolId": {
+                      "Ref": "TurnkeyUserPool0882188A"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_cognito.CfnUserPoolClient",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_cognito.UserPoolClient",
+              "version": "2.167.0"
+            }
+          },
+          "UserPoolId": {
+            "id": "UserPoolId",
+            "path": "TurnkeyAuth/UserPoolId",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnOutput",
+              "version": "2.167.0"
+            }
+          },
+          "UserPoolClientId": {
+            "id": "UserPoolClientId",
+            "path": "TurnkeyAuth/UserPoolClientId",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnOutput",
+              "version": "2.167.0"
+            }
+          },
+          "CDKMetadata": {
+            "id": "CDKMetadata",
+            "path": "TurnkeyAuth/CDKMetadata",
+            "children": {
+              "Default": {
+                "id": "Default",
+                "path": "TurnkeyAuth/CDKMetadata/Default",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.CfnResource",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "constructs.Construct",
+              "version": "10.6.0"
+            }
+          },
+          "BootstrapVersion": {
+            "id": "BootstrapVersion",
+            "path": "TurnkeyAuth/BootstrapVersion",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnParameter",
+              "version": "2.167.0"
+            }
+          },
+          "CheckBootstrapVersion": {
+            "id": "CheckBootstrapVersion",
+            "path": "TurnkeyAuth/CheckBootstrapVersion",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnRule",
+              "version": "2.167.0"
+            }
+          }
+        },
+        "constructInfo": {
+          "fqn": "aws-cdk-lib.Stack",
+          "version": "2.167.0"
+        }
+      },
+      "TurnkeyData": {
+        "id": "TurnkeyData",
+        "path": "TurnkeyData",
+        "children": {
+          "Tenants": {
+            "id": "Tenants",
+            "path": "TurnkeyData/Tenants",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "TurnkeyData/Tenants/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::DynamoDB::Table",
+                  "aws:cdk:cloudformation:props": {
+                    "attributeDefinitions": [
+                      {
+                        "attributeName": "id",
+                        "attributeType": "S"
+                      }
+                    ],
+                    "billingMode": "PAY_PER_REQUEST",
+                    "keySchema": [
+                      {
+                        "attributeName": "id",
+                        "keyType": "HASH"
+                      }
+                    ],
+                    "tableName": "turnkey-tenants"
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_dynamodb.CfnTable",
+                  "version": "2.167.0"
+                }
+              },
+              "ScalingRole": {
+                "id": "ScalingRole",
+                "path": "TurnkeyData/Tenants/ScalingRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_dynamodb.Table",
+              "version": "2.167.0"
+            }
+          },
+          "Profiles": {
+            "id": "Profiles",
+            "path": "TurnkeyData/Profiles",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "TurnkeyData/Profiles/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::DynamoDB::Table",
+                  "aws:cdk:cloudformation:props": {
+                    "attributeDefinitions": [
+                      {
+                        "attributeName": "id",
+                        "attributeType": "S"
+                      },
+                      {
+                        "attributeName": "tenant_id",
+                        "attributeType": "S"
+                      }
+                    ],
+                    "billingMode": "PAY_PER_REQUEST",
+                    "globalSecondaryIndexes": [
+                      {
+                        "indexName": "tenant-index",
+                        "keySchema": [
+                          {
+                            "attributeName": "tenant_id",
+                            "keyType": "HASH"
+                          }
+                        ],
+                        "projection": {
+                          "projectionType": "ALL"
+                        }
+                      }
+                    ],
+                    "keySchema": [
+                      {
+                        "attributeName": "id",
+                        "keyType": "HASH"
+                      }
+                    ],
+                    "tableName": "turnkey-profiles"
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_dynamodb.CfnTable",
+                  "version": "2.167.0"
+                }
+              },
+              "ScalingRole": {
+                "id": "ScalingRole",
+                "path": "TurnkeyData/Profiles/ScalingRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_dynamodb.Table",
+              "version": "2.167.0"
+            }
+          },
+          "Clients": {
+            "id": "Clients",
+            "path": "TurnkeyData/Clients",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "TurnkeyData/Clients/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::DynamoDB::Table",
+                  "aws:cdk:cloudformation:props": {
+                    "attributeDefinitions": [
+                      {
+                        "attributeName": "tenant_id",
+                        "attributeType": "S"
+                      },
+                      {
+                        "attributeName": "id",
+                        "attributeType": "S"
+                      },
+                      {
+                        "attributeName": "email",
+                        "attributeType": "S"
+                      }
+                    ],
+                    "billingMode": "PAY_PER_REQUEST",
+                    "globalSecondaryIndexes": [
+                      {
+                        "indexName": "email-index",
+                        "keySchema": [
+                          {
+                            "attributeName": "email",
+                            "keyType": "HASH"
+                          }
+                        ],
+                        "projection": {
+                          "projectionType": "ALL"
+                        }
+                      }
+                    ],
+                    "keySchema": [
+                      {
+                        "attributeName": "tenant_id",
+                        "keyType": "HASH"
+                      },
+                      {
+                        "attributeName": "id",
+                        "keyType": "RANGE"
+                      }
+                    ],
+                    "tableName": "turnkey-clients"
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_dynamodb.CfnTable",
+                  "version": "2.167.0"
+                }
+              },
+              "ScalingRole": {
+                "id": "ScalingRole",
+                "path": "TurnkeyData/Clients/ScalingRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_dynamodb.Table",
+              "version": "2.167.0"
+            }
+          },
+          "Leads": {
+            "id": "Leads",
+            "path": "TurnkeyData/Leads",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "TurnkeyData/Leads/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::DynamoDB::Table",
+                  "aws:cdk:cloudformation:props": {
+                    "attributeDefinitions": [
+                      {
+                        "attributeName": "tenant_id",
+                        "attributeType": "S"
+                      },
+                      {
+                        "attributeName": "id",
+                        "attributeType": "S"
+                      }
+                    ],
+                    "billingMode": "PAY_PER_REQUEST",
+                    "keySchema": [
+                      {
+                        "attributeName": "tenant_id",
+                        "keyType": "HASH"
+                      },
+                      {
+                        "attributeName": "id",
+                        "keyType": "RANGE"
+                      }
+                    ],
+                    "tableName": "turnkey-leads"
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_dynamodb.CfnTable",
+                  "version": "2.167.0"
+                }
+              },
+              "ScalingRole": {
+                "id": "ScalingRole",
+                "path": "TurnkeyData/Leads/ScalingRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_dynamodb.Table",
+              "version": "2.167.0"
+            }
+          },
+          "Sources": {
+            "id": "Sources",
+            "path": "TurnkeyData/Sources",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "TurnkeyData/Sources/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::DynamoDB::Table",
+                  "aws:cdk:cloudformation:props": {
+                    "attributeDefinitions": [
+                      {
+                        "attributeName": "tenant_id",
+                        "attributeType": "S"
+                      },
+                      {
+                        "attributeName": "id",
+                        "attributeType": "S"
+                      }
+                    ],
+                    "billingMode": "PAY_PER_REQUEST",
+                    "keySchema": [
+                      {
+                        "attributeName": "tenant_id",
+                        "keyType": "HASH"
+                      },
+                      {
+                        "attributeName": "id",
+                        "keyType": "RANGE"
+                      }
+                    ],
+                    "tableName": "turnkey-sources"
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_dynamodb.CfnTable",
+                  "version": "2.167.0"
+                }
+              },
+              "ScalingRole": {
+                "id": "ScalingRole",
+                "path": "TurnkeyData/Sources/ScalingRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_dynamodb.Table",
+              "version": "2.167.0"
+            }
+          },
+          "Pipeline": {
+            "id": "Pipeline",
+            "path": "TurnkeyData/Pipeline",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "TurnkeyData/Pipeline/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::DynamoDB::Table",
+                  "aws:cdk:cloudformation:props": {
+                    "attributeDefinitions": [
+                      {
+                        "attributeName": "tenant_id",
+                        "attributeType": "S"
+                      },
+                      {
+                        "attributeName": "id",
+                        "attributeType": "S"
+                      }
+                    ],
+                    "billingMode": "PAY_PER_REQUEST",
+                    "keySchema": [
+                      {
+                        "attributeName": "tenant_id",
+                        "keyType": "HASH"
+                      },
+                      {
+                        "attributeName": "id",
+                        "keyType": "RANGE"
+                      }
+                    ],
+                    "tableName": "turnkey-pipeline"
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_dynamodb.CfnTable",
+                  "version": "2.167.0"
+                }
+              },
+              "ScalingRole": {
+                "id": "ScalingRole",
+                "path": "TurnkeyData/Pipeline/ScalingRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_dynamodb.Table",
+              "version": "2.167.0"
+            }
+          },
+          "Events": {
+            "id": "Events",
+            "path": "TurnkeyData/Events",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "TurnkeyData/Events/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::DynamoDB::Table",
+                  "aws:cdk:cloudformation:props": {
+                    "attributeDefinitions": [
+                      {
+                        "attributeName": "PK",
+                        "attributeType": "S"
+                      },
+                      {
+                        "attributeName": "SK",
+                        "attributeType": "S"
+                      },
+                      {
+                        "attributeName": "GSI1PK",
+                        "attributeType": "S"
+                      },
+                      {
+                        "attributeName": "GSI1SK",
+                        "attributeType": "S"
+                      }
+                    ],
+                    "billingMode": "PAY_PER_REQUEST",
+                    "globalSecondaryIndexes": [
+                      {
+                        "indexName": "TenantEventsIndex",
+                        "keySchema": [
+                          {
+                            "attributeName": "GSI1PK",
+                            "keyType": "HASH"
+                          },
+                          {
+                            "attributeName": "GSI1SK",
+                            "keyType": "RANGE"
+                          }
+                        ],
+                        "projection": {
+                          "projectionType": "ALL"
+                        }
+                      }
+                    ],
+                    "keySchema": [
+                      {
+                        "attributeName": "PK",
+                        "keyType": "HASH"
+                      },
+                      {
+                        "attributeName": "SK",
+                        "keyType": "RANGE"
+                      }
+                    ],
+                    "tableName": "turnkey-events"
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_dynamodb.CfnTable",
+                  "version": "2.167.0"
+                }
+              },
+              "ScalingRole": {
+                "id": "ScalingRole",
+                "path": "TurnkeyData/Events/ScalingRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_dynamodb.Table",
+              "version": "2.167.0"
+            }
+          },
+          "CDKMetadata": {
+            "id": "CDKMetadata",
+            "path": "TurnkeyData/CDKMetadata",
+            "children": {
+              "Default": {
+                "id": "Default",
+                "path": "TurnkeyData/CDKMetadata/Default",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.CfnResource",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "constructs.Construct",
+              "version": "10.6.0"
+            }
+          },
+          "BootstrapVersion": {
+            "id": "BootstrapVersion",
+            "path": "TurnkeyData/BootstrapVersion",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnParameter",
+              "version": "2.167.0"
+            }
+          },
+          "CheckBootstrapVersion": {
+            "id": "CheckBootstrapVersion",
+            "path": "TurnkeyData/CheckBootstrapVersion",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnRule",
+              "version": "2.167.0"
+            }
+          }
+        },
+        "constructInfo": {
+          "fqn": "aws-cdk-lib.Stack",
+          "version": "2.167.0"
+        }
+      },
+      "TurnkeyReporting": {
+        "id": "TurnkeyReporting",
+        "path": "TurnkeyReporting",
+        "children": {
+          "QuickSightEmbeddingRole": {
+            "id": "QuickSightEmbeddingRole",
+            "path": "TurnkeyReporting/QuickSightEmbeddingRole",
+            "children": {
+              "ImportQuickSightEmbeddingRole": {
+                "id": "ImportQuickSightEmbeddingRole",
+                "path": "TurnkeyReporting/QuickSightEmbeddingRole/ImportQuickSightEmbeddingRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.167.0"
+                }
+              },
+              "Resource": {
+                "id": "Resource",
+                "path": "TurnkeyReporting/QuickSightEmbeddingRole/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::IAM::Role",
+                  "aws:cdk:cloudformation:props": {
+                    "assumeRolePolicyDocument": {
+                      "Statement": [
+                        {
+                          "Action": "sts:AssumeRole",
+                          "Effect": "Allow",
+                          "Principal": {
+                            "Service": "quicksight.amazonaws.com"
+                          }
+                        }
+                      ],
+                      "Version": "2012-10-17"
+                    },
+                    "description": "Role for QuickSight dashboard embedding",
+                    "maxSessionDuration": 43200,
+                    "roleName": "QuickSightEmbeddingRole"
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                  "version": "2.167.0"
+                }
+              },
+              "DefaultPolicy": {
+                "id": "DefaultPolicy",
+                "path": "TurnkeyReporting/QuickSightEmbeddingRole/DefaultPolicy",
+                "children": {
+                  "Resource": {
+                    "id": "Resource",
+                    "path": "TurnkeyReporting/QuickSightEmbeddingRole/DefaultPolicy/Resource",
+                    "attributes": {
+                      "aws:cdk:cloudformation:type": "AWS::IAM::Policy",
+                      "aws:cdk:cloudformation:props": {
+                        "policyDocument": {
+                          "Statement": [
+                            {
+                              "Action": [
+                                "quicksight:GenerateEmbedUrl",
+                                "quicksight:GetDashboard",
+                                "quicksight:ListDashboards",
+                                "quicksight:ListAnalyses"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": [
+                                "arn:aws:quicksight:us-east-1:635449373837:dashboard/*",
+                                "arn:aws:quicksight:us-east-1:635449373837:analysis/*"
+                              ]
+                            }
+                          ],
+                          "Version": "2012-10-17"
+                        },
+                        "policyName": "QuickSightEmbeddingRoleDefaultPolicy84F34A29",
+                        "roles": [
+                          {
+                            "Ref": "QuickSightEmbeddingRole2653CF88"
+                          }
+                        ]
+                      }
+                    },
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
+                      "version": "2.167.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.Policy",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_iam.Role",
+              "version": "2.167.0"
+            }
+          },
+          "GlueCrawlerRole": {
+            "id": "GlueCrawlerRole",
+            "path": "TurnkeyReporting/GlueCrawlerRole",
+            "children": {
+              "ImportGlueCrawlerRole": {
+                "id": "ImportGlueCrawlerRole",
+                "path": "TurnkeyReporting/GlueCrawlerRole/ImportGlueCrawlerRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.167.0"
+                }
+              },
+              "Resource": {
+                "id": "Resource",
+                "path": "TurnkeyReporting/GlueCrawlerRole/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::IAM::Role",
+                  "aws:cdk:cloudformation:props": {
+                    "assumeRolePolicyDocument": {
+                      "Statement": [
+                        {
+                          "Action": "sts:AssumeRole",
+                          "Effect": "Allow",
+                          "Principal": {
+                            "Service": "glue.amazonaws.com"
+                          }
+                        }
+                      ],
+                      "Version": "2012-10-17"
+                    },
+                    "description": "Role for Glue crawler to read DynamoDB",
+                    "maxSessionDuration": 43200,
+                    "roleName": "TurnkeyGlueCrawlerRole"
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                  "version": "2.167.0"
+                }
+              },
+              "DefaultPolicy": {
+                "id": "DefaultPolicy",
+                "path": "TurnkeyReporting/GlueCrawlerRole/DefaultPolicy",
+                "children": {
+                  "Resource": {
+                    "id": "Resource",
+                    "path": "TurnkeyReporting/GlueCrawlerRole/DefaultPolicy/Resource",
+                    "attributes": {
+                      "aws:cdk:cloudformation:type": "AWS::IAM::Policy",
+                      "aws:cdk:cloudformation:props": {
+                        "policyDocument": {
+                          "Statement": [
+                            {
+                              "Action": [
+                                "dynamodb:DescribeTable",
+                                "dynamodb:Scan"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": "arn:aws:dynamodb:us-east-1:635449373837:table/turnkey-*"
+                            },
+                            {
+                              "Action": [
+                                "s3:GetObject",
+                                "s3:PutObject",
+                                "s3:ListBucket"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": [
+                                "arn:aws:s3:::aws-glue-*",
+                                "arn:aws:s3:::aws-glue-*/*"
+                              ]
+                            }
+                          ],
+                          "Version": "2012-10-17"
+                        },
+                        "policyName": "GlueCrawlerRoleDefaultPolicy44958AC9",
+                        "roles": [
+                          {
+                            "Ref": "GlueCrawlerRole4AA4B387"
+                          }
+                        ]
+                      }
+                    },
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
+                      "version": "2.167.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.Policy",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_iam.Role",
+              "version": "2.167.0"
+            }
+          },
+          "AthenaWorkgroup": {
+            "id": "AthenaWorkgroup",
+            "path": "TurnkeyReporting/AthenaWorkgroup",
+            "attributes": {
+              "aws:cdk:cloudformation:type": "AWS::Athena::WorkGroup",
+              "aws:cdk:cloudformation:props": {
+                "name": "turnkey-analytics",
+                "state": "ENABLED",
+                "workGroupConfiguration": {
+                  "enforceWorkGroupConfiguration": false,
+                  "resultConfiguration": {
+                    "outputLocation": "s3://turnkey-analytics-635449373837/athena-results/"
+                  }
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_athena.CfnWorkGroup",
+              "version": "2.167.0"
+            }
+          },
+          "BedrockInvocationLogs": {
+            "id": "BedrockInvocationLogs",
+            "path": "TurnkeyReporting/BedrockInvocationLogs",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "TurnkeyReporting/BedrockInvocationLogs/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::Logs::LogGroup",
+                  "aws:cdk:cloudformation:props": {
+                    "logGroupName": "/aws/bedrock/modelinvocations"
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_logs.CfnLogGroup",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_logs.LogGroup",
+              "version": "2.167.0"
+            }
+          },
+          "QuickSightEmbedRoleArn": {
+            "id": "QuickSightEmbedRoleArn",
+            "path": "TurnkeyReporting/QuickSightEmbedRoleArn",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnOutput",
+              "version": "2.167.0"
+            }
+          },
+          "GlueCrawlerRoleArn": {
+            "id": "GlueCrawlerRoleArn",
+            "path": "TurnkeyReporting/GlueCrawlerRoleArn",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnOutput",
+              "version": "2.167.0"
+            }
+          },
+          "AthenaWorkgroupName": {
+            "id": "AthenaWorkgroupName",
+            "path": "TurnkeyReporting/AthenaWorkgroupName",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnOutput",
+              "version": "2.167.0"
+            }
+          },
+          "CDKMetadata": {
+            "id": "CDKMetadata",
+            "path": "TurnkeyReporting/CDKMetadata",
+            "children": {
+              "Default": {
+                "id": "Default",
+                "path": "TurnkeyReporting/CDKMetadata/Default",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.CfnResource",
+                  "version": "2.167.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "constructs.Construct",
+              "version": "10.6.0"
+            }
+          },
+          "BootstrapVersion": {
+            "id": "BootstrapVersion",
+            "path": "TurnkeyReporting/BootstrapVersion",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnParameter",
+              "version": "2.167.0"
+            }
+          },
+          "CheckBootstrapVersion": {
+            "id": "CheckBootstrapVersion",
+            "path": "TurnkeyReporting/CheckBootstrapVersion",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnRule",
+              "version": "2.167.0"
+            }
+          }
+        },
+        "constructInfo": {
+          "fqn": "aws-cdk-lib.Stack",
+          "version": "2.167.0"
+        }
+      },
+      "Tree": {
+        "id": "Tree",
+        "path": "Tree",
+        "constructInfo": {
+          "fqn": "constructs.Construct",
+          "version": "10.6.0"
+        }
+      }
+    },
+    "constructInfo": {
+      "fqn": "aws-cdk-lib.App",
+      "version": "2.167.0"
+    }
+  }
+}

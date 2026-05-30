@@ -1,0 +1,9 @@
+feat(contacts): Add Contacts UI for Multiple Contacts per Company
+
+- Create ContactModal component with Name, Title, Email, Phone, Notes, Primary fields
+- Add Contacts tab in company detail page with card grid layout
+- Add Primary badge highlighting in both Contacts tab and Overview tab
+- Add Edit + Delete action buttons per contact
+- Add server actions and repository functions for CRUD
+- Add Timeline event recording for contact changes
+- Fix TypeScript errors in status badge logic

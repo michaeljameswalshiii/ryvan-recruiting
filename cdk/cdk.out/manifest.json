@@ -1,0 +1,352 @@
+{
+  "version": "38.0.1",
+  "artifacts": {
+    "TurnkeyAuth.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "TurnkeyAuth.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "TurnkeyAuth": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://635449373837/us-east-1",
+      "properties": {
+        "templateFile": "TurnkeyAuth.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "notificationArns": [],
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-deploy-role-635449373837-us-east-1",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-cfn-exec-role-635449373837-us-east-1",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-635449373837-us-east-1/c0f79bdbfec847c8995215844e74fb39b9efca82ecdf0d06c76e53b32374a042.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "TurnkeyAuth.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-lookup-role-635449373837-us-east-1",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "TurnkeyAuth.assets"
+      ],
+      "metadata": {
+        "/TurnkeyAuth/TurnkeyUserPool/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "TurnkeyUserPool0882188A"
+          }
+        ],
+        "/TurnkeyAuth/TurnkeyWebClient/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "TurnkeyWebClient7F817D22"
+          }
+        ],
+        "/TurnkeyAuth/UserPoolId": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "UserPoolId"
+          }
+        ],
+        "/TurnkeyAuth/UserPoolClientId": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "UserPoolClientId"
+          }
+        ],
+        "/TurnkeyAuth/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/TurnkeyAuth/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/TurnkeyAuth/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "TurnkeyAuth"
+    },
+    "TurnkeyData.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "TurnkeyData.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "TurnkeyData": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://635449373837/us-east-1",
+      "properties": {
+        "templateFile": "TurnkeyData.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "notificationArns": [],
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-deploy-role-635449373837-us-east-1",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-cfn-exec-role-635449373837-us-east-1",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-635449373837-us-east-1/8eb736083dfa81f0e8304627339b0a2d15d973c6c65e962af3a736d2d736b4b6.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "TurnkeyData.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-lookup-role-635449373837-us-east-1",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "TurnkeyData.assets"
+      ],
+      "metadata": {
+        "/TurnkeyData/Tenants": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "TenantsA9C48FD3"
+            }
+          }
+        ],
+        "/TurnkeyData/Tenants/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "TenantsA9C48FD3"
+          }
+        ],
+        "/TurnkeyData/Profiles": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "Profiles4FC22479"
+            }
+          }
+        ],
+        "/TurnkeyData/Profiles/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Profiles4FC22479"
+          }
+        ],
+        "/TurnkeyData/Clients": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "Clients67031123"
+            }
+          }
+        ],
+        "/TurnkeyData/Clients/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Clients67031123"
+          }
+        ],
+        "/TurnkeyData/Leads": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "Leads391D8FFF"
+            }
+          }
+        ],
+        "/TurnkeyData/Leads/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Leads391D8FFF"
+          }
+        ],
+        "/TurnkeyData/Sources": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "SourcesBE4D2488"
+            }
+          }
+        ],
+        "/TurnkeyData/Sources/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "SourcesBE4D2488"
+          }
+        ],
+        "/TurnkeyData/Pipeline": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "PipelineC660917D"
+            }
+          }
+        ],
+        "/TurnkeyData/Pipeline/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PipelineC660917D"
+          }
+        ],
+        "/TurnkeyData/Events": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "EventsD32975C2"
+            }
+          }
+        ],
+        "/TurnkeyData/Events/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "EventsD32975C2"
+          }
+        ],
+        "/TurnkeyData/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/TurnkeyData/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/TurnkeyData/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "TurnkeyData"
+    },
+    "TurnkeyReporting.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "TurnkeyReporting.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "TurnkeyReporting": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://635449373837/us-east-1",
+      "properties": {
+        "templateFile": "TurnkeyReporting.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "notificationArns": [],
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-deploy-role-635449373837-us-east-1",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-cfn-exec-role-635449373837-us-east-1",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-635449373837-us-east-1/4d5c0175622c40b0842c0dabdbff40f6f89a42711c2fb765ebab884def0a2e8a.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "TurnkeyReporting.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-lookup-role-635449373837-us-east-1",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "TurnkeyReporting.assets"
+      ],
+      "metadata": {
+        "/TurnkeyReporting/QuickSightEmbeddingRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "QuickSightEmbeddingRole2653CF88"
+          }
+        ],
+        "/TurnkeyReporting/QuickSightEmbeddingRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "QuickSightEmbeddingRoleDefaultPolicy84F34A29"
+          }
+        ],
+        "/TurnkeyReporting/GlueCrawlerRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "GlueCrawlerRole4AA4B387"
+          }
+        ],
+        "/TurnkeyReporting/GlueCrawlerRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "GlueCrawlerRoleDefaultPolicy44958AC9"
+          }
+        ],
+        "/TurnkeyReporting/AthenaWorkgroup": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AthenaWorkgroup"
+          }
+        ],
+        "/TurnkeyReporting/BedrockInvocationLogs/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BedrockInvocationLogs9E813CF7"
+          }
+        ],
+        "/TurnkeyReporting/QuickSightEmbedRoleArn": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "QuickSightEmbedRoleArn"
+          }
+        ],
+        "/TurnkeyReporting/GlueCrawlerRoleArn": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "GlueCrawlerRoleArn"
+          }
+        ],
+        "/TurnkeyReporting/AthenaWorkgroupName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AthenaWorkgroupName"
+          }
+        ],
+        "/TurnkeyReporting/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/TurnkeyReporting/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/TurnkeyReporting/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "TurnkeyReporting"
+    },
+    "Tree": {
+      "type": "cdk:tree",
+      "properties": {
+        "file": "tree.json"
+      }
+    }
+  }
+}

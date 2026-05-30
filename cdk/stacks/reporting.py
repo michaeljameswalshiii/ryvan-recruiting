@@ -9,6 +9,7 @@ from aws_cdk import (
     aws_logs as aws_logs,
     Duration,
     RemovalPolicy,
+    CfnOutput,
 )
 from constructs import Construct
 import os
@@ -107,7 +108,6 @@ class ReportingStack(Stack):
                     output_location=f"s3://turnkey-analytics-{account_id}/athena-results/",
                 ),
                 enforce_work_group_configuration=False,
-                publish_cloud_metrics=False,
             ),
         )
 
@@ -125,8 +125,6 @@ class ReportingStack(Stack):
         # =====================================================================
         # Output role ARNs
         # =====================================================================
-        from aws_cdk import CfnOutput
-
         CfnOutput(
             self,
             "QuickSightEmbedRoleArn",

@@ -1,0 +1,20 @@
+{
+  "version": "38.0.1",
+  "files": {
+    "c0f79bdbfec847c8995215844e74fb39b9efca82ecdf0d06c76e53b32374a042": {
+      "source": {
+        "path": "TurnkeyAuth.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "635449373837-us-east-1": {
+          "bucketName": "cdk-hnb659fds-assets-635449373837-us-east-1",
+          "objectKey": "c0f79bdbfec847c8995215844e74fb39b9efca82ecdf0d06c76e53b32374a042.json",
+          "region": "us-east-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-file-publishing-role-635449373837-us-east-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}
