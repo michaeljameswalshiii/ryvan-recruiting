@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import EventTimeline from "@/components/EventTimeline";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
-import { SendEmailModal, CandidateInfo } from "@/components/email/send-email-modal";
-import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, MapPin, Phone, Linkedin, Loader2 } from "lucide-react";
+import { SendEmailModal } from "@/components/email/send-email-modal";
+import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useJobsForCandidate, useUpdateCandidateStageInJob } from "@/lib/hooks/query-job";
 
 interface Candidate {
   id: string;
@@ -39,7 +40,7 @@ type Tab = "overview" | "timeline" | "resume" | "notes" | "emails" | "details";
 export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [isEditing, setIsEditing] = useState(false);
-const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm] = useState({
     phone: candidate.phone || "",
     email: candidate.email || "",
     location: candidate.location || "",
@@ -314,14 +315,7 @@ const [editForm, setEditForm] = useState({
               </div>
 
               {/* Linked Jobs Section */}
-              <div className="bg-white p-6 rounded-xl border">
-                <h2 className="font-semibold mb-4 flex items-center gap-2">
-                  <Briefcase className="h-5 w-5" /> Linked Jobs
-                </h2>
-                <p className="text-sm text-gray-500">
-                  No jobs linked yet. Link jobs from the Jobs pipeline.
-                </p>
-              </div>
+              <LinkedJobsSection candidateId={candidate.id} />
 
               {/* Resume Section - Quick View */}
               {candidate.resumeUrl && (
@@ -471,6 +465,77 @@ const [editForm, setEditForm] = useState({
         }}
         onSend={handleSendEmail}
       />
+    </div>
+  );
+}
+
+function LinkedJobsSection({ candidateId }: { candidateId: string }) {
+  const { data: jobs, isLoading, isError } = useJobsForCandidate(candidateId);
+  const updateStage = useUpdateCandidateStageInJob();
+
+  const getCurrentStage = (job: any) => {
+    const linked = (job.linkedCandidates || []).find((lc: any) => lc.candidateId === candidateId);
+    return linked?.stage || "SOURCED";
+  };
+
+  const stageOptions = ["SOURCED", "SCREENING", "INTERVIEW", "OFFER", "HIRED", "REJECTED"];
+
+  return (
+    <div className="bg-white p-6 rounded-xl border">
+      <h2 className="font-semibold mb-4 flex items-center gap-2">
+        <Briefcase className="h-5 w-5" /> Linked Jobs
+      </h2>
+
+      {isLoading && <p className="text-sm text-gray-500">Loading linked jobs...</p>}
+      {isError && <p className="text-sm text-red-600">Failed to load linked jobs.</p>}
+
+      {!isLoading && !isError && (!jobs || jobs.length === 0) && (
+        <p className="text-sm text-gray-500">
+          No jobs linked yet. Link jobs from the Jobs pipeline.
+        </p>
+      )}
+
+      {!isLoading && !isError && jobs && jobs.length > 0 && (
+        <div className="space-y-3">
+          {jobs.map((job: any) => {
+            const currentStage = getCurrentStage(job);
+
+            return (
+              <div key={job.id} className="border rounded-lg p-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-sm">{job.title || "Untitled Job"}</p>
+                  <p className="text-xs text-gray-600">{job.companyName || "Unknown Company"}</p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={currentStage}
+                    onChange={(e) =>
+                      updateStage.mutate({
+                        jobId: job.id,
+                        candidateId,
+                        stage: e.target.value,
+                      })
+                    }
+                    className="border rounded-md px-2 py-1 text-sm bg-white"
+                    disabled={updateStage.isPending}
+                  >
+                    {stageOptions.map((stage) => (
+                      <option key={stage} value={stage}>
+                        {stage}
+                      </option>
+                    ))}
+                  </select>
+
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={`/dashboard/jobs/${job.id}`}>View Job</a>
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
