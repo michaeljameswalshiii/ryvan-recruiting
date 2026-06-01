@@ -127,7 +127,7 @@ class DataStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,  # Important for audit data
         )
 
-        # GSI1 for tenant-wide activity feed queries
+# GSI1 for tenant-wide activity feed queries
         self.events_table.add_global_secondary_index(
             index_name="TenantEventsIndex",
             partition_key=dynamodb.Attribute(
@@ -136,6 +136,37 @@ class DataStack(Stack):
             ),
             sort_key=dynamodb.Attribute(
                 name="GSI1SK",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            projection_type=dynamodb.ProjectionType.ALL,
+        )
+
+        # Jobs table (replaces turnkey-leads)
+        self.jobs_table = dynamodb.Table(
+            self,
+            "Jobs",
+            table_name="turnkey-jobs",
+            partition_key=dynamodb.Attribute(
+                name="tenant_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
+                name="id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
+        # Optional GSI for querying by company
+        self.jobs_table.add_global_secondary_index(
+            index_name="CompanyJobsIndex",
+            partition_key=dynamodb.Attribute(
+                name="companyId",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
+                name="id",
                 type=dynamodb.AttributeType.STRING,
             ),
             projection_type=dynamodb.ProjectionType.ALL,

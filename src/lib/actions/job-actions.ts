@@ -1,0 +1,287 @@
+/**
+ * Job Server Actions
+ * Server-side CRUD operations for jobs using httpOnly cookies
+ * 
+ * @serverOnly
+ */
+
+'use server';
+
+import { getSessionTenantId, getSessionUserId } from '../server-auth';
+import { 
+  getAllJobs, 
+  getJobsByStatus, 
+  getOpenJobs,
+  createJob as createJobRepo, 
+  getJobById, 
+  updateJob, 
+  deleteJob,
+  getJobStats,
+  linkCandidateToJob,
+  unlinkCandidateFromJob,
+  updateCandidateStage
+} from '../db/repositories';
+import { createJobSchema } from '../schemas/job';
+
+/**
+ * Get all jobs for the current tenant
+ */
+export async function getJobs(includeStats = false) {
+  console.log('[getJobs] Starting...');
+  
+  let tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+  
+  console.log('[getJobs] Session - tenantId:', tenantId, 'userId:', userId);
+
+  // If no tenantId but user is logged in, use default tenant
+  if (!tenantId && userId) {
+    console.log('[getJobs] No tenantId, using default: tenant-' + userId);
+    tenantId = `tenant-${userId}`;
+  }
+
+  if (!tenantId) {
+    console.log('[getJobs] No tenant - returning empty');
+    // Not logged in - return empty array (not an error)
+    return { jobs: [] };
+  }
+
+  try {
+    console.log('[getJobs] Fetching jobs for tenant:', tenantId);
+    const jobs = await getAllJobs(tenantId);
+    console.log('[getJobs] Got jobs:', jobs?.length || 0);
+    
+    let result: Record<string, unknown> = { jobs };
+
+    if (includeStats) {
+      console.log('[getJobs] Getting stats...');
+      const stats = await getJobStats(tenantId);
+      result = { ...result, stats };
+    }
+
+    return result;
+  } catch (error: any) {
+    console.error('[getJobs] Error:', error?.message, error?.stack);
+    return { error: error.message || 'Failed to get jobs', stack: error?.stack };
+  }
+}
+
+/**
+ * Get jobs by status
+ */
+export async function getJobsByStatusAction(status: string) {
+  let tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+
+  if (!tenantId && userId) {
+    tenantId = `tenant-${userId}`;
+  }
+
+  if (!tenantId) {
+    return { jobs: [] };
+  }
+
+  try {
+    const jobs = await getJobsByStatus(tenantId, status);
+    return { jobs };
+  } catch (error: any) {
+    return { error: error.message || 'Failed to get jobs' };
+  }
+}
+
+/**
+ * Get open jobs only
+ */
+export async function getOpenJobsAction() {
+  let tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+
+  if (!tenantId && userId) {
+    tenantId = `tenant-${userId}`;
+  }
+
+  if (!tenantId) {
+    return { jobs: [] };
+  }
+
+  try {
+    const jobs = await getOpenJobs(tenantId);
+    return { jobs };
+  } catch (error: any) {
+    return { error: error.message || 'Failed to get open jobs' };
+  }
+}
+
+/**
+ * Get a single job by ID
+ */
+export async function getJobByIdAction(jobId: string) {
+  const tenantId = await getSessionTenantId();
+  
+  if (!tenantId) {
+    return { error: 'Unauthorized' };
+  }
+
+  try {
+    const job = await getJobById(tenantId, jobId);
+    return { job };
+  } catch (error: any) {
+    return { error: error.message || 'Failed to get job' };
+  }
+}
+
+/**
+ * Create a new job
+ */
+export async function createJobAction(formData: FormData) {
+  let tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+  
+  if (!userId) {
+    return { error: 'Unauthorized' };
+  }
+
+  // If no tenantId but user is logged in, create/use default tenant
+  if (!tenantId) {
+    console.log('[createJobAction] No tenantId for user, creating default tenant');
+    tenantId = `tenant-${userId}`;
+  }
+
+  const rawData = {
+    title: formData.get('title') as string,
+    description: formData.get('description') as string || '',
+    location: formData.get('location') as string || '',
+    salaryRange: formData.get('salaryRange') as string || '',
+    employmentType: formData.get('employmentType') as string || 'Full-time',
+    companyId: formData.get('companyId') as string,
+    companyName: formData.get('companyName') as string,
+    status: formData.get('status') as string || 'Open',
+  };
+
+  console.log('[createJobAction] rawData:', JSON.stringify(rawData));
+
+  const validated = createJobSchema.safeParse(rawData);
+  
+  if (!validated.success) {
+    console.log('[createJobAction] Zod validation failed:', JSON.stringify(validated.error.flatten().fieldErrors));
+    return {
+      error: 'Invalid input',
+      details: validated.error.flatten().fieldErrors,
+    };
+  }
+
+  try {
+    const job = await createJobRepo(tenantId, validated.data);
+    return { success: true, job };
+  } catch (error: any) {
+    return { error: error.message || 'Failed to create job' };
+  }
+}
+
+/**
+ * Update an existing job
+ */
+export async function updateJobAction(jobId: string, formData: FormData) {
+  const tenantId = await getSessionTenantId();
+  
+  if (!tenantId) {
+    return { error: 'Unauthorized' };
+  }
+
+  const rawData: Record<string, unknown> = {};
+  
+  // Only include fields that are provided
+  const fields = ['title', 'description', 'location', 'salaryRange', 'employmentType', 'companyId', 'companyName', 'status'];
+  for (const field of fields) {
+    const value = formData.get(field);
+    if (value !== null && value !== undefined && value !== '') {
+      rawData[field] = value;
+    }
+  }
+
+  try {
+    const job = await updateJob(tenantId, jobId, rawData);
+    return { success: true, job };
+  } catch (error: any) {
+    return { error: error.message || 'Failed to update job' };
+  }
+}
+
+/**
+ * Delete a job
+ */
+export async function deleteJobAction(jobId: string) {
+  const tenantId = await getSessionTenantId();
+  
+  if (!tenantId) {
+    return { error: 'Unauthorized' };
+  }
+
+  try {
+    await deleteJob(tenantId, jobId);
+    return { success: true };
+  } catch (error: any) {
+    return { error: error.message || 'Failed to delete job' };
+  }
+}
+
+/**
+ * Link a candidate to a job
+ */
+export async function linkCandidateToJobAction(jobId: string, candidateData: {
+  candidateId: string;
+  candidateName: string;
+  candidateEmail?: string;
+  stage?: string;
+  notes?: string;
+}) {
+  const tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+  
+  if (!tenantId || !userId) {
+    return { error: 'Unauthorized' };
+  }
+
+  try {
+    const job = await linkCandidateToJob(tenantId, jobId, candidateData);
+    return { success: true, job };
+  } catch (error: any) {
+    return { error: error.message || 'Failed to link candidate' };
+  }
+}
+
+/**
+ * Unlink a candidate from a job
+ */
+export async function unlinkCandidateFromJobAction(jobId: string, candidateId: string) {
+  const tenantId = await getSessionTenantId();
+  
+  if (!tenantId) {
+    return { error: 'Unauthorized' };
+  }
+
+  try {
+    const job = await unlinkCandidateFromJob(tenantId, jobId, candidateId);
+    return { success: true, job };
+  } catch (error: any) {
+    return { error: error.message || 'Failed to unlink candidate' };
+  }
+}
+
+/**
+ * Update candidate stage in a job
+ */
+export async function updateCandidateStageAction(jobId: string, candidateId: string, stage: string, notes?: string) {
+  const tenantId = await getSessionTenantId();
+  
+  if (!tenantId) {
+    return { error: 'Unauthorized' };
+  }
+
+  try {
+    const job = await updateCandidateStage(tenantId, jobId, candidateId, stage, notes);
+    return { success: true, job };
+  } catch (error: any) {
+    return { error: error.message || 'Failed to update stage' };
+  }
+}

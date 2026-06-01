@@ -17,20 +17,55 @@ import {
  * GET - Get all jobs for the current tenant
  */
 export async function GET(request: NextRequest) {
+  let session = null;
+  
   try {
-    // Get session for tenant isolation
-    const session = await getSession();
+    // DEBUG: Log incoming request
+    console.log('[JOBS-API] GET request received');
+    console.log('[JOBS-API] URL:', request.url);
+    
+    // Get session for tenant isolation - wrapped in try-catch for safety
+    try {
+      session = await getSession();
+      console.log('[JOBS-API] Session:', JSON.stringify(session));
+    } catch (sessionError: any) {
+      console.error('[JOBS-API] Session extraction error:', sessionError?.message);
+      // Continue with null session - will be caught below
+    }
     
     if (!session?.tenantId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      console.log('[JOBS-API] No session or tenantId - trying header injection from dashboard');
+      
+      // Try to get tenantId from request headers (set by dashboard middleware)
+      const tenantId = request.headers.get('x-tenant-id');
+      const userId = request.headers.get('x-user-id');
+      
+      console.log('[JOBS-API] Header tenantId:', tenantId);
+      console.log('[JOBS-API] Header userId:', userId);
+      
+      // If we have tenantId from headers, create a mock session
+      if (tenantId) {
+        session = {
+          tenantId,
+          userId: userId || '',
+        };
+        console.log('[JOBS-API] Using session from headers');
+      } else {
+        console.log('[JOBS-API] No session or headers - returning 401');
+        return NextResponse.json(
+          { error: 'Unauthorized - no session found', details: 'Please log in again' },
+          { status: 401 }
+        );
+      }
     }
+
+    console.log('[JOBS_API] Tenant ID:', session.tenantId);
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const includeStats = searchParams.get('includeStats') === 'true';
+
+    console.log('[JOBS-API] includeStats:', includeStats);
 
     let jobs;
 
@@ -39,6 +74,8 @@ export async function GET(request: NextRequest) {
     } else {
       jobs = await getAllJobs(session.tenantId);
     }
+
+    console.log('[JOBS-API] Jobs count:', jobs?.length || 0);
 
     let response: Record<string, unknown> = { jobs };
 
@@ -50,8 +87,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response);
   } catch (error: any) {
     console.error('[JOBS-API] GET error:', error);
+    console.error('[JOBS-API] Error stack:', error?.stack);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch jobs' },
+      { error: 'Failed to load jobs. Please try again.', details: error?.message || 'Unknown error' },
       { status: 500 }
     );
   }

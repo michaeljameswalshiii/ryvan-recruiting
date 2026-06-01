@@ -22,12 +22,14 @@
 - [x] Update Candidate Detail (`src/app/candidates/[id]/page.tsx`) - Add "Linked Jobs" section
 - [x] Update Company Detail (`src/app/dashboard/companies/[id]/page.tsx`) - Add "Open Jobs" section
 
-## Phase 6: Documentation
+## Phase 6: Infrastructure (DONE)
+- [x] Create turnkey-jobs DynamoDB table (via AWS CLI - status ACTIVE)
+- [x] Add jobs table to CDK (cdk/stacks/dynamodb.py - already present)
+- [x] Create migration script (scripts/migrate-leads-to-jobs.ts)
+
+## Phase 7: Documentation
 - [ ] Update Project_Goals.md - Update priorities
 - [ ] Update EVENTS_ARCHITECTURE.md - Add Job events
-
-## Phase 7: Migration (Optional)
-- [ ] Create migration script if needed
 
 ---
 
@@ -35,9 +37,7 @@
 
 ### Completed:
 - [x] Phase 1-5: Database, API, UI, Navigation, Detail Integration
+- [x] Phase 6: Infrastructure (turnkey-jobs table created)
 
 ### In Progress:
-- [ ] Phase 6: Documentation
-
-### Pending:
-- [ ] Phase 7: Migration (Optional)
+- [ ] Phase 7: Documentation

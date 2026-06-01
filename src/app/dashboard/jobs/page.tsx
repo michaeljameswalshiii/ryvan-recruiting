@@ -183,8 +183,9 @@ export default function JobsPage() {
     );
   }
 
-  // Error state
+// Error state
   if (error) {
+    console.error('[JOBS-PAGE] Error:', error);
     return (
       <div className="space-y-6">
         <div>
@@ -195,6 +196,10 @@ export default function JobsPage() {
           Failed to load jobs. Please try again.
           <br />
           <span className="text-xs">Error: {error?.message}</span>
+          <br />
+          <span className="text-xs text-muted-foreground">
+            Error Details: {error?.details || 'See server logs'}
+          </span>
           <Button variant="outline" onClick={handleRefresh} className="ml-4">
             Retry
           </Button>

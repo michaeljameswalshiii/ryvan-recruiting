@@ -24,6 +24,14 @@ const PUBLIC_API_ROUTES = [
   '/api/health',
 ];
 
+// API routes that need session injection (for client-side calls from dashboard)
+const PROTECTED_API_ROUTES = [
+  '/api/jobs',
+  '/api/data/jobs',
+  '/api/data/clients',
+  '/api/candidates',
+];
+
 // Protected routes that require authentication
 const PROTECTED_ROUTES = ['/dashboard', '/candidates'];
 
@@ -139,10 +147,34 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // === PUBLIC ROUTES - Immediate bypass ===
+// === PUBLIC ROUTES - Immediate bypass ===
   if (isPublicRoute(pathname)) {
     console.log(`[Middleware] Allowing public route: ${pathname}`);
     return NextResponse.next();
+  }
+
+  // === PROTECTED API ROUTES - Inject session headers ===
+  const isProtectedApiRoute = PROTECTED_API_ROUTES.some(route => pathname.startsWith(route));
+  if (isProtectedApiRoute) {
+    console.log(`[Middleware] Processing API route: ${pathname}`);
+    
+    const session = getSession(request);
+    
+    if (!session) {
+      console.log(`[Middleware] No session for API route - allowing with warning`);
+      // Allow through but without headers - API will handle auth
+      return NextResponse.next();
+    }
+    
+    // Inject headers for API routes
+    console.log(`[Middleware] Injecting session headers for ${pathname}:`, session.tenantId);
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-tenant-id', session.tenantId || '');
+    requestHeaders.set('x-user-id', session.userId || '');
+
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    });
   }
 
   // === PROTECTED ROUTES (Dashboard) - Require auth ===

@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "next lint",
     "vercel-build": "next build",
-    "deploy": "powershell -ExecutionPolicy Bypass -File skill-deploy-vercel.ps1"
+    "deploy": "powershell -ExecutionPolicy Bypass -File skill-deploy-vercel.ps1",
+    "migrate:leads-to-jobs": "tsx scripts/migrate-leads-to-jobs.ts",
+    "migrate:leads-to-jobs:dry": "tsx scripts/migrate-leads-to-jobs.ts --dry-run",
+    "migrate:leads-to-jobs:verbose": "tsx scripts/migrate-leads-to-jobs.ts --verbose",
+    "migrate:leads-to-jobs:tsnode": "ts-node scripts/migrate-leads-to-jobs.ts"
   },
   "dependencies": {
     "@apollo/client": "^3.11.8",
@@ -44,7 +48,7 @@
     "groq": "^5.24.0",
     "lucide-react": "^0.468.0",
     "mammoth": "^1.12.0",
-"next": "15.1.11",
+    "next": "15.1.11",
     "nodemailer": "^8.0.7",
     "pdfjs-dist": "^5.7.284",
     "react": "^19.0.0",
@@ -70,6 +74,7 @@
     "eslint-config-next": "15.1.4",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.2"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }

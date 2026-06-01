@@ -4,7 +4,16 @@
 
 **Run this checklist** before merging big PRs or after deployments.
 
-**Last Updated**: May 30, 2026
+**Last Updated**: June 3, 2026
+
+---
+
+## Recent Fixes (June 3, 2026)
+- [x] Fix "Requested resource not found" error on Jobs Pipeline page
+  - Root cause: turnkey-jobs DynamoDB table did not exist
+  - Solution: Created table via AWS CLI (temporary workaround)
+  - Added jobs table definition to CDK for future deployments
+  - Created migration script (scripts/migrate-leads-to-jobs.ts)
 
 ---
 

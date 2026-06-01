@@ -1,0 +1,46 @@
+{
+  "TableName": "turnkey-jobs",
+  "AttributeDefinitions": [
+    {
+      "AttributeName": "tenant_id",
+      "AttributeType": "S"
+    },
+    {
+      "AttributeName": "id",
+      "AttributeType": "S"
+    },
+    {
+      "AttributeName": "companyId",
+      "AttributeType": "S"
+    }
+  ],
+  "KeySchema": [
+    {
+      "AttributeName": "tenant_id",
+      "KeyType": "HASH"
+    },
+    {
+      "AttributeName": "id",
+      "KeyType": "RANGE"
+    }
+  ],
+  "GlobalSecondaryIndexes": [
+    {
+      "IndexName": "CompanyJobsIndex",
+      "KeySchema": [
+        {
+          "AttributeName": "companyId",
+          "KeyType": "HASH"
+        },
+        {
+          "AttributeName": "id",
+          "KeyType": "RANGE"
+        }
+      ],
+      "Projection": {
+        "ProjectionType": "ALL"
+      }
+    }
+  ],
+  "BillingMode": "PAY_PER_REQUEST"
+}
