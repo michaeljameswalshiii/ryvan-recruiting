@@ -2,13 +2,16 @@
  * Jobs Page
  * Kanban board for managing Jobs with linked candidates
  * Displays jobs by status (Open, On Hold, Closed)
+ * Supports drag-and-drop to change job 
+ 
+ status
  */
 
 "use client";
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, MoreHorizontal, MapPin, DollarSign, Users, Building2 } from "lucide-react";
+import { Plus, MoreHorizontal, MapPin, DollarSign, Users, Building2, Edit, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,7 +57,8 @@ export default function JobsPage() {
   const queryClient = useQueryClient();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [draggedJob, setDraggedJob] = useState<string | null>(null);
 
   // Use TanStack Query hooks
   const { data: jobsData, isLoading, error } = useJobs(true);
@@ -71,7 +75,55 @@ export default function JobsPage() {
   const [newJobCompanyId, setNewJobCompanyId] = useState("");
   const [newJobCompanyName, setNewJobCompanyName] = useState("");
 
-  // Convert data to Job interface
+  // Form state for editing job
+  const [editJobTitle, setEditJobTitle] = useState("");
+  const [editJobDescription, setEditJobDescription] = useState("");
+  const [editJobLocation, setEditJobLocation] = useState("");
+  const [editJobSalary, setEditJobSalary] = useState("");
+  const [editJobEmploymentType, setEditJobEmploymentType] = useState("Full-time");
+  const [editJobCompanyId, setEditJobCompanyId] = useState("");
+  const [editJobCompanyName, setEditJobCompanyName] = useState("");
+  const [editJobStatus, setEditJobStatus] = useState<"Open" | "On Hold" | "Closed">("Open");
+
+  // Initialize edit form when a job is selected
+  const initializeEditForm = (job: Job) => {
+    setEditJobTitle(job.title || "");
+    setEditJobDescription(job.description || "");
+    setEditJobLocation(job.location || "");
+    setEditJobSalary(job.salaryRange || "");
+    setEditJobEmploymentType(job.employmentType || "Full-time");
+    setEditJobCompanyId(job.companyId || "");
+    setEditJobCompanyName(job.companyName || "");
+    setEditJobStatus(job.status || "Open");
+  };
+
+  // Handle drag start
+  const handleDragStart = (jobId: string) => {
+    setDraggedJob(jobId);
+  };
+
+  // Handle drag over
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  // Handle drop - update job status
+  const handleDrop = async (newStatus: "Open" | "On Hold" | "Closed") => {
+    if (!draggedJob) return;
+
+    try {
+      await updateJobMutation.mutateAsync({
+        jobId: draggedJob,
+        jobData: { status: newStatus },
+      });
+      setDraggedJob(null);
+    } catch (err: any) {
+      console.error("[JOBS-PAGE] Update status error:", err);
+    }
+  };
+
+// Convert data to Job interface
+  console.log("[JOBS-PAGE] jobsData:", jobsData, "jobs count:", jobsData?.jobs?.length);
   const jobs: Job[] = (jobsData?.jobs || []).map((item: any) => ({
     id: item.id,
     title: item.title || "",
@@ -195,10 +247,10 @@ export default function JobsPage() {
         <div className="p-4 rounded-md bg-destructive/10 text-destructive">
           Failed to load jobs. Please try again.
           <br />
-          <span className="text-xs">Error: {error?.message}</span>
+<span className="text-xs">Error: {error?.message}</span>
           <br />
           <span className="text-xs text-muted-foreground">
-            Error Details: {error?.details || 'See server logs'}
+            See server logs for more details
           </span>
           <Button variant="outline" onClick={handleRefresh} className="ml-4">
             Retry
@@ -247,7 +299,7 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* Add Job Dialog */}
+{/* Add Job Dialog */}
       <SimpleDialog
         open={isAddDialogOpen}
         onOpenChange={setIsAddDialogOpen}
@@ -348,15 +400,166 @@ export default function JobsPage() {
               rows={4}
             />
           </div>
+</div>
+      </SimpleDialog>
+
+      {/* Edit Job Dialog */}
+      <SimpleDialog
+        open={isEditDialogOpen}
+        onOpenChange={(open) => {
+          setIsEditDialogOpen(open);
+          if (open && selectedJob) {
+            initializeEditForm(selectedJob);
+          }
+        }}
+        title="Edit Job"
+        description="Update job details."
+        footer={
+          <>
+<Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                console.log("[JOBS-PAGE] Save clicked", { selectedJob, editJobTitle });
+                if (!selectedJob) {
+                  alert("No job selected");
+                  return;
+                }
+                try {
+                  const result = await updateJobMutation.mutateAsync({
+                    jobId: selectedJob.id,
+                    jobData: {
+                      title: editJobTitle,
+                      description: editJobDescription,
+                      location: editJobLocation,
+                      salaryRange: editJobSalary,
+                      employmentType: editJobEmploymentType,
+                      companyId: editJobCompanyId,
+                      companyName: editJobCompanyName,
+                      status: editJobStatus,
+                    },
+                  });
+                  console.log("[JOBS-PAGE] Update result:", result);
+                  setIsEditDialogOpen(false);
+                  setSelectedJob(null);
+                } catch (err: any) {
+                  console.error("[JOBS-PAGE] Update job error:", err);
+                  alert(`Failed to update job: ${err?.message || err?.error || "Unknown error"}`);
+                }
+              }}
+              disabled={updateJobMutation.isPending}
+            >
+              {updateJobMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="edit-title">Job Title *</Label>
+            <Input
+              id="edit-title"
+              value={editJobTitle}
+              onChange={(e) => setEditJobTitle(e.target.value)}
+              placeholder="Senior Software Engineer"
+            />
+          </div>
+
+          {/* Company Selection */}
+          <div className="grid gap-2">
+            <Label htmlFor="edit-company">Company *</Label>
+            <select
+              id="edit-company"
+              value={editJobCompanyId}
+              onChange={(e) => {
+                setEditJobCompanyId(e.target.value);
+                const company = companies.find((c: any) => c.id === e.target.value);
+                if (company) {
+                  setEditJobCompanyName(company.name || "");
+                }
+              }}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            >
+              <option value="">Select a company...</option>
+              {companies.map((company: any) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="edit-location">Location</Label>
+            <Input
+              id="edit-location"
+              value={editJobLocation}
+              onChange={(e) => setEditJobLocation(e.target.value)}
+              placeholder="San Francisco, CA or Remote"
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="edit-salary">Salary Range</Label>
+            <Input
+              id="edit-salary"
+              value={editJobSalary}
+              onChange={(e) => setEditJobSalary(e.target.value)}
+              placeholder="$120,000 - $150,000"
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="edit-employmentType">Employment Type</Label>
+            <select
+              id="edit-employmentType"
+              value={editJobEmploymentType}
+              onChange={(e) => setEditJobEmploymentType(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            >
+              <option value="Full-time">Full-time</option>
+              <option value="Part-time">Part-time</option>
+              <option value="Contract">Contract</option>
+              <option value="Internship">Internship</option>
+            </select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="edit-status">Status</Label>
+            <select
+              id="edit-status"
+              value={editJobStatus}
+              onChange={(e) => setEditJobStatus(e.target.value as "Open" | "On Hold" | "Closed")}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            >
+              <option value="Open">Open</option>
+              <option value="On Hold">On Hold</option>
+              <option value="Closed">Closed</option>
+            </select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="edit-description">Description</Label>
+            <Textarea
+              id="edit-description"
+              value={editJobDescription}
+              onChange={(e) => setEditJobDescription(e.target.value)}
+              placeholder="Job description..."
+              rows={4}
+            />
+          </div>
         </div>
       </SimpleDialog>
 
       {/* Jobs Kanban Board */}
-      <div className="flex gap-4 overflow-x-auto pb-4">
+<div className="flex gap-4 overflow-x-auto pb-4">
         {columns.map((column) => (
           <div
             key={column.id}
             className="flex-shrink-0 w-80"
+            onDragOver={handleDragOver}
+            onDrop={() => handleDrop(column.id as "Open" | "On Hold" | "Closed")}
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -372,11 +575,13 @@ export default function JobsPage() {
               {getJobsByStatus(column.id).map((job) => (
                 <div
                   key={job.id}
-                  className="p-3 rounded-md bg-background border border-border cursor-pointer hover:border-primary/50 transition-colors"
+                  draggable
+                  onDragStart={() => handleDragStart(job.id)}
                   onClick={() => {
                     setSelectedJob(job);
                     setIsEditDialogOpen(true);
                   }}
+                  className="p-3 rounded-md bg-background border border-border cursor-move hover:border-primary/50 transition-colors"
                 >
                   <div className="flex items-start justify-between mb-2">
                     <h4 className="font-medium text-sm">{job.title}</h4>

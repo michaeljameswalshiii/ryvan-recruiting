@@ -1,7 +1,7 @@
 {
   "version": "38.0.1",
   "files": {
-    "8eb736083dfa81f0e8304627339b0a2d15d973c6c65e962af3a736d2d736b4b6": {
+    "496a4cde005907e010a02be7b92f6813e38e92bf3914ce38f2245932e5ed1eb1": {
       "source": {
         "path": "TurnkeyData.template.json",
         "packaging": "file"
@@ -9,7 +9,7 @@
       "destinations": {
         "635449373837-us-east-1": {
           "bucketName": "cdk-hnb659fds-assets-635449373837-us-east-1",
-          "objectKey": "8eb736083dfa81f0e8304627339b0a2d15d973c6c65e962af3a736d2d736b4b6.json",
+          "objectKey": "496a4cde005907e010a02be7b92f6813e38e92bf3914ce38f2245932e5ed1eb1.json",
           "region": "us-east-1",
           "assumeRoleArn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-file-publishing-role-635449373837-us-east-1"
         }

@@ -23,6 +23,7 @@ const companyStageValues = [
 
 export const contactSchema = z.object({
   id: z.string(),
+  companyId: z.string().optional(),
   name: z.string().min(1, 'Name is required').max(100),
   title: z.string().max(100).optional().or(z.literal('')),
   email: z.string().email().optional().or(z.literal('')),
@@ -47,6 +48,10 @@ export const createContactSchema = contactSchema.omit({
 
 // Update input (all fields optional)
 export const updateContactSchema = contactSchema.partial().omit({ id: true });
+
+// Type exports for Contact inputs
+export type CreateContactInput = z.infer<typeof createContactSchema>;
+export type UpdateContactInput = z.infer<typeof updateContactSchema>;
 
 // -----------------------------------------------------------------------------
 // Client Schema

@@ -270,6 +270,60 @@
     "aws:cdk:path": "TurnkeyData/Events/Resource"
    }
   },
+  "JobsDF1CC2D4": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "tenant_id",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "id",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "companyId",
+      "AttributeType": "S"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "GlobalSecondaryIndexes": [
+     {
+      "IndexName": "CompanyJobsIndex",
+      "KeySchema": [
+       {
+        "AttributeName": "companyId",
+        "KeyType": "HASH"
+       },
+       {
+        "AttributeName": "id",
+        "KeyType": "RANGE"
+       }
+      ],
+      "Projection": {
+       "ProjectionType": "ALL"
+      }
+     }
+    ],
+    "KeySchema": [
+     {
+      "AttributeName": "tenant_id",
+      "KeyType": "HASH"
+     },
+     {
+      "AttributeName": "id",
+      "KeyType": "RANGE"
+     }
+    ],
+    "TableName": "turnkey-jobs"
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "TurnkeyData/Jobs/Resource"
+   }
+  },
   "CDKMetadata": {
    "Type": "AWS::CDK::Metadata",
    "Properties": {
