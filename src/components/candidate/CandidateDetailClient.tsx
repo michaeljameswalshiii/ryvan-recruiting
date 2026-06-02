@@ -44,7 +44,7 @@ interface CandidateDetailClientProps {
   candidate: Candidate;
 }
 
-type Tab = "overview" | "timeline" | "resume" | "notes" | "emails" | "linked-jobs" | "details";
+type Tab = "overview" | "timeline" | "resume" | "linked-jobs";
 
 export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -166,13 +166,14 @@ const data = await response.json();
 
 const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
-    { id: "timeline", label: "Timeline" },
     ...(candidate.resumeUrl ? [{ id: "resume" as Tab, label: "Resume" }] : []),
-    { id: "notes", label: "Notes" },
     { id: "linked-jobs", label: "Linked Jobs" },
-    { id: "emails", label: "Emails" },
-    { id: "details", label: "Details" },
   ];
+
+  // Helper to display user name or email
+  const displayUser = (userName?: string, userEmail?: string) => {
+    return userName || userEmail || "Unknown";
+  };
 
   // Handle email sending with event recording
   const handleSendEmail = async (subject: string, body: string) => {
@@ -261,12 +262,10 @@ const tabs: { id: Tab; label: string }[] = [
               <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-2xl font-semibold text-white shadow">
                 {avatarInitials}
               </div>
-              <div>
+<div>
                 <h1 className="text-3xl font-semibold tracking-tight">{candidate.name}</h1>
                 <div className="flex items-center gap-3 text-sm text-gray-600">
                   <span>{candidate.title}</span>
-                  <span className="text-gray-400">•</span>
-                  <span>{candidate.company}</span>
                 </div>
               </div>
             </div>
@@ -356,18 +355,7 @@ const tabs: { id: Tab; label: string }[] = [
                           disabled
                         />
                       </div>
-                    </div>
-                    
-                    {/* Notes - Rich Section */}
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">Important Notes</label>
-                      <Textarea
-                        value={editForm.notes}
-                        onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                        placeholder="Add notes about this candidate..."
-                        rows={4}
-                      />
-                    </div>
+</div>
                     
                     {/* Edit Actions */}
                     <div className="flex gap-2 justify-end pt-2">
@@ -417,85 +405,7 @@ const tabs: { id: Tab; label: string }[] = [
                       ) : "—"}
                     </div>
                   </div>
-                )}
-              </div>
-
-{/* Notes Section - Multiple Notes Support */}
-              <div className="bg-white p-6 rounded-xl border">
-                <h2 className="font-semibold mb-4 flex items-center gap-2">
-                  <StickyNote className="h-5 w-5" /> Notes
-                </h2>
-                
-                {/* Add Note Form */}
-                <div className="mb-4">
-                  <Textarea
-                    placeholder="Add a note about this candidate..."
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    rows={3}
-                    className="w-full p-2 border border-input rounded-md resize-y min-h-[80px]"
-                  />
-                  <div className="flex justify-end mt-2">
-                    <Button 
-                      onClick={handleAddNote} 
-                      disabled={addingNote || !newNote.trim()}
-                      size="sm"
-                    >
-                      {addingNote ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Adding...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="h-4 w-4 mr-2" />
-                          Add Note
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                  {notesError && (
-                    <p className="text-sm text-red-600 mt-2">{notesError}</p>
-                  )}
-                </div>
-                
-                {/* Notes List */}
-                {notesLoading ? (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading notes...
-                  </div>
-                ) : notes.length > 0 ? (
-                  <div className="space-y-3">
-                    {notes.map((note, index) => (
-                      <div 
-                        key={note.id || index} 
-                        className="p-3 bg-muted rounded-lg border"
-                      >
-                        <p className="text-sm whitespace-pre-wrap">
-                          {note.metadata?.noteText || note.description || note.title}
-                        </p>
-                        <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                          <span>{note.createdBy || 'Unknown'}</span>
-                          <span>•</span>
-                          <span>
-                            {new Date(note.createdAt).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                              hour: 'numeric',
-                              minute: '2-digit',
-                            })}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No notes yet. Add your first note above.
-                  </p>
-                )}
+)}
               </div>
 
               {/* Linked Jobs Section */}
@@ -541,18 +451,7 @@ const tabs: { id: Tab; label: string }[] = [
                     <strong>Added:</strong>{" "}
                     {new Date(candidate.createdAt).toLocaleDateString()}
                   </div>
-                </div>
-              </div>
-
-              {/* Company Dropdown */}
-              <div className="bg-white p-6 rounded-xl border mt-4">
-                <h3 className="font-semibold mb-3">Company</h3>
-                <select className="w-full p-2 border rounded-md text-sm bg-gray-50">
-                  <option value="">{candidate.company || "Select company"}</option>
-                </select>
-                <p className="text-xs text-gray-500 mt-2">
-                  Multiple contacts available for this company
-                </p>
+</div>
               </div>
             </div>
           </div>
@@ -602,45 +501,9 @@ const tabs: { id: Tab; label: string }[] = [
           </div>
         )}
 
-        {/* Notes Tab */}
-        {activeTab === "notes" && (
-          <div className="bg-white p-6 rounded-xl border">
-            <h2 className="font-semibold mb-4">Notes</h2>
-            {candidate.notes ? (
-              <div className="prose prose-sm max-w-none">
-                {candidate.notes}
-              </div>
-            ) : (
-              <p className="text-gray-500">
-                No notes yet. Click Edit to add notes.
-              </p>
-            )}
-          </div>
-        )}
-
-{/* Emails Tab */}
-        {activeTab === "emails" && (
-          <div className="bg-white p-6 rounded-xl border">
-            <h2 className="font-semibold mb-4">Email History</h2>
-            <p className="text-gray-500">
-              No emails sent yet. Use the Send Email button to compose an email.
-            </p>
-          </div>
-        )}
-
-        {/* Linked Jobs Tab - Full Page View */}
+{/* Linked Jobs Tab - Full Page View */}
         {activeTab === "linked-jobs" && (
           <LinkedJobsTab candidateId={candidate.id} candidateName={candidate.name} />
-        )}
-
-        {/* Details Tab */}
-        {activeTab === "details" && (
-          <div className="bg-white p-6 rounded-xl border">
-            <h2 className="font-semibold mb-4">Full Details</h2>
-            <pre className="text-xs bg-gray-100 p-4 rounded overflow-auto">
-              {JSON.stringify(candidate, null, 2)}
-            </pre>
-          </div>
         )}
       </div>
 
