@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import EventTimeline from "@/components/EventTimeline";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { SendEmailModal } from "@/components/email/send-email-modal";
-import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send } from "lucide-react";
+import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download } from "lucide-react";
 import { toast } from "sonner";
 import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useJobs } from "@/lib/hooks/query-job";
 
@@ -167,7 +167,7 @@ const data = await response.json();
 const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "timeline", label: "Timeline" },
-    ...(candidate.resumeUrl ? [{ id: "resume" as Tab, label: "Resume" }] : []),
+    { id: "resume", label: "Resume" },
     { id: "linked-jobs", label: "Linked Jobs" },
   ];
 
@@ -551,37 +551,35 @@ const tabs: { id: Tab; label: string }[] = [
           />
         )}
 
-        {/* Resume Tab */}
-        {activeTab === "resume" && candidate.resumeUrl && (
+{/* Resume Tab */}
+        {activeTab === "resume" && (
           <div className="bg-white rounded-xl border overflow-hidden h-[720px] flex flex-col">
             <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
               <h2 className="font-semibold flex items-center gap-2">
                 <FileText className="h-5 w-5" /> Resume
               </h2>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" asChild>
-                  <a
-                    href={candidate.resumeUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
+              {candidate.resumeUrl && (
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => window.open(candidate.resumeUrl, "_blank")}>
+                    <ExternalLink className="h-4 w-4 mr-2" />
                     Open Full Screen
-                  </a>
-                </Button>
-                <Button variant="outline" size="sm" asChild>
-                  <a
-                    href={candidate.resumeUrl}
-                    download={`${candidate.name.replace(/ /g, "-")}-resume.pdf`}
-                    target="_blank"
-                  >
-                    Download
-                  </a>
-                </Button>
-              </div>
+                  </Button>
+                  <Button variant="default" size="sm" asChild>
+                    <a
+                      href={candidate.resumeUrl}
+                      download={candidate.resumeUrl.split("/").pop() || `${candidate.name.replace(/ /g, "-")}-resume.pdf`}
+                      target="_blank"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download
+                    </a>
+                  </Button>
+                </div>
+              )}
             </div>
             <ResumeViewer
-              url={candidate.resumeUrl}
-              fileName={`${candidate.name.replace(/ /g, "-")}-resume.pdf`}
+              url={candidate.resumeUrl || ""}
+              fileName={candidate.resumeUrl?.split("/").pop() || `${candidate.name.replace(/ /g, "-")}-resume.pdf`}
             />
           </div>
         )}
