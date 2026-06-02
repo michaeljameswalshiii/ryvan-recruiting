@@ -5,14 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Users,
   Building2,
+  User,
   Briefcase,
-  Kanban,
   BarChart3,
   Settings,
   LogOut,
   Search,
   Sparkles,
-  Building,
   Activity,
   Database,
 } from "lucide-react";
@@ -24,7 +23,6 @@ const navItems = [
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
   { href: "/dashboard/contacts", label: "Contacts", icon: User },
   { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
-  { href: "/dashboard/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
   { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },

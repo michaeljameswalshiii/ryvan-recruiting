@@ -1,14 +1,26 @@
-# TODO - Jobs Module Completion Execution
+# TODO - Implement Multiple Notes for Candidates
 
-- [x] 1. Create `src/app/dashboard/jobs/[id]/page.tsx` (job detail page UI + linked candidates + stage/status management + events)
-- [x] 2. Create turnkey-jobs DynamoDB table (via AWS CLI workaround - table now ACTIVE)
-- [x] 3. Add jobs table to CDK (cdk/stacks/dynamodb.py - already present)
-- [x] 4. Create migration script (scripts/migrate-leads-to-jobs.ts)
-- [x] 5. Verify dynamodb.ts has correct jobsTable reference
-- [x] 6. Verify Jobs page has proper loading/error states
-- [x] 7. Test /dashboard/jobs page loads without error (VERIFIED June 3, 2026)
-- [x] 8. Test "Create Job" button works (should work - table exists)
-- [x] 9. Run migration (optional - skipped, no historical lead data to migrate)
-- [x] 10. Update docs with completion status (DONE)
-- [x] 11. Run lint/validation (DONE - no issues found)
-- [x] 12. Jobs Module Complete! ✅
+## Tasks:
+1. [x] Understand the current Architecture - Done
+   - Backend: addNoteToCandidate in candidate-events.ts (exists)
+   - API: /api/candidate/[id]/notes (exists)
+   - Frontend: CandidateDetailClient.tsx (needs Notes section)
+   - Timeline: EventTimeline.tsx (already shows NOTE events)
+
+2. [ ] Add useJobsForCandidate to query-job.ts (fix existing import error)
+
+3. [ ] Update CandidateDetailClient.tsx Overview tab with Notes section
+   - Fetch existing notes (NOTE events)
+   - Add "Add Note" textarea + button
+   - Display notes list (newest first) with author + timestamp
+   - Nice formatting
+
+4. [ ] Update Notes Tab (if needed)
+   - Should match the quality of the Overview notes section
+
+5. [ ] Deploy and Test
+
+## Plan:
+- Use existing API endpoint /api/candidate/[id]/notes for adding notes
+- Fetch events with eventType === 'NOTE' for displaying
+- Use useAddNote and useCandidateEvents hooks from query-candidate.ts

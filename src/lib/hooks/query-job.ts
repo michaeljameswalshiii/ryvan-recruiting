@@ -317,3 +317,27 @@ export function useUpdateCandidateStageInJob() {
     },
   });
 }
+
+/**
+ * Get jobs linked to a specific candidate
+ * Used in CandidateDetailClient to show linked jobs
+ */
+export function useJobsForCandidate(candidateId: string) {
+  return useQuery({
+    queryKey: [...jobKeys.lists(), { candidateId }],
+    queryFn: async () => {
+      const result = await getJobs(false);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      // Filter jobs that have this candidate linked
+      const jobs = (result.jobs || []).filter((job: any) => 
+        job.linkedCandidates?.some((lc: any) => lc.candidateId === candidateId)
+      );
+      return jobs;
+    },
+    staleTime: 1000 * 60 * 5,
+    retry: 2,
+    enabled: !!candidateId,
+  });
+}

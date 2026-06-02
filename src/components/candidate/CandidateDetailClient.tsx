@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,9 +8,18 @@ import { Textarea } from "@/components/ui/textarea";
 import EventTimeline from "@/components/EventTimeline";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { SendEmailModal } from "@/components/email/send-email-modal";
-import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2 } from "lucide-react";
+import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useJobsForCandidate, useUpdateCandidateStageInJob } from "@/lib/hooks/query-job";
+
+interface Note {
+  id: string;
+  title: string;
+  description?: string;
+  metadata: Record<string, any>;
+  createdAt: string;
+  createdBy: string;
+}
 
 interface Candidate {
   id: string;
@@ -49,6 +58,79 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   });
   const [isSaving, setIsSaving] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+
+  // Notes state
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [newNote, setNewNote] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
+
+  // Fetch notes on mount
+  useEffect(() => {
+    async function fetchNotes() {
+      try {
+        setNotesLoading(true);
+        const response = await fetch(`/api/candidate/${candidate.id}/events?limit=50`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch events');
+        }
+        const data = await response.json();
+        // Filter only NOTE events and sort newest first
+        const noteEvents = (data.events || [])
+          .filter((e: any) => e.eventType === 'NOTE')
+          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setNotes(noteEvents);
+      } catch (err) {
+        console.error('Failed to fetch notes:', err);
+        setNotesError('Failed to load notes');
+      } finally {
+        setNotesLoading(false);
+      }
+    }
+    fetchNotes();
+  }, [candidate.id]);
+
+  // Add note handler
+  const handleAddNote = async () => {
+    if (!newNote.trim()) return;
+    
+    try {
+      setAddingNote(true);
+      setNotesError(null);
+      
+      const response = await fetch(`/api/candidate/${candidate.id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          noteText: newNote,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to add note');
+      }
+      
+      const data = await response.json();
+      if (data.success) {
+        setNewNote("");
+        toast.success('Note added successfully');
+        // Refresh notes
+        const eventsResponse = await fetch(`/api/candidate/${candidate.id}/events?limit=50`);
+        const eventsData = await eventsResponse.json();
+        const noteEvents = (eventsData.events || [])
+          .filter((e: any) => e.eventType === 'NOTE')
+          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setNotes(noteEvents);
+      }
+    } catch (err) {
+      console.error('Failed to add note:', err);
+      setNotesError('Failed to add note');
+      toast.error('Failed to add note');
+    } finally {
+      setAddingNote(false);
+    }
+  };
 
   // Generate avatar initials if not provided
   const avatarInitials =
@@ -311,6 +393,84 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                       ) : "—"}
                     </div>
                   </div>
+                )}
+              </div>
+
+{/* Notes Section - Multiple Notes Support */}
+              <div className="bg-white p-6 rounded-xl border">
+                <h2 className="font-semibold mb-4 flex items-center gap-2">
+                  <StickyNote className="h-5 w-5" /> Notes
+                </h2>
+                
+                {/* Add Note Form */}
+                <div className="mb-4">
+                  <Textarea
+                    placeholder="Add a note about this candidate..."
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    rows={3}
+                    className="w-full p-2 border border-input rounded-md resize-y min-h-[80px]"
+                  />
+                  <div className="flex justify-end mt-2">
+                    <Button 
+                      onClick={handleAddNote} 
+                      disabled={addingNote || !newNote.trim()}
+                      size="sm"
+                    >
+                      {addingNote ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Adding...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4 mr-2" />
+                          Add Note
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  {notesError && (
+                    <p className="text-sm text-red-600 mt-2">{notesError}</p>
+                  )}
+                </div>
+                
+                {/* Notes List */}
+                {notesLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading notes...
+                  </div>
+                ) : notes.length > 0 ? (
+                  <div className="space-y-3">
+                    {notes.map((note, index) => (
+                      <div 
+                        key={note.id || index} 
+                        className="p-3 bg-muted rounded-lg border"
+                      >
+                        <p className="text-sm whitespace-pre-wrap">
+                          {note.metadata?.noteText || note.description || note.title}
+                        </p>
+                        <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                          <span>{note.createdBy || 'Unknown'}</span>
+                          <span>•</span>
+                          <span>
+                            {new Date(note.createdAt).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No notes yet. Add your first note above.
+                  </p>
                 )}
               </div>
 

@@ -25,13 +25,19 @@ export default async function DashboardLayout({
     redirect('/login');
   }
 
+  // Defensive: validate session has required fields
+  if (!session || typeof session !== 'object') {
+    console.error('[DashboardLayout] Invalid session:', session);
+    redirect('/login');
+  }
+
 // Get tenant info from session for display
   // Note: fullName and role stored in DynamoDB profile, not in cookie
   const tenantInfo = {
-    userId: session.userId,
-    email: session.email,
+    userId: session?.userId || '',
+    email: session?.email || '',
     fullName: 'User', // Could fetch from profile if needed
-    tenantId: session.tenantId,
+    tenantId: session?.tenantId || '',
     role: 'member', // Could fetch from profile if needed
   };
 

@@ -7,9 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
 import { Switch } from "@/components/ui/switch";
-import { useAddContact, useUpdateContact } from "@/lib/hooks/query-client";
+import { useAddContact, useUpdateContact, useClients } from "@/lib/hooks/query-client";
 import { toast } from "sonner";
-import { Loader2, Star } from "lucide-react";
+import { Loader2, Star, Building2 } from "lucide-react";
 
 interface Contact {
   id?: string;
@@ -30,7 +30,7 @@ interface ContactModalProps {
 }
 
 export default function ContactModal({
-  clientId,
+  clientId: initialClientId,
   contact,
   onSave,
   open: controlledOpen,
@@ -46,8 +46,12 @@ export default function ContactModal({
     ? (value: boolean) => controlledOnOpenChange?.(value)
     : setInternalOpen;
 
-  // Form state
+  // Fetch companies for dropdown
+  const { data: companies = [], isLoading: isLoadingCompanies } = useClients();
+
+  // Form state - include companyId
   const [formData, setFormData] = useState({
+    clientId: "",
     name: "",
     title: "",
     email: "",
@@ -62,31 +66,47 @@ export default function ContactModal({
 
   // Reset form when modal opens or contact changes
   useEffect(() => {
-    if (open && contact) {
-      setFormData({
-        name: contact.name || "",
-        title: contact.title || "",
-        email: contact.email || "",
-        phone: contact.phone || "",
-        isPrimary: contact.isPrimary || false,
-        notes: contact.notes || "",
-      });
-    } else if (open && !contact) {
-      // Reset for new contact
-      setFormData({
-        name: "",
-        title: "",
-        email: "",
-        phone: "",
-        isPrimary: false,
-        notes: "",
-      });
+    if (open) {
+      // Sort companies alphabetically
+      const sortedCompanies = [...companies].sort((a, b) => 
+        (a.name || "").localeCompare(b.name || "")
+      );
+      
+      if (contact) {
+        // Editing existing contact
+        setFormData({
+          clientId: initialClientId,
+          name: contact.name || "",
+          title: contact.title || "",
+          email: contact.email || "",
+          phone: contact.phone || "",
+          isPrimary: contact.isPrimary || false,
+          notes: contact.notes || "",
+        });
+      } else if (open) {
+        // New contact - use passed clientId or first company
+        const defaultClientId = initialClientId || (sortedCompanies.length > 0 ? sortedCompanies[0].id : "");
+        setFormData({
+          clientId: defaultClientId,
+          name: "",
+          title: "",
+          email: "",
+          phone: "",
+          isPrimary: false,
+          notes: "",
+        });
+      }
     }
-  }, [open, contact]);
+  }, [open, contact, initialClientId, companies]);
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
       toast.error("Contact name is required");
+      return;
+    }
+
+    if (!formData.clientId) {
+      toast.error("Please select a company");
       return;
     }
 
@@ -96,7 +116,7 @@ export default function ContactModal({
       if (contact?.id) {
         // Update existing contact
         await updateContactMutation.mutateAsync({
-          clientId,
+          clientId: formData.clientId,
           contactId: contact.id,
           contactData: {
             name: formData.name,
@@ -111,7 +131,7 @@ export default function ContactModal({
       } else {
         // Add new contact
         await addContactMutation.mutateAsync({
-          clientId,
+          clientId: formData.clientId,
           contactData: {
             name: formData.name,
             title: formData.title,
@@ -136,8 +156,8 @@ export default function ContactModal({
 
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen && contact) {
-      // Reset form when closing
       setFormData({
+        clientId: initialClientId,
         name: contact.name || "",
         title: contact.title || "",
         email: contact.email || "",
@@ -146,8 +166,8 @@ export default function ContactModal({
         notes: contact.notes || "",
       });
     } else if (!isOpen) {
-      // Reset for new contact
       setFormData({
+        clientId: initialClientId || "",
         name: "",
         title: "",
         email: "",
@@ -158,6 +178,11 @@ export default function ContactModal({
     }
     setOpen(isOpen);
   };
+
+  // Sort companies for dropdown
+  const sortedCompanies = [...companies].sort((a, b) => 
+    (a.name || "").localeCompare(b.name || "")
+  );
 
   const isLoading = addContactMutation.isPending || updateContactMutation.isPending;
 
@@ -170,7 +195,7 @@ export default function ContactModal({
         description={
           contact?.id
             ? "Update contact information."
-            : "Add a new contact to this company."
+            : "Add a new contact to a company."
         }
         footer={
           <>
@@ -183,7 +208,7 @@ export default function ContactModal({
             </Button>
             <Button
               onClick={handleSave}
-              disabled={!formData.name.trim() || isSaving}
+              disabled={!formData.name.trim() || !formData.clientId || isSaving}
             >
               {isSaving ? (
                 <>
@@ -200,6 +225,35 @@ export default function ContactModal({
         }
       >
         <div className="grid gap-4">
+          {/* Company Selection - Only show for new contacts or allow changing */}
+          <div className="grid gap-2">
+            <Label htmlFor="contact-company">Company *</Label>
+            {isLoadingCompanies ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading companies...
+              </div>
+            ) : sortedCompanies.length === 0 ? (
+              <div className="text-sm text-muted-foreground">
+                No companies found. Add a company first.
+              </div>
+            ) : (
+              <select
+                id="contact-company"
+                value={formData.clientId}
+                onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">Select a company...</option>
+                {sortedCompanies.map((company: any) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
           {/* Name */}
           <div className="grid gap-2">
             <Label htmlFor="contact-name">Name *</Label>

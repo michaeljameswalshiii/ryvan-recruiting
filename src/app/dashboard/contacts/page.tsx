@@ -8,16 +8,14 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Building2, User, Mail, Phone, Star, Edit2, Trash2, Search, Plus, Filter } from "lucide-react";
+import { Building2, User, Mail, Phone, Star, Edit2, Trash2, Search, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { useClients, useUpdateClientContact, useRemoveContact } from "@/lib/hooks/query-client";
-import { clientKeys } from "@/lib/hooks/query-client";
+import ContactModal from "@/components/company/ContactModal";
+import { useClients, useRemoveContact, clientKeys } from "@/lib/hooks/query-client";
 import { toast } from "sonner";
 
 interface Contact {
@@ -34,8 +32,12 @@ export default function ContactsPage() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
-  const [editingContact, setEditingContact] = useState<{ contact: Contact; companyId: string; companyName: string } | null>(null);
   const [deletingContact, setDeletingContact] = useState<{ contact: Contact; companyId: string; companyName: string } | null>(null);
+
+  // Modal state for add/edit contact
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<Contact | undefined>(undefined);
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
 
   // Fetch all clients
   const { data: clients = [], isLoading, error } = useClients();
@@ -80,22 +82,6 @@ export default function ContactsPage() {
     return (a.contact.name || "").localeCompare(b.contact.name || "");
   });
 
-  const handleEdit = async (notes: string) => {
-    if (!editingContact) return;
-    
-    try {
-      await useUpdateClientContact().mutateAsync({
-        clientId: editingContact.companyId,
-        contactId: editingContact.contact.id,
-        contactData: { notes },
-      });
-      toast.success("Contact updated");
-      setEditingContact(null);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to update contact");
-    }
-  };
-
   const handleDelete = async () => {
     if (!deletingContact) return;
     
@@ -113,6 +99,50 @@ export default function ContactsPage() {
   };
 
   const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
+  };
+
+  // Open modal for adding new contact - with optional company selection
+  const handleAddContact = (clientId?: string) => {
+    // Get all companies (not just those with contacts) for adding new contacts
+    const allCompanies = clients.filter((c: any) => c.id);
+    
+    if (clientId) {
+      setSelectedClientId(clientId);
+    } else if (allCompanies.length === 0) {
+      toast.error("No companies available to add contacts");
+      return;
+    } else if (allCompanies.length === 1) {
+      // Only one company - use it automatically
+      setSelectedClientId(allCompanies[0].id);
+    } else {
+      // Multiple companies - show company selection prompt
+      const companySelect = window.prompt(
+        "Enter the number of the company to add this contact to:\n\n" +
+        allCompanies.map((c: any, i: number) => `${i + 1}. ${c.name}`).join("\n")
+      );
+      
+      const companyIndex = parseInt(companySelect || "") - 1;
+      if (companyIndex >= 0 && companyIndex < allCompanies.length) {
+        setSelectedClientId(allCompanies[companyIndex].id);
+      } else {
+        toast.error("Invalid company selection");
+        return;
+      }
+    }
+    setEditingContact(undefined);
+    setIsModalOpen(true);
+  };
+
+  // Open modal for editing existing contact
+  const handleEditContact = (contact: Contact, companyId: string) => {
+    setSelectedClientId(companyId);
+    setEditingContact(contact);
+    setIsModalOpen(true);
+  };
+
+  // Handle modal save (refresh data)
+  const handleModalSave = () => {
     queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
   };
 
@@ -174,9 +204,15 @@ export default function ContactsPage() {
             Manage all contacts across companies.
           </p>
         </div>
-        <Button variant="outline" onClick={handleRefresh}>
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="default" onClick={() => handleAddContact()}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Contact
+          </Button>
+          <Button variant="outline" onClick={handleRefresh}>
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -279,14 +315,12 @@ export default function ContactsPage() {
                   <div className="flex gap-2 mt-3 pt-3 border-t border-border">
                     <Button 
                       variant="ghost" 
-                      size="sm" 
-                      asChild
+                      size="sm"
+                      onClick={() => handleEditContact(item.contact, item.companyId)}
                       className="h-7 px-2 text-xs"
                     >
-                      <Link href={`/dashboard/companies?id=${item.companyId}`}>
-                        <Edit2 className="h-3 w-3 mr-1" />
-                        Edit
-                      </Link>
+                      <Edit2 className="h-3 w-3 mr-1" />
+                      Edit
                     </Button>
                     <Button 
                       variant="ghost" 
@@ -307,8 +341,22 @@ export default function ContactsPage() {
         <div className="text-center py-12 text-muted-foreground border border-dashed rounded-lg">
           <User className="h-12 w-12 mx-auto mb-4 opacity-50" />
           <p>No contacts found</p>
-          {searchQuery && (
+          {searchQuery ? (
             <p className="text-sm mt-1">Try adjusting your search</p>
+          ) : (
+            <div className="mt-4">
+              <p className="text-sm text-muted-foreground mb-4">
+                {clients.length === 0 
+                  ? "Get started by adding a company first"
+                  : "Add your first contact to get started"}
+              </p>
+              {clients.length > 0 && (
+                <Button variant="default" onClick={() => handleAddContact()}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Contact
+                </Button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -332,6 +380,15 @@ export default function ContactsPage() {
           }
         />
       )}
+
+      {/* Add/Edit Contact Modal */}
+      <ContactModal
+        clientId={selectedClientId}
+        contact={editingContact}
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+        onSave={handleModalSave}
+      />
     </div>
   );
 }

@@ -110,18 +110,27 @@ export async function getSession(): Promise<SessionData | null> {
     const sessionCookie = cookieStore.get(SESSION_COOKIE);
     
     if (!sessionCookie?.value) {
+      console.log('[getSession] No cookie found');
       return null;
     }
     
     const session = JSON.parse(sessionCookie.value) as SessionData;
     
+    // Defensive: validate session is an object
+    if (!session || typeof session !== 'object') {
+      console.log('[getSession] Invalid session object:', session);
+      return null;
+    }
+    
     // Validate required fields - check for userId instead of accessToken
     if (!session.userId) {
+      console.log('[getSession] No userId in session');
       return null;
     }
     
     return session;
-  } catch {
+  } catch (error) {
+    console.error('[getSession] Error:', error);
     return null;
   }
 }
