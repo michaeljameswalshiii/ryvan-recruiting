@@ -1,39 +1,27 @@
-# TODO - Implement Linked Jobs for Candidates
+# Phase 1 Refactor - Candidate Detail Header + Contact Information Panel
 
-## Tasks:
-1. [x] Understand Architecture
-   - Backend: job-repository.ts has getJobsForCandidate, linkCandidateToJob, updateCandidateStage
-   - Server Action: job-actions.ts has linkCandidateToJobAction, updateCandidateStageAction
-   - Hooks: query-job.ts has useJobsForCandidate, useLinkCandidateToJob, useUpdateCandidateStageInJob
-   - Frontend: CandidateDetailClient.tsx needs new Linked Jobs tab
+## Task List
 
-2. [ ] Create Linked Jobs Tab in CandidateDetailClient.tsx
-   - Add "Linked Jobs" to tab list
-   - Create new LinkedJobsTab component
-   - Display jobs with stage badges
+- [x] Read and analyze CandidateDetailClient.tsx
+- [x] Create implementation plan
+- [x] Get user confirmation to proceed
 
-3. [ ] Create LinkJobModal component
-   - Searchable dropdown of available Open Jobs
-   - Stage selector
-   - Save handler with event recording
+## Implementation Steps
 
-4. [ ] Implement Drag-and-Drop Stage Changes
-   - Make rows draggable
-   - Stage columns: Applied → Screening → Interviewing → Offered → Placed → Rejected
-   - On drop → update stage via updateCandidateStageAction
-   - Optimistic updates + refresh
+- [x] 1. Remove job title from Header area (keep only name + avatar)
+- [x] 2. Add Full Name field to Contact Information Panel (editable)
+- [x] 3. Add Job Title(s) with multiple title support (chips with add/remove)
+- [x] 4. Keep existing fields (Source, Date Added, Email, Phone, LinkedIn) in Contact Panel
+- [x] 5. Reorganize Contact Information Panel layout
+- [x] 6. Test layout is clean after changes
 
-5. [ ] Backend Events
-   - Record CANDIDATE_LINKED_TO_JOB events
-   - Record CANDIDATE_STAGE_CHANGED events
+## Changes Details
 
-6. [ ] Polish & Test
-   - Empty state
-   - Loading/error states
-   - Click job → go to job detail
+### Header Area
+- Removed `<span>{candidate.title}</span>` from the header div
 
-## Plan:
-- Use useJobs from query-job.ts to get all available jobs
-- Filter jobs where this candidate is linked (using .linkedCandidates)
-- Use HTML5 drag-and-drop for stage changes
-- Use existing event recording system
+### Contact Information Panel
+- Added "Full Name" editable field
+- Added "Job Title(s)" with chip display and add/remove functionality  
+- Keep: Email, Phone, LinkedIn, Source, Date Added
+- Removed: Location field

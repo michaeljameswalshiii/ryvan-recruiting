@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import EventTimeline from "@/components/EventTimeline";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { SendEmailModal } from "@/components/email/send-email-modal";
-import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download } from "lucide-react";
+import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useJobs } from "@/lib/hooks/query-job";
 
@@ -47,17 +47,34 @@ interface CandidateDetailClientProps {
 type Tab = "overview" | "timeline" | "resume" | "linked-jobs";
 
 export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
+const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
+    name: candidate.name || "",
     phone: candidate.phone || "",
     email: candidate.email || "",
-    location: candidate.location || "",
     salaryRequirements: candidate.salaryRequirements || "",
-    notes: candidate.notes || "",
   });
+  // Job titles state - support multiple titles
+  const [jobTitles, setJobTitles] = useState<string[]>(
+    candidate.title ? candidate.title.split(",").map(t => t.trim()).filter(Boolean) : []
+  );
+  const [newJobTitle, setNewJobTitle] = useState("");
+  // Address state
+  const [address, setAddress] = useState({
+    street: candidate.location?.split(",")[0]?.trim() || "", // Use location field as street for now
+    city: "",
+    state: "",
+    zip: "",
+    country: "",
+  });
+  // Location preference state (multi-select)
+  const [locationPreference, setLocationPreference] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+
+  // Location preferences options
+  const locationOptions = ["On-Site", "Hybrid", "Remote"];
 
   // Notes state
   const [notes, setNotes] = useState<Note[]>([]);
@@ -203,19 +220,46 @@ const tabs: { id: Tab; label: string }[] = [
     }
   };
 
+// Add job title handler
+  const handleAddJobTitle = () => {
+    if (!newJobTitle.trim()) return;
+    if (!jobTitles.includes(newJobTitle.trim())) {
+      setJobTitles([...jobTitles, newJobTitle.trim()]);
+    }
+    setNewJobTitle("");
+  };
+
+// Remove job title handler
+  const handleRemoveJobTitle = (titleToRemove: string) => {
+    setJobTitles(jobTitles.filter(t => t !== titleToRemove));
+  };
+
+  // Toggle location preference handler
+  const handleToggleLocationPreference = (pref: string) => {
+    if (locationPreference.includes(pref)) {
+      setLocationPreference(locationPreference.filter(p => p !== pref));
+    } else {
+      setLocationPreference([...locationPreference, pref]);
+    }
+  };
+
   // Save edited fields
   const handleSaveEdit = async () => {
     setIsSaving(true);
     
     try {
+      const fullAddress = [address.street, address.city, address.state, address.zip, address.country].filter(Boolean).join(", ");
+      
       const response = await fetch(`/api/data/leads/${candidate.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          name: editForm.name,
           phone: editForm.phone,
           email: editForm.email,
-          location: editForm.location,
-          notes: editForm.notes,
+          title: jobTitles.join(","),
+          location: fullAddress,
+          salaryRequirements: editForm.salaryRequirements,
         }),
       });
 
@@ -238,12 +282,20 @@ const tabs: { id: Tab; label: string }[] = [
 // Cancel editing
   const handleCancelEdit = () => {
     setEditForm({
+      name: candidate.name || "",
       phone: candidate.phone || "",
       email: candidate.email || "",
-      location: candidate.location || "",
       salaryRequirements: candidate.salaryRequirements || "",
-      notes: candidate.notes || "",
     });
+    setJobTitles(candidate.title ? candidate.title.split(",").map(t => t.trim()).filter(Boolean) : []);
+    setAddress({
+      street: candidate.location?.split(",")[0]?.trim() || "",
+      city: "",
+      state: "",
+      zip: "",
+      country: "",
+    });
+    setLocationPreference([]);
     setIsEditing(false);
   };
 
@@ -259,15 +311,12 @@ const tabs: { id: Tab; label: string }[] = [
               </a>
             </Button>
 
-            <div className="flex items-center gap-4">
+<div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-2xl font-semibold text-white shadow">
                 {avatarInitials}
               </div>
-<div>
+              <div>
                 <h1 className="text-3xl font-semibold tracking-tight">{candidate.name}</h1>
-                <div className="flex items-center gap-3 text-sm text-gray-600">
-                  <span>{candidate.title}</span>
-                </div>
               </div>
             </div>
           </div>
@@ -321,9 +370,19 @@ const tabs: { id: Tab; label: string }[] = [
                   <User className="h-5 w-5" /> Contact Information
                 </h2>
                 
-                {isEditing ? (
+{isEditing ? (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Full Name - Editable */}
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Full Name</label>
+                        <Input
+                          value={editForm.name}
+                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                          placeholder="Full Name"
+                        />
+                      </div>
+                      {/* Email */}
                       <div>
                         <label className="text-sm font-medium text-gray-600">Email</label>
                         <Input
@@ -332,6 +391,7 @@ const tabs: { id: Tab; label: string }[] = [
                           placeholder="email@example.com"
                         />
                       </div>
+                      {/* Phone */}
                       <div>
                         <label className="text-sm font-medium text-gray-600">Phone</label>
                         <Input
@@ -340,14 +400,49 @@ const tabs: { id: Tab; label: string }[] = [
                           placeholder="(555) 123-4567"
                         />
                       </div>
+                      {/* Job Titles - Multiple with add/remove */}
                       <div>
-                        <label className="text-sm font-medium text-gray-600">Location</label>
-                        <Input
-                          value={editForm.location}
-                          onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
-                          placeholder="Miami, FL"
-                        />
+                        <label className="text-sm font-medium text-gray-600">Job Title(s)</label>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {jobTitles.map((title, index) => (
+                            <span
+                              key={index}
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                            >
+                              {title}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveJobTitle(title)}
+                                className="ml-1 text-blue-600 hover:text-blue-800"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <Input
+                            value={newJobTitle}
+                            onChange={(e) => setNewJobTitle(e.target.value)}
+                            placeholder="Add job title..."
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddJobTitle();
+                              }
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleAddJobTitle}
+                          >
+                            +
+                          </Button>
+                        </div>
                       </div>
+                      {/* LinkedIn - disabled */}
                       <div>
                         <label className="text-sm font-medium text-gray-600">LinkedIn</label>
                         <Input
@@ -356,6 +451,7 @@ const tabs: { id: Tab; label: string }[] = [
                           disabled
                         />
                       </div>
+                      {/* Source - disabled */}
                       <div>
                         <label className="text-sm font-medium text-gray-600">Source</label>
                         <Input
@@ -364,6 +460,7 @@ const tabs: { id: Tab; label: string }[] = [
                           disabled
                         />
                       </div>
+                      {/* Added - disabled */}
                       <div>
                         <label className="text-sm font-medium text-gray-600">Added</label>
                         <Input
@@ -371,7 +468,7 @@ const tabs: { id: Tab; label: string }[] = [
                           disabled
                         />
                       </div>
-</div>
+                    </div>
                     
                     {/* Edit Actions */}
                     <div className="flex gap-2 justify-end pt-2">
@@ -392,7 +489,13 @@ const tabs: { id: Tab; label: string }[] = [
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    {/* Full Name Display */}
+                    <div>
+                      <span className="text-gray-500">Name:</span>{" "}
+                      <span className="font-medium">{candidate.name}</span>
+                    </div>
+                    {/* Email Display */}
                     <div>
                       <span className="text-gray-500">Email:</span>{" "}
                       <a
@@ -402,12 +505,27 @@ const tabs: { id: Tab; label: string }[] = [
                         {candidate.email || "—"}
                       </a>
                     </div>
+                    {/* Phone Display */}
                     <div>
                       <span className="text-gray-500">Phone:</span> {candidate.phone || "—"}
                     </div>
+                    {/* Job Titles Display */}
                     <div>
-                      <span className="text-gray-500">Location:</span> {candidate.location || "—"}
+                      <span className="text-gray-500">Title(s):</span>{" "}
+                      {jobTitles.length > 0 ? (
+                        <div className="inline-flex flex-wrap gap-1">
+                          {jobTitles.map((title, index) => (
+                            <span
+                              key={index}
+                              className="inline-flex px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs"
+                            >
+                              {title}
+                            </span>
+                          ))}
+                        </div>
+                      ) : "—"}
                     </div>
+                    {/* LinkedIn Display */}
                     <div>
                       <span className="text-gray-500">LinkedIn:</span>{" "}
                       {candidate.linkedin ? (
@@ -420,15 +538,17 @@ const tabs: { id: Tab; label: string }[] = [
                         </a>
                       ) : "—"}
                     </div>
+                    {/* Source Display */}
                     <div>
                       <span className="text-gray-500">Source:</span> {candidate.source || "—"}
                     </div>
+                    {/* Added Display */}
                     <div>
                       <span className="text-gray-500">Added:</span>{" "}
                       {new Date(candidate.createdAt).toLocaleDateString()}
                     </div>
                   </div>
-)}
+                )}
               </div>
 
 {/* Linked Jobs Section */}
