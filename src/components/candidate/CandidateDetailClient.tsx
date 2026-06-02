@@ -409,8 +409,8 @@ const tabs: { id: Tab; label: string }[] = [
 )}
               </div>
 
-              {/* Linked Jobs Section */}
-              <LinkedJobsSection candidateId={candidate.id} />
+{/* Linked Jobs Section */}
+              <LinkedJobsSection candidateId={candidate.id} candidateName={candidate.name} />
 
 {/* Resume Section - Quick View */}
               {candidate.resumeUrl && (
@@ -593,7 +593,7 @@ const tabs: { id: Tab; label: string }[] = [
   );
 }
 
-function LinkedJobsSection({ candidateId }: { candidateId: string }) {
+function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string; candidateName?: string }) {
   const { data: jobs, isLoading, isError, refetch } = useJobsForCandidate(candidateId);
   const updateStage = useUpdateCandidateStageInJob();
   const linkCandidate = useLinkCandidateToJob();
@@ -614,7 +614,7 @@ function LinkedJobsSection({ candidateId }: { candidateId: string }) {
     !job.candidates?.some((lc: any) => lc.candidateId === candidateId)
   ) || [];
 
-  const handleLinkJob = async () => {
+const handleLinkJob = async () => {
     if (!selectedJobId) return;
     
     try {
@@ -622,6 +622,7 @@ function LinkedJobsSection({ candidateId }: { candidateId: string }) {
         jobId: selectedJobId,
         candidateData: {
           candidateId,
+candidateName: candidateName || "Unknown",
           stage: "Applied",
         }
       });
@@ -630,6 +631,7 @@ function LinkedJobsSection({ candidateId }: { candidateId: string }) {
       setSelectedJobId("");
       refetch();
     } catch (err: any) {
+      console.error('Link job error:', err);
       toast.error(err.message || 'Failed to link job');
     }
   };
