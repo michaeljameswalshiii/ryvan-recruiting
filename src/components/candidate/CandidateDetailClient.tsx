@@ -44,7 +44,7 @@ interface CandidateDetailClientProps {
   candidate: Candidate;
 }
 
-type Tab = "overview" | "timeline" | "resume" | "notes" | "emails" | "details";
+type Tab = "overview" | "timeline" | "resume" | "notes" | "emails" | "linked-jobs" | "details";
 
 export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -141,11 +141,12 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       .join("")
       .toUpperCase();
 
-  const tabs: { id: Tab; label: string }[] = [
+const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "timeline", label: "Timeline" },
     ...(candidate.resumeUrl ? [{ id: "resume" as Tab, label: "Resume" }] : []),
     { id: "notes", label: "Notes" },
+    { id: "linked-jobs", label: "Linked Jobs" },
     { id: "emails", label: "Emails" },
     { id: "details", label: "Details" },
   ];
@@ -594,7 +595,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
           </div>
         )}
 
-        {/* Emails Tab */}
+{/* Emails Tab */}
         {activeTab === "emails" && (
           <div className="bg-white p-6 rounded-xl border">
             <h2 className="font-semibold mb-4">Email History</h2>
@@ -602,6 +603,11 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
               No emails sent yet. Use the Send Email button to compose an email.
             </p>
           </div>
+        )}
+
+        {/* Linked Jobs Tab - Full Page View */}
+        {activeTab === "linked-jobs" && (
+          <LinkedJobsTab candidateId={candidate.id} candidateName={candidate.name} />
         )}
 
         {/* Details Tab */}
@@ -634,11 +640,11 @@ function LinkedJobsSection({ candidateId }: { candidateId: string }) {
   const updateStage = useUpdateCandidateStageInJob();
 
   const getCurrentStage = (job: any) => {
-    const linked = (job.linkedCandidates || []).find((lc: any) => lc.candidateId === candidateId);
-    return linked?.stage || "SOURCED";
+    const linked = (job.candidates || []).find((lc: any) => lc.candidateId === candidateId);
+    return linked?.stage || "Applied";
   };
 
-  const stageOptions = ["SOURCED", "SCREENING", "INTERVIEW", "OFFER", "HIRED", "REJECTED"];
+  const stageOptions = ["Applied", "Screening", "Interviewing", "Offered", "Placed", "Rejected", "Withdrawn"];
 
   return (
     <div className="bg-white p-6 rounded-xl border">
@@ -696,6 +702,170 @@ function LinkedJobsSection({ candidateId }: { candidateId: string }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// Full Linked Jobs Tab with stage management
+function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; candidateName: string }) {
+  const { data: jobs, isLoading, isError, refetch } = useJobsForCandidate(candidateId);
+  const updateStage = useUpdateCandidateStageInJob();
+
+  // Group jobs by stage - matching schema stage names
+  const jobsByStage: Record<string, any[]> = {
+    Applied: [],
+    Screening: [],
+    Interviewing: [],
+    Offered: [],
+    Placed: [],
+    Rejected: [],
+    Withdrawn: [],
+  };
+
+  if (jobs) {
+    jobs.forEach((job: any) => {
+      const linked = (job.candidates || []).find((lc: any) => lc.candidateId === candidateId);
+      const stage = linked?.stage || "Applied";
+      if (jobsByStage[stage]) {
+        jobsByStage[stage].push({ ...job, linkedStage: stage });
+      }
+    });
+  }
+
+  // Handle drag start
+  const handleDragStart = (e: React.DragEvent, jobId: string) => {
+    e.dataTransfer.setData("jobId", jobId);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  // Handle drop
+  const handleDrop = async (e: React.DragEvent, newStage: string) => {
+    e.preventDefault();
+    const jobId = e.dataTransfer.getData("jobId");
+    if (!jobId) return;
+
+    try {
+      await updateStage.mutateAsync({
+        jobId,
+        candidateId,
+        stage: newStage,
+      });
+      toast.success(`Stage updated to ${newStage}`);
+      refetch();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update stage");
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const stageLabels: Record<string, string> = {
+    Applied: "Applied",
+    Screening: "Screening",
+    Interviewing: "Interview",
+    Offered: "Offer",
+    Placed: "Placed",
+    Rejected: "Rejected",
+    Withdrawn: "Withdrawn",
+  };
+
+  const stageColors: Record<string, string> = {
+    Applied: "bg-gray-100 border-gray-300",
+    Screening: "bg-blue-100 border-blue-300",
+    Interviewing: "bg-purple-100 border-purple-300",
+    Offered: "bg-yellow-100 border-yellow-300",
+    Placed: "bg-green-100 border-green-300",
+    Rejected: "bg-red-100 border-red-300",
+    Withdrawn: "bg-gray-100 border-gray-200",
+  };
+
+  if (isLoading) {
+    return (
+      <div className="bg-white p-6 rounded-xl border">
+        <div className="flex items-center gap-2">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          Loading linked jobs...
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="bg-white p-6 rounded-xl border">
+        <p className="text-red-600">Failed to load linked jobs.</p>
+        <Button variant="outline" onClick={() => refetch()} className="mt-2">
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (!jobs || jobs.length === 0) {
+    return (
+      <div className="bg-white p-6 rounded-xl border text-center py-12">
+        <Briefcase className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+        <p className="text-lg font-medium">No Jobs Linked</p>
+        <p className="text-sm text-gray-500 mt-1">
+          {candidateName} is not linked to any jobs yet.
+        </p>
+        <p className="text-sm text-gray-500 mt-2">
+          Link jobs from the Jobs Pipeline to track their progress.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white p-4 rounded-xl border">
+        <h2 className="font-semibold mb-2">Drag & Drop to Change Stage</h2>
+        <p className="text-sm text-gray-500">
+          Drag candidates between columns to update their stage in each job.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {Object.entries(jobsByStage).map(([stage, stageJobs]) => (
+          <div
+            key={stage}
+            className={`border-2 rounded-lg p-3 min-h-[200px] ${stageColors[stage]} ${
+              stage === "REJECTED" ? "opacity-60" : ""
+            }`}
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDrop(e, stage)}
+          >
+            <h3 className="font-semibold text-sm mb-3 flex items-center justify-between">
+              {stageLabels[stage]}
+              <span className="bg-white bg-opacity-50 px-2 py-0.5 rounded-full text-xs">
+                {stageJobs.length}
+              </span>
+            </h3>
+            <div className="space-y-2">
+              {stageJobs.map((job: any) => (
+                <div
+                  key={job.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, job.id)}
+                  className="bg-white p-3 rounded-lg border shadow-sm cursor-move hover:shadow-md transition-shadow"
+                >
+                  <p className="font-medium text-sm">{job.title}</p>
+                  <p className="text-xs text-gray-500">{job.companyName}</p>
+                  <Button variant="ghost" size="sm" className="mt-2 h-6 text-xs" asChild>
+                    <a href={`/dashboard/jobs/${job.id}`}>View Job</a>
+                  </Button>
+                </div>
+              ))}
+              {stageJobs.length === 0 && (
+                <p className="text-xs text-gray-400 italic">Drop here</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

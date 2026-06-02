@@ -1,26 +1,39 @@
-# TODO - Implement Multiple Notes for Candidates
+# TODO - Implement Linked Jobs for Candidates
 
 ## Tasks:
-1. [x] Understand the current Architecture - Done
-   - Backend: addNoteToCandidate in candidate-events.ts (exists)
-   - API: /api/candidate/[id]/notes (exists)
-   - Frontend: CandidateDetailClient.tsx (needs Notes section)
-   - Timeline: EventTimeline.tsx (already shows NOTE events)
+1. [x] Understand Architecture
+   - Backend: job-repository.ts has getJobsForCandidate, linkCandidateToJob, updateCandidateStage
+   - Server Action: job-actions.ts has linkCandidateToJobAction, updateCandidateStageAction
+   - Hooks: query-job.ts has useJobsForCandidate, useLinkCandidateToJob, useUpdateCandidateStageInJob
+   - Frontend: CandidateDetailClient.tsx needs new Linked Jobs tab
 
-2. [ ] Add useJobsForCandidate to query-job.ts (fix existing import error)
+2. [ ] Create Linked Jobs Tab in CandidateDetailClient.tsx
+   - Add "Linked Jobs" to tab list
+   - Create new LinkedJobsTab component
+   - Display jobs with stage badges
 
-3. [ ] Update CandidateDetailClient.tsx Overview tab with Notes section
-   - Fetch existing notes (NOTE events)
-   - Add "Add Note" textarea + button
-   - Display notes list (newest first) with author + timestamp
-   - Nice formatting
+3. [ ] Create LinkJobModal component
+   - Searchable dropdown of available Open Jobs
+   - Stage selector
+   - Save handler with event recording
 
-4. [ ] Update Notes Tab (if needed)
-   - Should match the quality of the Overview notes section
+4. [ ] Implement Drag-and-Drop Stage Changes
+   - Make rows draggable
+   - Stage columns: Applied → Screening → Interviewing → Offered → Placed → Rejected
+   - On drop → update stage via updateCandidateStageAction
+   - Optimistic updates + refresh
 
-5. [ ] Deploy and Test
+5. [ ] Backend Events
+   - Record CANDIDATE_LINKED_TO_JOB events
+   - Record CANDIDATE_STAGE_CHANGED events
+
+6. [ ] Polish & Test
+   - Empty state
+   - Loading/error states
+   - Click job → go to job detail
 
 ## Plan:
-- Use existing API endpoint /api/candidate/[id]/notes for adding notes
-- Fetch events with eventType === 'NOTE' for displaying
-- Use useAddNote and useCandidateEvents hooks from query-candidate.ts
+- Use useJobs from query-job.ts to get all available jobs
+- Filter jobs where this candidate is linked (using .linkedCandidates)
+- Use HTML5 drag-and-drop for stage changes
+- Use existing event recording system

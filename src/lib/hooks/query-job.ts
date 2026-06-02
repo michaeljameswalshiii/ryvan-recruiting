@@ -330,9 +330,9 @@ export function useJobsForCandidate(candidateId: string) {
       if (result.error) {
         throw new Error(result.error);
       }
-      // Filter jobs that have this candidate linked
+      // Filter jobs that have this candidate linked (use 'candidates' field as per schema)
       const jobs = (result.jobs || []).filter((job: any) => 
-        job.linkedCandidates?.some((lc: any) => lc.candidateId === candidateId)
+        job.candidates?.some((lc: any) => lc.candidateId === candidateId)
       );
       return jobs;
     },
