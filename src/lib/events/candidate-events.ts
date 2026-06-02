@@ -278,12 +278,17 @@ export async function getCandidateEvents(
  * @param candidateId - The candidate ID
  * @param noteText - The note text
  * @param createdBy - User email or ID who added the note
+ * @param options - Optional additional metadata (e.g., stage for context)
  * @returns Result with success status
  */
 export async function addNoteToCandidate(
   candidateId: string,
   noteText: string,
-  createdBy: string
+  createdBy: string,
+  options?: {
+    stage?: string | null;
+    [key: string]: unknown;
+  }
 ): Promise<RecordEventResponse> {
   if (!noteText || noteText.trim() === '') {
     return {
@@ -292,16 +297,23 @@ export async function addNoteToCandidate(
     };
   }
 
+// Build metadata, including optional stage if provided
+  const metadata: Record<string, unknown> = {
+    noteText,
+    changedBy: createdBy,
+  };
+  
+  if (options?.stage) {
+    metadata.stage = options.stage;
+  }
+
   return recordEvent(
     candidateId,
     'NOTE',
     {
       title: 'Note Added',
       description: noteText.substring(0, 100) + (noteText.length > 100 ? '...' : ''),
-      metadata: {
-        noteText,
-        changedBy: createdBy,
-      },
+      metadata,
     },
     createdBy
   );

@@ -123,11 +123,13 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       setAddingNote(true);
       setNotesError(null);
       
-      const response = await fetch(`/api/candidate/${candidate.id}/notes`, {
+const response = await fetch(`/api/candidate/${candidate.id}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           noteText: newNote,
+          // Include current pipeline stage for context
+          stage: candidate.status,
         }),
       });
       

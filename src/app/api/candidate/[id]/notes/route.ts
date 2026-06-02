@@ -22,9 +22,9 @@ export async function POST(
       );
     }
 
-    // Parse the request body
+// Parse the request body
     const body = await request.json();
-    const { noteText, createdBy } = body;
+    const { noteText, createdBy, stage } = body;
 
     if (!noteText || noteText.trim() === '') {
       return NextResponse.json(
@@ -36,7 +36,10 @@ export async function POST(
     // Use provided createdBy or default to 'system'
     const user = createdBy || 'system';
 
-    const result = await addNoteToCandidate(id, noteText, user);
+    // Include pipeline stage in metadata for context
+    const result = await addNoteToCandidate(id, noteText, user, {
+      stage: stage || null,
+    });
 
     if (!result.success) {
       return NextResponse.json(
