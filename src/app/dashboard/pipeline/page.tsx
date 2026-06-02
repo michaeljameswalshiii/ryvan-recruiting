@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePipeline, useCreatePipeline, useUpdatePipeline, pipelineKeys } from "@/lib/hooks/query-pipeline";
 import { leadKeys } from "@/lib/hooks/query-lead";
 import { clientKeys } from "@/lib/hooks/query-client";
+import { BackToDashboard } from "@/components/ui/BackToDashboard";
 
 interface Lead {
   id: string;
@@ -206,8 +207,11 @@ const handleAddLead = async () => {
     );
   }
 
-  return (
+return (
     <div className="space-y-6">
+      {/* Back to Dashboard */}
+      <BackToDashboard label="Back to Pipeline" />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

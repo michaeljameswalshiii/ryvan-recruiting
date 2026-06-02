@@ -92,7 +92,7 @@ export default function EventTimeline({
   const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
-  const fetchEvents = useCallback(async () => {
+const fetchEvents = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -101,7 +101,9 @@ export default function EventTimeline({
         ? `/api/candidate/${entityId}/events`
         : `/api/company/${entityId}/events`;
         
-      const response = await fetch(`${endpoint}?limit=50`);
+      // Use timestamp cache-busting to prevent stale data
+      const timestamp = new Date().getTime();
+      const response = await fetch(`${endpoint}?limit=50&_t=${timestamp}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch ${entityType} events`);
@@ -148,10 +150,12 @@ export default function EventTimeline({
         throw new Error('Failed to add note');
       }
       
-      const data = await response.json();
+const data = await response.json();
       if (data.success) {
         setNewNote('');
-        // Refresh events list
+        // Add a small delay to ensure the write completes before refetching
+        await new Promise(resolve => setTimeout(resolve, 300));
+        // Refresh events list with timestamp to prevent caching
         await fetchEvents();
       } else {
         setError(data.error || 'Failed to add note');

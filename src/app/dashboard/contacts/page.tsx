@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
+import { BackToDashboard } from "@/components/ui/BackToDashboard";
 import ContactModal from "@/components/company/ContactModal";
 import { useClients, useRemoveContact, clientKeys } from "@/lib/hooks/query-client";
 import { toast } from "sonner";
@@ -194,8 +195,11 @@ export default function ContactsPage() {
     );
   }
 
-  return (
+return (
     <div className="space-y-6">
+      {/* Back to Dashboard */}
+      <BackToDashboard label="Back to Dashboard" />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
