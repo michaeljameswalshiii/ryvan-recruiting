@@ -66,12 +66,14 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [addingNote, setAddingNote] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
 
-  // Fetch notes on mount
+// Fetch notes on mount
   useEffect(() => {
     async function fetchNotes() {
       try {
         setNotesLoading(true);
-        const response = await fetch(`/api/candidate/${candidate.id}/events?limit=50`);
+        // Use timestamp cache-busting to prevent stale data
+        const timestamp = new Date().getTime();
+        const response = await fetch(`/api/candidate/${candidate.id}/events?limit=50&_t=${timestamp}`);
         if (!response.ok) {
           throw new Error('Failed to fetch events');
         }
@@ -90,6 +92,28 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     }
     fetchNotes();
   }, [candidate.id]);
+
+  // Manual refresh notes
+  const refreshNotes = async () => {
+    try {
+      setNotesLoading(true);
+      const timestamp = new Date().getTime();
+      const response = await fetch(`/api/candidate/${candidate.id}/events?limit=50&_t=${timestamp}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch events');
+      }
+      const data = await response.json();
+      const noteEvents = (data.events || [])
+        .filter((e: any) => e.eventType === 'NOTE')
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setNotes(noteEvents);
+    } catch (err) {
+      console.error('Failed to refresh notes:', err);
+      setNotesError('Failed to refresh notes');
+    } finally {
+      setNotesLoading(false);
+    }
+  };
 
   // Add note handler
   const handleAddNote = async () => {
@@ -111,17 +135,14 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
         throw new Error('Failed to add note');
       }
       
-      const data = await response.json();
+const data = await response.json();
       if (data.success) {
         setNewNote("");
         toast.success('Note added successfully');
-        // Refresh notes
-        const eventsResponse = await fetch(`/api/candidate/${candidate.id}/events?limit=50`);
-        const eventsData = await eventsResponse.json();
-        const noteEvents = (eventsData.events || [])
-          .filter((e: any) => e.eventType === 'NOTE')
-          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setNotes(noteEvents);
+        // Add a small delay to ensure the write completes before refetching
+        await new Promise(resolve => setTimeout(resolve, 300));
+        // Refresh notes with timestamp to prevent caching
+        await refreshNotes();
       }
     } catch (err) {
       console.error('Failed to add note:', err);

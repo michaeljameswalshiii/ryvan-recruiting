@@ -186,10 +186,10 @@ export async function getCandidateEvents(
   try {
     const { limit, cursor, eventTypes, startDate, endDate } = options || {};
     
-    // Build query expression
+// Build query expression
     let queryExpr = 'PK = :pk AND begins_with(SK, :skPrefix)';
     const exprValues: Record<string, string> = {
-      ':pk': `CANDIDATE#${candidateId}`,
+      ':pk': `ENTITY#candidate#${candidateId}`,
       ':skPrefix': 'EVENT#',
     };
 

@@ -64,9 +64,14 @@ export default function ContactModal({
   const addContactMutation = useAddContact();
   const updateContactMutation = useUpdateContact();
 
-  // Reset form when modal opens or contact changes
+// Reset form when modal opens or contact changes
   useEffect(() => {
     if (open) {
+      // Wait for companies to load before auto-selecting
+      if (isLoadingCompanies && !contact) {
+        return; // Wait for companies to load
+      }
+      
       // Sort companies alphabetically
       const sortedCompanies = [...companies].sort((a, b) => 
         (a.name || "").localeCompare(b.name || "")
@@ -83,9 +88,9 @@ export default function ContactModal({
           isPrimary: contact.isPrimary || false,
           notes: contact.notes || "",
         });
-      } else if (open) {
-        // New contact - use passed clientId or first company
-        const defaultClientId = initialClientId || (sortedCompanies.length > 0 ? sortedCompanies[0].id : "");
+} else if (open) {
+        // New contact - use passed clientId or first company (only if companies are loaded)
+        const defaultClientId = initialClientId || (sortedCompanies.length > 0 ? (sortedCompanies[0]?.id || "") : "");
         setFormData({
           clientId: defaultClientId,
           name: "",
@@ -97,7 +102,7 @@ export default function ContactModal({
         });
       }
     }
-  }, [open, contact, initialClientId, companies]);
+  }, [open, contact, initialClientId, companies, isLoadingCompanies]);
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
