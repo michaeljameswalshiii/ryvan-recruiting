@@ -19,7 +19,7 @@ import {
   getJobStats,
   linkCandidateToJob,
   unlinkCandidateFromJob,
-  updateCandidateStage
+  updateCandidateStageInJob
 } from '../db/repositories';
 import { createJobSchema } from '../schemas/job';
 
@@ -279,7 +279,7 @@ export async function updateCandidateStageAction(jobId: string, candidateId: str
   }
 
   try {
-    const job = await updateCandidateStage(tenantId, jobId, candidateId, stage, notes);
+    const job = await updateCandidateStageInJob(tenantId, jobId, { candidateId, stage, notes });
     return { success: true, job };
   } catch (error: any) {
     return { error: error.message || 'Failed to update stage' };

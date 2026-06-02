@@ -253,8 +253,8 @@ const tabs: { id: Tab; label: string }[] = [
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" asChild>
-              <a href="/candidates">
+<Button variant="ghost" size="icon" asChild>
+              <a href="/dashboard">
                 <ArrowLeft className="h-5 w-5" />
               </a>
             </Button>
@@ -311,10 +311,10 @@ const tabs: { id: Tab; label: string }[] = [
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto p-6 space-y-8">
-        {/* Overview Tab */}
+{/* Overview Tab */}
         {activeTab === "overview" && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="col-span-1 md:col-span-2 space-y-6">
               {/* Contact Information - Editable */}
               <div className="bg-white p-6 rounded-xl border">
                 <h2 className="font-semibold mb-4 flex items-center gap-2">
@@ -323,7 +323,7 @@ const tabs: { id: Tab; label: string }[] = [
                 
                 {isEditing ? (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div>
                         <label className="text-sm font-medium text-gray-600">Email</label>
                         <Input
@@ -356,6 +356,21 @@ const tabs: { id: Tab; label: string }[] = [
                           disabled
                         />
                       </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Source</label>
+                        <Input
+                          value={candidate.source || ""}
+                          placeholder="Source"
+                          disabled
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Added</label>
+                        <Input
+                          value={new Date(candidate.createdAt).toLocaleDateString()}
+                          disabled
+                        />
+                      </div>
 </div>
                     
                     {/* Edit Actions */}
@@ -377,7 +392,7 @@ const tabs: { id: Tab; label: string }[] = [
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                     <div>
                       <span className="text-gray-500">Email:</span>{" "}
                       <a
@@ -404,6 +419,13 @@ const tabs: { id: Tab; label: string }[] = [
                           View Profile
                         </a>
                       ) : "—"}
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Source:</span> {candidate.source || "—"}
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Added:</span>{" "}
+                      {new Date(candidate.createdAt).toLocaleDateString()}
                     </div>
                   </div>
 )}
@@ -510,20 +532,11 @@ const tabs: { id: Tab; label: string }[] = [
               </div>
             </div>
 
-            <div>
+<div>
               <div className="bg-white p-6 rounded-xl border">
                 <Badge variant="secondary" className="mb-4 capitalize">
                   {candidate.status}
                 </Badge>
-                <div className="text-sm space-y-2">
-                  <div>
-                    <strong>Source:</strong> {candidate.source || "—"}
-                  </div>
-                  <div>
-                    <strong>Added:</strong>{" "}
-                    {new Date(candidate.createdAt).toLocaleDateString()}
-                  </div>
-</div>
               </div>
             </div>
           </div>

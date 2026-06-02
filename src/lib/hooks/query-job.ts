@@ -341,3 +341,27 @@ export function useJobsForCandidate(candidateId: string) {
     enabled: !!candidateId,
   });
 }
+
+/**
+ * Get jobs for a specific company
+ * Used in company detail page to show company's open jobs
+ */
+export function useJobsForCompany(companyId: string) {
+  return useQuery({
+    queryKey: [...jobKeys.lists(), { companyId }],
+    queryFn: async () => {
+      const result = await getJobs(false);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      // Filter jobs for this company
+      const jobs = (result.jobs || []).filter((job: any) => 
+        job.companyId === companyId
+      );
+      return jobs;
+    },
+    staleTime: 1000 * 60 * 5,
+    retry: 2,
+    enabled: !!companyId,
+  });
+}
