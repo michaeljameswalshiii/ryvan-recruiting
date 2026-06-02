@@ -10,7 +10,7 @@ import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send } from "lucide-react";
 import { toast } from "sonner";
-import { useJobsForCandidate, useUpdateCandidateStageInJob } from "@/lib/hooks/query-job";
+import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useJobs } from "@/lib/hooks/query-job";
 
 interface Note {
   id: string;
@@ -594,8 +594,13 @@ const tabs: { id: Tab; label: string }[] = [
 }
 
 function LinkedJobsSection({ candidateId }: { candidateId: string }) {
-  const { data: jobs, isLoading, isError } = useJobsForCandidate(candidateId);
+  const { data: jobs, isLoading, isError, refetch } = useJobsForCandidate(candidateId);
   const updateStage = useUpdateCandidateStageInJob();
+  const linkCandidate = useLinkCandidateToJob();
+  const { data: allJobs } = useJobs();
+  
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState("");
 
   const getCurrentStage = (job: any) => {
     const linked = (job.candidates || []).find((lc: any) => lc.candidateId === candidateId);
@@ -604,18 +609,52 @@ function LinkedJobsSection({ candidateId }: { candidateId: string }) {
 
   const stageOptions = ["Applied", "Screening", "Interviewing", "Offered", "Placed", "Rejected", "Withdrawn"];
 
+  // Get jobs that are not already linked
+  const availableJobs = allJobs?.filter((job: any) => 
+    !job.candidates?.some((lc: any) => lc.candidateId === candidateId)
+  ) || [];
+
+  const handleLinkJob = async () => {
+    if (!selectedJobId) return;
+    
+    try {
+      await linkCandidate.mutateAsync({
+        jobId: selectedJobId,
+        candidateData: {
+          candidateId,
+          stage: "Applied",
+        }
+      });
+      toast.success('Job linked successfully');
+      setShowLinkDialog(false);
+      setSelectedJobId("");
+      refetch();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to link job');
+    }
+  };
+
   return (
     <div className="bg-white p-6 rounded-xl border">
-      <h2 className="font-semibold mb-4 flex items-center gap-2">
-        <Briefcase className="h-5 w-5" /> Linked Jobs
-      </h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-semibold flex items-center gap-2">
+          <Briefcase className="h-5 w-5" /> Linked Jobs
+        </h2>
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={() => setShowLinkDialog(true)}
+        >
+          + Link Job
+        </Button>
+      </div>
 
       {isLoading && <p className="text-sm text-gray-500">Loading linked jobs...</p>}
       {isError && <p className="text-sm text-red-600">Failed to load linked jobs.</p>}
 
       {!isLoading && !isError && (!jobs || jobs.length === 0) && (
         <p className="text-sm text-gray-500">
-          No jobs linked yet. Link jobs from the Jobs pipeline.
+          No jobs linked yet. Click "Link Job" to link this candidate to a job.
         </p>
       )}
 
@@ -658,6 +697,55 @@ function LinkedJobsSection({ candidateId }: { candidateId: string }) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Link Job Dialog */}
+      {showLinkDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="font-semibold text-lg mb-4">Link Job to Candidate</h3>
+            
+            <div className="mb-4">
+              <label className="text-sm font-medium text-gray-600 mb-2 block">Select Job</label>
+              <select
+                value={selectedJobId}
+                onChange={(e) => setSelectedJobId(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              >
+                <option value="">Choose a job...</option>
+                {availableJobs.map((job: any) => (
+                  <option key={job.id} value={job.id}>
+                    {job.title} - {job.companyName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowLinkDialog(false);
+                  setSelectedJobId("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleLinkJob}
+                disabled={!selectedJobId || linkCandidate.isPending}
+              >
+                {linkCandidate.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Linking...
+                  </>
+                ) : (
+                  'Link Job'
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
