@@ -16,7 +16,7 @@ class StorageStack(Stack):
             "ResumesBucket",
             bucket_name=f"turnkey-resumes-{self.account}",
             removal_policy=RemovalPolicy.RETAIN,
-            public_access_block_settings=s3.PublicAccessBlockSettings(
+            block_public_access=s3.BlockPublicAccess(
                 block_public_acls=True,
                 block_public_policy=True,
                 ignore_public_acls=True,
