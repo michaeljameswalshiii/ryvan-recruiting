@@ -247,6 +247,73 @@
       },
       "displayName": "TurnkeyData"
     },
+    "TurnkeyStorage.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "TurnkeyStorage.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "TurnkeyStorage": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://635449373837/us-east-1",
+      "properties": {
+        "templateFile": "TurnkeyStorage.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "notificationArns": [],
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-deploy-role-635449373837-us-east-1",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-cfn-exec-role-635449373837-us-east-1",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-635449373837-us-east-1/112016fb3a086e390dfa7dadb4dfcd0a9a567269a2a2ed4a852aad74df608484.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "TurnkeyStorage.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::635449373837:role/cdk-hnb659fds-lookup-role-635449373837-us-east-1",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "TurnkeyStorage.assets"
+      ],
+      "metadata": {
+        "/TurnkeyStorage/ResumesBucket/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ResumesBucketF5EE4389"
+          }
+        ],
+        "/TurnkeyStorage/ResumesBucketName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ResumesBucketName"
+          }
+        ],
+        "/TurnkeyStorage/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/TurnkeyStorage/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/TurnkeyStorage/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "TurnkeyStorage"
+    },
     "TurnkeyReporting.assets": {
       "type": "cdk:asset-manifest",
       "properties": {
