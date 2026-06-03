@@ -51,17 +51,23 @@ type Tab = "overview" | "timeline" | "resume" | "linked-jobs";
 export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
 const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({
+const [editForm, setEditForm] = useState({
     name: candidate.name || "",
     phone: candidate.phone || "",
     email: candidate.email || "",
     salaryRequirements: candidate.salaryRequirements || "",
+    linkedin: candidate.linkedin || "",
   });
-  // Job titles state - support multiple titles
+  const [editAddress, setEditAddress] = useState({
+    fullAddress: (candidate as any).fullAddress || "",
+  });
+// Job titles state - support multiple titles
   const [jobTitles, setJobTitles] = useState<string[]>(
     candidate.title ? candidate.title.split(",").map(t => t.trim()).filter(Boolean) : []
   );
   const [newJobTitle, setNewJobTitle] = useState("");
+  // LinkedIn state - added for editing
+  const [linkedin, setLinkedin] = useState(candidate.linkedin || "");
   // Address state
   const [address, setAddress] = useState({
     street: candidate.location?.split(",")[0]?.trim() || "", // Use location field as street for now
@@ -245,13 +251,11 @@ const tabs: { id: Tab; label: string }[] = [
     }
   };
 
-  // Save edited fields
+// Save edited fields
   const handleSaveEdit = async () => {
     setIsSaving(true);
     
     try {
-      const fullAddress = [address.street, address.city, address.state, address.zip, address.country].filter(Boolean).join(", ");
-      
       const response = await fetch(`/api/data/leads/${candidate.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -260,7 +264,9 @@ const tabs: { id: Tab; label: string }[] = [
           phone: editForm.phone,
           email: editForm.email,
           title: jobTitles.join(","),
-          location: fullAddress,
+          location: editAddress.fullAddress,
+          linkedin: editForm.linkedin,
+          fullAddress: editAddress.fullAddress,
           salaryRequirements: editForm.salaryRequirements,
         }),
       });
@@ -288,15 +294,12 @@ const tabs: { id: Tab; label: string }[] = [
       phone: candidate.phone || "",
       email: candidate.email || "",
       salaryRequirements: candidate.salaryRequirements || "",
+      linkedin: candidate.linkedin || "",
+    });
+    setEditAddress({
+      fullAddress: (candidate as any).fullAddress || "",
     });
     setJobTitles(candidate.title ? candidate.title.split(",").map(t => t.trim()).filter(Boolean) : []);
-    setAddress({
-      street: candidate.location?.split(",")[0]?.trim() || "",
-      city: "",
-      state: "",
-      zip: "",
-      country: "",
-    });
     setLocationPreference([]);
     setIsEditing(false);
   };
@@ -308,7 +311,7 @@ const tabs: { id: Tab; label: string }[] = [
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
 <Button variant="ghost" size="icon" asChild>
-              <a href="/dashboard">
+              <a href="https://turnkey-optimization.vercel.app/dashboard">
                 <ArrowLeft className="h-5 w-5" />
               </a>
             </Button>
@@ -453,13 +456,22 @@ const tabs: { id: Tab; label: string }[] = [
                           </Button>
                         </div>
                       </div>
-                      {/* LinkedIn - disabled */}
+{/* LinkedIn - now editable */}
                       <div>
                         <label className="text-sm font-medium text-gray-600">LinkedIn</label>
                         <Input
-                          value={candidate.linkedin || ""}
-                          placeholder="LinkedIn URL"
-                          disabled
+                          value={editForm.linkedin}
+                          onChange={(e) => setEditForm({ ...editForm, linkedin: e.target.value })}
+                          placeholder="https://linkedin.com/in/..."
+                        />
+                      </div>
+                      {/* Full Address - now editable */}
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Full Address</label>
+                        <Input
+                          value={editAddress.fullAddress}
+                          onChange={(e) => setEditAddress({ ...editAddress, fullAddress: e.target.value })}
+                          placeholder="123 Main St, City, State 12345"
                         />
                       </div>
                       {/* Source - disabled */}
