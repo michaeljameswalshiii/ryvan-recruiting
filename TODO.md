@@ -1,27 +1,35 @@
-# Phase 1 Refactor - Candidate Detail Header + Contact Information Panel
+# TODO - Resume Upload Feature
 
-## Task List
+## Summary
+Add resume upload functionality to allow candidates to upload resumes (PDF/DOCX) which are stored in S3 and linked to their candidate record.
 
-- [x] Read and analyze CandidateDetailClient.tsx
-- [x] Create implementation plan
-- [x] Get user confirmation to proceed
+## Tasks
 
-## Implementation Steps
+### 1. Create S3 Utility
+- [ ] Create `/src/lib/aws/s3.ts` with S3 client configuration
+- [ ] Add upload function with unique file naming (tenant/candidates/{uuid}/{filename})
+- [ ] Set up environment variable validation
 
-- [x] 1. Remove job title from Header area (keep only name + avatar)
-- [x] 2. Add Full Name field to Contact Information Panel (editable)
-- [x] 3. Add Job Title(s) with multiple title support (chips with add/remove)
-- [x] 4. Keep existing fields (Source, Date Added, Email, Phone, LinkedIn) in Contact Panel
-- [x] 5. Reorganize Contact Information Panel layout
-- [x] 6. Test layout is clean after changes
+### 2. Create Upload Resume API
+- [ ] Create `/src/app/api/upload-resume/route.ts`
+- [ ] Accept file upload via FormData
+- [ ] Validate file type (PDF, DOCX only)
+- [ ] Integrate with S3 utility
+- [ ] Return S3 URL on success
 
-## Changes Details
+### 3. Update CandidateDetailClient.tsx
+- [ ] Add file input for resume upload in Resume tab
+- [ ] Handle file selection and upload
+- [ ] Update candidate record with new resume URL
+- [ ] Show upload progress/feedback
 
-### Header Area
-- Removed `<span>{candidate.title}</span>` from the header div
+### 4. Environment Variables
+- [ ] Add AWS_S3_BUCKET_NAME to environment
+- [ ] Add AWS_REGION to environment
 
-### Contact Information Panel
-- Added "Full Name" editable field
-- Added "Job Title(s)" with chip display and add/remove functionality  
-- Keep: Email, Phone, LinkedIn, Source, Date Added
-- Removed: Location field
+## Implementation Status
+
+- [ ] Task 1: Create S3 utility
+- [ ] Task 2: Create upload-resume API endpoint  
+- [ ] Task 3: Update CandidateDetailClient.tsx
+- [ ] Task 4: Configure environment variables

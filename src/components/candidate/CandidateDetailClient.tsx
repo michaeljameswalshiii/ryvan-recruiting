@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, ChangeEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import EventTimeline from "@/components/EventTimeline";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { SendEmailModal } from "@/components/email/send-email-modal";
-import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download, Plus } from "lucide-react";
+import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useJobs } from "@/lib/hooks/query-job";
 
@@ -673,35 +673,11 @@ const tabs: { id: Tab; label: string }[] = [
 
 {/* Resume Tab */}
         {activeTab === "resume" && (
-          <div className="bg-white rounded-xl border overflow-hidden h-[720px] flex flex-col">
-            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-              <h2 className="font-semibold flex items-center gap-2">
-                <FileText className="h-5 w-5" /> Resume
-              </h2>
-              {candidate.resumeUrl && (
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => window.open(candidate.resumeUrl, "_blank")}>
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Open Full Screen
-                  </Button>
-                  <Button variant="default" size="sm" asChild>
-                    <a
-                      href={candidate.resumeUrl}
-                      download={candidate.resumeUrl.split("/").pop() || `${candidate.name.replace(/ /g, "-")}-resume.pdf`}
-                      target="_blank"
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download
-                    </a>
-                  </Button>
-                </div>
-              )}
-            </div>
-            <ResumeViewer
-              url={candidate.resumeUrl || ""}
-              fileName={candidate.resumeUrl?.split("/").pop() || `${candidate.name.replace(/ /g, "-")}-resume.pdf`}
-            />
-          </div>
+          <ResumeTab 
+            candidateId={candidate.id} 
+            resumeUrl={candidate.resumeUrl} 
+            candidateName={candidate.name}
+          />
         )}
 
 {/* Linked Jobs Tab - Full Page View */}
@@ -983,7 +959,7 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
     );
   }
 
-  if (!jobs || jobs.length === 0) {
+if (!jobs || jobs.length === 0) {
     return (
       <div className="bg-white p-6 rounded-xl border text-center py-12">
         <Briefcase className="h-12 w-12 mx-auto mb-4 text-gray-400" />
@@ -1045,6 +1021,219 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Resume Tab with upload functionality
+function ResumeTab({ candidateId, resumeUrl, candidateName }: { candidateId: string; resumeUrl?: string; candidateName: string }) {
+  const [isUploading, setIsUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+const fileInputRef = useRef<HTMLInputElement>(null);
+
+const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const validTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      const validExtensions = ['.pdf', '.docx'];
+      const fileNameLower = file.name.toLowerCase();
+      
+      const hasValidType = validTypes.includes(file.type);
+      const hasValidExtension = validExtensions.some(ext => fileNameLower.endsWith(ext));
+      
+      if (!hasValidType && !hasValidExtension) {
+        toast.error('Invalid file type. Please upload PDF or Word (.docx) files.');
+        return;
+      }
+      
+      // Check file size (10MB max)
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('File too large. Maximum size is 10MB.');
+        return;
+      }
+      
+      setSelectedFile(file);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile) return;
+    
+    setIsUploading(true);
+    
+    try {
+      // Upload to S3 via API
+      const formData = new FormData();
+      formData.append('resume', selectedFile);
+      
+      const uploadResponse = await fetch('/api/upload-resume', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const uploadResult = await uploadResponse.json();
+      
+      if (!uploadResponse.ok || uploadResult.error) {
+        throw new Error(uploadResult.error || 'Failed to upload resume');
+      }
+      
+      const newResumeUrl = uploadResult.resumeUrl;
+      
+      // Update candidate record with new resume URL
+      const updateResponse = await fetch(`/api/data/leads/${candidateId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resume_url: newResumeUrl,
+        }),
+      });
+      
+      const updateResult = await updateResponse.json();
+      
+      if (!updateResponse.ok || updateResult.error) {
+        throw new Error(updateResult.error || 'Failed to update candidate');
+      }
+      
+      toast.success('Resume uploaded successfully');
+      setSelectedFile(null);
+      
+      // Refresh the page to show new resume
+      window.location.reload();
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      toast.error(err.message || 'Failed to upload resume');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleCancelUpload = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl border overflow-hidden h-[720px] flex flex-col">
+      <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+        <h2 className="font-semibold flex items-center gap-2">
+          <FileText className="h-5 w-5" /> Resume
+        </h2>
+        
+        {/* Upload Section */}
+        <div className="flex items-center gap-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept=".pdf,.docx"
+            className="hidden"
+            id="resume-upload"
+          />
+          <label htmlFor="resume-upload">
+            <span className=" cursor-pointer">
+              <Button variant="outline" size="sm" asChild component="span">
+                <span>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Upload New
+                </span>
+              </Button>
+            </span>
+          </label>
+          
+          {resumeUrl && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => window.open(resumeUrl, "_blank")}>
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Open
+              </Button>
+              <Button variant="default" size="sm" asChild>
+                <a
+                  href={resumeUrl}
+                  download={resumeUrl.split("/").pop() || `${candidateName.replace(/ /g, "-")}-resume.pdf`}
+                  target="_blank"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </a>
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+      
+      {/* Upload Progress/Preview */}
+      {selectedFile && (
+        <div className="p-4 border-b bg-blue-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <FileText className="h-5 w-5 text-blue-600" />
+              <div>
+                <p className="text-sm font-medium">{selectedFile.name}</p>
+                <p className="text-xs text-gray-500">
+                  {(selectedFile.size / 1024).toFixed(1)} KB
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleCancelUpload}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpload} disabled={isUploading}>
+                {isUploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Resume Viewer */}
+      {resumeUrl ? (
+        <ResumeViewer
+          url={resumeUrl}
+          fileName={resumeUrl?.split("/").pop() || `${candidateName.replace(/ /g, "-")}-resume.pdf`}
+        />
+      ) : (
+        <div className="flex-1 flex items-center justify-center text-center p-8">
+          <div>
+            <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+            <p className="text-lg font-medium text-gray-500">No Resume</p>
+            <p className="text-sm text-gray-400 mt-1">
+              Upload a resume to view it here.
+            </p>
+            <div className="mt-4">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".pdf,.docx"
+                className="hidden"
+                id="resume-upload-empty"
+              />
+              <label htmlFor="resume-upload-empty">
+                <Button variant="outline" asChild component="span">
+                  <span className="cursor-pointer">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Upload Resume
+                  </span>
+                </Button>
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
