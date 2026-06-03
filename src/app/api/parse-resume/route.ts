@@ -224,7 +224,7 @@ Extract ALL the following structured data from the resume text:
 - certifications: Array of strings
 
 Resume text:
-${cleanText.substring(0, 6000)}
+${cleanText.substring(0, 7000)}
 
 Return ONLY valid JSON (no explanations, no markdown):
 {
@@ -294,16 +294,19 @@ Return ONLY valid JSON (no explanations, no markdown):
     const finalTitle = (aiTitle && aiTitle.length > 2 && aiTitle.length < 100 && !aiTitle.includes(finalName)) ? aiTitle : '';
 
 const finalResume = {
-      name: finalName,
+      name: finalName || parsedResume.name || '',
+      title: finalTitle || parsedResume.title || '',
       email: hints.email || parsedResume.email || '',
       phone: hints.phone || parsedResume.phone || '',
       location: hints.location || parsedResume.location || parsedResume.full_address || '',
-      linkedin: hints.linkedin || parsedResume.linkedin || '',
-      title: finalTitle || parsedResume.title || '',
-      summary: parsedResume.summary || '',
-      skills: parsedResume.skills || [],
-      salaryRequirements: parsedResume.salary_requirements || '',
       fullAddress: parsedResume.full_address || '',
+      linkedin: hints.linkedin || parsedResume.linkedin || '',
+      summary: parsedResume.summary || '',
+      salaryRequirements: parsedResume.salary_requirements || '',
+      skills: parsedResume.skills || [],
+      experience: parsedResume.experience || [],
+      education: parsedResume.education || [],
+      certifications: parsedResume.certifications || [],
     };
 
     console.log('parse-resume: final name =', finalName, 'title =', finalTitle);

@@ -34,7 +34,9 @@ interface Candidate {
   status: string;
   source?: string;
   location?: string;
+  fullAddress?: string;
   salaryRequirements?: string;
+  summary?: string;
   notes?: string;
   createdAt: string;
   avatarInitials?: string;
@@ -400,6 +402,15 @@ const tabs: { id: Tab; label: string }[] = [
                           placeholder="(555) 123-4567"
                         />
                       </div>
+                      {/* Salary Requirements - Editable */}
+                      <div>
+                        <label className="text-sm font-medium text-gray-600">Salary Requirements</label>
+                        <Input
+                          value={editForm.salaryRequirements}
+                          onChange={(e) => setEditForm({ ...editForm, salaryRequirements: e.target.value })}
+                          placeholder="$90k - $120k"
+                        />
+                      </div>
                       {/* Job Titles - Multiple with add/remove */}
                       <div>
                         <label className="text-sm font-medium text-gray-600">Job Title(s)</label>
@@ -489,7 +500,7 @@ const tabs: { id: Tab; label: string }[] = [
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                     {/* Full Name Display */}
                     <div>
                       <span className="text-gray-500">Name:</span>{" "}
@@ -525,6 +536,17 @@ const tabs: { id: Tab; label: string }[] = [
                         </div>
                       ) : "—"}
                     </div>
+                    {/* Location Display */}
+                    <div>
+                      <span className="text-gray-500">Location:</span> {candidate.location || "—"}
+                    </div>
+                    {/* Full Address Display */}
+                    {(candidate as any).fullAddress && (
+                      <div>
+                        <span className="text-gray-500">Full Address:</span>{" "}
+                        <span className="text-sm">{(candidate as any).fullAddress}</span>
+                      </div>
+                    )}
                     {/* LinkedIn Display */}
                     <div>
                       <span className="text-gray-500">LinkedIn:</span>{" "}
@@ -538,6 +560,13 @@ const tabs: { id: Tab; label: string }[] = [
                         </a>
                       ) : "—"}
                     </div>
+                    {/* Salary Requirements Display */}
+                    {(candidate as any).salaryRequirements && (
+                      <div>
+                        <span className="text-gray-500">Salary Requirements:</span>{" "}
+                        <span className="font-medium">{(candidate as any).salaryRequirements}</span>
+                      </div>
+                    )}
                     {/* Source Display */}
                     <div>
                       <span className="text-gray-500">Source:</span> {candidate.source || "—"}
@@ -547,6 +576,13 @@ const tabs: { id: Tab; label: string }[] = [
                       <span className="text-gray-500">Added:</span>{" "}
                       {new Date(candidate.createdAt).toLocaleDateString()}
                     </div>
+                    {/* Summary Display */}
+                    {(candidate as any).summary && (
+                      <div className="col-span-1 sm:col-span-2 mt-2">
+                        <span className="text-gray-500">Summary:</span>
+                        <p className="text-sm mt-1">{(candidate as any).summary}</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1096,7 +1132,7 @@ const handleUpload = async () => {
         resume_url: newResumeUrl,
       };
       
-      // Add parsed fields if available
+// Add parsed fields if available
       if (parseResult.success && parseResult.resume) {
         const parsed = parseResult.resume;
         if (parsed.name) updatePayload.name = parsed.name;
@@ -1104,9 +1140,10 @@ const handleUpload = async () => {
         if (parsed.phone) updatePayload.phone = parsed.phone;
         if (parsed.title) updatePayload.title = parsed.title;
         if (parsed.location) updatePayload.location = parsed.location;
-        if (parsed.fullAddress) updatePayload.location = parsed.fullAddress;
+        if (parsed.fullAddress) updatePayload.fullAddress = parsed.fullAddress;
         if (parsed.linkedin) updatePayload.linkedin = parsed.linkedin;
         if (parsed.salaryRequirements) updatePayload.salaryRequirements = parsed.salaryRequirements;
+        if (parsed.summary) updatePayload.summary = parsed.summary;
       }
       
       // Update candidate record with all parsed fields
@@ -1197,6 +1234,7 @@ const handleUpload = async () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <FileText className="h-5 w-5 text-blue-600" />
+add to github master and oush to vercel
               <div>
                 <p className="text-sm font-medium">{selectedFile.name}</p>
                 <p className="text-xs text-gray-500">
