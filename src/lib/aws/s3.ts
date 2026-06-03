@@ -3,7 +3,8 @@
  * Server-side S3 operations for file uploads
  */
 
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
 
 // S3 client configuration
@@ -79,8 +80,29 @@ export async function uploadToS3(
     return `${cloudfrontUrl}/${s3Key}`;
   }
   
-  // Fallback to S3 URL
-  return `https://${bucketName}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${s3Key}`;
+// Instead of direct S3 URL, use presigned URL for secure access
+  return await getPresignedGetUrl(s3Key);
+}
+
+/**
+ * Generate a presigned URL for downloading a file from S3
+ * @param s3Key - The S3 key (path) of the file
+ * @param expiresInSeconds - URL expiration time (default 3600 = 1 hour)
+ * @returns Presigned URL for download
+ */
+export async function getPresignedGetUrl(
+  s3Key: string,
+  expiresInSeconds: number = 3600
+): Promise<string> {
+  const s3Client = getS3Client();
+  const bucketName = getS3BucketName();
+
+  const command = new GetObjectCommand({
+    Bucket: bucketName,
+    Key: s3Key,
+  });
+
+  return getSignedUrl(s3Client, command, { expiresIn: expiresInSeconds });
 }
 
 /**
