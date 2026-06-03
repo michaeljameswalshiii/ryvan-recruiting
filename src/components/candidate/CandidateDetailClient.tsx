@@ -1057,19 +1057,30 @@ const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     }
   };
 
-  const handleUpload = async () => {
+const handleUpload = async () => {
     if (!selectedFile) return;
     
     setIsUploading(true);
     
     try {
-      // Upload to S3 via API
-      const formData = new FormData();
-      formData.append('resume', selectedFile);
+      // Step 1: Parse the resume first to extract all fields
+      const parseFormData = new FormData();
+      parseFormData.append('resume', selectedFile);
+      
+      const parseResponse = await fetch('/api/parse-resume', {
+        method: 'POST',
+        body: parseFormData,
+      });
+      
+      const parseResult = await parseResponse.json();
+      
+      // Step 2: Upload to S3 via API (if parsing succeeded, use the file)
+      const uploadFormData = new FormData();
+      uploadFormData.append('resume', selectedFile);
       
       const uploadResponse = await fetch('/api/upload-resume', {
         method: 'POST',
-        body: formData,
+        body: uploadFormData,
       });
       
       const uploadResult = await uploadResponse.json();
@@ -1080,13 +1091,29 @@ const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
       
       const newResumeUrl = uploadResult.resumeUrl;
       
-      // Update candidate record with new resume URL
+      // Build update payload with all parsed fields
+      const updatePayload: any = {
+        resume_url: newResumeUrl,
+      };
+      
+      // Add parsed fields if available
+      if (parseResult.success && parseResult.resume) {
+        const parsed = parseResult.resume;
+        if (parsed.name) updatePayload.name = parsed.name;
+        if (parsed.email) updatePayload.email = parsed.email;
+        if (parsed.phone) updatePayload.phone = parsed.phone;
+        if (parsed.title) updatePayload.title = parsed.title;
+        if (parsed.location) updatePayload.location = parsed.location;
+        if (parsed.fullAddress) updatePayload.location = parsed.fullAddress;
+        if (parsed.linkedin) updatePayload.linkedin = parsed.linkedin;
+        if (parsed.salaryRequirements) updatePayload.salaryRequirements = parsed.salaryRequirements;
+      }
+      
+      // Update candidate record with all parsed fields
       const updateResponse = await fetch(`/api/data/leads/${candidateId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          resume_url: newResumeUrl,
-        }),
+        body: JSON.stringify(updatePayload),
       });
       
       const updateResult = await updateResponse.json();
@@ -1095,7 +1122,7 @@ const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
         throw new Error(updateResult.error || 'Failed to update candidate');
       }
       
-      toast.success('Resume uploaded successfully');
+      toast.success('Resume uploaded and parsed successfully');
       setSelectedFile(null);
       
       // Refresh the page to show new resume

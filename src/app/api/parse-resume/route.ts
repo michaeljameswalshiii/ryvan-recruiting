@@ -199,28 +199,49 @@ export async function POST(req: NextRequest) {
     let cleanText = rawText.trim() || candidateName;
     cleanText = cleanText.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim();
 
-    let parsedResume: any = {};
+let parsedResume: any = {};
     
     // Only call AI if we have meaningful text (more than just extracted patterns)
     if (cleanText.length > 50) {
       try {
         const prompt = `
-You are an expert resume parser.
-Extract from the resume text below:
-- name (full name)
-- title (job title)
-- email 
-- phone
-- location (city, state)
-- linkedin (full URL)
-- summary (brief professional summary)
-- skills (comma-separated list)
+You are an expert ATS-friendly resume parser for a recruiting platform.
+
+Extract ALL the following structured data from the resume text:
+
+- name: Full name
+- title: Most recent or current job title
+- email: Professional email
+- phone: Phone number
+- location: City, State (or full current address if available)
+- full_address: Full street address, city, state, zip if present (or null)
+- linkedin: Full LinkedIn URL
+- summary: 2-4 sentence professional summary
+- salary_requirements: Any mentioned salary, compensation, or desired pay range (e.g. "$85k-$110k", "90,000 - 120,000")
+- skills: Array of top 12-15 skills
+- experience: Brief array of { company, title, dates, description }
+- education: Array of { school, degree, dates }
+- certifications: Array of strings
 
 Resume text:
-${cleanText.substring(0, 5000)}
+${cleanText.substring(0, 6000)}
 
-Return ONLY valid JSON:
-{"name":"","title":"","email":"","phone":"","location":"","linkedin":"","summary":"","skills":[]}
+Return ONLY valid JSON (no explanations, no markdown):
+{
+  "name": "",
+  "title": "",
+  "email": "",
+  "phone": "",
+  "location": "",
+  "full_address": "",
+  "linkedin": "",
+  "summary": "",
+  "salary_requirements": "",
+  "skills": [],
+  "experience": [],
+  "education": [],
+  "certifications": []
+}
 `;
 
         const command = new InvokeModelCommand({
@@ -272,15 +293,17 @@ Return ONLY valid JSON:
     const aiTitle = parsedResume.title || '';
     const finalTitle = (aiTitle && aiTitle.length > 2 && aiTitle.length < 100 && !aiTitle.includes(finalName)) ? aiTitle : '';
 
-    const finalResume = {
+const finalResume = {
       name: finalName,
       email: hints.email || parsedResume.email || '',
       phone: hints.phone || parsedResume.phone || '',
-      location: hints.location || parsedResume.location || '',
+      location: hints.location || parsedResume.location || parsedResume.full_address || '',
       linkedin: hints.linkedin || parsedResume.linkedin || '',
-      title: finalTitle,
+      title: finalTitle || parsedResume.title || '',
       summary: parsedResume.summary || '',
       skills: parsedResume.skills || [],
+      salaryRequirements: parsedResume.salary_requirements || '',
+      fullAddress: parsedResume.full_address || '',
     };
 
     console.log('parse-resume: final name =', finalName, 'title =', finalTitle);
