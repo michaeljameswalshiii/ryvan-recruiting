@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mammoth from 'mammoth';
-import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
-
-const bedrock = new BedrockRuntimeClient({ region: 'us-east-1' });
 
 // Supported file types for resume upload
 const SUPPORTED_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
@@ -201,104 +198,32 @@ export async function POST(req: NextRequest) {
 
 let parsedResume: any = {};
     
-    // Only call AI if we have meaningful text (more than just extracted patterns)
+// Only use regex-based extraction (AI parsing disabled for now - can be re-enabled later)
     if (cleanText.length > 50) {
-      try {
-        const prompt = `
-You are an expert ATS-friendly resume parser for a recruiting platform.
-
-Extract ALL the following structured data from the resume text:
-
-- name: Full name
-- title: Most recent or current job title
-- email: Professional email
-- phone: Phone number
-- location: City, State (or full current address if available)
-- full_address: Full street address, city, state, zip if present (or null)
-- linkedin: Full LinkedIn URL
-- summary: 2-4 sentence professional summary
-- salary_requirements: Any mentioned salary, compensation, or desired pay range (e.g. "$85k-$110k", "90,000 - 120,000")
-- skills: Array of top 12-15 skills
-- experience: Brief array of { company, title, dates, description }
-- education: Array of { school, degree, dates }
-- certifications: Array of strings
-
-Resume text:
-${cleanText.substring(0, 6000)}
-
-Return ONLY valid JSON (no explanations, no markdown):
-{
-  "name": "",
-  "title": "",
-  "email": "",
-  "phone": "",
-  "location": "",
-  "full_address": "",
-  "linkedin": "",
-  "summary": "",
-  "salary_requirements": "",
-  "skills": [],
-  "experience": [],
-  "education": [],
-  "certifications": []
-}
-`;
-
-const command = new InvokeModelCommand({
-          modelId: 'anthropic.claude-3-haiku-20240307-v1:0',
-          contentType: 'application/json',
-          accept: 'application/json',
-          body: JSON.stringify({
-            messages: [
-              { role: 'user', content: [
-                { type: 'text', text: prompt }
-              ] }
-            ],
-            max_tokens: 4096,
-            temperature: 0.0,
-            top_p: 0.9,
-          }),
-        });
-
-const response = await bedrock.send(command);
-        const decoder = new TextDecoder();
-        const responseText = decoder.decode(response.body);
-        const bedrockResponse = JSON.parse(responseText);
-
-        // Claude Haiku response format
-        let llmText = '';
-        if (bedrockResponse.messages?.[0]?.content) {
-          // Sometimes content is an array with text blocks
-          const content = bedrockResponse.messages[0].content;
-          if (Array.isArray(content)) {
-            llmText = content.map((c: any) => c.text || c).join('');
-          } else if (typeof content === 'string') {
-            llmText = content;
-          } else if (content?.text) {
-            llmText = content.text;
-          }
-        } else if (bedrockResponse.output?.message?.content) {
-          // Claude format
-          llmText = bedrockResponse.output.message.content;
-        } else if (bedrockResponse.generation) {
-          llmText = bedrockResponse.generation;
-        } else {
-          llmText = JSON.stringify(bedrockResponse);
+      // Already extracted via extractContactInfo above, so just use clean text for skills
+      const commonSkills = ['javascript', 'typescript', 'python', 'java', 'react', 'node', 'node.js', 'angular', 'vue', 'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'sql', 'nosql', 'mongodb', 'postgresql', 'mysql', 'redis', 'graphql', 'rest', 'api', 'html', 'css', 'sass', 'less', 'git', 'ci/cd', 'jenkins', 'terraform', 'linux', 'windows', 'macos', 'agile', 'scrum', 'jira', 'confluence', 'figma', 'sketch', 'photoshop', 'illustrator', 'excel', 'powerpoint', 'word', 'outlook', 'teams', 'slack', 'zoom'];
+      const foundSkills: string[] = [];
+      const lowerText = cleanText.toLowerCase();
+      for (const skill of commonSkills) {
+        if (lowerText.includes(skill)) {
+          foundSkills.push(skill);
         }
-
-        // Try to extract JSON from the response
-        const jsonMatch = llmText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            parsedResume = JSON.parse(jsonMatch[0]);
-          } catch (parseJsonErr) {
-            console.error('Failed to parse AI JSON:', parseJsonErr);
-          }
-        }
-        console.log('AI parsed:', parsedResume, 'llmText length:', llmText.length);
-      } catch (aiErr) {
-        console.error('AI parse error:', aiErr);
       }
+      parsedResume.skills = foundSkills.slice(0, 15);
+      
+      // Try to extract job title from common patterns
+      const titleMatch = cleanText.match(/(?:software|software engineer|developer|manager|director|lead|associate|junior|senior|principal|staff)\s+(?:engineer|developer|manager|analyst|designer|specialist)/i);
+      if (titleMatch) {
+        parsedResume.title = titleMatch[0];
+      }
+      
+      // Try to extract salary expectations
+      const salaryMatch = cleanText.match(/\$[\d,]+(?:\s*-\s*\$[\d,]+|\s*(?:k|K|per year|yr))?/);
+      if (salaryMatch) {
+        parsedResume.salary_requirements = salaryMatch[0];
+      }
+      
+      extractionMethod = 'regex';
     }
 
 // Merge results: prefer regex/hints over AI, but use AI title only if it looks like a title
