@@ -1,13 +1,130 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, ExternalLink, FileText, FileType, Loader2, AlertCircle, ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, ExternalLink, FileText, FileType, Loader2, AlertCircle, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import * as mammoth from "mammoth";
 
 interface ResumeViewerProps {
   url: string;
   fileName?: string;
+  candidateId?: string;
 }
 
 // Detect file type from URL or filename
@@ -28,19 +145,53 @@ function detectFileType(url: string, fileName?: string): "pdf" | "docx" | "doc" 
   return "unknown";
 }
 
-export function ResumeViewer({ url, fileName }: ResumeViewerProps) {
+export function ResumeViewer({ url, fileName, candidateId }: ResumeViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fileType, setFileType] = useState<"pdf" | "docx" | "doc" | "unknown">("unknown");
   const [docxHtml, setDocxHtml] = useState<string | null>(null);
   const [docxLoading, setDocxLoading] = useState(false);
+  const [currentUrl, setCurrentUrl] = useState(url);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // PDF zoom state
   const [zoom, setZoom] = useState(100);
 
+  // Fetch fresh URL when candidateId is provided and URL is expired
+  const refreshUrl = useCallback(async () => {
+    if (!candidateId) return;
+    
+    setIsRefreshing(true);
+    setLoading(true);
+    try {
+      const response = await fetch('/api/resume-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateId }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.resumeUrl) {
+        setCurrentUrl(data.resumeUrl);
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Failed to refresh resume URL:', err);
+      setError('Failed to refresh URL. Please try again.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [candidateId]);
+
+  // Initial load and URL refresh logic
   useEffect(() => {
     const type = detectFileType(url, fileName);
     setFileType(type);
+    setCurrentUrl(url);
+    
+    // If we have a candidateId, we can refresh URLs when needed
+    // The URL might be expired if it's older than 1 hour
   }, [url, fileName]);
 
   const handleLoad = () => {
@@ -52,8 +203,8 @@ export function ResumeViewer({ url, fileName }: ResumeViewerProps) {
     setLoading(false);
   };
 
-  const handleOpenNewTab = () => {
-    window.open(url, "_blank");
+const handleOpenNewTab = () => {
+    window.open(currentUrl, "_blank");
   };
 
   // Load Word document
@@ -192,23 +343,34 @@ export function ResumeViewer({ url, fileName }: ResumeViewerProps) {
     );
   }
 
-  // Render PDF (default)
+// Render PDF (default)
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex items-center justify-between p-2 bg-gray-100 border-b shrink-0">
         <div className="flex items-center gap-2">
-          {loading && (
+          {loading || isRefreshing ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
               <span className="text-sm">Loading resume...</span>
             </>
-          )}
-          {!loading && !error && (
+          ) : !error ? (
             <span className="text-sm text-green-600">Ready</span>
-          )}
+          ) : null}
         </div>
         <div className="flex items-center gap-1">
+          {/* Refresh button - only show when candidateId is provided */}
+          {candidateId && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={refreshUrl} 
+              disabled={isRefreshing}
+              title="Refresh URL"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </Button>
+          )}
           {/* Zoom controls */}
           <Button variant="ghost" size="icon" onClick={zoomOut} disabled={zoom <= 50} title="Zoom out">
             <ZoomOut className="h-4 w-4" />
@@ -220,7 +382,7 @@ export function ResumeViewer({ url, fileName }: ResumeViewerProps) {
           
           <div className="border-l ml-2 pl-2 flex items-center gap-1">
             <Button asChild variant="outline" size="sm">
-              <a href={url} download={fileName} target="_blank" rel="noopener noreferrer">
+              <a href={currentUrl} download={fileName} target="_blank" rel="noopener noreferrer">
                 <Download className="mr-1 h-4 w-4" />
                 Download
               </a>
@@ -234,7 +396,7 @@ export function ResumeViewer({ url, fileName }: ResumeViewerProps) {
 
       {/* PDF Viewer using iframe with zoom */}
       <div className="flex-1 bg-gray-200 overflow-auto">
-        <div 
+<div 
           className="min-h-full flex justify-center"
           style={{ 
             transform: `scale(${zoom / 100})`,
@@ -242,7 +404,7 @@ export function ResumeViewer({ url, fileName }: ResumeViewerProps) {
           }}
         >
           <iframe
-            src={url}
+            src={currentUrl}
             className="w-full h-full border-0"
             style={{ 
               width: `${10000 / zoom}%`, 
