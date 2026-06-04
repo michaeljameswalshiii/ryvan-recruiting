@@ -26,7 +26,8 @@ const navItems = [
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
   { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
-  { href: "/admin/dynamodb", label: "DynamoDB Viewer", icon: Database },
+{ href: "/admin/dynamodb", label: "DynamoDB Viewer", icon: Database },
+  { href: "/dashboard/candidates-archive", label: "Candidates Archive", icon: Users },
 ];
 
 interface DashboardNavProps {
