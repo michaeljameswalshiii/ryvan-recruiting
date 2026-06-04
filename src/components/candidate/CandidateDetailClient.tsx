@@ -63,17 +63,22 @@ const [editForm, setEditForm] = useState({
     linkedin: candidate.linkedin || "",
   });
 const [editAddress, setEditAddress] = useState({
-    street: candidate.fullAddress?.split(',')[0]?.trim() || "",
-    city: "",
-    state: "",
-    zip: "",
+    fullAddress: (candidate as any).fullAddress || "",
   });
-  const [editFullAddress, setEditFullAddress] = useState((candidate as any).fullAddress || "");
 // Job titles state - support multiple titles
   const [jobTitles, setJobTitles] = useState<string[]>(
     candidate.title ? candidate.title.split(",").map(t => t.trim()).filter(Boolean) : []
   );
   const [newJobTitle, setNewJobTitle] = useState("");
+  // Skills, Experience, Education, Certifications - editable fields
+  const [editSkills, setEditSkills] = useState((candidate as any).skills?.join(", ") || "");
+  const [editExperience, setEditExperience] = useState((candidate as any).experience?.map((exp: any) => 
+    `${exp.title || ''} at ${exp.company || ''} ${exp.dates || ''}`
+  ).join("\n") || "");
+  const [editEducation, setEditEducation] = useState((candidate as any).education?.map((edu: any) => 
+    `${edu.degree || ''} at ${edu.school || ''} ${edu.dates || ''}`
+  ).join("\n") || "");
+  const [editCertifications, setEditCertifications] = useState((candidate as any).certifications?.join(", ") || "");
   // LinkedIn state - added for editing
   const [linkedin, setLinkedin] = useState(candidate.linkedin || "");
   // Address state
@@ -285,8 +290,10 @@ const tabs: { id: Tab; label: string }[] = [
         throw new Error(result.error || 'Failed to update');
       }
 
-      toast.success('Candidate updated successfully');
+toast.success('Candidate updated successfully');
       setIsEditing(false);
+      // Refresh the page to show updated data
+      window.location.reload();
     } catch (err: any) {
       console.error('Error updating candidate:', err);
       toast.error(err.message || 'Failed to update candidate');
@@ -501,16 +508,13 @@ const tabs: { id: Tab; label: string }[] = [
                       </div>
                     </div>
 
-                    {/* Skills - editable */}
+{/* Skills - editable */}
                     <div className="col-span-1 sm:col-span-2">
                       <label className="text-sm font-medium text-gray-600">Skills (comma-separated)</label>
                       <Input
-                        value={(candidate as any).skills?.join(", ") || ""}
+                        value={editSkills}
+                        onChange={(e) => setEditSkills(e.target.value)}
                         placeholder="React, TypeScript, Node.js, AWS"
-                        onChange={(e) => {
-                          const skills = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
-                          // Update through the save - we'll handle this differently
-                        }}
                       />
                     </div>
 
