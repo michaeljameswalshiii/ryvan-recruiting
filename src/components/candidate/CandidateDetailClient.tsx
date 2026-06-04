@@ -1272,9 +1272,10 @@ function ResumeTab({ candidateId, resumeUrl, candidateName }: { candidateId: str
       
       const parseResult = await parseResponse.json();
       
-      // Step 2: Upload to S3 via API (if parsing succeeded, use the file)
+// Step 2: Upload to S3 via API (if parsing succeeded, use the file)
       const uploadFormData = new FormData();
       uploadFormData.append('resume', selectedFile);
+      uploadFormData.append('candidateId', candidateId);
       
       const uploadResponse = await fetch('/api/upload-resume', {
         method: 'POST',
