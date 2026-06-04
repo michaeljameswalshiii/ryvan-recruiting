@@ -72,11 +72,14 @@ export async function PUT(
       );
     }
 
-    // Parse and validate body
+// Parse and validate body
     const body = await request.json();
+    console.log('PUT lead body:', JSON.stringify(body));
+    
     const validated = updateLeadSchema.safeParse(body);
     
     if (!validated.success) {
+      console.log('Validation error:', validated.error.flatten());
       return NextResponse.json(
         { error: 'Invalid input', details: validated.error.flatten() },
         { status: 400 }

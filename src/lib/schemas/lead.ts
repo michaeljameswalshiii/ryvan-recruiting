@@ -41,8 +41,30 @@ export const leadSchema = z.object({
 // Create input
 export const createLeadSchema = leadSchema.omit({ id: true });
 
-// Update input
-export const updateLeadSchema = leadSchema.partial();
+// Update input - more lenient for updates (allows empty strings, null, undefined)
+export const updateLeadSchema = z.object({
+  tenant_id: z.union([z.string(), z.null()]).optional(),
+  id: z.string().uuid().optional(),
+  name: z.string().max(100).optional(),
+  email: z.string().max(200).optional().nullable(),
+  phone: z.string().max(50).optional().nullable(),
+  location: z.string().max(200).optional().nullable(),
+  title: z.string().max(100).optional().nullable(),
+  full_address: z.string().max(500).optional().nullable(),
+  salary_requirements: z.string().max(100).optional().nullable(),
+  summary: z.string().max(2000).optional().nullable(),
+  skills: z.array(z.string()).optional().nullable(),
+  experience: z.array(z.record(z.string())).optional().nullable(),
+  education: z.array(z.record(z.string())).optional().nullable(),
+  certifications: z.array(z.string()).optional().nullable(),
+  status: z.string().optional(),
+  source: z.string().max(50).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+  linkedin_url: z.string().max(200).optional().nullable(),
+  resume_url: z.string().max(500).optional().nullable(),
+  created_at: z.string().optional(),
+  modified_at: z.string().optional(),
+}).passthrough(); // Allow extra fields
 
 // Query params schema
 export const leadQuerySchema = z.object({
