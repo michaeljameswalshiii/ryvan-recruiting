@@ -1255,13 +1255,14 @@ function ResumeTab({ candidateId, resumeUrl, candidateName }: { candidateId: str
     }
   };
 
-  const handleUpload = async () => {
+const handleUpload = async () => {
     if (!selectedFile) return;
     
     setIsUploading(true);
     
     try {
       // Step 1: Parse the resume first to extract all fields
+      console.log('[ResumeUpload] Step 1: Starting parse...');
       const parseFormData = new FormData();
       parseFormData.append('resume', selectedFile);
       
@@ -1271,8 +1272,15 @@ function ResumeTab({ candidateId, resumeUrl, candidateName }: { candidateId: str
       });
       
       const parseResult = await parseResponse.json();
+      console.log('[ResumeUpload] Parse result:', JSON.stringify(parseResult).substring(0, 500));
       
-// Step 2: Upload to S3 via API (if parsing succeeded, use the file)
+      if (!parseResponse.ok || parseResult.error) {
+        console.error('[ResumeUpload] Parse failed:', parseResult.error);
+        throw new Error(parseResult.error || 'Failed to parse resume');
+      }
+      
+      // Step 2: Upload to S3 via API (if parsing succeeded, use the file)
+console.log('[ResumeUpload] Step 2: Uploading to S3, candidateId:', candidateId);
       const uploadFormData = new FormData();
       uploadFormData.append('resume', selectedFile);
       uploadFormData.append('candidateId', candidateId);
@@ -1283,8 +1291,10 @@ function ResumeTab({ candidateId, resumeUrl, candidateName }: { candidateId: str
       });
       
       const uploadResult = await uploadResponse.json();
+      console.log('[ResumeUpload] Upload result:', JSON.stringify(uploadResult).substring(0, 500));
       
       if (!uploadResponse.ok || uploadResult.error) {
+        console.error('[ResumeUpload] Upload failed:', uploadResult.error);
         throw new Error(uploadResult.error || 'Failed to upload resume');
       }
       
