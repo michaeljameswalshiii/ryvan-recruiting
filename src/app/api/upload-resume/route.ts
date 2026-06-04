@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { getS3BucketName } from '@/lib/aws/s3';
 import { updateLead } from '@/lib/db/repositories/lead-repository';
+
+// Get S3 bucket name - inline to avoid import issues
+function getBucketName(): string {
+  const bucketName = process.env.AWS_S3_BUCKET_NAME || process.env.NEXT_PUBLIC_AWS_S3_BUCKET_NAME;
+  if (!bucketName) {
+    throw new Error('AWS_S3_BUCKET_NAME environment variable not configured');
+  }
+  return bucketName;
+}
 
 // Supported file types
 const SUPPORTED_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
@@ -66,7 +74,7 @@ export async function POST(req: NextRequest) {
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const s3Key = `candidates/${candidateId}/${timestamp}-${sanitizedFileName}`;
     
-const bucketName = getS3BucketName();
+const bucketName = getBucketName();
     const buffer = Buffer.from(await file.arrayBuffer());
 
     // Create S3 client
