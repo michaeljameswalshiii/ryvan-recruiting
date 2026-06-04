@@ -1,4 +1,4 @@
-# Candidates Page Reorganization - Implementation
+# Temporary Implementation TODO
 
 ## Steps
 
