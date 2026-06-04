@@ -244,13 +244,12 @@ Return ONLY valid JSON (no explanations, no markdown):
 }
 `;
 
-        const command = new InvokeModelCommand({
-          modelId: 'minimax.minimax-m2',
+const command = new InvokeModelCommand({
+          modelId: 'anthropic.claude-3-haiku-20240307-v1-0',
           contentType: 'application/json',
           accept: 'application/json',
           body: JSON.stringify({
             messages: [
-              { role: 'system', content: 'You are an expert resume parser.' },
               { role: 'user', content: prompt }
             ],
             temperature: 0.0,
@@ -258,22 +257,33 @@ Return ONLY valid JSON (no explanations, no markdown):
           }),
         });
 
-        const response = await bedrock.send(command);
+const response = await bedrock.send(command);
         const decoder = new TextDecoder();
         const responseText = decoder.decode(response.body);
         const bedrockResponse = JSON.parse(responseText);
 
+        // Claude Haiku response format
         let llmText = '';
-        if (bedrockResponse.content?.[0]?.text) {
-          llmText = bedrockResponse.content[0].text;
-        } else if (bedrockResponse.output?.message?.content?.[0]?.text) {
-          llmText = bedrockResponse.output.message.content[0].text;
+        if (bedrockResponse.messages?.[0]?.content) {
+          // Sometimes content is an array with text blocks
+          const content = bedrockResponse.messages[0].content;
+          if (Array.isArray(content)) {
+            llmText = content.map((c: any) => c.text || c).join('');
+          } else if (typeof content === 'string') {
+            llmText = content;
+          } else if (content?.text) {
+            llmText = content.text;
+          }
+        } else if (bedrockResponse.output?.message?.content) {
+          // Claude format
+          llmText = bedrockResponse.output.message.content;
         } else if (bedrockResponse.generation) {
           llmText = bedrockResponse.generation;
         } else {
           llmText = JSON.stringify(bedrockResponse);
         }
 
+        // Try to extract JSON from the response
         const jsonMatch = llmText.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try {
@@ -282,7 +292,7 @@ Return ONLY valid JSON (no explanations, no markdown):
             console.error('Failed to parse AI JSON:', parseJsonErr);
           }
         }
-        console.log('AI parsed:', parsedResume);
+        console.log('AI parsed:', parsedResume, 'llmText length:', llmText.length);
       } catch (aiErr) {
         console.error('AI parse error:', aiErr);
       }
