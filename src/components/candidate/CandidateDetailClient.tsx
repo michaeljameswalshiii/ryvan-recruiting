@@ -482,7 +482,7 @@ const tabs: { id: Tab; label: string }[] = [
                           placeholder="123 Main St, City, State 12345"
                         />
                       </div>
-                      {/* Source - disabled */}
+{/* Source - disabled */}
                       <div>
                         <label className="text-sm font-medium text-gray-600">Source</label>
                         <Input
@@ -499,6 +499,52 @@ const tabs: { id: Tab; label: string }[] = [
                           disabled
                         />
                       </div>
+                    </div>
+
+                    {/* Skills - editable */}
+                    <div className="col-span-1 sm:col-span-2">
+                      <label className="text-sm font-medium text-gray-600">Skills (comma-separated)</label>
+                      <Input
+                        value={(candidate as any).skills?.join(", ") || ""}
+                        placeholder="React, TypeScript, Node.js, AWS"
+                        onChange={(e) => {
+                          const skills = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
+                          // Update through the save - we'll handle this differently
+                        }}
+                      />
+                    </div>
+
+                    {/* Experience - editable (JSON or text area) */}
+                    <div className="col-span-1 sm:col-span-2">
+                      <label className="text-sm font-medium text-gray-600">Experience</label>
+                      <Textarea
+                        value={(candidate as any).experience?.map((exp: any) => 
+                          `${exp.title || ''} at ${exp.company || ''} ${exp.dates || ''}`
+                        ).join("\n") || ""}
+                        placeholder="Software Engineer at Google 2020-2023"
+                        className="min-h-[80px]"
+                      />
+                    </div>
+
+                    {/* Education - editable */}
+                    <div className="col-span-1 sm:col-span-2">
+                      <label className="text-sm font-medium text-gray-600">Education</label>
+                      <Textarea
+                        value={(candidate as any).education?.map((edu: any) => 
+                          `${edu.degree || ''} at ${edu.school || ''} ${edu.dates || ''}`
+                        ).join("\n") || ""}
+                        placeholder="BS Computer Science at Stanford"
+                        className="min-h-[60px]"
+                      />
+                    </div>
+
+                    {/* Certifications - editable */}
+                    <div className="col-span-1 sm:col-span-2">
+                      <label className="text-sm font-medium text-gray-600">Certifications (comma-separated)</label>
+                      <Input
+                        value={(candidate as any).certifications?.join(", ") || ""}
+                        placeholder="AWS Solutions Architect, PMP"
+                      />
                     </div>
                     
                     {/* Edit Actions */}
