@@ -288,28 +288,54 @@ Return ONLY valid JSON (no explanations, no markdown):
       }
     }
 
-    // Merge results: prefer regex/hints over AI, but use AI title only if it looks like a title
+// Merge results: prefer regex/hints over AI, but use AI title only if it looks like a title
     const finalName = candidateName || hints.name || parsedResume.name || '';
     const aiTitle = parsedResume.title || '';
     const finalTitle = (aiTitle && aiTitle.length > 2 && aiTitle.length < 100 && !aiTitle.includes(finalName)) ? aiTitle : '';
 
-const finalResume = {
+    // Normalize all fields - ensure arrays are arrays and objects are objects
+    const normalizeArray = (val: any) => {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      if (typeof val === 'string') {
+        return val.split(',').map((s: string) => s.trim()).filter(Boolean);
+      }
+      return [];
+    };
+
+    const normalizeArrayOfObjects = (val: any) => {
+      if (!val) return [];
+      if (Array.isArray(val)) {
+        return val.map((item: any) => {
+          if (typeof item === 'string') return { description: item };
+          return {
+            company: item.company || item.companyName || '',
+            title: item.title || item.jobTitle || '',
+            dates: item.dates || item.dateRange || item.startDate ? `${item.startDate || ''} - ${item.endDate || 'Present'}` : '',
+            description: item.description || item.description || '',
+          };
+        }).filter((item: any) => Object.values(item).some((v: any) => v));
+      }
+      return [];
+    };
+
+    const finalResume = {
       name: finalName || parsedResume.name || '',
       title: finalTitle || parsedResume.title || '',
       email: hints.email || parsedResume.email || '',
       phone: hints.phone || parsedResume.phone || '',
       location: hints.location || parsedResume.location || parsedResume.full_address || '',
-      fullAddress: parsedResume.full_address || '',
+      fullAddress: parsedResume.full_address || parsedResume.fullAddress || '',
       linkedin: hints.linkedin || parsedResume.linkedin || '',
       summary: parsedResume.summary || '',
-      salaryRequirements: parsedResume.salary_requirements || '',
-      skills: parsedResume.skills || [],
-      experience: parsedResume.experience || [],
-      education: parsedResume.education || [],
-      certifications: parsedResume.certifications || [],
+      salaryRequirements: parsedResume.salary_requirements || parsedResume.salaryRequirements || '',
+      skills: normalizeArray(parsedResume.skills),
+      experience: normalizeArrayOfObjects(parsedResume.experience),
+      education: normalizeArrayOfObjects(parsedResume.education),
+      certifications: normalizeArray(parsedResume.certifications),
     };
 
-    console.log('parse-resume: final name =', finalName, 'title =', finalTitle);
+    console.log('parse-resume: final name =', finalName, 'title =', finalTitle, 'skills =', finalResume.skills.length, 'experience =', finalResume.experience.length);
 
     return NextResponse.json({
       success: true,

@@ -21,6 +21,7 @@ export default async function CandidateDetailPage({ params }: Props) {
   }
 
 // Map Lead to compatible format for client component
+  // Note: DynamoDB uses snake_case, client component expects camelCase
   const candidateData = {
     id: candidate.id || "",
     name: candidate.name || "",
@@ -31,10 +32,18 @@ export default async function CandidateDetailPage({ params }: Props) {
     status: candidate.status || "identification",
     source: candidate.source || "",
     createdAt: candidate.created_at || "",
-    // Additional fields from Lead
+    // Additional fields from Lead (map snake_case to camelCase)
     linkedin: candidate.linkedin_url || "",
     resumeUrl: candidate.resume_url || "",
     notes: candidate.notes || "",
+    // All parsed fields
+    fullAddress: candidate.full_address || "",
+    salaryRequirements: candidate.salary_requirements || "",
+    summary: candidate.summary || "",
+    skills: typeof candidate.skills === 'string' ? candidate.skills.split(',').map(s => s.trim()).filter(Boolean) : (candidate.skills || []),
+    experience: candidate.experience || [],
+    education: candidate.education || [],
+    certifications: typeof candidate.certifications === 'string' ? candidate.certifications.split(',').map(s => s.trim()).filter(Boolean) : (candidate.certifications || []),
   };
 
   return <CandidateDetailClient candidate={candidateData} />;

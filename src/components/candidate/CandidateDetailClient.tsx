@@ -1294,7 +1294,7 @@ function ResumeTab({ candidateId, resumeUrl, candidateName }: { candidateId: str
         resume_url: newResumeUrl,
       };
       
-// Add parsed fields if available
+// Add parsed fields if available - map camelCase to snake_case for database
       if (parseResult.success && parseResult.resume) {
         const parsed = parseResult.resume;
         if (parsed.name) updatePayload.name = parsed.name;
@@ -1302,9 +1302,11 @@ function ResumeTab({ candidateId, resumeUrl, candidateName }: { candidateId: str
         if (parsed.phone) updatePayload.phone = parsed.phone;
         if (parsed.title) updatePayload.title = parsed.title;
         if (parsed.location) updatePayload.location = parsed.location;
-        if (parsed.fullAddress) updatePayload.fullAddress = parsed.fullAddress;
-        if (parsed.linkedin) updatePayload.linkedin = parsed.linkedin;
-        if (parsed.salaryRequirements) updatePayload.salaryRequirements = parsed.salaryRequirements;
+        // full_address (snake_case for database)
+        if (parsed.fullAddress) updatePayload.full_address = parsed.fullAddress;
+        if (parsed.linkedin) updatePayload.linkedin_url = parsed.linkedin;
+        // salary_requirements (snake_case for database)
+        if (parsed.salaryRequirements) updatePayload.salary_requirements = parsed.salaryRequirements;
         if (parsed.summary) updatePayload.summary = parsed.summary;
         if (parsed.skills && parsed.skills.length > 0) updatePayload.skills = parsed.skills;
         if (parsed.experience && parsed.experience.length > 0) updatePayload.experience = parsed.experience;
