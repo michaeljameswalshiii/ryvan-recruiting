@@ -22,10 +22,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const tableName = searchParams.get("table");
 
-    // If no table specified, return list of tables
+// If no table specified, return list of tables
     if (!tableName) {
       console.log("[DYNAMODB] Listing tables");
-      const tables = await listTables();
+      const allTables = await listTables();
+      
+      // Filter out candle-garden tables (multi-tenant isolation)
+      const tables = allTables.filter(t => !t.toLowerCase().includes("candle"));
       
       return NextResponse.json({
         success: true,
