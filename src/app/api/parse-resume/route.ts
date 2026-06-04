@@ -245,15 +245,18 @@ Return ONLY valid JSON (no explanations, no markdown):
 `;
 
 const command = new InvokeModelCommand({
-          modelId: 'anthropic.claude-3-haiku-20240307-v1-0',
+          modelId: 'anthropic.claude-3-haiku-20240307-v1:0',
           contentType: 'application/json',
           accept: 'application/json',
           body: JSON.stringify({
             messages: [
-              { role: 'user', content: prompt }
+              { role: 'user', content: [
+                { type: 'text', text: prompt }
+              ] }
             ],
-            temperature: 0.0,
             max_tokens: 4096,
+            temperature: 0.0,
+            top_p: 0.9,
           }),
         });
 
