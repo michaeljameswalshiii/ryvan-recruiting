@@ -1244,7 +1244,7 @@ function ResumeTab({ candidateId, resumeUrl, candidateName }: { candidateId: str
         resume_url: newResumeUrl,
       };
       
-      // Add parsed fields if available
+// Add parsed fields if available
       if (parseResult.success && parseResult.resume) {
         const parsed = parseResult.resume;
         if (parsed.name) updatePayload.name = parsed.name;
@@ -1256,6 +1256,10 @@ function ResumeTab({ candidateId, resumeUrl, candidateName }: { candidateId: str
         if (parsed.linkedin) updatePayload.linkedin = parsed.linkedin;
         if (parsed.salaryRequirements) updatePayload.salaryRequirements = parsed.salaryRequirements;
         if (parsed.summary) updatePayload.summary = parsed.summary;
+        if (parsed.skills && parsed.skills.length > 0) updatePayload.skills = parsed.skills;
+        if (parsed.experience && parsed.experience.length > 0) updatePayload.experience = parsed.experience;
+        if (parsed.education && parsed.education.length > 0) updatePayload.education = parsed.education;
+        if (parsed.certifications && parsed.certifications.length > 0) updatePayload.certifications = parsed.certifications;
       }
       
       // Update candidate record with all parsed fields
