@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { s3Client, getS3BucketName } from '@/lib/aws/s3';
+import { getS3BucketName } from '@/lib/aws/s3';
 import { updateLead } from '@/lib/db/repositories/lead-repository';
 
 // Supported file types
@@ -66,8 +66,12 @@ export async function POST(req: NextRequest) {
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const s3Key = `candidates/${candidateId}/${timestamp}-${sanitizedFileName}`;
     
-    const bucketName = getS3BucketName();
+const bucketName = getS3BucketName();
     const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Create S3 client
+    const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
+    const s3Client = new S3Client({ region });
 
     // Upload directly to S3 with permanent key
     const putCommand = new PutObjectCommand({
