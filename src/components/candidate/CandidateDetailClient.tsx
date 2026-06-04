@@ -37,6 +37,10 @@ interface Candidate {
   fullAddress?: string;
   salaryRequirements?: string;
   summary?: string;
+  skills?: string[];
+  experience?: any[];
+  education?: any[];
+  certifications?: string[];
   notes?: string;
   createdAt: string;
   avatarInitials?: string;
@@ -58,9 +62,13 @@ const [editForm, setEditForm] = useState({
     salaryRequirements: candidate.salaryRequirements || "",
     linkedin: candidate.linkedin || "",
   });
-  const [editAddress, setEditAddress] = useState({
-    fullAddress: (candidate as any).fullAddress || "",
+const [editAddress, setEditAddress] = useState({
+    street: candidate.fullAddress?.split(',')[0]?.trim() || "",
+    city: "",
+    state: "",
+    zip: "",
   });
+  const [editFullAddress, setEditFullAddress] = useState((candidate as any).fullAddress || "");
 // Job titles state - support multiple titles
   const [jobTitles, setJobTitles] = useState<string[]>(
     candidate.title ? candidate.title.split(",").map(t => t.trim()).filter(Boolean) : []
@@ -532,8 +540,13 @@ const tabs: { id: Tab; label: string }[] = [
                     <div>
                       <span className="text-gray-500">Phone:</span> {candidate.phone || "—"}
                     </div>
-                    {/* Job Titles Display */}
+                    {/* Salary Requirements Display */}
                     <div>
+                      <span className="text-gray-500">Salary:</span>{" "}
+                      <span className="font-medium">{(candidate as any).salaryRequirements || "—"}</span>
+                    </div>
+                    {/* Job Titles Display */}
+                    <div className="col-span-1 sm:col-span-2">
                       <span className="text-gray-500">Title(s):</span>{" "}
                       {jobTitles.length > 0 ? (
                         <div className="inline-flex flex-wrap gap-1">
@@ -553,12 +566,10 @@ const tabs: { id: Tab; label: string }[] = [
                       <span className="text-gray-500">Location:</span> {candidate.location || "—"}
                     </div>
                     {/* Full Address Display */}
-                    {(candidate as any).fullAddress && (
-                      <div>
-                        <span className="text-gray-500">Full Address:</span>{" "}
-                        <span className="text-sm">{(candidate as any).fullAddress}</span>
-                      </div>
-                    )}
+                    <div>
+                      <span className="text-gray-500">Address:</span>{" "}
+                      <span className="text-sm">{(candidate as any).fullAddress || "—"}</span>
+                    </div>
                     {/* LinkedIn Display */}
                     <div>
                       <span className="text-gray-500">LinkedIn:</span>{" "}
@@ -572,13 +583,6 @@ const tabs: { id: Tab; label: string }[] = [
                         </a>
                       ) : "—"}
                     </div>
-                    {/* Salary Requirements Display */}
-                    {(candidate as any).salaryRequirements && (
-                      <div>
-                        <span className="text-gray-500">Salary Requirements:</span>{" "}
-                        <span className="font-medium">{(candidate as any).salaryRequirements}</span>
-                      </div>
-                    )}
                     {/* Source Display */}
                     <div>
                       <span className="text-gray-500">Source:</span> {candidate.source || "—"}
@@ -588,11 +592,82 @@ const tabs: { id: Tab; label: string }[] = [
                       <span className="text-gray-500">Added:</span>{" "}
                       {new Date(candidate.createdAt).toLocaleDateString()}
                     </div>
-                    {/* Summary Display */}
+{/* Summary Display */}
                     {(candidate as any).summary && (
                       <div className="col-span-1 sm:col-span-2 mt-2">
                         <span className="text-gray-500">Summary:</span>
                         <p className="text-sm mt-1">{(candidate as any).summary}</p>
+                      </div>
+                    )}
+
+                    {/* Skills Display */}
+                    {(candidate as any).skills && (candidate as any).skills.length > 0 && (
+                      <div className="col-span-1 sm:col-span-2 mt-2">
+                        <span className="text-gray-500">Skills:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(candidate as any).skills.map((skill: string, idx: number) => (
+                            <span
+                              key={idx}
+                              className="inline-flex px-2 py-0.5 bg-green-100 text-green-800 rounded-full text-xs"
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Experience Display */}
+                    {(candidate as any).experience && (candidate as any).experience.length > 0 && (
+                      <div className="col-span-1 sm:col-span-2 mt-2">
+                        <span className="text-gray-500">Experience:</span>
+                        <div className="space-y-2 mt-1">
+                          {(candidate as any).experience.map((exp: any, idx: number) => (
+                            <div key={idx} className="text-sm border-l-2 border-blue-300 pl-3">
+                              <p className="font-medium">{exp.title || exp.company}</p>
+                              <p className="text-xs text-gray-500">
+                                {exp.company} {exp.dates ? `• ${exp.dates}` : ''}
+                              </p>
+                              {exp.description && (
+                                <p className="text-xs text-gray-600 mt-1">{exp.description}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Education Display */}
+                    {(candidate as any).education && (candidate as any).education.length > 0 && (
+                      <div className="col-span-1 sm:col-span-2 mt-2">
+                        <span className="text-gray-500">Education:</span>
+                        <div className="space-y-2 mt-1">
+                          {(candidate as any).education.map((edu: any, idx: number) => (
+                            <div key={idx} className="text-sm">
+                              <p className="font-medium">{edu.degree || edu.school}</p>
+                              <p className="text-xs text-gray-500">
+                                {edu.school} {edu.dates ? `• ${edu.dates}` : ''}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Certifications Display */}
+                    {(candidate as any).certifications && (candidate as any).certifications.length > 0 && (
+                      <div className="col-span-1 sm:col-span-2 mt-2">
+                        <span className="text-gray-500">Certifications:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(candidate as any).certifications.map((cert: string, idx: number) => (
+                            <span
+                              key={idx}
+                              className="inline-flex px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-xs"
+                            >
+                              {cert}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1077,9 +1152,34 @@ if (!jobs || jobs.length === 0) {
 function ResumeTab({ candidateId, resumeUrl, candidateName }: { candidateId: string; resumeUrl?: string; candidateName: string }) {
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  // Log resume upload as event
+  const logResumeUploadEvent = async (fileName: string, newResumeUrl: string) => {
+    try {
+      const response = await fetch(`/api/candidate/${candidateId}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventType: 'RESUME_UPLOADED',
+          title: 'Resume Uploaded',
+          description: `Resume "${fileName}" was uploaded`,
+          metadata: {
+            fileName,
+            resumeUrl: newResumeUrl,
+            uploadedAt: new Date().toISOString(),
+          }
+        })
+      });
+      if (!response.ok) {
+        console.error('Failed to log resume upload event');
+      }
+    } catch (err) {
+      console.error('Error logging resume upload event:', err);
+    }
+  };
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       // Validate file type
@@ -1105,7 +1205,7 @@ const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     }
   };
 
-const handleUpload = async () => {
+  const handleUpload = async () => {
     if (!selectedFile) return;
     
     setIsUploading(true);
@@ -1144,7 +1244,7 @@ const handleUpload = async () => {
         resume_url: newResumeUrl,
       };
       
-// Add parsed fields if available
+      // Add parsed fields if available
       if (parseResult.success && parseResult.resume) {
         const parsed = parseResult.resume;
         if (parsed.name) updatePayload.name = parsed.name;
@@ -1170,6 +1270,9 @@ const handleUpload = async () => {
       if (!updateResponse.ok || updateResult.error) {
         throw new Error(updateResult.error || 'Failed to update candidate');
       }
+      
+      // Log the resume upload as an event
+      await logResumeUploadEvent(selectedFile.name, newResumeUrl);
       
       toast.success('Resume uploaded and parsed successfully');
       setSelectedFile(null);
@@ -1245,8 +1348,7 @@ const handleUpload = async () => {
         <div className="p-4 border-b bg-blue-50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <FileText className="h-5 w-5 text-blue-600" />
-add to github master and oush to vercel
+<FileText className="h-5 w-5 text-blue-600" />
               <div>
                 <p className="text-sm font-medium">{selectedFile.name}</p>
                 <p className="text-xs text-gray-500">

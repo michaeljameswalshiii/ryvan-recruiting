@@ -224,7 +224,7 @@ Extract ALL the following structured data from the resume text:
 - certifications: Array of strings
 
 Resume text:
-${cleanText.substring(0, 7000)}
+${cleanText.substring(0, 6000)}
 
 Return ONLY valid JSON (no explanations, no markdown):
 {
