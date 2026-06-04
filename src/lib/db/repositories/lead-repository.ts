@@ -203,10 +203,45 @@ if (data.linkedin_url !== undefined) {
     values[':linkedin_url'] = data.linkedin_url;
     names['#linkedin_url'] = 'linkedin_url';
   }
-  if (data.resume_url !== undefined) {
+if (data.resume_url !== undefined) {
     updates.push('#resume_url = :resume_url');
     values[':resume_url'] = data.resume_url;
     names['#resume_url'] = 'resume_url';
+  }
+  if (data.full_address !== undefined) {
+    updates.push('#full_address = :full_address');
+    values[':full_address'] = data.full_address;
+    names['#full_address'] = 'full_address';
+  }
+  if (data.salary_requirements !== undefined) {
+    updates.push('#salary_requirements = :salary_requirements');
+    values[':salary_requirements'] = data.salary_requirements;
+    names['#salary_requirements'] = 'salary_requirements';
+  }
+  if (data.summary !== undefined) {
+    updates.push('#summary = :summary');
+    values[':summary'] = data.summary;
+    names['#summary'] = 'summary';
+  }
+  if (data.skills !== undefined) {
+    updates.push('#skills = :skills');
+    values[':skills'] = data.skills;
+    names['#skills'] = 'skills';
+  }
+  if (data.experience !== undefined) {
+    updates.push('#experience = :experience');
+    values[':experience'] = data.experience;
+    names['#experience'] = 'experience';
+  }
+  if (data.education !== undefined) {
+    updates.push('#education = :education');
+    values[':education'] = data.education;
+    names['#education'] = 'education';
+  }
+  if (data.certifications !== undefined) {
+    updates.push('#certifications = :certifications');
+    values[':certifications'] = data.certifications;
+    names['#certifications'] = 'certifications';
   }
 
   if (updates.length === 0) {
