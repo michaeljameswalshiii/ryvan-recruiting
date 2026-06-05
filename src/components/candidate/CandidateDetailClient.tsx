@@ -989,22 +989,22 @@ return (
         </div>
       )}
 
-      {/* Link Job Dialog */}
+{/* Link Job Dialog */}
       {showLinkDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="font-semibold text-lg mb-4">Link Job to Candidate</h3>
+          <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md">
+            <h3 className="font-semibold text-lg mb-4 text-foreground">Link Job to Candidate</h3>
             
             <div className="mb-4">
-              <label className="text-sm font-medium text-gray-600 mb-2 block">Select Job</label>
+              <label className="text-sm font-medium text-muted-foreground mb-2 block">Select Job</label>
               <select
                 value={selectedJobId}
                 onChange={(e) => setSelectedJobId(e.target.value)}
-                className="w-full border rounded-md px-3 py-2 text-sm"
+                className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background text-foreground"
               >
                 <option value="">Choose a job...</option>
                 {availableJobs.map((job: any) => (
-                  <option key={job.id} value={job.id}>
+                  <option key={job.id} value={job.id} className="bg-background text-foreground">
                     {job.title} - {job.companyName}
                   </option>
                 ))}
