@@ -97,12 +97,27 @@ const [editAddress, setEditAddress] = useState({
   // Location preferences options
   const locationOptions = ["On-Site", "Hybrid", "Remote"];
 
-  // Notes state
+// Notes state
   const [notes, setNotes] = useState<Note[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
   const [newNote, setNewNote] = useState("");
+  const [noteType, setNoteType] = useState('general');
   const [addingNote, setAddingNote] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
+
+  // Note Types
+  const noteTypes = [
+    { value: 'general', label: 'General Note' },
+    { value: 'phone_call', label: 'Phone call' },
+    { value: 'email_sent', label: 'Email sent' },
+    { value: 'meeting', label: 'Meeting' },
+    { value: 'follow_up', label: 'Follow-up' },
+    { value: 'proposal_sent', label: 'Proposal sent' },
+    { value: 'contract_signed', label: 'Contract signed' },
+    { value: 'placement_made', label: 'Placement made' },
+    { value: 'check_in', label: 'Check-in' },
+    { value: 'other', label: 'Other' },
+  ];
 
 // Fetch notes on mount
   useEffect(() => {
@@ -153,7 +168,7 @@ const [editAddress, setEditAddress] = useState({
     }
   };
 
-  // Add note handler
+// Add note handler
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
     
@@ -166,6 +181,7 @@ const response = await fetch(`/api/candidate/${candidate.id}/notes`, {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           noteText: newNote,
+          noteType: noteType,
           // Include current pipeline stage for context
           stage: candidate.status,
         }),
@@ -178,6 +194,7 @@ const response = await fetch(`/api/candidate/${candidate.id}/notes`, {
 const data = await response.json();
       if (data.success) {
         setNewNote("");
+        setNoteType('general');
         toast.success('Note added successfully');
         // Add a small delay to ensure the write completes before refetching
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -753,12 +770,28 @@ toast.success('Candidate updated successfully');
                 </div>
               )}
 
-              {/* Notes Section - Quick View on Overview */}
+{/* Notes Section - Quick View on Overview */}
               <div className="bg-white p-6 rounded-xl border">
                 <h2 className="font-semibold mb-4 flex items-center gap-2">
                   <StickyNote className="h-5 w-5" /> Notes
                 </h2>
                 
+                {/* Add Note Type */}
+                <div className="mb-4">
+                  <label className="text-sm font-medium text-gray-600 mb-1 block">Note Type</label>
+                  <select
+                    value={noteType}
+                    onChange={(e) => setNoteType(e.target.value)}
+                    className="w-full p-3 border border-input rounded-md bg-background"
+                  >
+                    {noteTypes.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Add Note Input */}
                 <div className="flex gap-2 mb-4">
                   <Textarea
