@@ -15,11 +15,13 @@ import { toast } from "sonner";
 type ViewMode = "list" | "pipeline";
 
 const pipelineStages = [
-  { id: "last18", label: "LAST 18", color: "bg-blue-500" },
-  { id: "submitted", label: "SUBMITTED", color: "bg-slate-500" },
-  { id: "interview", label: "INTERVIEW", color: "bg-amber-500" },
-  { id: "offer", label: "OFFER OUT", color: "bg-orange-500" },
-  { id: "accepted", label: "ACCEPTED", color: "bg-green-500" },
+  { id: "identification", label: "Identification", color: "bg-gray-500" },
+  { id: "outreach", label: "Attempted Outreach", color: "bg-blue-500" },
+  { id: "conversation", label: "Conversation", color: "bg-indigo-500" },
+  { id: "presented", label: "Candidate Presented", color: "bg-purple-500" },
+  { id: "interview", label: "Interview", color: "bg-amber-500" },
+  { id: "accept", label: "Accept", color: "bg-green-500" },
+  { id: "rejected", label: "Rejected", color: "bg-red-500" },
 ];
 
 // Format date for display
@@ -58,15 +60,17 @@ function getTimeAgo(dateStr: string | undefined): string {
 
 // Map lead status to pipeline stage
 function mapStatusToPipeline(status: string | undefined): string {
-  if (!status) return "last18";
+  if (!status) return "identification";
   const statusLower = status.toLowerCase();
   
-  if (["accept", "accepted"].includes(statusLower)) return "accepted";
+  if (["accept", "accepted"].includes(statusLower)) return "accept";
+  if (["rejected", "reject"].includes(statusLower)) return "rejected";
   if (["interview"].includes(statusLower)) return "interview";
-  if (["presented", "offer"].includes(statusLower)) return "offer";
-  if (["contacted", "qualified", "interested", "conversation", "outreach"].includes(statusLower)) return "submitted";
+  if (["presented"].includes(statusLower)) return "presented";
+  if (["conversation"].includes(statusLower)) return "conversation";
+  if (["outreach", "contacted", "interested", "qualified"].includes(statusLower)) return "outreach";
   
-  return "last18";
+  return "identification";
 }
 
 export default function CandidatesPage() {
@@ -102,14 +106,16 @@ export default function CandidatesPage() {
       .slice(0, 20);
   }, [filteredCandidates]);
 
-  // Group candidates by pipeline stage
+// Group candidates by pipeline stage
   const pipelineGroups = useMemo(() => {
     const groups: Record<string, any[]> = {
-      last18: [],
-      submitted: [],
+      identification: [],
+      outreach: [],
+      conversation: [],
+      presented: [],
       interview: [],
-      offer: [],
-      accepted: [],
+      accept: [],
+      rejected: [],
     };
     
     filteredCandidates.forEach((lead: any) => {
@@ -124,11 +130,13 @@ export default function CandidatesPage() {
 
   // Pipeline counts
   const pipelineCounts = {
-    last18: pipelineGroups.last18.length,
-    submitted: pipelineGroups.submitted.length,
+    identification: pipelineGroups.identification.length,
+    outreach: pipelineGroups.outreach.length,
+    conversation: pipelineGroups.conversation.length,
+    presented: pipelineGroups.presented.length,
     interview: pipelineGroups.interview.length,
-    offer: pipelineGroups.offer.length,
-    accepted: pipelineGroups.accepted.length,
+    accept: pipelineGroups.accept.length,
+    rejected: pipelineGroups.rejected.length,
   };
 
   const handleRefresh = () => {
@@ -192,8 +200,8 @@ export default function CandidatesPage() {
           </div>
         </div>
 
-        {/* Pipeline Overview Cards (always visible above content) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+{/* Pipeline Overview Cards (always visible above content) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
           {pipelineStages.map((stage) => (
             <Card 
               key={stage.id} 
