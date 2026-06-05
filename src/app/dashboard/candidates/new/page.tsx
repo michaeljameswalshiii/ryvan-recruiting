@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Plus, Loader2, User, Mail, Phone, MapPin, Briefcase, Globe, Linkedin, FileText } from "lucide-react";
+import { ArrowLeft, Plus, Loader2, User, Mail, Phone, MapPin, Briefcase, Globe, Linkedin, FileText, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +33,8 @@ const statusOptions = [
 export default function NewCandidatePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -48,6 +50,46 @@ export default function NewCandidatePage() {
 
   const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Resume Upload + Auto-populate
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const uploadFormData = new FormData();
+    uploadFormData.append('resume', file);
+
+    try {
+      const res = await fetch('/api/parse-resume', {
+        method: 'POST',
+        body: uploadFormData,
+      });
+
+      const data = await res.json();
+
+      if (data.success && data.resume) {
+        const r = data.resume;
+        setFormData(prev => ({
+          ...prev,
+          name: r.name || prev.name,
+          title: r.title || prev.title,
+          email: r.email || prev.email,
+          phone: r.phone || prev.phone,
+          location: r.location || prev.location,
+          linkedin_url: r.linkedin || prev.linkedin_url,
+          notes: (r.summary || '') + '\n\nSkills: ' + (r.skills?.join(', ') || ''),
+        }));
+        toast.success('Resume parsed successfully! Form fields have been pre-filled.');
+      } else {
+        toast.error(data.error || 'Failed to parse resume');
+      }
+    } catch (err) {
+      toast.error('Resume upload failed');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -101,6 +143,42 @@ export default function NewCandidatePage() {
           </p>
         </div>
       </div>
+
+      {/* Resume Upload Section */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5" />
+            Upload Resume (PDF or DOCX)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="border-2 border-dashed border-muted-foreground/30 rounded-xl p-8 text-center">
+            {isUploading ? (
+              <div className="flex items-center justify-center gap-2">
+                <Loader2 className="h-6 w-6 animate-spin" />
+                <span>Parsing resume...</span>
+              </div>
+            ) : (
+              <>
+                <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                <Label htmlFor="resume-upload" className="cursor-pointer block">
+                  <span className="text-lg font-medium">Click to upload resume</span>
+                  <p className="text-sm text-muted-foreground mt-1">It will automatically fill the form below</p>
+                </Label>
+                <input
+                  id="resume-upload"
+                  type="file"
+                  accept=".pdf,.docx"
+                  onChange={handleResumeUpload}
+                  className="hidden"
+                  disabled={isUploading}
+                />
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Form */}
       <form onSubmit={handleSubmit}>
