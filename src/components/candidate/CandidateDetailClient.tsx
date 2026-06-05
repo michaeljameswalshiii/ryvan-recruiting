@@ -1117,9 +1117,9 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
     Withdrawn: "bg-gray-100 border-gray-200",
   };
 
-  if (isLoading) {
+if (isLoading) {
     return (
-      <div className="bg-white p-6 rounded-xl border">
+      <div className="bg-card border border-border p-6 rounded-xl">
         <div className="flex items-center gap-2">
           <Loader2 className="h-5 w-5 animate-spin" />
           Loading linked jobs...
@@ -1130,7 +1130,7 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
 
   if (isError) {
     return (
-      <div className="bg-white p-6 rounded-xl border">
+      <div className="bg-card border border-border p-6 rounded-xl">
         <p className="text-red-600">Failed to load linked jobs.</p>
         <Button variant="outline" onClick={() => refetch()} className="mt-2">
           Retry
@@ -1141,7 +1141,7 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
 
 if (!jobs || jobs.length === 0) {
     return (
-      <div className="bg-white p-6 rounded-xl border text-center py-12">
+      <div className="bg-card border border-border p-6 rounded-xl text-center py-12">
         <Briefcase className="h-12 w-12 mx-auto mb-4 text-gray-400" />
         <p className="text-lg font-medium">No Jobs Linked</p>
         <p className="text-sm text-gray-500 mt-1">
