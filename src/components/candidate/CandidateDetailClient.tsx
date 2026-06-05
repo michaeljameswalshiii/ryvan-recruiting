@@ -938,13 +938,13 @@ return (
         </Button>
       </div>
 
-      {isLoading && <p className="text-sm text-gray-500">Loading linked jobs...</p>}
-      {isError && <p className="text-sm text-red-600">Failed to load linked jobs.</p>}
+{isLoading && <p className="text-sm text-muted-foreground">Loading linked jobs...</p>}
+      {isError && <p className="text-sm text-destructive">Failed to load linked jobs.</p>}
 
       {!isLoading && !isError && (!jobs || jobs.length === 0) && (
-        <p className="text-sm text-gray-500">
+        <div className="bg-background border border-border rounded-xl p-8 text-center text-muted-foreground">
           No jobs linked yet. Click "Link Job" to link this candidate to a job.
-        </p>
+        </div>
       )}
 
       {!isLoading && !isError && jobs && jobs.length > 0 && (
