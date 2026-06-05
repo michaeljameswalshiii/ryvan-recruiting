@@ -15,13 +15,13 @@ import { toast } from "sonner";
 type ViewMode = "list" | "pipeline";
 
 const pipelineStages = [
-  { id: "new", label: "NEW", color: "bg-blue-500" },
-  { id: "contacted", label: "CONTACTED", color: "bg-cyan-500" },
-  { id: "qualified", label: "QUALIFIED", color: "bg-slate-500" },
-  { id: "screening", label: "SCREENING", color: "bg-indigo-500" },
-  { id: "interview", label: "INTERVIEW", color: "bg-amber-500" },
-  { id: "offer", label: "OFFER", color: "bg-orange-500" },
-  { id: "hired", label: "HIRED", color: "bg-green-500" },
+  { id: "identification", label: "Identification", color: "bg-gray-500" },
+  { id: "outreach", label: "Attempted Outreach", color: "bg-blue-500" },
+  { id: "conversation", label: "Conversation", color: "bg-indigo-500" },
+  { id: "presented", label: "Candidate Presented", color: "bg-purple-500" },
+  { id: "interview", label: "Interview", color: "bg-amber-500" },
+  { id: "accept", label: "Accept", color: "bg-green-500" },
+  { id: "rejected", label: "Rejected", color: "bg-red-500" },
 ];
 
 // Format date for display
@@ -58,17 +58,31 @@ function getTimeAgo(dateStr: string | undefined): string {
   }
 }
 
-// Map lead status to pipeline stage
+// Map lead status to pipeline stage (maps legacy statuses to 7-stage system)
 function mapStatusToPipeline(status: string | undefined): string {
-  if (!status) return "new";
+  if (!status) return "identification";
   const s = status.toLowerCase();
   
-  if (["hired"].includes(s)) return "hired";
-  if (["offer"].includes(s)) return "offer";
-  if (["interview", "screening"].includes(s)) return s as string;
-  if (["qualified", "contacted"].includes(s)) return s as string;
+  // Rejected maps to rejected stage
+  if (["rejected", "not_interested"].includes(s)) return "rejected";
   
-  return "new";
+  // Accept/accepted maps to accept stage
+  if (["accept", "accepted", "hired"].includes(s)) return "accept";
+  
+  // Interview maps directly
+  if (["interview"].includes(s)) return "interview";
+  
+  // Presented maps directly
+  if (["presented"].includes(s)) return "presented";
+  
+  // Conversation maps directly
+  if (["conversation", "qualified", "screening", "interested"].includes(s)) return "conversation";
+  
+  // Outreach maps directly
+  if (["outreach", "contacted"].includes(s)) return "outreach";
+  
+  // Identification (default for new leads or legacy statuses)
+  return "identification";
 }
 
 export default function CandidatesPage() {
@@ -104,10 +118,16 @@ export default function CandidatesPage() {
       .slice(0, 20);
   }, [filteredCandidates]);
 
-// Group candidates by pipeline stage
+  // Group candidates by pipeline stage
   const pipelineGroups = useMemo(() => {
     const groups: Record<string, any[]> = {
-      new: [], contacted: [], qualified: [], screening: [], interview: [], offer: [], hired: [],
+      identification: [],
+      outreach: [],
+      conversation: [],
+      presented: [],
+      interview: [],
+      accept: [],
+      rejected: [],
     };
     
     filteredCandidates.forEach((lead: any) => {
@@ -122,13 +142,13 @@ export default function CandidatesPage() {
 
   // Pipeline counts
   const pipelineCounts = {
-    new: pipelineGroups.new.length,
-    contacted: pipelineGroups.contacted.length,
-    qualified: pipelineGroups.qualified.length,
-    screening: pipelineGroups.screening.length,
+    identification: pipelineGroups.identification.length,
+    outreach: pipelineGroups.outreach.length,
+    conversation: pipelineGroups.conversation.length,
+    presented: pipelineGroups.presented.length,
     interview: pipelineGroups.interview.length,
-    offer: pipelineGroups.offer.length,
-    hired: pipelineGroups.hired.length,
+    accept: pipelineGroups.accept.length,
+    rejected: pipelineGroups.rejected.length,
   };
 
   const handleRefresh = () => {
@@ -192,8 +212,8 @@ export default function CandidatesPage() {
           </div>
         </div>
 
-        {/* Pipeline Overview Cards (always visible above content) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {/* Pipeline Overview Cards - 7 columns responsive grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {pipelineStages.map((stage) => (
             <Card 
               key={stage.id} 
@@ -206,7 +226,7 @@ export default function CandidatesPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${stage.color}`} />
-                    <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
+                    <span className="text-xs font-medium text-muted-foreground hidden lg:inline">
                       {stage.label}
                     </span>
                   </div>
@@ -324,13 +344,13 @@ export default function CandidatesPage() {
           </div>
         )}
 
-        {/* Content: Pipeline View (Kanban) */}
+        {/* Content: Pipeline View (Kanban - 7 columns) */}
         {viewMode === "pipeline" && (
           <div className="flex gap-4 overflow-x-auto pb-4">
             {pipelineStages.map((stage) => (
               <div
                 key={stage.id}
-                className="flex-shrink-0 w-72 sm:w-80"
+                className="flex-shrink-0 w-64 sm:w-72"
               >
                 {/* Column Header */}
                 <div className="flex items-center justify-between px-3 py-2 bg-muted/50 rounded-t-lg border">
