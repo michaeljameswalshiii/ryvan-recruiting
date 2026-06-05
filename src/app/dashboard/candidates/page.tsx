@@ -73,10 +73,24 @@ function mapStatusToPipeline(status: string | undefined): string {
   return "identification";
 }
 
+type SortField = "created_at" | "modified_at";
+type SortDirection = "asc" | "desc";
+
 export default function CandidatesPage() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [sortField, setSortField] = useState<SortField>("created_at");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "desc" ? "asc" : "desc");
+    } else {
+      setSortField(field);
+      setSortDirection("desc");
+    }
+  };
 
   const { data: leads = [], isLoading, error } = useLeads();
 
@@ -95,16 +109,16 @@ export default function CandidatesPage() {
     });
   }, [leads, searchQuery]);
 
-  // Get most recent 20 candidates for list view (sorted by created_at)
+// Get candidates sorted by selected field
   const recentCandidates = useMemo(() => {
     return [...filteredCandidates]
       .sort((a: any, b: any) => {
-        const dateA = new Date(a.created_at || 0).getTime();
-        const dateB = new Date(b.created_at || 0).getTime();
-        return dateB - dateA;
+        const dateA = new Date(a[sortField] || 0).getTime();
+        const dateB = new Date(b[sortField] || 0).getTime();
+        return sortDirection === "desc" ? dateB - dateA : dateA - dateB;
       })
       .slice(0, 20);
-  }, [filteredCandidates]);
+  }, [filteredCandidates, sortField, sortDirection]);
 
 // Group candidates by pipeline stage
   const pipelineGroups = useMemo(() => {
@@ -236,16 +250,27 @@ export default function CandidatesPage() {
           />
         </div>
 
-        {/* Content: List View */}
+{/* Content: List View */}
         {viewMode === "list" && (
           <div className="rounded-md border bg-card">
             {/* Table Header */}
-            <div className="grid grid-cols-6 gap-4 px-4 py-3 bg-muted/50 text-sm font-medium text-muted-foreground border-b">
+            <div className="grid grid-cols-7 gap-4 px-4 py-3 bg-muted/50 text-sm font-medium text-muted-foreground border-b">
               <div className="col-span-2">CANDIDATE</div>
               <div className="hidden md:block">LINKED JOB</div>
               <div className="hidden lg:block">SOURCE</div>
               <div className="hidden sm:block">STAGE</div>
-              <div className="text-right">ADDED</div>
+              <button 
+                onClick={() => handleSort("created_at")}
+                className="text-right hover:text-foreground transition-colors cursor-pointer"
+              >
+                ADDED {sortField === "created_at" && (sortDirection === "desc" ? "↓" : "↑")}
+              </button>
+              <button 
+                onClick={() => handleSort("modified_at")}
+                className="text-right hover:text-foreground transition-colors cursor-pointer"
+              >
+                LAST ACTIVITY {sortField === "modified_at" && (sortDirection === "desc" ? "↓" : "↑")}
+              </button>
             </div>
             
             {/* Table Body */}
@@ -265,11 +290,11 @@ export default function CandidatesPage() {
                   )}
                 </div>
               ) : (
-                recentCandidates.map((candidate: any) => (
+recentCandidates.map((candidate: any) => (
                   <Link
                     key={candidate.id}
                     href={`/candidates/${candidate.id}`}
-                    className="grid grid-cols-6 gap-4 px-4 py-3 items-center hover:bg-muted/50 transition-colors"
+                    className="grid grid-cols-7 gap-4 px-4 py-3 items-center hover:bg-muted/50 transition-colors"
                   >
                     {/* Candidate Column */}
                     <div className="col-span-2 flex items-center gap-3">
@@ -317,6 +342,11 @@ export default function CandidatesPage() {
                     {/* Added Date */}
                     <div className="text-right text-sm text-muted-foreground">
                       {formatDate(candidate.created_at)}
+                    </div>
+                    
+                    {/* Last Modified Date */}
+                    <div className="text-right text-sm text-muted-foreground">
+                      {getTimeAgo(candidate.modified_at || candidate.created_at)}
                     </div>
                   </Link>
                 ))
