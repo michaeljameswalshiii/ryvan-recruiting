@@ -70,6 +70,27 @@ export default function Sidebar() {
         })}
       </nav>
 
+      {/* Prominent Theme Toggle - Bigger & More Visible */}
+      <div className="flex items-center gap-2 mt-4 mb-6 px-3">
+        <div className="text-xs font-medium text-muted-foreground mr-2">THEME</div>
+        <div className="flex bg-muted p-1 rounded-xl">
+          {themeOptions.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => setTheme(option.value)}
+              className={`px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-all ${
+                theme === option.value 
+                  ? "bg-background shadow-sm text-foreground" 
+                  : "hover:bg-background/50 text-muted-foreground"
+              }`}
+            >
+              {option.icon}
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="p-4 border-t border-gray-200 dark:border-slate-700 mt-auto">
         <Link href="/settings" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-700 dark:text-slate-300">
           ⚙️ Settings
