@@ -770,56 +770,72 @@ toast.success('Candidate updated successfully');
                 </div>
               )}
 
-{/* === NOTES SECTION ON OVERVIEW TAB === */}
-              <div className="bg-card border rounded-xl p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-lg flex items-center gap-2">
-                    📝 Notes
-                  </h3>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setActiveTab('timeline')}
-                  >
-                    View Full Timeline →
-                  </Button>
-                </div>
+{/* === NOTES SECTION (LIGHT MODE FRIENDLY) === */}
+<div className="bg-white border border-border rounded-xl p-6 shadow-sm">
+  <div className="flex items-center justify-between mb-5">
+    <h3 className="text-lg font-semibold flex items-center gap-2">
+      📝 Notes
+    </h3>
+    <Button 
+      variant="outline" 
+      size="sm"
+      onClick={() => setActiveTab('timeline')}
+    >
+      View Full Timeline →
+    </Button>
+  </div>
 
-                {/* Note Type Dropdown */}
-                <div className="mb-4">
-                  <label className="text-sm font-medium mb-1.5 block">Note Type</label>
-                  <select
-                    value={noteType || 'general'}
-                    onChange={(e) => setNoteType(e.target.value)}
-                    className="w-full p-3 border border-input rounded-lg bg-background focus:ring-2 focus:ring-primary text-sm"
-                  >
-                    {noteTypes.map((type: any) => (
-                      <option key={type.value} value={type.value}>
-                        {type.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+  {/* Note Type */}
+  <div className="mb-4">
+    <label className="text-sm font-medium text-foreground mb-1.5 block">
+      Note Type
+    </label>
+    <select
+      value={noteType}
+      onChange={(e) => setNoteType(e.target.value)}
+      className="w-full p-3 border border-input rounded-lg bg-white focus:ring-2 focus:ring-primary focus:border-primary text-sm"
+    >
+      {noteTypes.map((type: any) => (
+        <option key={type.value} value={type.value}>
+          {type.label}
+        </option>
+      ))}
+    </select>
+  </div>
 
-                {/* Note Textarea */}
-                <div className="mb-4">
-                  <label className="text-sm font-medium mb-1.5 block">Note</label>
-                  <Textarea
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    placeholder="Add a note about this candidate..."
-                    className="min-h-[110px] resize-y"
-                  />
-                </div>
+  {/* Note Textarea */}
+  <div className="mb-5">
+    <label className="text-sm font-medium text-foreground mb-1.5 block">
+      Note
+    </label>
+    <Textarea
+      value={newNote}
+      onChange={(e) => setNewNote(e.target.value)}
+      placeholder="Add a note about this candidate..."
+      className="min-h-[120px] resize-y bg-white border-input"
+    />
+  </div>
 
-                <Button 
-                  onClick={handleAddNote} 
-                  disabled={addingNote || !newNote?.trim()}
-                  className="w-full"
-                >
-                  {addingNote ? 'Saving Note...' : 'Add Note'}
-                </Button>
-              </div>
+  <Button 
+    onClick={handleAddNote} 
+    disabled={addingNote || !newNote?.trim()}
+    className="w-full"
+  >
+    {addingNote ? 'Adding Note...' : 'Add Note'}
+  </Button>
+
+  {/* Quick view of existing notes (optional) */}
+  {notes && notes.length > 0 && (
+    <div className="mt-6 pt-4 border-t">
+      <p className="text-xs text-muted-foreground mb-2">Recent Notes</p>
+      {notes.slice(0, 2).map((note: any) => (
+        <div key={note.id} className="text-sm text-muted-foreground py-1">
+          • {note.description?.substring(0, 80)}...
+        </div>
+      ))}
+    </div>
+  )}
+</div>
             </div>
 
 <div>
