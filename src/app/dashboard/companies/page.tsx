@@ -73,38 +73,41 @@ export default function CompaniesPage() {
 
 return (
     <div className="p-8 space-y-8 bg-background min-h-screen">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+{/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Companies</h1>
-          <p className="text-muted-foreground">Manage your target companies.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">Companies</h1>
+          <p className="text-muted-foreground text-sm">Manage your target companies.</p>
         </div>
+        
+        {/* Add Company - right aligned */}
+        <Button asChild className="sm:ml-auto">
+          <Link href="/dashboard/companies/new">
+            <Plus className="mr-2 h-4 w-4" /> Add Company
+          </Link>
+        </Button>
+      </div>
 
-<div className="flex items-center gap-3">
-          <div className="flex bg-muted p-1 rounded-lg">
-            <Button
-              variant={viewMode === "list" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("list")}
-            >
-              <LayoutList className="mr-2 h-4 w-4" /> List
-            </Button>
-            <Button
-              variant={viewMode === "pipeline" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("pipeline")}
-            >
-              <Kanban className="mr-2 h-4 w-4" /> Pipeline
-            </Button>
-          </div>
-
-          <Button variant="outline" onClick={() => window.location.reload()}>
-            <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+      {/* Centered Toggle - between header and pipeline overview */}
+      <div className="flex justify-center mb-6">
+        <div className="flex bg-muted rounded-lg p-1">
+          <Button
+            variant={viewMode === "list" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("list")}
+            className="h-9 px-4"
+          >
+            <LayoutList className="h-4 w-4 mr-1.5" />
+            List
           </Button>
-          <Button asChild>
-            <Link href="/dashboard/companies/new">
-              <Plus className="mr-2 h-4 w-4" /> Add Company
-            </Link>
+          <Button
+            variant={viewMode === "pipeline" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("pipeline")}
+            className="h-9 px-4"
+          >
+            <Kanban className="h-4 w-4 mr-1.5" />
+            Pipeline
           </Button>
         </div>
       </div>

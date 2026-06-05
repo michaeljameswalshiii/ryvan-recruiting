@@ -173,49 +173,48 @@ export default function CandidatesPage() {
     <div className="flex h-full flex-col overflow-hidden">
       {/* Main Content */}
       <div className="flex-1 p-6 space-y-6 overflow-auto">
-        {/* Header */}
+{/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold">Candidates</h1>
             <p className="text-muted-foreground text-sm">Manage your candidate pipeline.</p>
           </div>
           
-{/* Top Right: View Toggle + Add Button */}
-          <div className="flex items-center gap-3">
-            {/* View Toggle */}
-            <div className="flex bg-muted rounded-lg p-1">
-              <Button
-                variant={viewMode === "list" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("list")}
-                className="h-8 px-3"
-              >
-                <LayoutList className="h-4 w-4 mr-1.5" />
-                <span className="hidden sm:inline">List</span>
-              </Button>
-              <Button
-                variant={viewMode === "pipeline" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("pipeline")}
-                className="h-8 px-3"
-              >
-                <Kanban className="h-4 w-4 mr-1.5" />
-                <span className="hidden sm:inline">Pipeline</span>
-              </Button>
-            </div>
-            
-            {/* Refresh Button */}
+          {/* Refresh + Add Candidate - right aligned */}
+          <div className="flex items-center gap-3 sm:ml-auto">
             <Button variant="outline" onClick={handleRefresh}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
-            
-            {/* Add Candidate Button */}
             <Button asChild>
               <Link href="/candidates/new">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Candidate
               </Link>
+            </Button>
+          </div>
+        </div>
+
+        {/* Centered Toggle - between header and pipeline overview */}
+        <div className="flex justify-center mb-6">
+          <div className="flex bg-muted rounded-lg p-1">
+            <Button
+              variant={viewMode === "list" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("list")}
+              className="h-9 px-4"
+            >
+              <LayoutList className="h-4 w-4 mr-1.5" />
+              List
+            </Button>
+            <Button
+              variant={viewMode === "pipeline" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("pipeline")}
+              className="h-9 px-4"
+            >
+              <Kanban className="h-4 w-4 mr-1.5" />
+              Pipeline
             </Button>
           </div>
         </div>
