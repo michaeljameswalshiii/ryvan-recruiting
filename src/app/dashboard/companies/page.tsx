@@ -153,8 +153,12 @@ return (
               </thead>
               <tbody>
                 {filteredCompanies.map((company: any) => (
-                  <tr key={company.id} className="border-b hover:bg-muted/50">
-                    <td className="p-4 font-medium">{company.name}</td>
+<tr key={company.id} className="border-b hover:bg-muted/50">
+                    <td className="p-4 font-medium">
+                      <Link href={`/dashboard/companies/${company.id}`} className="hover:underline text-primary">
+                        {company.name}
+                      </Link>
+                    </td>
                     <td className="p-4 text-muted-foreground">{company.industry || "-"}</td>
                     <td className="p-4 text-muted-foreground">{company.location || "-"}</td>
                     <td className="p-4 text-muted-foreground">-</td>
@@ -185,7 +189,7 @@ return (
 
               <div className="min-h-[600px] border border-dashed border-muted-foreground/30 rounded-b-lg p-3 space-y-3">
                 {pipelineGroups[stage.id].map((company: any) => (
-                  <div key={company.id} className="bg-card border rounded-lg p-4 hover:shadow-md transition-all">
+<Link key={company.id} href={`/dashboard/companies/${company.id}`} className="block bg-card border rounded-lg p-4 hover:shadow-md transition-all">
                     <div className="flex items-start gap-3">
                       <Building2 className="mt-1 text-muted-foreground" />
                       <div className="flex-1 min-w-0">
@@ -193,7 +197,7 @@ return (
                         <p className="text-sm text-muted-foreground">{company.location || "No location"}</p>
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 ))}
                 {pipelineGroups[stage.id].length === 0 && (
                   <div className="h-full flex items-center justify-center text-muted-foreground text-sm py-12">
