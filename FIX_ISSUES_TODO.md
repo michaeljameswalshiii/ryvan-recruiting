@@ -1,25 +1,32 @@
 # Fix Issues TODO
 
-## Issues to Fix:
+## Issues Fixed:
 
-### 1. Companies Refresh Button
+### 1. Companies Refresh Button ✓
 - **Status**: Already exists in `/dashboard/companies/page.tsx`
-- **Action**: None needed - button is already present
+- **Action**: None needed - button was already present
 
-### 2. Cannot Edit Companies
-- **Issue**: Company detail page at `/dashboard/companies/[id]/page.tsx` has no Edit button
-- **Action**: Add Edit button to company detail page header
+### 2. Edit Companies ✓
+- **Status**: EDIT button already exists in company detail page
+- **Action**: No fix needed - the Edit button was already there
 
-### 3. Candidates Links Wrong Path
-- **Issue**: Candidates page uses `/candidates/${id}` but should use `/dashboard/candidates/${id}`
-- **Current**: `/dashboard/candidates/page.tsx` links to `/candidates/${candidate.id}`
-- **Should be**: `/dashboard/candidates/${candidate.id}` (links to proper detail page)
-- **Action**: Fix links in list view and pipeline view
+### 3. Candidates Links Wrong Path ✓
+- **Issue**: Candidates page used `/candidates/${id}` but should use `/dashboard/candidates/${id}`
+- **Fixed**: Updated links to use `/dashboard/candidates/${id}`
 
-## Implementation Steps:
+### 4. Add Candidate Button Not Working ✓
+- **Issue**: No "new candidate" page existed at `/candidates/new`
+- **Created**:
+  - API route: `/api/candidate` (POST)
+  - New page: `/dashboard/candidates/new`
 
-1. [ ] Add Edit button to company detail page
-2. [ ] Fix candidates list view links (change `/candidates/` to `/dashboard/candidates/`)
-3. [ ] Fix candidates pipeline view links (change `/candidates/` to `/dashboard/candidates/`)
-4. [ ] Commit and push to GitHub
-5. [ ] Deploy
+## Implementation Steps Completed:
+
+1. [x] Add Edit button to company detail page - Already exists
+2. [x] Fix candidates list view links - Changed `/candidates/` to `/dashboard/candidates/`
+3. [x] Fix candidates pipeline view links - Already correct
+4. [x] Add Candidate button: Fixed link from `/candidates/new` to `/dashboard/candidates/new`
+5. [x] Create API route for creating candidates
+6. [x] Create new candidate page
+7. [ ] Commit and push to GitHub
+8. [ ] Deploy

@@ -186,8 +186,8 @@ export default function CandidatesPage() {
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
-            <Button asChild>
-              <Link href="/candidates/new">
+<Button asChild>
+              <Link href="/dashboard/candidates/new">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Candidate
               </Link>
