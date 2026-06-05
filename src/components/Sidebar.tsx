@@ -2,81 +2,90 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Home, Users, Building2, User, Briefcase, BarChart3, Bot, Settings, LogOut } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 
-const menuItems = [
-  { href: "/dashboard", label: "Dashboard", icon: "📊" },
-  { href: "/candidates", label: "Candidates", icon: "👥" },
-  { href: "/companies", label: "Companies", icon: "🏢" },
-  { href: "/contacts", label: "Contacts", icon: "📇" },
-  { href: "/jobs", label: "Jobs", icon: "💼" },
-  { href: "/ai-apollo", label: "AI Apollo", icon: "✨" },
-  { href: "/ai-usage", label: "AI Usage", icon: "📈" },
-  { href: "/reporting", label: "Reporting", icon: "📋" },
-  { href: "/dynamodb-viewer", label: "DynamoDB Viewer", icon: "🗄️" },
-];
-
 const themeOptions = [
-  { value: "white", label: "White", icon: "⬜" },
+  { value: "white", label: "Light", icon: "⬜" },
   { value: "gray", label: "Gray", icon: "⬛" },
-  { value: "black", label: "Black", icon: "🌙" },
+  { value: "black", label: "Dark", icon: "🌙" },
 ] as const;
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
 
+  const navItems = [
+    { href: "/dashboard", label: "Dashboard", icon: Home },
+    { href: "/dashboard/candidates", label: "Candidates", icon: Users },
+    { href: "/dashboard/companies", label: "Companies", icon: Building2 },
+    { href: "/dashboard/contacts", label: "Contacts", icon: User },
+    { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
+    { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
+    { href: "/dashboard/ai", label: "AI Apollo", icon: Bot },
+  ];
+
   return (
-    <div className="w-64 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-700 flex flex-col h-full flex-shrink-0">
-      <div className="p-4 font-bold text-2xl border-b border-gray-200 dark:border-slate-700 flex items-center justify-between">
-        <span>RyVan Recruiting</span>
-        
-        {/* Prominent Theme Toggle - RIGHT HERE */}
-        <div className="flex gap-1">
+    <div className="w-64 border-r border-border bg-card flex flex-col h-screen flex-shrink-0">
+      {/* Header with Logo + Theme Toggle */}
+      <div className="p-5 border-b border-border">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold tracking-tight">RyVan Recruiting</h1>
+        </div>
+
+        {/* Prominent Theme Toggle */}
+        <div className="flex bg-muted p-1 rounded-2xl">
           {themeOptions.map((option) => (
             <button
               key={option.value}
               onClick={() => setTheme(option.value)}
-              className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg transition-all hover:scale-110 ${
-                theme === option.value ? "bg-blue-600 text-white shadow" : "hover:bg-gray-100 dark:hover:bg-slate-800"
+              className={`flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-medium transition-all ${
+                theme === option.value
+                  ? "bg-background shadow-sm text-foreground"
+                  : "hover:bg-background/70 text-muted-foreground"
               }`}
-              title={option.label}
             >
-              {option.icon}
+              <span className="text-lg">{option.icon}</span>
+              <span>{option.label}</span>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Rest of your sidebar navigation stays the same */}
+      {/* Navigation */}
       <nav className="flex-1 p-3 overflow-y-auto">
-        {menuItems.map((item) => {
+        {navItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl mb-1 text-sm font-medium transition-all ${
-                isActive 
-                  ? "bg-blue-600 text-white" 
-                  : "hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-700 dark:text-slate-300"
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl mb-1 text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted text-muted-foreground hover:text-foreground"
               }`}
             >
-              <span>{item.icon}</span>
+              <item.icon className="w-5 h-5" />
               {item.label}
             </Link>
           );
         })}
       </nav>
 
-      {/* Bottom links */}
-      <div className="p-4 border-t border-gray-200 dark:border-slate-700 mt-auto">
-        <Link href="/settings" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-700 dark:text-slate-300">
-          ⚙️ Settings
+      {/* Footer */}
+      <div className="p-4 border-t border-border mt-auto">
+        <Link
+          href="/settings"
+          className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium hover:bg-muted text-muted-foreground hover:text-foreground mb-1"
+        >
+          <Settings className="w-5 h-5" />
+          Settings
         </Link>
-        <a href="#" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-700 dark:text-slate-300">
-          ← Sign out
-        </a>
+        <button className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium hover:bg-muted text-muted-foreground hover:text-foreground w-full">
+          <LogOut className="w-5 h-5" />
+          Sign out
+        </button>
       </div>
     </div>
   );

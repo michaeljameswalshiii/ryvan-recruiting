@@ -80,7 +80,7 @@ return (
           <p className="text-muted-foreground">Manage your target companies.</p>
         </div>
 
-        <div className="flex items-center gap-3">
+<div className="flex items-center gap-3">
           <div className="flex bg-muted p-1 rounded-lg">
             <Button
               variant={viewMode === "list" ? "default" : "ghost"}
@@ -98,9 +98,6 @@ return (
             </Button>
           </div>
 
-          <Button variant="outline" onClick={moveAllToActive}>
-            Move All to Active
-          </Button>
           <Button variant="outline" onClick={() => window.location.reload()}>
             <RefreshCw className="mr-2 h-4 w-4" /> Refresh
           </Button>

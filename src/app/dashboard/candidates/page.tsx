@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Search, Plus, LayoutList, Kanban, User } from "lucide-react";
+import { Search, Plus, LayoutList, Kanban, User, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -180,7 +180,7 @@ export default function CandidatesPage() {
             <p className="text-muted-foreground text-sm">Manage your candidate pipeline.</p>
           </div>
           
-          {/* Top Right: View Toggle + Add Button */}
+{/* Top Right: View Toggle + Add Button */}
           <div className="flex items-center gap-3">
             {/* View Toggle */}
             <div className="flex bg-muted rounded-lg p-1">
@@ -203,6 +203,12 @@ export default function CandidatesPage() {
                 <span className="hidden sm:inline">Pipeline</span>
               </Button>
             </div>
+            
+            {/* Refresh Button */}
+            <Button variant="outline" onClick={handleRefresh}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
             
             {/* Add Candidate Button */}
             <Button asChild>
