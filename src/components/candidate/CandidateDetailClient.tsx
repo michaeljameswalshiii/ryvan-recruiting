@@ -419,9 +419,9 @@ return (
                           placeholder="Full Name"
                         />
                       </div>
-                      {/* Email */}
+{/* Email */}
                       <div>
-                        <label className="text-sm font-medium text-gray-600">Email</label>
+                        <label className="text-sm font-medium text-muted-foreground">Email</label>
                         <Input
                           value={editForm.email}
                           onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
@@ -430,7 +430,7 @@ return (
                       </div>
                       {/* Phone */}
                       <div>
-                        <label className="text-sm font-medium text-gray-600">Phone</label>
+                        <label className="text-sm font-medium text-muted-foreground">Phone</label>
                         <Input
                           value={editForm.phone}
                           onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
@@ -439,7 +439,7 @@ return (
                       </div>
                       {/* Salary Requirements - Editable */}
                       <div>
-                        <label className="text-sm font-medium text-gray-600">Salary Requirements</label>
+                        <label className="text-sm font-medium text-muted-foreground">Salary Requirements</label>
                         <Input
                           value={editForm.salaryRequirements}
                           onChange={(e) => setEditForm({ ...editForm, salaryRequirements: e.target.value })}
@@ -448,7 +448,7 @@ return (
                       </div>
                       {/* Job Titles - Multiple with add/remove */}
                       <div>
-                        <label className="text-sm font-medium text-gray-600">Job Title(s)</label>
+                        <label className="text-sm font-medium text-muted-foreground">Job Title(s)</label>
                         <div className="flex flex-wrap gap-2 mb-2">
                           {jobTitles.map((title, index) => (
                             <span
@@ -490,16 +490,16 @@ return (
                       </div>
 {/* LinkedIn - now editable */}
                       <div>
-                        <label className="text-sm font-medium text-gray-600">LinkedIn</label>
+                        <label className="text-sm font-medium text-muted-foreground">LinkedIn</label>
                         <Input
                           value={editForm.linkedin}
                           onChange={(e) => setEditForm({ ...editForm, linkedin: e.target.value })}
                           placeholder="https://linkedin.com/in/..."
                         />
                       </div>
-                      {/* Full Address - now editable */}
+{/* Full Address - now editable */}
                       <div>
-                        <label className="text-sm font-medium text-gray-600">Full Address</label>
+                        <label className="text-sm font-medium text-muted-foreground">Full Address</label>
                         <Input
                           value={editAddress.fullAddress}
                           onChange={(e) => setEditAddress({ ...editAddress, fullAddress: e.target.value })}
