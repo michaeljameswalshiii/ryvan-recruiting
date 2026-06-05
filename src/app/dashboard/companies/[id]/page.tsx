@@ -31,7 +31,6 @@ const tabs = [
   { id: "history", label: "History", icon: Clock },
   { id: "jobs", label: "Jobs", icon: Briefcase },
   { id: "contacts", label: "Contacts", icon: User },
-  { id: "notes", label: "Notes", icon: StickyNote },
 ];
 
 export default function CompanyDetailPage() {
@@ -187,7 +186,6 @@ export default function CompanyDetailPage() {
         {activeTab === "history" && <HistoryTab company={company} />}
         {activeTab === "jobs" && <JobsTab companyId={company.id} companyName={company.name} />}
         {activeTab === "contacts" && <ContactsTab company={company} leads={companyLeads} />}
-        {activeTab === "notes" && <NotesTab company={company} />}
       </div>
     </div>
   );
@@ -622,13 +620,4 @@ function ContactsTab({ company }: { company: any; leads: any[] }) {
   );
 }
 
-// Notes Tab Component - Uses EventTimeline for notes
-function NotesTab({ company }: { company: any }) {
-  return (
-    <div className="space-y-4">
-      <h3 className="font-semibold">Notes & Comments</h3>
-      {/* Reuse EventTimeline for notes */}
-      <CompanyEventTimeline companyId={company.id} />
-    </div>
-  );
-}
+
