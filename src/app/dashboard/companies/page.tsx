@@ -71,12 +71,12 @@ export default function CompaniesPage() {
 
   if (isLoading) return <div className="p-8">Loading companies...</div>;
 
-  return (
-    <div className="p-8 space-y-8">
+return (
+    <div className="p-8 space-y-8 bg-background min-h-screen">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Companies</h1>
+          <h1 className="text-3xl font-bold text-foreground">Companies</h1>
           <p className="text-muted-foreground">Manage your target companies.</p>
         </div>
 
