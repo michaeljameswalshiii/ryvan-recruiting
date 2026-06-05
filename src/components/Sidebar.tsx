@@ -31,18 +31,16 @@ export default function Sidebar() {
       <div className="p-4 font-bold text-2xl border-b border-gray-200 dark:border-slate-700 flex items-center justify-between">
         <span>RyVan Recruiting</span>
         
-        {/* Theme Toggle */}
+        {/* Prominent Theme Toggle - RIGHT HERE */}
         <div className="flex gap-1">
           {themeOptions.map((option) => (
             <button
               key={option.value}
               onClick={() => setTheme(option.value)}
-              className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-all ${
-                theme === option.value
-                  ? "bg-blue-600 text-white"
-                  : "hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-slate-400"
+              className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg transition-all hover:scale-110 ${
+                theme === option.value ? "bg-blue-600 text-white shadow" : "hover:bg-gray-100 dark:hover:bg-slate-800"
               }`}
-              title={`${option.label} theme`}
+              title={option.label}
             >
               {option.icon}
             </button>
@@ -50,7 +48,8 @@ export default function Sidebar() {
         </div>
       </div>
 
-<nav className="flex-1 p-3 overflow-y-auto">
+      {/* Rest of your sidebar navigation stays the same */}
+      <nav className="flex-1 p-3 overflow-y-auto">
         {menuItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
@@ -70,27 +69,7 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Prominent Theme Toggle - Bigger & More Visible */}
-      <div className="flex items-center gap-2 mt-4 mb-6 px-3">
-        <div className="text-xs font-medium text-muted-foreground mr-2">THEME</div>
-        <div className="flex bg-muted p-1 rounded-xl">
-          {themeOptions.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => setTheme(option.value)}
-              className={`px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-all ${
-                theme === option.value 
-                  ? "bg-background shadow-sm text-foreground" 
-                  : "hover:bg-background/50 text-muted-foreground"
-              }`}
-            >
-              {option.icon}
-              <span>{option.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
+      {/* Bottom links */}
       <div className="p-4 border-t border-gray-200 dark:border-slate-700 mt-auto">
         <Link href="/settings" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-700 dark:text-slate-300">
           ⚙️ Settings
