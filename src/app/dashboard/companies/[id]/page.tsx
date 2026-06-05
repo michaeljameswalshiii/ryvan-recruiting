@@ -28,7 +28,7 @@ const CompanyEventTimeline = dynamic(() =>
 // Tab configuration
 const tabs = [
   { id: "overview", label: "Overview", icon: Building2 },
-  { id: "history", label: "History", icon: Clock },
+  { id: "history", label: "Timeline", icon: Clock },
   { id: "jobs", label: "Jobs", icon: Briefcase },
   { id: "contacts", label: "Contacts", icon: User },
 ];
