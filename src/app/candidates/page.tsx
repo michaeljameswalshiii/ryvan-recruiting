@@ -15,11 +15,13 @@ import { toast } from "sonner";
 type ViewMode = "list" | "pipeline";
 
 const pipelineStages = [
-  { id: "last18", label: "LAST 18", color: "bg-blue-500" },
-  { id: "submitted", label: "SUBMITTED", color: "bg-slate-500" },
+  { id: "new", label: "NEW", color: "bg-blue-500" },
+  { id: "contacted", label: "CONTACTED", color: "bg-cyan-500" },
+  { id: "qualified", label: "QUALIFIED", color: "bg-slate-500" },
+  { id: "screening", label: "SCREENING", color: "bg-indigo-500" },
   { id: "interview", label: "INTERVIEW", color: "bg-amber-500" },
-  { id: "offer", label: "OFFER OUT", color: "bg-orange-500" },
-  { id: "accepted", label: "ACCEPTED", color: "bg-green-500" },
+  { id: "offer", label: "OFFER", color: "bg-orange-500" },
+  { id: "hired", label: "HIRED", color: "bg-green-500" },
 ];
 
 // Format date for display
@@ -58,15 +60,15 @@ function getTimeAgo(dateStr: string | undefined): string {
 
 // Map lead status to pipeline stage
 function mapStatusToPipeline(status: string | undefined): string {
-  if (!status) return "last18";
-  const statusLower = status.toLowerCase();
+  if (!status) return "new";
+  const s = status.toLowerCase();
   
-  if (["accept", "accepted"].includes(statusLower)) return "accepted";
-  if (["interview"].includes(statusLower)) return "interview";
-  if (["presented", "offer"].includes(statusLower)) return "offer";
-  if (["contacted", "qualified", "interested", "conversation", "outreach"].includes(statusLower)) return "submitted";
+  if (["hired"].includes(s)) return "hired";
+  if (["offer"].includes(s)) return "offer";
+  if (["interview", "screening"].includes(s)) return s as string;
+  if (["qualified", "contacted"].includes(s)) return s as string;
   
-  return "last18";
+  return "new";
 }
 
 export default function CandidatesPage() {
@@ -102,14 +104,10 @@ export default function CandidatesPage() {
       .slice(0, 20);
   }, [filteredCandidates]);
 
-  // Group candidates by pipeline stage
+// Group candidates by pipeline stage
   const pipelineGroups = useMemo(() => {
     const groups: Record<string, any[]> = {
-      last18: [],
-      submitted: [],
-      interview: [],
-      offer: [],
-      accepted: [],
+      new: [], contacted: [], qualified: [], screening: [], interview: [], offer: [], hired: [],
     };
     
     filteredCandidates.forEach((lead: any) => {
@@ -124,11 +122,13 @@ export default function CandidatesPage() {
 
   // Pipeline counts
   const pipelineCounts = {
-    last18: pipelineGroups.last18.length,
-    submitted: pipelineGroups.submitted.length,
+    new: pipelineGroups.new.length,
+    contacted: pipelineGroups.contacted.length,
+    qualified: pipelineGroups.qualified.length,
+    screening: pipelineGroups.screening.length,
     interview: pipelineGroups.interview.length,
     offer: pipelineGroups.offer.length,
-    accepted: pipelineGroups.accepted.length,
+    hired: pipelineGroups.hired.length,
   };
 
   const handleRefresh = () => {
