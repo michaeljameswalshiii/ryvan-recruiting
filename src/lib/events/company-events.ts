@@ -101,17 +101,41 @@ export async function getCompanyEvents(
 export async function addNoteToCompany(
   companyId: string,
   noteText: string,
-  createdBy: string
+  createdBy: string,
+  noteType?: string
 ): Promise<RecordCompanyEventResponse> {
   if (!noteText?.trim()) return { success: false, error: 'Note text is required' };
+
+  // Get the note type label for display
+  const noteTypeLabel = noteType 
+    ? noteTypes.find(t => t.value === noteType)?.label || 'General Note'
+    : 'General Note';
 
   return recordCompanyEvent(
     companyId,
     'NOTE',
-    { title: 'Note Added', description: noteText.substring(0, 150) + (noteText.length > 150 ? '...' : ''), metadata: { noteText, changedBy: createdBy } },
+    { 
+      title: `Note - ${noteTypeLabel}`, 
+      description: noteText.substring(0, 150) + (noteText.length > 150 ? '...' : ''), 
+      metadata: { noteText, noteType, noteTypeLabel, changedBy: createdBy } 
+    },
     createdBy
   );
 }
+
+// Note types constants - used for display labels
+const noteTypes = [
+  { value: 'general', label: 'General Note' },
+  { value: 'phone_call', label: 'Phone call' },
+  { value: 'email_sent', label: 'Email sent' },
+  { value: 'meeting', label: 'Meeting' },
+  { value: 'follow_up', label: 'Follow-up' },
+  { value: 'proposal_sent', label: 'Proposal sent' },
+  { value: 'contract_signed', label: 'Contract signed' },
+  { value: 'placement_made', label: 'Placement made' },
+  { value: 'check_in', label: 'Check-in' },
+  { value: 'other', label: 'Other' },
+];
 
 export async function recordEmailSentToCompany(
   companyId: string,

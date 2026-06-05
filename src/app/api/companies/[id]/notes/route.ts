@@ -20,11 +20,11 @@ export async function POST(
         { error: 'Company ID is required' },
         { status: 400 }
       );
-    }
+}
 
     // Parse the request body
     const body = await request.json();
-    const { noteText, createdBy } = body;
+    const { noteText, noteType = 'general', createdBy } = body;
 
     if (!noteText || noteText.trim() === '') {
       return NextResponse.json(
@@ -36,7 +36,7 @@ export async function POST(
     // Use provided createdBy or default to 'system'
     const user = createdBy || 'system';
 
-    const result = await addNoteToCompany(id, noteText, user);
+    const result = await addNoteToCompany(id, noteText, user, noteType);
 
     if (!result.success) {
       return NextResponse.json(
