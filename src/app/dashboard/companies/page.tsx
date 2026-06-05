@@ -80,12 +80,17 @@ return (
           <p className="text-muted-foreground text-sm">Manage your target companies.</p>
         </div>
         
-        {/* Add Company - right aligned */}
-        <Button asChild className="sm:ml-auto">
-          <Link href="/dashboard/companies/new">
-            <Plus className="mr-2 h-4 w-4" /> Add Company
-          </Link>
-        </Button>
+        {/* Right aligned buttons */}
+        <div className="flex items-center gap-3 sm:ml-auto">
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+          </Button>
+          <Button asChild>
+            <Link href="/dashboard/companies/new">
+              <Plus className="mr-2 h-4 w-4" /> Add Company
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Centered Toggle - between header and pipeline overview */}

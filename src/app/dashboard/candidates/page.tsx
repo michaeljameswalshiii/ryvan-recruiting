@@ -296,9 +296,9 @@ export default function CandidatesPage() {
                 </div>
               ) : (
 recentCandidates.map((candidate: any) => (
-                  <Link
+<Link
                     key={candidate.id}
-                    href={`/candidates/${candidate.id}`}
+                    href={`/dashboard/candidates/${candidate.id}`}
                     className="grid grid-cols-7 gap-4 px-4 py-3 items-center hover:bg-muted/50 transition-colors"
                   >
                     {/* Candidate Column */}
@@ -393,10 +393,10 @@ recentCandidates.map((candidate: any) => (
                       Drag candidates here...
                     </div>
                   ) : (
-                    pipelineGroups[stage.id as keyof typeof pipelineGroups].map((candidate: any) => (
+pipelineGroups[stage.id as keyof typeof pipelineGroups].map((candidate: any) => (
                       <Link
                         key={candidate.id}
-                        href={`/candidates/${candidate.id}`}
+                        href={`/dashboard/candidates/${candidate.id}`}
                         className="block p-3 bg-background rounded-lg border shadow-sm hover:shadow-md transition-all"
                       >
                         <div className="flex items-start gap-2 mb-2">

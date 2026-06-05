@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ContactModal } from "@/components/company";
 import { useRemoveContact } from "@/lib/hooks/query-client";
-import { Building2, MapPin, Users, Globe, Linkedin, Mail, Phone, ArrowLeft, FileText, Clock, Briefcase, User, StickyNote, Plus, Star, Edit2, Trash2 } from "lucide-react";
+import { Building2, MapPin, Users, Globe, Linkedin, Mail, Phone, ArrowLeft, FileText, Clock, Briefcase, User, StickyNote, Plus, Star, Edit2, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 // Dynamic import for EventTimeline to avoid SSR issues
@@ -136,8 +136,14 @@ export default function CompanyDetailPage() {
           </div>
         </div>
         
-        {/* Action buttons */}
+{/* Action buttons */}
         <div className="flex gap-2">
+          <Button asChild>
+            <Link href={`/dashboard/companies/${company.id}/edit`}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit
+            </Link>
+          </Button>
           {company.linkedin_url && (
             <Button variant="outline" asChild>
               <a href={company.linkedin_url} target="_blank" rel="noopener noreferrer">
@@ -146,7 +152,6 @@ export default function CompanyDetailPage() {
               </a>
             </Button>
           )}
-{/* Website button removed - kept LinkedIn only */}
         </div>
       </div>
 
