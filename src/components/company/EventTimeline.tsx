@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // Event types matching the server types
 type CompanyEventType = 'NOTE' | 'STATUS_CHANGE' | 'COMPANY_ADDED' | 'CONTACT_ADDED';
@@ -24,11 +25,26 @@ interface CompanyEventTimelineProps {
   initialEvents?: CompanyEvent[];
 }
 
+// Note Types (exactly from user's screenshot)
+const noteTypes = [
+  { value: 'general', label: 'General Note' },
+  { value: 'phone_call', label: 'Phone call' },
+  { value: 'email_sent', label: 'Email sent' },
+  { value: 'meeting', label: 'Meeting' },
+  { value: 'follow_up', label: 'Follow-up' },
+  { value: 'proposal_sent', label: 'Proposal sent' },
+  { value: 'contract_signed', label: 'Contract signed' },
+  { value: 'placement_made', label: 'Placement made' },
+  { value: 'check_in', label: 'Check-in' },
+  { value: 'other', label: 'Other' },
+];
+
 export function CompanyEventTimeline({ companyId, initialEvents = [] }: CompanyEventTimelineProps) {
   const [events, setEvents] = useState<CompanyEvent[]>(initialEvents);
   const [loading, setLoading] = useState(!initialEvents.length);
   const [error, setError] = useState<string | null>(null);
   const [newNote, setNewNote] = useState('');
+  const [noteType, setNoteType] = useState('general');
   const [addingNote, setAddingNote] = useState(false);
 
   // Fetch events on mount if not provided
@@ -53,7 +69,7 @@ export function CompanyEventTimeline({ companyId, initialEvents = [] }: CompanyE
     }
   }
 
-  async function handleAddNote() {
+async function handleAddNote() {
     if (!newNote.trim()) return;
     
     try {
@@ -63,6 +79,7 @@ export function CompanyEventTimeline({ companyId, initialEvents = [] }: CompanyE
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           noteText: newNote,
+          noteType: noteType,
           createdBy: 'user@turnkey.com' // TODO: Get from auth session
         }),
       });
@@ -72,14 +89,15 @@ export function CompanyEventTimeline({ companyId, initialEvents = [] }: CompanyE
       const data = await response.json();
       if (data.success) {
         setNewNote('');
+        setNoteType('general');
         // Refresh events
         await fetchEvents();
-        toast.success('Note added successfully');
+        toast.success('Note saved successfully');
       }
     } catch (err) {
       console.error('Failed to add note:', err);
       setError('Failed to add note');
-      toast.error('Failed to add note');
+      toast.error('Failed to save note');
     } finally {
       setAddingNote(false);
     }
@@ -142,31 +160,51 @@ export function CompanyEventTimeline({ companyId, initialEvents = [] }: CompanyE
         Activity Timeline
       </h3>
 
-      {/* Add Note Form */}
+{/* Add Note Form */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <textarea
-          placeholder="Add a note..."
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          rows={3}
-          style={{
-            width: '100%',
-            padding: '0.5rem',
-            border: '1px solid #d1d5db',
-            borderRadius: '0.375rem',
-            marginBottom: '0.75rem',
-            fontSize: '0.875rem',
-            fontFamily: 'inherit',
-            resize: 'vertical'
-          }}
-        ></textarea>
+        <div style={{ marginBottom: '0.75rem' }}>
+          <label style={{ fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.375rem', display: 'block' }}>Note Type</label>
+          <Select value={noteType} onValueChange={setNoteType}>
+            <SelectTrigger style={{ width: '100%' }}>
+              <SelectValue placeholder="Select type" />
+            </SelectTrigger>
+            <SelectContent>
+              {noteTypes.map((type) => (
+                <SelectItem key={type.value} value={type.value}>
+                  {type.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div style={{ marginBottom: '0.75rem' }}>
+          <label style={{ fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.375rem', display: 'block' }}>Notes</label>
+          <textarea
+            placeholder="Enter notes, paste emails, paste job descriptions, or any relevant info about this account..."
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            rows={4}
+            style={{
+              width: '100%',
+              resize: 'vertical',
+              minHeight: '100px',
+              padding: '0.75rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.375rem',
+              fontSize: '0.875rem',
+              fontFamily: 'inherit',
+            }}
+          ></textarea>
+        </div>
+        
         <button 
           onClick={handleAddNote} 
           disabled={addingNote || !newNote.trim()}
           style={{
             width: '100%',
             padding: '0.5rem 1rem',
-            backgroundColor: newNote.trim() && !addingNote ? '#2563eb' : '#93c5fd',
+            backgroundColor: newNote.trim() && !addingNote ? '#2563eb' : '#93c5fed',
             color: 'white',
             border: 'none',
             borderRadius: '0.375rem',
@@ -175,7 +213,7 @@ export function CompanyEventTimeline({ companyId, initialEvents = [] }: CompanyE
             fontWeight: '500'
           }}
         >
-          {addingNote ? 'Adding...' : 'Add Note'}
+          {addingNote ? 'Saving...' : 'Save Note'}
         </button>
       </div>
 
