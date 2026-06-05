@@ -24,7 +24,7 @@ export async function POST(
 
 // Parse the request body
     const body = await request.json();
-    const { noteText, createdBy, stage } = body;
+    const { noteText, noteType = 'general', createdBy, stage } = body;
 
     if (!noteText || noteText.trim() === '') {
       return NextResponse.json(
@@ -36,9 +36,10 @@ export async function POST(
     // Use provided createdBy or default to 'system'
     const user = createdBy || 'system';
 
-    // Include pipeline stage in metadata for context
+    // Include pipeline stage and noteType in metadata for context
     const result = await addNoteToCandidate(id, noteText, user, {
       stage: stage || null,
+      noteType: noteType,
     });
 
     if (!result.success) {

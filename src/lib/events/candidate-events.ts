@@ -272,13 +272,27 @@ export async function getCandidateEvents(
   }
 }
 
+// Note types constants - used for display labels
+const candidateNoteTypes = [
+  { value: 'general', label: 'General Note' },
+  { value: 'phone_call', label: 'Phone call' },
+  { value: 'email_sent', label: 'Email sent' },
+  { value: 'meeting', label: 'Meeting' },
+  { value: 'follow_up', label: 'Follow-up' },
+  { value: 'proposal_sent', label: 'Proposal sent' },
+  { value: 'contract_signed', label: 'Contract signed' },
+  { value: 'placement_made', label: 'Placement made' },
+  { value: 'check_in', label: 'Check-in' },
+  { value: 'other', label: 'Other' },
+];
+
 /**
  * Add a note to a candidate
  * 
  * @param candidateId - The candidate ID
  * @param noteText - The note text
  * @param createdBy - User email or ID who added the note
- * @param options - Optional additional metadata (e.g., stage for context)
+ * @param options - Optional additional metadata (e.g., stage, noteType for context)
  * @returns Result with success status
  */
 export async function addNoteToCandidate(
@@ -287,6 +301,7 @@ export async function addNoteToCandidate(
   createdBy: string,
   options?: {
     stage?: string | null;
+    noteType?: string;
     [key: string]: unknown;
   }
 ): Promise<RecordEventResponse> {
@@ -297,9 +312,15 @@ export async function addNoteToCandidate(
     };
   }
 
-// Build metadata, including optional stage if provided
+  // Get the note type label for display
+  const noteTypeValue = options?.noteType || 'general';
+  const noteTypeLabel = candidateNoteTypes.find(t => t.value === noteTypeValue)?.label || 'General Note';
+
+  // Build metadata, including optional stage and noteType if provided
   const metadata: Record<string, unknown> = {
     noteText,
+    noteType: noteTypeValue,
+    noteTypeLabel,
     changedBy: createdBy,
   };
   
@@ -311,7 +332,7 @@ export async function addNoteToCandidate(
     candidateId,
     'NOTE',
     {
-      title: 'Note Added',
+      title: `Note - ${noteTypeLabel}`,
       description: noteText.substring(0, 100) + (noteText.length > 100 ? '...' : ''),
       metadata,
     },

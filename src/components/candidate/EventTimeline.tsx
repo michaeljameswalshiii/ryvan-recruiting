@@ -22,11 +22,26 @@ interface EventTimelineProps {
   initialEvents?: CandidateEvent[];
 }
 
+// Note Types
+const noteTypes = [
+  { value: 'general', label: 'General Note' },
+  { value: 'phone_call', label: 'Phone call' },
+  { value: 'email_sent', label: 'Email sent' },
+  { value: 'meeting', label: 'Meeting' },
+  { value: 'follow_up', label: 'Follow-up' },
+  { value: 'proposal_sent', label: 'Proposal sent' },
+  { value: 'contract_signed', label: 'Contract signed' },
+  { value: 'placement_made', label: 'Placement made' },
+  { value: 'check_in', label: 'Check-in' },
+  { value: 'other', label: 'Other' },
+];
+
 export function EventTimeline({ candidateId, initialEvents = [] }: EventTimelineProps) {
   const [events, setEvents] = useState<CandidateEvent[]>(initialEvents);
   const [loading, setLoading] = useState(!initialEvents.length);
   const [error, setError] = useState<string | null>(null);
   const [newNote, setNewNote] = useState('');
+  const [noteType, setNoteType] = useState('general');
   const [addingNote, setAddingNote] = useState(false);
 
   // Fetch events on mount if not provided
@@ -61,7 +76,8 @@ export function EventTimeline({ candidateId, initialEvents = [] }: EventTimeline
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           noteText: newNote,
-          createdBy: 'user@turnkey.com' // In real app, get from auth
+          noteType,
+          createdBy: 'user@turnkey.com'
         }),
       });
       
@@ -70,7 +86,7 @@ export function EventTimeline({ candidateId, initialEvents = [] }: EventTimeline
       const data = await response.json();
       if (data.success) {
         setNewNote('');
-        // Refresh events
+        setNoteType('general');
         await fetchEvents();
       }
     } catch (err) {
@@ -138,37 +154,77 @@ export function EventTimeline({ candidateId, initialEvents = [] }: EventTimeline
         Activity Timeline
       </h3>
 
-      {/* Add Note Form */}
-      <div style={{ marginBottom: '1.5rem' }}>
-<textarea
-          placeholder="Add a note..."
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          rows={3}
-          style={{
-            width: '100%',
-            padding: '0.5rem',
-            border: '1px solid #d1d5db',
-            borderRadius: '0.375rem',
-            marginBottom: '0.75rem',
-            fontSize: '0.875rem',
-            fontFamily: 'inherit',
-            resize: 'vertical'
-          }}
-        ></textarea>
+      {/* Add Note Form - WITH NOTE TYPE */}
+      <div style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', backgroundColor: '#f9fafb' }}>
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ 
+            display: 'block', 
+            fontSize: '0.875rem', 
+            fontWeight: '600', 
+            marginBottom: '0.5rem',
+            color: '#111827'
+          }}>
+            Note Type
+          </label>
+          <select
+            value={noteType}
+            onChange={(e) => setNoteType(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.375rem',
+              fontSize: '0.95rem',
+              backgroundColor: 'white'
+            }}
+          >
+            {noteTypes.map((type) => (
+              <option key={type.value} value={type.value}>
+                {type.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ 
+            display: 'block', 
+            fontSize: '0.875rem', 
+            fontWeight: '600', 
+            marginBottom: '0.5rem',
+            color: '#111827'
+          }}>
+            Notes
+          </label>
+          <textarea
+            placeholder="Add a note..."
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            rows={3}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.375rem',
+              resize: 'vertical',
+              fontSize: '0.875rem'
+            }}
+          />
+        </div>
+
         <button 
           onClick={handleAddNote} 
           disabled={addingNote || !newNote.trim()}
           style={{
             width: '100%',
-            padding: '0.5rem 1rem',
-            backgroundColor: newNote.trim() && !addingNote ? '#2563eb' : '#93c5fd',
+            padding: '0.75rem',
+            backgroundColor: '#2563eb',
             color: 'white',
             border: 'none',
             borderRadius: '0.375rem',
-            cursor: newNote.trim() && !addingNote ? 'pointer' : 'not-allowed',
-            fontSize: '0.875rem',
-            fontWeight: '500'
+            fontWeight: '600',
+            cursor: (addingNote || !newNote.trim()) ? 'not-allowed' : 'pointer',
+            opacity: (addingNote || !newNote.trim()) ? 0.6 : 1
           }}
         >
           {addingNote ? 'Adding...' : 'Add Note'}
