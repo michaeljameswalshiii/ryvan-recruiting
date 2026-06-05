@@ -770,8 +770,8 @@ toast.success('Candidate updated successfully');
                 </div>
               )}
 
-{/* === NOTES SECTION (LIGHT MODE FRIENDLY) === */}
-<div className="bg-white border border-border rounded-xl p-6 shadow-sm">
+{/* === NOTES SECTION (Dark Mode Friendly) === */}
+<div className="bg-card border border-border rounded-xl p-6 shadow-sm">
   <div className="flex items-center justify-between mb-5">
     <h3 className="text-lg font-semibold flex items-center gap-2">
       📝 Notes
@@ -793,10 +793,10 @@ toast.success('Candidate updated successfully');
     <select
       value={noteType}
       onChange={(e) => setNoteType(e.target.value)}
-      className="w-full p-3 border border-input rounded-lg bg-white focus:ring-2 focus:ring-primary focus:border-primary text-sm"
+      className="w-full p-3 border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary text-sm"
     >
       {noteTypes.map((type: any) => (
-        <option key={type.value} value={type.value}>
+        <option key={type.value} value={type.value} className="bg-background text-foreground">
           {type.label}
         </option>
       ))}
@@ -812,7 +812,7 @@ toast.success('Candidate updated successfully');
       value={newNote}
       onChange={(e) => setNewNote(e.target.value)}
       placeholder="Add a note about this candidate..."
-      className="min-h-[120px] resize-y bg-white border-input"
+      className="min-h-[120px] resize-y bg-background border-input text-foreground"
     />
   </div>
 
@@ -824,9 +824,9 @@ toast.success('Candidate updated successfully');
     {addingNote ? 'Adding Note...' : 'Add Note'}
   </Button>
 
-  {/* Quick view of existing notes (optional) */}
+  {/* Recent notes preview */}
   {notes && notes.length > 0 && (
-    <div className="mt-6 pt-4 border-t">
+    <div className="mt-6 pt-4 border-t border-border">
       <p className="text-xs text-muted-foreground mb-2">Recent Notes</p>
       {notes.slice(0, 2).map((note: any) => (
         <div key={note.id} className="text-sm text-muted-foreground py-1">
