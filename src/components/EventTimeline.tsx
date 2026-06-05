@@ -76,6 +76,23 @@ interface EventTimelineProps {
 }
 
 // ============================================================================
+// Note Types (exactly from user's screenshot)
+// ============================================================================
+
+const noteTypes = [
+  { value: 'general', label: 'General Note' },
+  { value: 'phone_call', label: 'Phone call' },
+  { value: 'email_sent', label: 'Email sent' },
+  { value: 'meeting', label: 'Meeting' },
+  { value: 'follow_up', label: 'Follow-up' },
+  { value: 'proposal_sent', label: 'Proposal sent' },
+  { value: 'contract_signed', label: 'Contract signed' },
+  { value: 'placement_made', label: 'Placement made' },
+  { value: 'check_in', label: 'Check-in' },
+  { value: 'other', label: 'Other' },
+];
+
+// ============================================================================
 // Component
 // ============================================================================
 
@@ -90,6 +107,7 @@ export default function EventTimeline({
   const [loading, setLoading] = useState(!initialEvents.length);
   const [error, setError] = useState<string | null>(null);
   const [newNote, setNewNote] = useState('');
+  const [noteType, setNoteType] = useState('general');
   const [addingNote, setAddingNote] = useState(false);
 
 const fetchEvents = useCallback(async () => {
@@ -126,7 +144,7 @@ const fetchEvents = useCallback(async () => {
     }
   }, [initialEvents.length, fetchEvents]);
 
-  const handleAddNote = async () => {
+const handleAddNote = async () => {
     if (!newNote.trim()) return;
     
     try {
@@ -142,7 +160,8 @@ const fetchEvents = useCallback(async () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           noteText: newNote,
-          tenantId,
+          noteType: noteType,
+          createdBy: 'user@turnkey.com'
         }),
       });
       
@@ -153,6 +172,7 @@ const fetchEvents = useCallback(async () => {
 const data = await response.json();
       if (data.success) {
         setNewNote('');
+        setNoteType('general');
         // Add a small delay to ensure the write completes before refetching
         await new Promise(resolve => setTimeout(resolve, 300));
         // Refresh events list with timestamp to prevent caching
@@ -300,15 +320,33 @@ const data = await response.json();
         </p>
       </div>
 
-      {/* Add Note Form */}
+{/* Add Note Form - WITH NOTE TYPE */}
       <div className="border-b border-border p-4">
-        <textarea
-          placeholder="Add a note..."
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          rows={2}
-          className="w-full p-2 text-sm border border-input rounded-md resize-y min-h-[60px]"
-        />
+        <div className="mb-3">
+          <label className="text-sm font-medium mb-2 block">Note Type</label>
+          <select
+            value={noteType}
+            onChange={(e) => setNoteType(e.target.value)}
+            className="w-full p-2 text-sm border border-input rounded-md bg-background"
+          >
+            {noteTypes.map((type) => (
+              <option key={type.value} value={type.value}>
+                {type.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="mb-3">
+          <label className="text-sm font-medium mb-2 block">Notes</label>
+          <textarea
+            placeholder="Add a note..."
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            rows={2}
+            className="w-full p-2 text-sm border border-input rounded-md resize-y min-h-[60px]"
+          />
+        </div>
         <button 
           onClick={handleAddNote} 
           disabled={addingNote || !newNote.trim()}
