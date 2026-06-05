@@ -3,9 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-// Event types matching the server types
+// Event types
 type CompanyEventType = 'NOTE' | 'STATUS_CHANGE' | 'COMPANY_ADDED' | 'CONTACT_ADDED';
 
 interface CompanyEvent {
@@ -164,18 +163,24 @@ async function handleAddNote() {
       <div style={{ marginBottom: '1.5rem' }}>
         <div style={{ marginBottom: '0.75rem' }}>
           <label style={{ fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.375rem', display: 'block' }}>Note Type</label>
-          <Select value={noteType} onValueChange={setNoteType}>
-            <SelectTrigger style={{ width: '100%' }}>
-              <SelectValue placeholder="Select type" />
-            </SelectTrigger>
-            <SelectContent>
-              {noteTypes.map((type) => (
-                <SelectItem key={type.value} value={type.value}>
-                  {type.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <select
+            value={noteType}
+            onChange={(e) => setNoteType(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.375rem',
+              fontSize: '0.875rem',
+              backgroundColor: 'white',
+            }}
+          >
+            {noteTypes.map((type) => (
+              <option key={type.value} value={type.value}>
+                {type.label}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div style={{ marginBottom: '0.75rem' }}>
@@ -204,7 +209,7 @@ async function handleAddNote() {
           style={{
             width: '100%',
             padding: '0.5rem 1rem',
-            backgroundColor: newNote.trim() && !addingNote ? '#2563eb' : '#93c5fed',
+            backgroundColor: newNote.trim() && !addingNote ? '#2563eb' : '#93c5fd',
             color: 'white',
             border: 'none',
             borderRadius: '0.375rem',
