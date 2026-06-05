@@ -146,14 +146,7 @@ export default function CompanyDetailPage() {
               </a>
             </Button>
           )}
-          {company.domain && (
-            <Button variant="outline" asChild>
-              <a href={`https://${company.domain}`} target="_blank" rel="noopener noreferrer">
-                <Globe className="mr-2 h-4 w-4" />
-                Website
-              </a>
-            </Button>
-          )}
+{/* Website button removed - kept LinkedIn only */}
         </div>
       </div>
 

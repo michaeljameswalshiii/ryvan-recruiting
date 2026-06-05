@@ -174,11 +174,11 @@ return (
         </Card>
       )}
 
-      {/* PIPELINE VIEW */}
+{/* PIPELINE VIEW - aligned with overview grid */}
       {viewMode === "pipeline" && (
-        <div className="flex gap-4 overflow-x-auto pb-8">
+        <div className="grid grid-cols-5 gap-4 overflow-x-auto pb-8" style={{ minWidth: '1000px' }}>
           {companyStages.map((stage) => (
-            <div key={stage.id} className="flex-shrink-0 w-80">
+            <div key={stage.id} className="min-w-0">
               <div className="bg-muted p-4 rounded-t-lg flex justify-between items-center">
                 <div className="flex items-center gap-3">
                   <div className={`w-4 h-4 rounded-full ${stage.color}`} />
