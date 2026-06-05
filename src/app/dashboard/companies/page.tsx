@@ -1,66 +1,15 @@
-/**
- * Companies Page
- * Shows saved companies from DB + allows adding new ones + moving through pipeline
- * Supports drag-and-drop to move companies between stages
- */
-
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Building2, MapPin, Users, Globe, Linkedin, Search, ExternalLink, FileText, X, Loader2, Mail, LayoutList, Kanban } from "lucide-react";
+import { Search, Plus, RefreshCw, LayoutList, Kanban, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { SimpleDialog } from "@/components/ui/simple-dialog";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { useClients, useCreateClient, useUpdateClient, useUpdateClientStatus, useDeleteClient, clientKeys } from "@/lib/hooks/query-client";
+import { Card, CardContent } from "@/components/ui/card";
+import { useClients, useUpdateClientStatus } from "@/lib/hooks/query-client";
 import { toast } from "sonner";
-import CompanyEditModal from "@/components/company/CompanyEditModal";
-import { Pencil, Trash2, GripVertical } from "lucide-react";
-// Drag and drop imports
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-  DragStartEvent,
-  DragOverlay,
-  defaultDropAnimationSideEffects,
-  DropAnimation,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { useDroppable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
 
-interface Company {
-  id: string;
-  name: string;
-  domain?: string;
-  linkedin_url?: string;
-  city?: string;
-  state?: string;
-  country?: string;
-  employee_count?: number;
-  industry?: string;
-  revenue?: string;
-  description?: string;
-  status?: string;
-}
-
-// Use company stages for pipeline view - 5 stages
 const companyStages = [
   { id: "targeting", label: "Targeting", color: "bg-blue-500" },
   { id: "active", label: "Active Client", color: "bg-green-500" },
@@ -69,604 +18,114 @@ const companyStages = [
   { id: "closed", label: "Closed", color: "bg-red-500" },
 ];
 
-// Drop animation config
-const dropAnimation: DropAnimation = {
-  sideEffects: defaultDropAnimationSideEffects({
-    styles: {
-      active: {
-        opacity: "0.5",
-      },
-    },
-  }),
-};
-
-// Map legacy status to company stage
-function mapLegacyStatus(status?: string): string {
-  if (!status) return "targeting";
-  if (companyStages.find(s => s.id === status)) {
-    return status;
-  }
-  return "targeting";
-}
-
-// Sortable Company Card Component
-function SortableCompanyCard({
-  company,
-  onRefresh,
-  onDelete,
-}: {
-  company: Company;
-  onRefresh: () => void;
-  onDelete: (companyId: string) => void;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: company.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-// Get stage label from status
-  const stageLabel =
-    companyStages.find((s) => s.id === company.status)?.label || "New";
-
-  const handleDelete = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (confirm(`Are you sure you want to delete ${company.name}?`)) {
-      onDelete(company.id);
-    }
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`p-3 rounded-lg border border-border bg-background hover:border-primary transition-colors ${
-        isDragging ? "opacity-50 ring-2 ring-primary" : ""
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <Link
-            href={`/dashboard/companies/${company.id}`}
-            className="font-medium text-sm truncate hover:text-primary transition-colors"
-          >
-            {company.name}
-          </Link>
-          {company.industry && (
-            <p className="text-xs text-muted-foreground truncate">
-              {company.industry}
-            </p>
-          )}
-          {company.city && (
-            <p className="text-xs text-muted-foreground truncate">
-              {company.city}, {company.state}
-            </p>
-          )}
-        </div>
-        {/* Drag handle */}
-        <button
-          {...attributes}
-          {...listeners}
-          className="cursor-grab active:cursor-grabbing p-1 text-muted-foreground hover:text-foreground"
-          title="Drag to move"
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
-      </div>
-
-      {/* Status Badge */}
-      <Badge variant="outline" className="mt-2 text-xs capitalize">
-        {stageLabel}
-      </Badge>
-
-      {/* Action buttons row */}
-      <div className="flex flex-wrap gap-1 mt-2">
-        <CompanyEditModal company={company} onSave={onRefresh}>
-          <button
-            type="button"
-            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-            title="Edit Company"
-          >
-            <Pencil className="h-3 w-3" />
-            <span>Edit</span>
-          </button>
-        </CompanyEditModal>
-        <button
-          type="button"
-          onClick={handleDelete}
-          className="text-xs text-muted-foreground hover:text-destructive flex items-center gap-1"
-          title="Delete Company"
-        >
-          <Trash2 className="h-3 w-3" />
-          <span>Delete</span>
-        </button>
-</div>
-    </div>
-  );
-}
-
-// Column Component (Droppable)
-function StageColumn({
-  stage,
-  companies,
-  onRefresh,
-  onDelete,
-}: {
-  stage: { id: string; label: string; color: string };
-  companies: Company[];
-  onRefresh: () => void;
-  onDelete: (companyId: string) => void;
-}) {
-  // Make the column droppable using the stage id
-  const { setNodeRef, isOver } = useDroppable({
-    id: stage.id,
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`rounded-lg border border-border bg-card min-h-[400px] flex flex-col transition-colors ${
-        isOver ? 'border-primary bg-accent/20' : ''
-      }`}
-    >
-      <div className="p-3 border-b border-border">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm">{stage.label}</h3>
-          <Badge variant="secondary" className="text-xs">
-            {companies.length || 0}
-          </Badge>
-        </div>
-      </div>
-      <div className="p-2 space-y-2 flex-1 overflow-y-auto">
-        <SortableContext
-          items={companies.map((c) => c.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          {companies.map((company) => (
-            <SortableCompanyCard
-              key={company.id}
-              company={company}
-              onRefresh={onRefresh}
-              onDelete={onDelete}
-            />
-          ))}
-        </SortableContext>
-      </div>
-    </div>
-  );
-}
-
 export default function CompaniesPage() {
-  const queryClient = useQueryClient();
-const [searchQuery, setSearchQuery] = useState("");
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "pipeline">("list");
 
-  // Setup sensors for drag detection
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  const { data: companies = [], isLoading } = useClients();
+  const updateStatus = useUpdateClientStatus();
 
-  // Use TanStack Query hooks - fetches from DB via server actions
-  const { data: clients = [], isLoading, error } = useClients();
-  const createClientMutation = useCreateClient();
-  const updateStatusMutation = useUpdateClientStatus();
-  const deleteClientMutation = useDeleteClient();
-
-  // Handle drag start
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
-  };
-
-  // Handle drag end - update status when dropped in different column
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null);
-
-    if (!over) return;
-
-    const companyId = active.id as string;
-    const oldCompany = companies.find((c) => c.id === companyId);
-
-    if (!oldCompany) return;
-
-    // Find which stage the company was dropped over
-    let newStatus: string | null = null;
-
-// If dropped over a stage column
-    const overStage = companyStages.find((s) => s.id === over.id);
-    if (overStage) {
-      newStatus = overStage.id;
-    } else {
-      // Dropped over another company - find their stage
-      const overCompany = companies.find((c) => c.id === over.id);
-      if (overCompany && overCompany.status) {
-        newStatus = overCompany.status;
-      }
-    }
-
-    // Default to targeting if no valid status found
-    if (!newStatus || !companyStages.find((s) => s.id === newStatus)) {
-      newStatus = "targeting";
-    }
-
-    // Get the current status from oldCompany (already mapped)
-    const oldStatus = oldCompany.status || "targeting";
-
-    // Only update if status actually changed
-    if (newStatus && newStatus !== oldStatus) {
-      try {
-        await updateStatusMutation.mutateAsync({
-          clientId: companyId,
-          status: newStatus,
-        });
-        queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
-        toast.success(`Moved to ${companyStages.find((s) => s.id === newStatus)?.label || newStatus}`);
-      } catch (err: any) {
-        console.error("Failed to update company status:", err);
-        toast.error(`Failed to move: ${err.message}`);
-      }
-    }
-  };
-
-  // Handle delete company
-  const handleDeleteCompany = async (companyId: string) => {
-    try {
-      await deleteClientMutation.mutateAsync(companyId);
-      toast.success("Company deleted");
-    } catch (err: any) {
-      console.error("Failed to delete company:", err);
-      toast.error(`Failed to delete: ${err.message}`);
-    }
-  };
-
-  // Form state
-  const [newCompanyName, setNewCompanyName] = useState("");
-  const [newCompanyDomain, setNewCompanyDomain] = useState("");
-  const [newCompanyIndustry, setNewCompanyIndustry] = useState("");
-  const [newCompanyCity, setNewCompanyCity] = useState("");
-  const [newCompanyState, setNewCompanyState] = useState("");
-  const [newCompanyEmployeeCount, setNewCompanyEmployeeCount] = useState("");
-  const [newCompanyRevenue, setNewCompanyRevenue] = useState("");
-  const [newCompanyDescription, setNewCompanyDescription] = useState("");
-
-  // Filter clients based on search
-  const filteredClients = clients.filter((client: any) =>
-    client.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.industry?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.city?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-// Convert DB client to Company interface (include status with mapped legacy)
-  const companies: Company[] = filteredClients.map((c: any) => ({
-    id: c.id,
-    name: c.name || "",
-    domain: c.domain || "",
-    city: c.city || "",
-    state: c.state || "",
-    country: c.country || "",
-    employee_count: c.employee_count || 0,
-    industry: c.industry || "",
-    revenue: c.revenue || "",
-    description: c.description || "",
-    linkedin_url: c.linkedin_url || "",
-    status: mapLegacyStatus(c.status),
-  }));
-
-// Group companies by status for pipeline view
-  const companiesByStage = companyStages.reduce((acc, stage) => {
-    acc[stage.id] = companies.filter(c => c.status === stage.id);
-    return acc;
-  }, {} as Record<string, Company[]>);
-
-const handleAddCompany = async () => {
-    if (!newCompanyName) return;
-
-    try {
-      // Build FormData for server action
-      const formData = new FormData();
-      formData.set("name", newCompanyName);
-      formData.set("email", `${Date.now()}@placeholder.com`);
-      formData.set("domain", newCompanyDomain);
-      formData.set("industry", newCompanyIndustry);
-      formData.set("city", newCompanyCity);
-      formData.set("state", newCompanyState);
-      formData.set("country", "US");
-      if (newCompanyEmployeeCount) {
-        formData.set("employee_count", newCompanyEmployeeCount);
-      }
-      formData.set("revenue", newCompanyRevenue);
-      formData.set("description", newCompanyDescription);
-
-      // Use mutation - handles DB save + query invalidation + toast
-      await createClientMutation.mutateAsync(formData);
-
-      // Success - close dialog and reset form
-      toast.success(`${newCompanyName} added successfully!`);
-      setIsAddDialogOpen(false);
-      resetForm();
-    } catch (error) {
-      // Error handling - show error message
-      console.error("Failed to add company:", error);
-      toast.error(`Failed to add ${newCompanyName}. Please try again.`);
-    }
-  };
-
-  const resetForm = () => {
-    setNewCompanyName("");
-    setNewCompanyDomain("");
-    setNewCompanyIndustry("");
-    setNewCompanyCity("");
-    setNewCompanyState("");
-    setNewCompanyEmployeeCount("");
-    setNewCompanyRevenue("");
-    setNewCompanyDescription("");
-  };
-
-  const handleRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    queryClient.invalidateQueries({ queryKey: ['stats'] });
-  };
-
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Companies</h1>
-          <p className="text-muted-foreground">Manage your target companies.</p>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="p-4 rounded-lg border border-border bg-card">
-              <Skeleton className="h-12 w-12 rounded-lg mb-3" />
-              <Skeleton className="h-4 w-3/4 mb-2" />
-              <Skeleton className="h-3 w-1/2" />
-            </div>
-          ))}
-        </div>
-      </div>
+  const filteredCompanies = useMemo(() => {
+    return companies.filter((c: any) =>
+      c.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.industry?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.location?.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }
+  }, [companies, searchQuery]);
 
-// Error state - show message for load errors
-  if (error) {
-    const errorMsg = error.message || '';
-    const isAuthError = errorMsg.includes('Unauthorized') || errorMsg.includes('Session') || errorMsg.includes('login');
+  const pipelineGroups = useMemo(() => {
+    const groups: Record<string, any[]> = {
+      targeting: [], active: [], onhold: [], past: [], closed: []
+    };
+    filteredCompanies.forEach((company: any) => {
+      const status = (company.status || "targeting").toLowerCase();
+      const stage = Object.keys(groups).find(key => status.includes(key)) || "targeting";
+      groups[stage].push(company);
+    });
+    return groups;
+  }, [filteredCompanies]);
 
-    // For auth errors, redirect to login
-    if (isAuthError) {
-      return (
-        <div className="space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold">Companies</h1>
-            <p className="text-muted-foreground">Manage your target companies.</p>
-          </div>
-          <div className="p-4 rounded-md bg-destructive/10 text-destructive">
-            Please log in to view companies.
-            <Button 
-              variant="outline" 
-              onClick={() => window.location.href = '/login'} 
-              className="ml-4"
-            >
-              Go to Login
-            </Button>
-          </div>
-        </div>
+  const pipelineCounts = {
+    targeting: pipelineGroups.targeting.length,
+    active: pipelineGroups.active.length,
+    onhold: pipelineGroups.onhold.length,
+    past: pipelineGroups.past.length,
+    closed: pipelineGroups.closed.length,
+  };
+
+// === Move All to Active ===
+  const moveAllToActive = async () => {
+    if (!confirm("Move ALL companies to Active Client?")) return;
+    
+    try {
+      await Promise.all(
+        companies.map((company: any) =>
+          updateStatus.mutateAsync({ clientId: company.id, status: "active" })
+        )
       );
+      toast.success("All companies moved to Active Client");
+    } catch (err) {
+      toast.error("Failed to update companies");
     }
+  };
 
-    // For other errors, show retry option
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Companies</h1>
-          <p className="text-muted-foreground">Manage your target companies.</p>
-        </div>
-        <div className="p-4 rounded-md bg-destructive/10 text-destructive">
-          Failed to load companies: {errorMsg}
-          <Button variant="outline" onClick={handleRefresh} className="ml-4">
-            Retry
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return <div className="p-8">Loading companies...</div>;
 
   return (
-    <div className="space-y-6">
+    <div className="p-8 space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Companies</h1>
-          <p className="text-muted-foreground">
-            Manage your target companies.
-          </p>
+          <p className="text-muted-foreground">Manage your target companies.</p>
         </div>
-<div className="flex gap-2">
-          {/* View Toggle */}
-          <div className="flex bg-muted rounded-lg p-1">
+
+        <div className="flex items-center gap-3">
+          <div className="flex bg-muted p-1 rounded-lg">
             <Button
               variant={viewMode === "list" ? "default" : "ghost"}
               size="sm"
               onClick={() => setViewMode("list")}
-              className="h-8 px-3"
             >
-              <LayoutList className="h-4 w-4 mr-1.5" />
-              <span className="hidden sm:inline">List</span>
+              <LayoutList className="mr-2 h-4 w-4" /> List
             </Button>
             <Button
               variant={viewMode === "pipeline" ? "default" : "ghost"}
               size="sm"
               onClick={() => setViewMode("pipeline")}
-              className="h-8 px-3"
             >
-              <Kanban className="h-4 w-4 mr-1.5" />
-              <span className="hidden sm:inline">Pipeline</span>
+              <Kanban className="mr-2 h-4 w-4" /> Pipeline
             </Button>
           </div>
-          
-          {/* Move All Companies to Active Client */}
-          <Button 
-            variant="outline" 
-            onClick={async () => {
-              if (companies.length === 0) {
-                toast.warning("No companies to move");
-                return;
-              }
-              if (!confirm(`Move all ${companies.length} companies to Active Client?`)) {
-                return;
-              }
-              try {
-                // Update each company to active status
-                for (const company of companies) {
-                  await updateStatusMutation.mutateAsync({
-                    clientId: company.id,
-                    status: "active",
-                  });
-                }
-                queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
-                toast.success(`All companies moved to Active Client`);
-              } catch (err: any) {
-                console.error("Failed to update companies:", err);
-                toast.error(`Failed to move companies: ${err.message}`);
-              }
-            }}
-            disabled={updateStatusMutation.isPending || companies.length === 0}
-          >
-            {updateStatusMutation.isPending ? "Moving..." : "Move All to Active"}
+
+          <Button variant="outline" onClick={moveAllToActive}>
+            Move All to Active
           </Button>
-          
-          <Button variant="outline" onClick={handleRefresh}>
-            Refresh
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            <RefreshCw className="mr-2 h-4 w-4" /> Refresh
           </Button>
-          <Button onClick={() => setIsAddDialogOpen(true)} disabled={createClientMutation.isPending}>
-            <Plus className="mr-2 h-4 w-4" />
-            {createClientMutation.isPending ? "Adding..." : "Add Company"}
+          <Button asChild>
+            <Link href="/dashboard/companies/new">
+              <Plus className="mr-2 h-4 w-4" /> Add Company
+            </Link>
           </Button>
         </div>
       </div>
 
-      {/* Add Company Dialog */}
-      <SimpleDialog
-        open={isAddDialogOpen}
-        onOpenChange={setIsAddDialogOpen}
-        title="Add New Company"
-        description="Add a new target company to your list."
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddCompany}
-              disabled={!newCompanyName || createClientMutation.isPending}
-            >
-              {createClientMutation.isPending ? "Adding..." : "Add Company"}
-            </Button>
-          </>
-        }
-      >
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="companyName">Company Name *</Label>
-            <Input
-              id="companyName"
-              value={newCompanyName}
-              onChange={(e) => setNewCompanyName(e.target.value)}
-              placeholder="ABC Construction Corp"
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="domain">Website</Label>
-            <Input
-              id="domain"
-              value={newCompanyDomain}
-              onChange={(e) => setNewCompanyDomain(e.target.value)}
-              placeholder="abconstr.com"
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="industry">Industry</Label>
-            <Input
-              id="industry"
-              value={newCompanyIndustry}
-              onChange={(e) => setNewCompanyIndustry(e.target.value)}
-              placeholder="Construction"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="grid gap-2">
-              <Label htmlFor="city">City</Label>
-              <Input
-                id="city"
-                value={newCompanyCity}
-                onChange={(e) => setNewCompanyCity(e.target.value)}
-                placeholder="Miami"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="state">State</Label>
-              <Input
-                id="state"
-                value={newCompanyState}
-                onChange={(e) => setNewCompanyState(e.target.value)}
-                placeholder="FL"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="grid gap-2">
-              <Label htmlFor="employees">Employees</Label>
-              <Input
-                id="employees"
-                type="number"
-                value={newCompanyEmployeeCount}
-                onChange={(e) => setNewCompanyEmployeeCount(e.target.value)}
-                placeholder="250"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="revenue">Revenue</Label>
-              <Input
-                id="revenue"
-                value={newCompanyRevenue}
-                onChange={(e) => setNewCompanyRevenue(e.target.value)}
-                placeholder="$25M-$50M"
-              />
-            </div>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={newCompanyDescription}
-              onChange={(e) => setNewCompanyDescription(e.target.value)}
-              placeholder="Brief description of the company..."
-            />
-          </div>
-        </div>
-      </SimpleDialog>
+      {/* Pipeline Overview */}
+      <div className="grid grid-cols-5 gap-4">
+        {companyStages.map((stage) => (
+          <Card key={stage.id} className="cursor-pointer hover:shadow-md" onClick={() => setViewMode("pipeline")}>
+            <CardContent className="p-6 text-center">
+              <div className={`w-4 h-4 rounded-full ${stage.color} mx-auto mb-3`} />
+              <p className="text-4xl font-bold">{pipelineCounts[stage.id as keyof typeof pipelineCounts]}</p>
+              <p className="text-sm text-muted-foreground mt-1">{stage.label}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-{/* Search */}
+      {/* Search */}
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -677,201 +136,73 @@ const handleAddCompany = async () => {
         />
       </div>
 
-{/* Pipeline Overview Cards (always visible above content) */}
-      {viewMode === "pipeline" && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {companyStages.map((stage) => (
-            <Card 
-              key={stage.id} 
-              className={`cursor-pointer transition-all hover:shadow-md ${
-                viewMode === "pipeline" ? "ring-2 ring-primary" : ""
-              }`}
-              onClick={() => setViewMode("pipeline")}
-            >
-              <CardContent className="py-3 px-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${stage.color}`} />
-                    <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
-                      {stage.label}
-                    </span>
-                  </div>
-                  <span className="text-xl font-bold">{companiesByStage[stage.id]?.length || 0}</span>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+      {/* LIST VIEW */}
+      {viewMode === "list" && (
+        <Card>
+          <CardContent className="p-0">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left p-4">COMPANY</th>
+                  <th className="text-left p-4">INDUSTRY</th>
+                  <th className="text-left p-4">LOCATION</th>
+                  <th className="text-left p-4">PRIMARY CONTACT</th>
+                  <th className="text-left p-4">OPEN ROLES</th>
+                  <th className="text-left p-4">STATUS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCompanies.map((company: any) => (
+                  <tr key={company.id} className="border-b hover:bg-muted/50">
+                    <td className="p-4 font-medium">{company.name}</td>
+                    <td className="p-4 text-muted-foreground">{company.industry || "-"}</td>
+                    <td className="p-4 text-muted-foreground">{company.location || "-"}</td>
+                    <td className="p-4 text-muted-foreground">-</td>
+                    <td className="p-4 text-muted-foreground">{company.openRoles || 0}</td>
+                    <td className="p-4">
+                      <Badge variant="outline">{company.status || "Targeting"}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
       )}
 
-{/* Content: List View */}
-      {viewMode === "list" && (
-        <div className="rounded-md border bg-card">
-          {/* Table Header */}
-          <div className="grid grid-cols-6 gap-4 px-4 py-3 bg-muted/50 text-sm font-medium text-muted-foreground border-b">
-            <div className="col-span-2">COMPANY</div>
-            <div>INDUSTRY</div>
-            <div className="hidden md:block">LOCATION</div>
-            <div className="hidden lg:block">PRIMARY CONTACT</div>
-            <div>STATUS</div>
-          </div>
-          
-          {/* Table Body */}
-          <div className="divide-y">
-            {companies.length === 0 ? (
-              <div className="py-12 text-center text-muted-foreground">
-                <Building2 className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>No companies found</p>
-                {searchQuery && (
-                  <Button 
-                    variant="link" 
-                    onClick={() => setSearchQuery("")}
-                    className="mt-2"
-                  >
-                    Clear search
-                  </Button>
+      {/* PIPELINE VIEW */}
+      {viewMode === "pipeline" && (
+        <div className="flex gap-4 overflow-x-auto pb-8">
+          {companyStages.map((stage) => (
+            <div key={stage.id} className="flex-shrink-0 w-80">
+              <div className="bg-muted p-4 rounded-t-lg flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className={`w-4 h-4 rounded-full ${stage.color}`} />
+                  <span className="font-semibold">{stage.label}</span>
+                </div>
+                <Badge>{pipelineGroups[stage.id].length}</Badge>
+              </div>
+
+              <div className="min-h-[600px] border border-dashed border-muted-foreground/30 rounded-b-lg p-3 space-y-3">
+                {pipelineGroups[stage.id].map((company: any) => (
+                  <div key={company.id} className="bg-card border rounded-lg p-4 hover:shadow-md transition-all">
+                    <div className="flex items-start gap-3">
+                      <Building2 className="mt-1 text-muted-foreground" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{company.name}</p>
+                        <p className="text-sm text-muted-foreground">{company.location || "No location"}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {pipelineGroups[stage.id].length === 0 && (
+                  <div className="h-full flex items-center justify-center text-muted-foreground text-sm py-12">
+                    Drag companies here...
+                  </div>
                 )}
               </div>
-            ) : (
-              companies.map((company: Company) => (
-                <Link
-                  key={company.id}
-                  href={`/dashboard/companies/${company.id}`}
-                  className="grid grid-cols-6 gap-4 px-4 py-3 items-center hover:bg-muted/50 transition-colors"
-                >
-                  {/* Company Column */}
-                  <div className="col-span-2 flex items-center gap-3">
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">{company.name}</p>
-                      {company.domain && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          {company.domain}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Industry */}
-                  <div className="text-sm text-muted-foreground truncate">
-                    {company.industry || "-"}
-                  </div>
-                  
-                  {/* Location */}
-                  <div className="hidden md:block text-sm text-muted-foreground truncate">
-                    {company.city && company.state 
-                      ? `${company.city}, ${company.state}` 
-                      : company.city || company.state || "-"}
-                  </div>
-                  
-                  {/* Primary Contact - placeholder */}
-                  <div className="hidden lg:block">
-                    <Badge variant="outline" className="text-xs">
-                      -
-                    </Badge>
-                  </div>
-                  
-                  {/* Status */}
-                  <div>
-                    <Badge
-                      variant={company.status === "active" ? "default" : "outline"}
-                      className="text-xs"
-                    >
-                      {companyStages.find((s) => s.id === company.status)?.label || company.status || "New"}
-                    </Badge>
-                  </div>
-                </Link>
-              ))
-)}
-          </div>
-        </div>
-      )}
-
-      {/* Content: Pipeline View (Kanban) - Simple columns without drag-and-drop */}
-      {viewMode === "pipeline" && (
-        <div className="grid grid-cols-5 gap-2">
-          {companyStages.map((stage) => {
-            const stageCompanies = companiesByStage[stage.id] || [];
-            return (
-              <div
-                key={stage.id}
-                className="rounded-lg border border-border bg-card min-h-[300px] flex flex-col"
-              >
-                <div className="p-3 border-b border-border">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-sm">{stage.label}</h3>
-                    <Badge variant="secondary" className="text-xs">
-                      {stageCompanies.length || 0}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="p-2 space-y-2 flex-1 overflow-y-auto">
-                  {stageCompanies.length === 0 ? (
-                    <div className="flex items-center justify-center h-24 text-sm text-muted-foreground italic text-center p-2">
-                      Drag companies here...
-                    </div>
-                  ) : (
-                    stageCompanies.map((company: Company) => (
-                      <div
-                        key={company.id}
-                        className="p-3 rounded-lg border border-border bg-background hover:border-primary transition-colors"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <Link
-                              href={`/dashboard/companies/${company.id}`}
-                              className="font-medium text-sm truncate hover:text-primary transition-colors"
-                            >
-                              {company.name}
-                            </Link>
-                            {company.industry && (
-                              <p className="text-xs text-muted-foreground truncate">
-                                {company.industry}
-                              </p>
-                            )}
-                            {company.city && (
-                              <p className="text-xs text-muted-foreground truncate">
-                                {company.city}, {company.state}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          <CompanyEditModal company={company} onSave={handleRefresh}>
-                            <button
-                              type="button"
-                              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                              title="Edit Company"
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </button>
-                          </CompanyEditModal>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteCompany(company.id)}
-                            className="text-xs text-muted-foreground hover:text-destructive flex items-center gap-1"
-                            title="Delete Company"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {companies.length === 0 && (
-        <div className="p-8 text-center text-muted-foreground">
-          <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p>No companies yet.</p>
-          <Button onClick={() => setIsAddDialogOpen(true)} className="mt-4">
-            <Plus className="mr-2 h-4 w-4" />
-            Add Your First Company
-          </Button>
+            </div>
+          ))}
         </div>
       )}
     </div>
