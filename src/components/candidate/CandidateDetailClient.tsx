@@ -336,10 +336,10 @@ toast.success('Candidate updated successfully');
     setIsEditing(false);
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50">
+return (
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-10">
+      <div className="bg-card border-b sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
 <Button variant="ghost" size="icon" asChild>
@@ -401,18 +401,18 @@ toast.success('Candidate updated successfully');
         {activeTab === "overview" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="col-span-1 md:col-span-2 space-y-6">
-              {/* Contact Information - Editable */}
-              <div className="bg-white p-6 rounded-xl border">
-                <h2 className="font-semibold mb-4 flex items-center gap-2">
-                  <User className="h-5 w-5" /> Contact Information
+{/* CONTACT INFORMATION - THEME FRIENDLY */}
+              <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+                <h2 className="text-xl font-semibold mb-6 flex items-center gap-3">
+                  👤 Contact Information
                 </h2>
                 
 {isEditing ? (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                       {/* Full Name - Editable */}
                       <div>
-                        <label className="text-sm font-medium text-gray-600">Full Name</label>
+                        <label className="text-sm font-medium text-muted-foreground">Full Name</label>
                         <Input
                           value={editForm.name}
                           onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
