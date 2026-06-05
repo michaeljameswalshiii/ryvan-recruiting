@@ -508,7 +508,7 @@ return (
                       </div>
 {/* Source - disabled */}
                       <div>
-                        <label className="text-sm font-medium text-gray-600">Source</label>
+                        <label className="text-sm font-medium text-muted-foreground">Source</label>
                         <Input
                           value={candidate.source || ""}
                           placeholder="Source"
@@ -517,7 +517,7 @@ return (
                       </div>
                       {/* Added - disabled */}
                       <div>
-                        <label className="text-sm font-medium text-gray-600">Added</label>
+                        <label className="text-sm font-medium text-muted-foreground">Added</label>
                         <Input
                           value={new Date(candidate.createdAt).toLocaleDateString()}
                           disabled
@@ -527,7 +527,7 @@ return (
 
 {/* Skills - editable */}
                     <div className="col-span-1 sm:col-span-2">
-                      <label className="text-sm font-medium text-gray-600">Skills (comma-separated)</label>
+                      <label className="text-sm font-medium text-muted-foreground">Skills (comma-separated)</label>
                       <Input
                         value={editSkills}
                         onChange={(e) => setEditSkills(e.target.value)}
@@ -535,9 +535,9 @@ return (
                       />
                     </div>
 
-                    {/* Experience - editable (JSON or text area) */}
+{/* Experience - editable (JSON or text area) */}
                     <div className="col-span-1 sm:col-span-2">
-                      <label className="text-sm font-medium text-gray-600">Experience</label>
+                      <label className="text-sm font-medium text-muted-foreground">Experience</label>
                       <Textarea
                         value={(candidate as any).experience?.map((exp: any) => 
                           `${exp.title || ''} at ${exp.company || ''} ${exp.dates || ''}`
@@ -547,9 +547,9 @@ return (
                       />
                     </div>
 
-                    {/* Education - editable */}
+{/* Education - editable */}
                     <div className="col-span-1 sm:col-span-2">
-                      <label className="text-sm font-medium text-gray-600">Education</label>
+                      <label className="text-sm font-medium text-muted-foreground">Education</label>
                       <Textarea
                         value={(candidate as any).education?.map((edu: any) => 
                           `${edu.degree || ''} at ${edu.school || ''} ${edu.dates || ''}`
@@ -559,9 +559,9 @@ return (
                       />
                     </div>
 
-                    {/* Certifications - editable */}
+{/* Certifications - editable */}
                     <div className="col-span-1 sm:col-span-2">
-                      <label className="text-sm font-medium text-gray-600">Certifications (comma-separated)</label>
+                      <label className="text-sm font-medium text-muted-foreground">Certifications (comma-separated)</label>
                       <Input
                         value={(candidate as any).certifications?.join(", ") || ""}
                         placeholder="AWS Solutions Architect, PMP"
@@ -746,7 +746,7 @@ return (
 
 {/* Resume Section - Quick View */}
               {candidate.resumeUrl && (
-                <div className="bg-white p-6 rounded-xl border">
+                <div className="bg-card border border-border rounded-2xl p-6">
                   <h2 className="font-semibold mb-4 flex items-center gap-2">
                     <FileText className="h-5 w-5" /> Resume
                   </h2>
@@ -762,7 +762,7 @@ return (
                       href={candidate.resumeUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm text-blue-600 hover:underline"
+                      className="text-sm text-primary hover:underline"
                     >
                       Download
                     </a>
@@ -953,10 +953,10 @@ return (
             const currentStage = getCurrentStage(job);
 
             return (
-              <div key={job.id} className="border rounded-lg p-4 flex flex-wrap items-center justify-between gap-3">
+<div key={job.id} className="bg-background border border-border rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="font-medium text-sm">{job.title || "Untitled Job"}</p>
-                  <p className="text-xs text-gray-600">{job.companyName || "Unknown Company"}</p>
+                  <p className="font-medium text-sm text-foreground">{job.title || "Untitled Job"}</p>
+                  <p className="text-xs text-muted-foreground">{job.companyName || "Company"}</p>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -969,7 +969,7 @@ return (
                         stage: e.target.value,
                       })
                     }
-                    className="border rounded-md px-2 py-1 text-sm bg-white"
+                    className="border border-input rounded-md px-2 py-1 text-sm bg-background text-foreground"
                     disabled={updateStage.isPending}
                   >
                     {stageOptions.map((stage) => (
