@@ -838,13 +838,7 @@ return (
 </div>
             </div>
 
-<div>
-              <div className="bg-white p-6 rounded-xl border">
-                <Badge variant="secondary" className="mb-4 capitalize">
-                  {candidate.status}
-                </Badge>
-              </div>
-            </div>
+
           </div>
         )}
 
@@ -929,8 +923,8 @@ candidateName: candidateName || "Unknown",
     }
   };
 
-  return (
-    <div className="bg-white p-6 rounded-xl border">
+return (
+    <div className="bg-card border border-border rounded-xl p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-semibold flex items-center gap-2">
           <Briefcase className="h-5 w-5" /> Linked Jobs
