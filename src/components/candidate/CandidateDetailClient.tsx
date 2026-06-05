@@ -770,21 +770,30 @@ toast.success('Candidate updated successfully');
                 </div>
               )}
 
-{/* Notes Section - Quick View on Overview */}
-              <div className="bg-white p-6 rounded-xl border">
-                <h2 className="font-semibold mb-4 flex items-center gap-2">
-                  <StickyNote className="h-5 w-5" /> Notes
-                </h2>
-                
-                {/* Add Note Type */}
-                <div className="mb-4">
-                  <label className="text-sm font-medium text-gray-600 mb-1 block">Note Type</label>
-                  <select
-                    value={noteType}
-                    onChange={(e) => setNoteType(e.target.value)}
-                    className="w-full p-3 border border-input rounded-md bg-background"
+{/* === NOTES SECTION ON OVERVIEW TAB === */}
+              <div className="bg-card border rounded-xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-lg flex items-center gap-2">
+                    📝 Notes
+                  </h3>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setActiveTab('timeline')}
                   >
-                    {noteTypes.map((type) => (
+                    View Full Timeline →
+                  </Button>
+                </div>
+
+                {/* Note Type Dropdown */}
+                <div className="mb-4">
+                  <label className="text-sm font-medium mb-1.5 block">Note Type</label>
+                  <select
+                    value={noteType || 'general'}
+                    onChange={(e) => setNoteType(e.target.value)}
+                    className="w-full p-3 border border-input rounded-lg bg-background focus:ring-2 focus:ring-primary text-sm"
+                  >
+                    {noteTypes.map((type: any) => (
                       <option key={type.value} value={type.value}>
                         {type.label}
                       </option>
@@ -792,69 +801,24 @@ toast.success('Candidate updated successfully');
                   </select>
                 </div>
 
-                {/* Add Note Input */}
-                <div className="flex gap-2 mb-4">
+                {/* Note Textarea */}
+                <div className="mb-4">
+                  <label className="text-sm font-medium mb-1.5 block">Note</label>
                   <Textarea
                     value={newNote}
                     onChange={(e) => setNewNote(e.target.value)}
                     placeholder="Add a note about this candidate..."
-                    className="min-h-[80px]"
+                    className="min-h-[110px] resize-y"
                   />
                 </div>
-                <div className="flex justify-end mb-4">
-                  <Button 
-                    onClick={handleAddNote} 
-                    disabled={addingNote || !newNote.trim()}
-                    size="sm"
-                  >
-                    {addingNote ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Adding...
-                      </>
-                    ) : (
-                      <>
-                        <StickyNote className="h-4 w-4 mr-2" /> Add Note
-                      </>
-                    )}
-                  </Button>
-                </div>
 
-                {/* Notes List */}
-                {notesLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Loading notes...
-                  </div>
-                ) : notesError ? (
-                  <p className="text-sm text-red-600">{notesError}</p>
-                ) : notes.length === 0 ? (
-                  <p className="text-sm text-gray-500">No notes yet. Add the first note above.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {notes.map((note: any) => (
-                      <div key={note.id} className="border rounded-lg p-3 bg-gray-50">
-                        <p className="text-sm whitespace-pre-wrap">{note.description || note.title}</p>
-                        <p className="text-xs text-gray-500 mt-2">
-                          {note.createdBy ? `By ${note.createdBy} • ` : ''}
-                          {new Date(note.createdAt).toLocaleString()}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                {/* View All Notes Link */}
-                {notes.length > 0 && (
-                  <div className="mt-4 pt-4 border-t">
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => setActiveTab("timeline")}
-                      className="text-blue-600"
-                    >
-                      View all notes in Timeline →
-                    </Button>
-                  </div>
-                )}
+                <Button 
+                  onClick={handleAddNote} 
+                  disabled={addingNote || !newNote?.trim()}
+                  className="w-full"
+                >
+                  {addingNote ? 'Saving Note...' : 'Add Note'}
+                </Button>
               </div>
             </div>
 
