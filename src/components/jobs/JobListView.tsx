@@ -1,6 +1,28 @@
 'use client';
 
-export function JobListView() {
+interface Job {
+  id: string;
+  title: string;
+  employmentType?: string;
+  companyName?: string;
+  status: "Open" | "On Hold" | "Closed";
+  candidates?: any[];
+  createdAt?: string;
+}
+
+interface JobListViewProps {
+  jobs: Job[];
+}
+
+export function JobListView({ jobs }: JobListViewProps) {
+  if (!jobs || jobs.length === 0) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground">
+        No jobs found. Click "Add Job" to create one.
+      </div>
+    );
+  }
+
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden">
       <table className="w-full">
@@ -15,16 +37,27 @@ export function JobListView() {
           </tr>
         </thead>
         <tbody>
-          {/* Sample rows - replace with real data */}
-          {Array.from({ length: 5 }).map((_, i) => (
-            <tr key={i} className="border-b border-border hover:bg-muted/50">
-              <td className="p-4 font-medium">Sr. Accountant</td>
-              <td className="p-4 text-blue-400">RyVan Recruiting</td>
-              <td className="p-4"><span className="bg-green-500/10 text-green-500 px-2 py-1 rounded">Full-time</span></td>
-              <td className="p-4">0 candidates</td>
-              <td className="p-4 text-muted-foreground">Jun 4, 2026</td>
+          {jobs.map((job) => (
+            <tr key={job.id} className="border-b border-border hover:bg-muted/50">
+              <td className="p-4 font-medium">{job.title}</td>
+              <td className="p-4 text-blue-400">{job.companyName || 'Company'}</td>
               <td className="p-4">
-                <span className="bg-green-500 text-white px-3 py-1 rounded-full text-xs">Open</span>
+                <span className="bg-green-500/10 text-green-500 px-2 py-1 rounded">
+                  {job.employmentType || 'Full-time'}
+                </span>
+              </td>
+              <td className="p-4">{job.candidates?.length || 0} candidates</td>
+              <td className="p-4 text-muted-foreground">
+                {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : '—'}
+              </td>
+              <td className="p-4">
+                <span className={`px-3 py-1 rounded-full text-xs ${
+                  job.status === 'Open' ? 'bg-green-500 text-white' :
+                  job.status === 'On Hold' ? 'bg-yellow-500 text-white' :
+                  'bg-gray-500 text-white'
+                }`}>
+                  {job.status}
+                </span>
               </td>
             </tr>
           ))}
