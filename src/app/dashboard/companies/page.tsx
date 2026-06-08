@@ -73,46 +73,44 @@ export default function CompaniesPage() {
 
 return (
     <div className="p-8 space-y-8 bg-background min-h-screen">
-{/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+{/* HEADER - TITLE + TOGGLE + BUTTONS ON SAME LINE */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Companies</h1>
-          <p className="text-muted-foreground text-sm">Manage your target companies.</p>
+          <h1 className="text-3xl font-bold">Companies</h1>
+          <p className="text-muted-foreground">Manage your target companies.</p>
         </div>
-        
-        {/* Right aligned buttons */}
-        <div className="flex items-center gap-3 sm:ml-auto">
+
+        {/* Toggle in the middle */}
+        <div className="flex justify-center lg:justify-start">
+          <div className="inline-flex bg-muted rounded-lg p-1">
+            <Button
+              variant={viewMode === "list" ? "default" : "ghost"}
+              onClick={() => setViewMode("list")}
+              className="px-8"
+            >
+              List
+            </Button>
+            <Button
+              variant={viewMode === "pipeline" ? "default" : "ghost"}
+              onClick={() => setViewMode("pipeline")}
+              className="px-8"
+            >
+              Pipeline
+            </Button>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-3">
           <Button variant="outline" onClick={() => window.location.reload()}>
-            <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
           </Button>
           <Button asChild>
             <Link href="/dashboard/companies/new">
-              <Plus className="mr-2 h-4 w-4" /> Add Company
+              <Plus className="h-4 w-4 mr-2" />
+              Add Company
             </Link>
-          </Button>
-        </div>
-      </div>
-
-      {/* Centered Toggle - between header and pipeline overview */}
-      <div className="flex justify-center mb-6">
-        <div className="flex bg-muted rounded-lg p-1">
-          <Button
-            variant={viewMode === "list" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("list")}
-            className="h-9 px-4"
-          >
-            <LayoutList className="h-4 w-4 mr-1.5" />
-            List
-          </Button>
-          <Button
-            variant={viewMode === "pipeline" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("pipeline")}
-            className="h-9 px-4"
-          >
-            <Kanban className="h-4 w-4 mr-1.5" />
-            Pipeline
           </Button>
         </div>
       </div>

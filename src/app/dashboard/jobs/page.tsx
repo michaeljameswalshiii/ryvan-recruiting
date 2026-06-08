@@ -161,13 +161,34 @@ export default function JobsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+{/* HEADER - TITLE + TOGGLE + BUTTONS ON SAME LINE */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold">Jobs Pipeline</h1>
           <p className="text-muted-foreground">Manage your job postings and track candidates.</p>
         </div>
 
+        {/* Toggle in the middle */}
+        <div className="flex justify-center lg:justify-start">
+          <div className="inline-flex bg-muted rounded-lg p-1">
+            <Button
+              variant={viewMode === 'list' ? 'default' : 'ghost'}
+              onClick={() => setViewMode('list')}
+              className="px-8"
+            >
+              List
+            </Button>
+            <Button
+              variant={viewMode === 'pipeline' ? 'default' : 'ghost'}
+              onClick={() => setViewMode('pipeline')}
+              className="px-8"
+            >
+              Pipeline
+            </Button>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={handleRefresh}>
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -176,26 +197,6 @@ export default function JobsPage() {
           <Button onClick={() => setIsAddDialogOpen(true)} disabled={createJobMutation.isPending}>
             <Plus className="h-4 w-4 mr-2" />
             {createJobMutation.isPending ? "Creating..." : "Add Job"}
-          </Button>
-        </div>
-      </div>
-
-      {/* View Toggle - Centered like Candidates/Companies */}
-      <div className="flex justify-center">
-        <div className="inline-flex bg-muted rounded-lg p-1">
-          <Button
-            variant={viewMode === 'list' ? 'default' : 'ghost'}
-            onClick={() => setViewMode('list')}
-            className="px-6"
-          >
-            List
-          </Button>
-          <Button
-            variant={viewMode === 'pipeline' ? 'default' : 'ghost'}
-            onClick={() => setViewMode('pipeline')}
-            className="px-6"
-          >
-            Pipeline
           </Button>
         </div>
       </div>
