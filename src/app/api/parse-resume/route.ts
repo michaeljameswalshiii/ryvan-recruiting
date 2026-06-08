@@ -1,9 +1,207 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mammoth from 'mammoth';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 // Supported file types for resume upload
 const SUPPORTED_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
 const SUPPORTED_EXTENSIONS = ['.pdf', '.docx'];
+
+// 7 days in seconds for long-lived presigned URLs
+const SEVEN_DAYS_SECONDS = 604800;
+
+/**
+ * Enhanced Resume Parser with section-based extraction
+ */
+function enhancedParseResume(text: string): {
+  name: string;
+  title: string;
+  email: string;
+  phone: string;
+  linkedin: string;
+  location: string;
+  summary: string;
+  experience: string;
+  education: string;
+  skills: string[];
+  certifications: string[];
+} {
+  const result = {
+    name: '',
+    title: '',
+    email: '',
+    phone: '',
+    linkedin: '',
+    location: '',
+    summary: '',
+    experience: '',
+    education: '',
+    skills: [] as string[],
+    certifications: [] as string[],
+  };
+
+  if (!text || text.length < 10) {
+    return result;
+  }
+
+  // Name extraction - look for patterns like "Name:" or all-caps names at start
+  const nameMatch = text.match(/(?:^|\n)Name[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})/i);
+  if (nameMatch) {
+    result.name = nameMatch[1].trim();
+  } else {
+    // Try to find capitalized words at the start (common resume format)
+    const firstLineMatch = text.split('\n')[0].match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})/);
+    if (firstLineMatch && firstLineMatch[1].length > 3) {
+      result.name = firstLineMatch[1].trim();
+    }
+  }
+
+  // Title extraction
+  const titleMatch = text.match(/(?:Title|Position|Role)[:\s]+([^\n]+)/i);
+  if (titleMatch) {
+    result.title = titleMatch[1].trim();
+  } else {
+    // Common job title patterns
+    const jobTitleMatch = text.match(/([A-Za-z\s]+(?:Engineer|Manager|Developer|Director|Consultant|Analyst|Designer|Specialist)){1,2}/i);
+    if (jobTitleMatch) {
+      result.title = jobTitleMatch[1].trim();
+    }
+  }
+
+  // Email extraction
+  const emailMatch = text.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/);
+  if (emailMatch) {
+    result.email = emailMatch[0];
+  }
+
+  // Phone extraction - various formats
+  const phoneMatch = text.match(/(?:\+?\d{1,3}[-.\s]?)?(\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}/);
+  if (phoneMatch) {
+    result.phone = phoneMatch[0];
+  }
+
+  // LinkedIn extraction
+  const linkedinMatch = text.match(/(?:linkedin\.com|www\.linkedin\.com)\/in\/[\w-]+/i);
+  if (linkedinMatch) {
+    result.linkedin = 'https://' + linkedinMatch[0].replace(/^https?:\/\//, '').replace(/^www\./, '');
+  }
+
+  // Location extraction
+  const locationMatch = text.match(/([A-Za-z][A-Za-z\s]*,\s*[A-Z]{2})/);
+  if (locationMatch) {
+    result.location = locationMatch[1].trim();
+  }
+
+  // Section-based extraction
+  // EXPERIENCE section
+  const expMatch = text.match(/EXPERIENCE[\s\S]*?(?=EDUCATION|SKILLS|CERTIFICATIONS|SUMMARY|$)/i);
+  result.experience = expMatch ? expMatch[0].replace(/^EXPERIENCE\s*/i, '').trim() : '';
+
+  // EDUCATION section
+  const eduMatch = text.match(/EDUCATION[\s\S]*?(?=EXPERIENCE|SKILLS|CERTIFICATIONS|SUMMARY|$)/i);
+  result.education = eduMatch ? eduMatch[0].replace(/^EDUCATION\s*/i, '').trim() : '';
+
+  // SKILLS section - extract as array
+  const skillsMatch = text.match(/SKILLS[\s\S]*?(?=EXPERIENCE|EDUCATION|CERTIFICATIONS|SUMMARY|$)/i);
+  if (skillsMatch) {
+    const skillsText = skillsMatch[0].replace(/^SKILLS\s*/i, '').trim();
+    result.skills = skillsText
+      .split(/[,|\n•●]/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && s.length < 50)
+      .slice(0, 30);
+  }
+
+  // CERTIFICATIONS section
+  const certMatch = text.match(/CERTIFICATIONS?|CERTIFICATES?[\s\S]*?(?=EXPERIENCE|EDUCATION|SKILLS|SUMMARY|$)/i);
+  if (certMatch) {
+    const certText = certMatch[0].replace(/^CERTIFICATIONS?\s*/i, '').trim();
+    result.certifications = certText
+      .split(/[,|\n•●]/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && s.length < 100)
+      .slice(0, 15);
+  }
+
+  // SUMMARY section
+  const summaryMatch = text.match(/SUMMARY|PROFILE[\s\S]*?(?=EXPERIENCE|EDUCATION|SKILLS|$)/i);
+  if (summaryMatch) {
+    result.summary = summaryMatch[0].replace(/^(SUMMARY|PROFILE)\s*/i, '').trim().substring(0, 500);
+  }
+
+  return result;
+}
+
+/**
+ * Fallback parsing using simple regex extraction
+ */
+function fallbackParseResume(text: string): {
+  name: string;
+  title: string;
+  email: string;
+  phone: string;
+  linkedin: string;
+  location: string;
+  summary: string;
+  experience: string;
+  education: string;
+  skills: string[];
+  certifications: string[];
+} {
+  const result = {
+    name: '',
+    title: '',
+    email: '',
+    phone: '',
+    linkedin: '',
+    location: '',
+    summary: '',
+    experience: '',
+    education: '',
+    skills: [] as string[],
+    certifications: [] as string[],
+  };
+
+  if (!text || text.length < 10) {
+    return result;
+  }
+
+  // Email
+  const emailMatch = text.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/);
+  if (emailMatch) {
+    result.email = emailMatch[0];
+  }
+
+  // Phone
+  const phoneMatch = text.match(/(?:\+?\d{1,3}[-.\s]?)?(\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}/);
+  if (phoneMatch) {
+    result.phone = phoneMatch[0];
+  }
+
+  // LinkedIn
+  const linkedinMatch = text.match(/(?:linkedin\.com|www\.linkedin\.com)\/in\/[\w-]+/i);
+  if (linkedinMatch) {
+    result.linkedin = 'https://' + linkedinMatch[0].replace(/^https?:\/\//, '').replace(/^www\./, '');
+  }
+
+  // Common skills detection
+  const commonSkills = [
+    'javascript', 'typescript', 'python', 'java', 'react', 'node', 'node.js', 'angular', 'vue',
+    'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'sql', 'nosql', 'mongodb',
+    'postgresql', 'mysql', 'redis', 'graphql', 'rest', 'api', 'html', 'css',
+    'git', 'ci/cd', 'jenkins', 'terraform', 'linux', 'windows', 'macos',
+    'agile', 'scrum', 'jira', 'confluence', 'figma', 'excel', 'powerpoint'
+  ];
+  const lowerText = text.toLowerCase();
+  for (const skill of commonSkills) {
+    if (lowerText.includes(skill)) {
+      result.skills.push(skill);
+    }
+  }
+  result.skills = result.skills.slice(0, 15);
+
+  return result;
+}
 
 /**
  * Extract name from filename by cleaning up common patterns
@@ -15,6 +213,63 @@ function extractNameFromFilename(filename: string): string {
     .replace(/[-_]/g, ' ')
     .trim();
   return name;
+}
+
+/**
+ * Get S3 client for file uploads
+ */
+function getS3Client(): S3Client {
+  const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
+  return new S3Client({ region });
+}
+
+/**
+ * Get S3 bucket name
+ */
+function getBucketName(): string {
+  const bucketName = process.env.AWS_S3_BUCKET_NAME || process.env.NEXT_PUBLIC_AWS_S3_BUCKET_NAME;
+  if (!bucketName) {
+    throw new Error('AWS_S3_BUCKET_NAME environment variable not configured');
+  }
+  return bucketName;
+}
+
+/**
+ * Upload file to S3 with permanent key
+ */
+async function uploadToS3Permanent(
+  buffer: Buffer,
+  fileName: string,
+  contentType: string,
+  candidateId: string
+): Promise<{ s3Key: string; presignedUrl: string }> {
+  const s3Client = getS3Client();
+  const bucketName = getBucketName();
+
+  // Generate permanent S3 key with candidateId
+  const timestamp = Date.now();
+  const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const s3Key = `resumes/${candidateId}/${timestamp}-${sanitizedFileName}`;
+
+  // Upload permanently to S3
+  const putCommand = new PutObjectCommand({
+    Bucket: bucketName,
+    Key: s3Key,
+    Body: buffer,
+    ContentType: contentType,
+  });
+
+  await s3Client.send(putCommand);
+
+  // Generate long-lived presigned URL (7 days)
+  const getCommand = new GetObjectCommand({
+    Bucket: bucketName,
+    Key: s3Key,
+  });
+
+  const presignedUrl = await getSignedUrl(s3Client, getCommand, { expiresIn: SEVEN_DAYS_SECONDS });
+
+  return { s3Key, presignedUrl };
 }
 
 /**
@@ -273,13 +528,45 @@ let parsedResume: any = {};
       certifications: normalizeArray(parsedResume.certifications),
     };
 
-    console.log('parse-resume: final name =', finalName, 'title =', finalTitle, 'skills =', finalResume.skills.length, 'experience =', finalResume.experience.length);
+console.log('parse-resume: final name =', finalName, 'title =', finalTitle, 'skills =', finalResume.skills.length, 'experience =', finalResume.experience.length);
+
+    // ===== PERMANENT S3 STORAGE + 7-DAY PRESIGNED URL =====
+    let resumeUrl = '';
+    let fileKey = '';
+    
+    // Get candidateId from formData (required for permanent S3 key)
+    const candidateId = formData.get('candidateId') as string;
+    
+    if (candidateId && buffer.length > 0) {
+      try {
+        console.log('parse-resume: uploading to S3 with 7-day URL, candidateId =', candidateId);
+        
+        // Upload permanently to S3 with candidateId-based key
+        const s3Result = await uploadToS3Permanent(
+          buffer,
+          fileName,
+          file.type,
+          candidateId
+        );
+        
+        resumeUrl = s3Result.presignedUrl;
+        fileKey = s3Result.s3Key;
+        
+        console.log('parse-resume: S3 upload complete, fileKey =', fileKey);
+      } catch (s3Err) {
+        console.error('parse-resume: S3 upload failed:', s3Err);
+        // Continue without S3 URL - parsing still works
+      }
+    }
 
     return NextResponse.json({
       success: true,
       resume: finalResume,
       extractionMethod,
-      rawText: cleanText.substring(0, 500)
+      rawText: cleanText.substring(0, 500),
+      // Include S3 info if upload succeeded
+      resumeUrl: resumeUrl || null,
+      fileKey: fileKey || null,
     });
 
   } catch (error: any) {
