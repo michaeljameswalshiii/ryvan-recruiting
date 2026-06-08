@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import EventTimeline from "@/components/EventTimeline";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
+import { ResumeUpload } from "@/components/candidate/ResumeUpload";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -61,6 +62,7 @@ const [editForm, setEditForm] = useState({
     email: candidate.email || "",
     salaryRequirements: candidate.salaryRequirements || "",
     linkedin: candidate.linkedin || "",
+    resumeUrl: candidate.resumeUrl || "",
   });
 const [editAddress, setEditAddress] = useState({
     fullAddress: (candidate as any).fullAddress || "",
@@ -289,7 +291,7 @@ const tabs: { id: Tab; label: string }[] = [
       const response = await fetch(`/api/data/leads/${candidate.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+body: JSON.stringify({
           name: editForm.name,
           phone: editForm.phone,
           email: editForm.email,
@@ -298,6 +300,7 @@ const tabs: { id: Tab; label: string }[] = [
           linkedin: editForm.linkedin,
           fullAddress: editAddress.fullAddress,
           salaryRequirements: editForm.salaryRequirements,
+          resume_url: editForm.resumeUrl,
         }),
       });
 
@@ -327,6 +330,7 @@ toast.success('Candidate updated successfully');
       email: candidate.email || "",
       salaryRequirements: candidate.salaryRequirements || "",
       linkedin: candidate.linkedin || "",
+      resumeUrl: candidate.resumeUrl || "",
     });
     setEditAddress({
       fullAddress: (candidate as any).fullAddress || "",
@@ -565,6 +569,16 @@ return (
                       <Input
                         value={(candidate as any).certifications?.join(", ") || ""}
                         placeholder="AWS Solutions Architect, PMP"
+                      />
+                    </div>
+
+                    {/* Resume URL - editable */}
+                    <div className="col-span-1 sm:col-span-2">
+                      <label className="text-sm font-medium text-muted-foreground">Resume URL</label>
+                      <Input
+                        value={editForm.resumeUrl}
+                        onChange={(e) => setEditForm({ ...editForm, resumeUrl: e.target.value })}
+                        placeholder="https://..."
                       />
                     </div>
                     

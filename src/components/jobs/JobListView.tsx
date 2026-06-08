@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 interface Job {
   id: string;
   title: string;
@@ -39,7 +41,11 @@ export function JobListView({ jobs }: JobListViewProps) {
         <tbody>
           {jobs.map((job) => (
             <tr key={job.id} className="border-b border-border hover:bg-muted/50">
-              <td className="p-4 font-medium">{job.title}</td>
+<td className="p-4 font-medium">
+                <Link href={`/dashboard/jobs/${job.id}`} className="hover:underline text-blue-500">
+                  {job.title}
+                </Link>
+              </td>
               <td className="p-4 text-blue-400">{job.companyName || 'Company'}</td>
               <td className="p-4">
                 <span className="bg-green-500/10 text-green-500 px-2 py-1 rounded">

@@ -35,6 +35,9 @@ export default function NewCandidatePage() {
   const [loading, setLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
+  // Store the uploaded file for saving after candidate is created
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -50,6 +53,27 @@ export default function NewCandidatePage() {
 
   const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Upload resume to S3 after candidate is created
+  const uploadResumeToS3 = async (candidateId: string): Promise<string | null> => {
+    if (!uploadedFile) return null;
+    
+    const formDataObj = new FormData();
+    formDataObj.append('resume', uploadedFile);
+    formDataObj.append('candidateId', candidateId);
+
+    try {
+      const res = await fetch('/api/upload-resume', {
+        method: 'POST',
+        body: formDataObj,
+      });
+      const data = await res.json();
+      return data.resumeUrl || null;
+    } catch (err) {
+      console.error('Failed to upload resume:', err);
+      return null;
+    }
   };
 
   // Resume Upload + Auto-populate
@@ -81,7 +105,9 @@ export default function NewCandidatePage() {
           linkedin_url: r.linkedin || prev.linkedin_url,
           notes: (r.summary || '') + '\n\nSkills: ' + (r.skills?.join(', ') || ''),
         }));
-        toast.success('Resume parsed successfully! Form fields have been pre-filled.');
+        // Store the file to upload after candidate creation
+        setUploadedFile(file);
+        toast.success('Resume parsed! It will be saved when you create the candidate.');
       } else {
         toast.error(data.error || 'Failed to parse resume');
       }
@@ -103,7 +129,7 @@ export default function NewCandidatePage() {
     setLoading(true);
     
     try {
-      const response = await fetch("/api/candidate", {
+const response = await fetch("/api/candidate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -113,6 +139,20 @@ export default function NewCandidatePage() {
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to create candidate");
+      }
+
+      // If we have an uploaded file, save it to S3
+      if (uploadedFile && data.candidate?.id) {
+        const resumeUrl = await uploadResumeToS3(data.candidate.id);
+        if (resumeUrl) {
+          // Update candidate with resume URL
+          await fetch(`/api/data/leads/${data.candidate.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ resume_url: resumeUrl }),
+          });
+          toast.success("Resume uploaded successfully!");
+        }
       }
 
       toast.success("Candidate created successfully");

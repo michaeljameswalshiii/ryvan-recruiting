@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Search, Plus, RefreshCw, User, Mail, Phone, Edit2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ interface Contact {
 }
 
 export default function ContactsPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
@@ -97,9 +99,9 @@ export default function ContactsPage() {
     toast.success('Contacts refreshed');
   };
 
-  // Handle add contact click
+// Handle add contact click
   const handleAddContact = () => {
-    toast.info('New add flow with company lookup coming soon...');
+    router.push('/dashboard/contacts/new');
   };
 
   // Handle delete contact
@@ -166,9 +168,9 @@ export default function ContactsPage() {
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          <Button onClick={handleAddContact}>
+<Button onClick={handleAddContact}>
             <Plus className="h-4 w-4 mr-2" />
-            Add Contact (Company Lookup Soon)
+            Add Contact
           </Button>
         </div>
       </div>
