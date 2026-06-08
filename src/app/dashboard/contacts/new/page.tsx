@@ -1,68 +1,104 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Search, Building2, User, Mail, Phone } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Avatar } from '@/components/ui/avatar';
-import { useClients } from '@/lib/hooks/query-client';
-import { toast } from 'sonner';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft, Plus, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar } from "@/components/ui/avatar";
+import { useClients, useAddContact } from "@/lib/hooks/query-client";
+import { toast } from "sonner";
 
 export default function NewContactPage() {
   const router = useRouter();
-  const [selectedCompanyId, setSelectedCompanyId] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  // Contact form state
-  const [contactName, setContactName] = useState('');
-  const [contactTitle, setContactTitle] = useState('');
-  const [contactEmail, setContactEmail] = useState('');
-  const [contactPhone, setContactPhone] = useState('');
-  
-  // Step state
-  const [step, setStep] = useState<'select-company' | 'contact-details'>('select-company');
+  const { data: clients = [], isLoading } = useClients();
+  const addContactMutation = useAddContact();
 
-  // Use TanStack Query hooks
-  const { data: companies = [], isLoading } = useClients();
-
-  // Filter companies based on search
-  const filteredCompanies = companies.filter((company: any) => {
-    if (!searchQuery) return true;
-    return company.name?.toLowerCase().includes(searchQuery.toLowerCase());
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [companySearch, setCompanySearch] = useState("");
+  const [formData, setFormData] = useState({
+    name: "",
+    title: "",
+    email: "",
+    phone: "",
+    isPrimary: false,
+    notes: "",
   });
 
-  // Get selected company data
-  const selectedCompany = companies.find((c: any) => c.id === selectedCompanyId);
+  // Filter companies based on search
+  const filteredClients = clients.filter((c: any) => {
+    if (!companySearch) return true;
+    return c.name?.toLowerCase().includes(companySearch.toLowerCase());
+  });
 
-  // Handle company selection
-  const handleSelectCompany = (companyId: string) => {
-    setSelectedCompanyId(companyId);
-    setStep('contact-details');
+  // Get selected company
+  const selectedCompany = clients.find((c: any) => c.id === selectedCompanyId);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedCompanyId) {
+      toast.error("Please select a company");
+      return;
+    }
+
+    if (!formData.name) {
+      toast.error("Name is required");
+      return;
+    }
+
+    if (!formData.email) {
+      toast.error("Email is required");
+      return;
+    }
+
+    try {
+      await addContactMutation.mutateAsync({
+        clientId: selectedCompanyId,
+        contactData: {
+          name: formData.name,
+          title: formData.title,
+          email: formData.email,
+          phone: formData.phone,
+          isPrimary: formData.isPrimary,
+          notes: formData.notes,
+        },
+      });
+      toast.success("Contact added successfully!");
+      router.push("/dashboard/contacts");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to add contact");
+    }
   };
 
-  // Handle go back
   const handleChangeCompany = () => {
-    setStep('select-company');
-  };
-
-  // Handle submit - showing toast for now
-  const handleSubmit = () => {
-    toast.info('Company lookup coming soon. Use existing Add flow on Companies page.');
-    router.push('/dashboard/contacts');
+    setSelectedCompanyId("");
+    setFormData({
+      name: "",
+      title: "",
+      email: "",
+      phone: "",
+      isPrimary: false,
+      notes: "",
+    });
   };
 
   // Loading state
   if (isLoading) {
     return (
-      <div className="p-8 space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold">Add Contact</h1>
-          <p className="text-muted-foreground">Add a new contact to a company.</p>
+      <div className="p-8 max-w-2xl mx-auto">
+        <div className="flex items-center gap-4 mb-8">
+          <Link href="/dashboard/contacts">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+          </Link>
+          <h1 className="text-3xl font-bold">Add New Contact</h1>
         </div>
         <div className="text-muted-foreground">Loading...</div>
       </div>
@@ -70,111 +106,170 @@ export default function NewContactPage() {
   }
 
   return (
-    <div className="p-8 space-y-8">
-      {/* HEADER */}
-      <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href="/dashboard/contacts">
+    <div className="p-8 max-w-2xl mx-auto">
+      <div className="flex items-center gap-4 mb-8">
+        <Link href="/dashboard/contacts">
+          <Button variant="ghost" size="icon">
             <ArrowLeft className="h-5 w-5" />
-          </Link>
-        </Button>
+          </Button>
+        </Link>
         <div>
-          <h1 className="text-3xl font-bold">Add Contact</h1>
-          <p className="text-muted-foreground">Company lookup coming soon - use existing flow on Companies page.</p>
+          <h1 className="text-3xl font-bold">Add New Contact</h1>
+          <p className="text-muted-foreground">Add a contact to a company</p>
         </div>
       </div>
 
-      {/* Placeholder notice */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="text-center space-y-4">
-            <Search className="h-12 w-12 mx-auto text-muted-foreground" />
-            <h2 className="text-xl font-semibold">Company lookup coming soon</h2>
-            <p className="text-muted-foreground max-w-md mx-auto">
-              For now, please add contacts through the Companies page. 
-              Navigate to a company and use the "Add Contact" button there.
-            </p>
-            <div className="flex justify-center gap-3 pt-4">
-              <Button variant="outline" onClick={() => router.push('/dashboard/contacts')}>
-                Back to Contacts
-              </Button>
-              <Button onClick={() => router.push('/dashboard/companies')}>
-                Go to Companies
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Basic Contact Form (placeholder for now) */}
-      {step === 'contact-details' && selectedCompany && (
+      {/* Step 1: Company Selection */}
+      {!selectedCompanyId && (
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4 mb-4 p-4 bg-muted/50 rounded-lg">
-              <Avatar fallback={selectedCompany.name} className="h-12 w-12" />
-              <div className="flex-1">
-                <p className="font-medium text-lg">{selectedCompany.name}</p>
-<p className="text-sm text-muted-foreground">{selectedCompany.location || 'No location'}</p>
-              </div>
-              <Button variant="outline" onClick={handleChangeCompany}>
-                Change
-              </Button>
+          <CardHeader>
+            <CardTitle>Step 1: Select Company</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search companies..."
+                value={companySearch}
+                onChange={(e) => setCompanySearch(e.target.value)}
+                className="pl-10"
+              />
             </div>
 
-            <div className="grid gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Name</Label>
+            {/* Company List */}
+            <div className="max-h-[400px] overflow-y-auto space-y-2">
+              {filteredClients.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No companies found
+                </div>
+              ) : (
+                filteredClients.map((company: any) => (
+                  <button
+                    key={company.id}
+                    type="button"
+                    onClick={() => setSelectedCompanyId(company.id)}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors text-left"
+                  >
+                    <Avatar fallback={company.name} className="h-10 w-10" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{company.name}</p>
+                      <p className="text-sm text-muted-foreground truncate">
+                        {(company as any).location || "No location"} • {(company as any).industry || "No industry"}
+                      </p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 2: Contact Details */}
+      {selectedCompanyId && selectedCompany && (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Selected Company */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-4">
+                <Avatar fallback={selectedCompany.name} className="h-12 w-12" />
+                <div className="flex-1">
+                  <p className="font-medium text-lg">{selectedCompany.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {(selectedCompany as any).location || "No location"}
+                  </p>
+                </div>
+                <Button type="button" variant="outline" onClick={handleChangeCompany}>
+                  Change
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Contact Form */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Step 2: Contact Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="name">Full Name *</Label>
                 <Input
                   id="name"
-                  value={contactName}
-                  onChange={(e) => setContactName(e.target.value)}
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="John Smith"
+                  required
                 />
               </div>
 
-              <div className="grid gap-2">
-                <Label htmlFor="title">Title</Label>
+              <div>
+                <Label htmlFor="title">Title / Position</Label>
                 <Input
                   id="title"
-                  value={contactTitle}
-                  onChange={(e) => setContactTitle(e.target.value)}
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   placeholder="VP of Sales"
                 />
               </div>
 
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
+              <div>
+                <Label htmlFor="email">Email *</Label>
                 <Input
                   id="email"
                   type="email"
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="john@company.com"
+                  required
                 />
               </div>
 
-              <div className="grid gap-2">
+              <div>
                 <Label htmlFor="phone">Phone</Label>
                 <Input
                   id="phone"
-                  value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   placeholder="(555) 123-4567"
                 />
               </div>
-            </div>
 
-            {/* Action Buttons */}
-            <div className="flex justify-end gap-3 mt-6">
-              <Button variant="outline" onClick={() => router.push('/dashboard/contacts')}>
-                Cancel
-              </Button>
-              <Button onClick={handleSubmit}>
-                Add Contact
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="primary"
+                  checked={formData.isPrimary}
+                  onCheckedChange={(checked: boolean) => setFormData({ ...formData, isPrimary: checked })}
+                />
+                <Label htmlFor="primary" className="font-normal">
+                  Mark as Primary Contact
+                </Label>
+              </div>
+
+              <div>
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea
+                  id="notes"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Additional notes about this contact..."
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <Button type="submit" className="flex-1" disabled={addContactMutation.isPending}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  {addContactMutation.isPending ? "Adding..." : "Add Contact"}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => router.push("/dashboard/contacts")}>
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </form>
       )}
     </div>
   );
