@@ -128,7 +128,7 @@ export default function JobsPage() {
     refetch();
   };
 
-  // Loading state
+// Loading state
   if (isLoading) {
     return (
       <div className="p-6 space-y-6">
@@ -141,19 +141,38 @@ export default function JobsPage() {
     );
   }
 
-  // Error state
+  // Error state - show actual error in dev mode and setup link
   if (error) {
+    const isDev = process.env.NODE_ENV === 'development';
+    const errorMessage = error?.message || 'Unknown error';
+    const showSetupLink = errorMessage.includes('table') || errorMessage.includes('does not exist');
+
     return (
       <div className="p-6 space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Jobs Pipeline</h1>
           <p className="text-muted-foreground">Manage your job postings and track candidates.</p>
         </div>
-        <div className="p-4 rounded-md bg-destructive/10 text-destructive">
-          Failed to load jobs. Please try again.
-          <Button variant="outline" onClick={handleRefresh} className="ml-4">
-            Retry
-          </Button>
+        <div className="p-4 rounded-md bg-destructive/10 text-destructive space-y-4">
+          <div>
+            <p className="font-semibold">Failed to load jobs.</p>
+            {isDev && (
+              <p className="text-sm mt-1 opacity-80">Error: {errorMessage}</p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" onClick={handleRefresh}>
+              Retry
+            </Button>
+            {showSetupLink && (
+              <Button 
+                variant="secondary" 
+                onClick={() => window.open('/api/admin/dynamodb?setup=jobs', '_blank')}
+              >
+                Setup Jobs Table
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     );

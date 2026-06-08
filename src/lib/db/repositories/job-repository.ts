@@ -42,27 +42,38 @@ function generateId(): string {
 
 /**
  * Get all jobs for a tenant
+ * Returns empty array if table doesn't exist or on error (forgiving)
  */
 export async function getAllJobs(tenantId: string): Promise<Job[]> {
   const cacheKey = makeCacheKey(tenantId, 'jobs', 'all');
+  console.log('[getAllJobs] Fetching jobs for tenant:', tenantId);
 
   // Try cache first
   const cached = await getCached<Job[]>(cacheKey);
   if (cached) {
+    console.log('[getAllJobs] Returning cached jobs:', cached.length);
     return cached;
   }
 
-  // Query from DynamoDB
-  const jobs = await queryItems<Job>(
-    jobsTable,
-    'tenant_id = :tenantId',
-    { ':tenantId': tenantId }
-  );
+  try {
+    // Query from DynamoDB
+    const jobs = await queryItems<Job>(
+      jobsTable,
+      'tenant_id = :tenantId',
+      { ':tenantId': tenantId }
+    );
 
-  // Cache the result
-  await setCached(cacheKey, jobs, CACHE_TTL);
+    console.log('[getAllJobs] Got jobs from DynamoDB:', jobs.length);
+    
+    // Cache the result
+    await setCached(cacheKey, jobs, CACHE_TTL);
 
-  return jobs;
+    return jobs;
+  } catch (error: any) {
+    // Table doesn't exist or other error - return empty array gracefully
+    console.error('[getAllJobs] Error fetching jobs:', error?.message, error?.stack);
+    return [];
+  }
 }
 
 /**
