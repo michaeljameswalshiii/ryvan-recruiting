@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionTenantId, getSessionUserId } from '@/lib/server-auth';
-import { getAllLeads, createLead } from '@/lib/db/repositories/lead-repository';
+import { getAllLeadsWithLinkedJobs, createLead } from '@/lib/db/repositories/lead-repository';
 import { createLeadSchema } from '@/lib/schemas/lead';
 
 /**
@@ -26,8 +26,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get leads from repository
-    const leads = await getAllLeads(tenantId);
+// Get leads from repository (with enriched linked job data)
+    const leads = await getAllLeadsWithLinkedJobs(tenantId);
 
     return NextResponse.json({ leads });
   } catch (error: any) {

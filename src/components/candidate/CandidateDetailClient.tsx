@@ -156,7 +156,7 @@ const [editAddress, setEditAddress] = useState({
     { value: 'other', label: 'Other' },
   ];
 
-// Fetch notes on mount
+// Fetch all events on mount (not just notes)
   useEffect(() => {
     async function fetchNotes() {
       try {
@@ -168,11 +168,10 @@ const [editAddress, setEditAddress] = useState({
           throw new Error('Failed to fetch events');
         }
         const data = await response.json();
-        // Filter only NOTE events and sort newest first
-        const noteEvents = (data.events || [])
-          .filter((e: any) => e.eventType === 'NOTE')
+        // Show ALL events (notes, resume uploads, emails, status changes, etc.) - sort newest first
+        const allEvents = (data.events || [])
           .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setNotes(noteEvents);
+        setNotes(allEvents);
       } catch (err) {
         console.error('Failed to fetch notes:', err);
         setNotesError('Failed to load notes');
@@ -193,10 +192,10 @@ const [editAddress, setEditAddress] = useState({
         throw new Error('Failed to fetch events');
       }
       const data = await response.json();
-      const noteEvents = (data.events || [])
-        .filter((e: any) => e.eventType === 'NOTE')
+      // Show ALL events
+      const allEvents = (data.events || [])
         .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setNotes(noteEvents);
+      setNotes(allEvents);
     } catch (err) {
       console.error('Failed to refresh notes:', err);
       setNotesError('Failed to refresh notes');
@@ -871,90 +870,134 @@ return (
 
 {/* Resume Section - Quick View - REMOVED per user request */}
 
-{/* NOTES & ACTIVITY LOG - Full Ryvan Style */}
-<div className="mt-8">
+{/* TIMELINE - Styled like EventTimeline - Matching Contact Information format */}
+<div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
   <div className="flex items-center justify-between mb-6">
-    <h3 className="text-xl font-semibold">NOTES & ACTIVITY LOG</h3>
+    <h3 className="text-xl font-semibold">Timeline</h3>
     <Badge variant="outline">{notes?.length || 0} entries</Badge>
   </div>
 
-  {/* Add New Note - Horizontal Form */}
-  <div className="bg-card border rounded-2xl p-6 mb-8">
-    <div className="flex flex-col md:flex-row gap-4">
-      <div className="md:w-48">
-        <label className="text-sm font-medium mb-1.5 block">Action Type</label>
-        <select
-          value={noteType}
-          onChange={(e) => setNoteType(e.target.value)}
-          className="w-full border rounded-lg p-3 bg-background"
-        >
-          {noteTypes.map((type: any) => (
-            <option key={type.value} value={type.value}>{type.label}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex-1">
-        <label className="text-sm font-medium mb-1.5 block">Note Details</label>
-        <Textarea
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          placeholder="Add note detail here..."
-          className="min-h-[80px]"
-        />
-      </div>
-
-      <div className="flex items-end">
-        <Button onClick={handleAddNote} disabled={addingNote || !newNote?.trim()} className="w-full md:w-auto">
-          {addingNote ? "Logging..." : "Log"}
-        </Button>
-      </div>
+  {/* Add Note Form - Matching EventTimeline style */}
+  <div className="border border-border rounded-lg p-4 mb-6 bg-background">
+    <div className="mb-3">
+      <label className="text-sm font-medium mb-2 block">Note Type</label>
+      <select
+        value={noteType}
+        onChange={(e) => setNoteType(e.target.value)}
+        className="w-full p-2 text-sm border border-input rounded-md bg-background"
+      >
+        {noteTypes.map((type: any) => (
+          <option key={type.value} value={type.value}>{type.label}</option>
+        ))}
+      </select>
     </div>
+
+    <div className="mb-3">
+      <label className="text-sm font-medium mb-2 block">Notes</label>
+      <Textarea
+        placeholder="Add a note..."
+        value={newNote}
+        onChange={(e) => setNewNote(e.target.value)}
+        rows={2}
+        className="w-full p-2 text-sm border border-input rounded-md resize-y min-h-[60px]"
+      />
+    </div>
+    <button 
+      onClick={handleAddNote} 
+      disabled={addingNote || !newNote.trim()}
+      className="w-full py-2 px-4 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-primary text-primary-foreground hover:bg-primary/90"
+    >
+      {addingNote ? 'Adding...' : 'Add Note'}
+    </button>
   </div>
 
-  {/* Full Activity Table */}
-  <Card>
-    <CardContent className="p-0">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b bg-muted/50">
-            <th className="text-left p-4 font-medium w-40">DATE</th>
-            <th className="text-left p-4 font-medium w-44">ACTION TYPE</th>
-            <th className="text-left p-4 font-medium">NOTE</th>
-          </tr>
-        </thead>
-        <tbody>
-          {notes && notes.length > 0 ? (
-            notes.map((note: any, index: number) => (
-              <tr key={note.id || index} className="border-b hover:bg-muted/50">
-                <td className="p-4 text-sm text-muted-foreground">
-                  {new Date(note.createdAt || note.date).toLocaleDateString()} 
-                  <br />
-                  <span className="text-xs">{new Date(note.createdAt || note.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                </td>
-                <td className="p-4">
-                  <Badge variant="secondary" className={
-                    note.eventType === "conversation" || note.eventType === "NOTE" ? "bg-green-100 text-green-700" :
-                    note.eventType === "interview_scheduled" || note.eventType === "MEETING" ? "bg-amber-100 text-amber-700" :
-                    note.eventType === "email_sent" || note.eventType === "EMAIL_SENT" ? "bg-blue-100 text-blue-700" : ""
-                  }>
-                    {note.eventType ? note.eventType : "Note"}
-                  </Badge>
-                </td>
-                <td className="p-4 text-sm">{note.description || note.title}</td>
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={3} className="p-12 text-center text-muted-foreground">
-                No notes yet. Add one above.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </CardContent>
-  </Card>
+{/* Activity List - Matching EventTimeline styling */}
+  <div className="space-y-4">
+    {notes && notes.length > 0 ? (
+      notes.map((note: any, index: number) => {
+        // Color mapping - matching EventTimeline getEventColor function
+        const noteColors: Record<string, string> = {
+          'NOTE': 'bg-yellow-100 text-yellow-800',
+          'general': 'bg-yellow-100 text-yellow-800',
+          'phone_call': 'bg-green-100 text-green-800',
+          'email_sent': 'bg-blue-100 text-blue-800',
+          'EMAIL_SENT': 'bg-blue-100 text-blue-800',
+          'meeting': 'bg-purple-100 text-purple-800',
+          'follow_up': 'bg-orange-100 text-orange-800',
+          'proposal_sent': 'bg-indigo-100 text-indigo-800',
+          'contract_signed': 'bg-emerald-100 text-emerald-800',
+          'placement_made': 'bg-green-100 text-green-800',
+          'check_in': 'bg-cyan-100 text-cyan-800',
+          'other': 'bg-gray-100 text-gray-800',
+          'RESUME_UPLOADED': 'bg-red-100 text-red-800',
+          'STATUS_CHANGED': 'bg-purple-100 text-purple-800',
+          'STAGE_CHANGED': 'bg-violet-100 text-violet-800',
+          'INTERVIEW_SCHEDULED': 'bg-green-100 text-green-800',
+          'CANDIDATE_VIEWED': 'bg-gray-100 text-gray-800',
+          'CANDIDATE_CREATED': 'bg-slate-100 text-slate-800',
+        };
+        const labelMap: Record<string, string> = {
+          'NOTE': 'Note',
+          'general': 'Note',
+          'phone_call': 'Phone Call',
+          'email_sent': 'Email Sent',
+          'EMAIL_SENT': 'Email Sent',
+          'meeting': 'Meeting',
+          'follow_up': 'Follow-up',
+          'proposal_sent': 'Proposal Sent',
+          'contract_signed': 'Contract Signed',
+          'placement_made': 'Placement Made',
+          'check_in': 'Check-in',
+          'other': 'Other',
+          'RESUME_UPLOADED': 'Resume',
+          'STATUS_CHANGED': 'Status Changed',
+          'STAGE_CHANGED': 'Stage Changed',
+          'INTERVIEW_SCHEDULED': 'Interview',
+          'CANDIDATE_VIEWED': 'Viewed',
+          'CANDIDATE_CREATED': 'Added',
+        };
+        const noteTypeValue = note.eventType || note.noteType || 'other';
+        const eventColor = noteColors[noteTypeValue] || noteColors['other'];
+        const eventLabel = labelMap[noteTypeValue] || 'Event';
+        
+        return (
+          <div key={note.id || index} className="flex gap-3 border-l-2 border-border pl-4">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${eventColor}`}>
+              {noteTypeValue === 'phone_call' ? '📞' : 
+               noteTypeValue === 'email_sent' || noteTypeValue === 'EMAIL_SENT' ? '📧' : 
+               noteTypeValue === 'meeting' || noteTypeValue === 'INTERVIEW_SCHEDULED' ? '📅' :
+               noteTypeValue === 'RESUME_UPLOADED' ? '📄' :
+               noteTypeValue === 'STATUS_CHANGED' || noteTypeValue === 'STAGE_CHANGED' ? '🔄' :
+               noteTypeValue === 'CANDIDATE_CREATED' ? '✨' :
+               noteTypeValue === 'CANDIDATE_VIEWED' ? '👁' : '📝'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <span className={`text-xs px-2 py-0.5 rounded-full ${eventColor}`}>
+                  {eventLabel}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {new Date(note.createdAt || note.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                </span>
+              </div>
+              <div className="text-sm text-foreground">
+                {note.description || note.title || note.noteText || 'Note'}
+              </div>
+              {note.noteType && note.noteType !== 'general' && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Type: {note.noteType}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })
+    ) : (
+      <div className="p-8 text-center text-muted-foreground">
+        No activity yet
+      </div>
+    )}
+  </div>
 </div>
             </div>
 

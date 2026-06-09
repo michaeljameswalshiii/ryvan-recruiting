@@ -38,6 +38,7 @@ export async function getClients() {
 
 /**
  * Get a single client by ID
+ * Tries multiple tenant formats to find the client (handles legacy data migration)
  */
 export async function getClientByIdAction(clientId: string) {
   let tenantId = await getSessionTenantId();
@@ -45,26 +46,62 @@ export async function getClientByIdAction(clientId: string) {
   
   console.log('[getClientByIdAction] Request for clientId:', clientId, 'tenantId:', tenantId, 'userId:', userId);
   
-  // If no tenantId but user is logged in, use default tenant (same logic as createClient)
-  if (!tenantId && userId) {
-    console.log('[getClientByIdAction] No tenantId, using default tenant:', `tenant-${userId}`);
-    tenantId = `tenant-${userId}`;
+  // Collect all potential tenant IDs to try
+  const tenantsToTry: string[] = [];
+  
+  // Add current tenant if available
+  if (tenantId) {
+    tenantsToTry.push(tenantId);
   }
   
-  if (!tenantId) {
-    console.log('[getClientByIdAction] No tenantId found - returning Unauthorized');
+  // Add userId-based tenant
+  if (userId) {
+    const userTenant = `tenant-${userId}`;
+    if (!tenantsToTry.includes(userTenant)) {
+      tenantsToTry.push(userTenant);
+    }
+    // Also try without "tenant-" prefix (some legacy data)
+    if (!tenantsToTry.includes(userId)) {
+      tenantsToTry.push(userId);
+    }
+  }
+  
+  // Add legacy/default tenants
+  if (!tenantsToTry.includes('default')) {
+    tenantsToTry.push('default');
+  }
+  if (!tenantsToTry.includes('')) {
+    tenantsToTry.push('');
+  }
+  
+  // Remove duplicates and empty/null
+  const uniqueTenants = [...new Set(tenantsToTry)].filter(Boolean);
+  
+  console.log('[getClientByIdAction] Trying tenants:', uniqueTenants);
+  
+  if (uniqueTenants.length === 0) {
+    console.log('[getClientByIdAction] No tenantId or userId - returning Unauthorized');
     return { error: 'Unauthorized' };
   }
 
   try {
-    const client = await getClientById(tenantId, clientId);
+    // Try each tenant until we find the client
+    let client = null;
+    for (const tenant of uniqueTenants) {
+      console.log('[getClientByIdAction] Trying tenant:', tenant);
+      client = await getClientById(tenant, clientId);
+      if (client) {
+        console.log('[getClientByIdAction] Client found in tenant:', tenant);
+        break;
+      }
+    }
     
     if (!client) {
-      console.log('[getClientByIdAction] Client not found:', { tenantId, clientId });
+      console.log('[getClientByIdAction] Client not found after trying all tenants:', { tenants: uniqueTenants, clientId });
       return { error: 'Client not found', client: null };
     }
     
-    console.log('[getClientByIdAction] Client found:', client.name);
+    console.log('[getClientByIdAction] Client found:', client.name, 'tenant:', client.tenant_id);
     return { client };
   } catch (error: any) {
     console.error('[getClientByIdAction] Error:', error);

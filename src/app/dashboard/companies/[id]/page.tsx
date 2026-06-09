@@ -38,6 +38,16 @@ export default function CompanyDetailPage() {
   const router = useRouter();
   const clientId = params.id as string;
   
+  // Guard: Redirect "new" to the proper new company page
+  if (clientId === 'new') {
+    router.replace('/dashboard/companies/new');
+    return (
+      <div className="p-8">
+        <div className="animate-pulse">Redirecting...</div>
+      </div>
+    );
+  }
+  
   const [activeTab, setActiveTab] = useState("overview");
   
   // Fetch company data
@@ -551,7 +561,7 @@ function ContactsTab({ company }: { company: any; leads: any[] }) {
         </div>
       )}
 
-      {/* Contacts List */}
+{/* Contacts List */}
       {contacts.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2">
           {contacts.map((contact: any) => (
@@ -570,6 +580,10 @@ function ContactsTab({ company }: { company: any; leads: any[] }) {
                       </Badge>
                     )}
                   </div>
+                  {/* Contact ID - useful for reference */}
+                  <p className="text-xs text-muted-foreground font-mono mt-1">
+                    ID: {contact.id}
+                  </p>
                   {contact.title && (
                     <p className="text-sm text-muted-foreground">{contact.title}</p>
                   )}

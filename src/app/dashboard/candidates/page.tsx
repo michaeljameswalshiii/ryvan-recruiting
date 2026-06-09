@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Search, Plus, LayoutList, Kanban, User, RefreshCw, Trash2, MoreVertical } from "lucide-react";
+import { Search, Plus, LayoutList, Kanban, User, RefreshCw, Trash2, MoreVertical, Briefcase, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { useLeads, leadKeys } from "@/lib/hooks/query-lead";
 import { deleteLeadAction } from "@/lib/actions/lead-actions";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { LinkJobModal } from "@/components/candidate/LinkJobModal";
 
 type ViewMode = "list" | "pipeline";
 
@@ -86,6 +87,14 @@ export default function CandidatesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  
+  // Link Job Modal state
+  const [linkJobModalOpen, setLinkJobModalOpen] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] = useState<{
+    id: string;
+    name: string;
+    linkedJobIds: string[];
+  } | null>(null);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -336,9 +345,29 @@ className="grid grid-cols-9 gap-4 px-4 py-3 items-center hover:bg-muted/50 trans
                       </div>
                     </div>
                     
-                    {/* Linked Job */}
-                    <div className="hidden md:block text-sm text-muted-foreground truncate">
-                      {candidate.linked_job || "-"}
+{/* Linked Job */}
+                    <div className="hidden md:block">
+                      {candidate.linkedJobIds && candidate.linkedJobIds.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {candidate.linkedJobIds.slice(0, 2).map((jobId: string, idx: number) => (
+                            <Link
+                              key={jobId}
+                              href={`/dashboard/jobs/${jobId}`}
+                              className="text-xs bg-primary/10 text-primary hover:bg-primary/20 px-2 py-0.5 rounded-full truncate max-w-[100px]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {candidate.linkedJobs?.[idx]?.title || `Job ${idx + 1}`}
+                            </Link>
+                          ))}
+                          {candidate.linkedJobIds.length > 2 && (
+                            <span className="text-xs text-muted-foreground">
+                              +{candidate.linkedJobIds.length - 2} more
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">— No jobs linked —</span>
+                      )}
                     </div>
                     
                     {/* Source */}
@@ -374,8 +403,28 @@ className="grid grid-cols-9 gap-4 px-4 py-3 items-center hover:bg-muted/50 trans
                       {getTimeAgo(candidate.modified_at || candidate.created_at)}
                     </div>
                     
-                    {/* Actions Column */}
-                    <div className="text-center">
+{/* Actions Column */}
+                    <div className="text-center flex items-center justify-center gap-1">
+                      {/* Link Job Button */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-primary hover:text-primary hover:bg-primary/10"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setSelectedCandidate({
+                            id: candidate.id,
+                            name: candidate.name,
+                            linkedJobIds: candidate.linkedJobIds || [],
+                          });
+                          setLinkJobModalOpen(true);
+                        }}
+                        title="Link Job"
+                      >
+                        <Link2 className="h-4 w-4" />
+                      </Button>
+                      {/* Delete Button */}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -466,8 +515,17 @@ pipelineGroups[stage.id as keyof typeof pipelineGroups].map((candidate: any) => 
               </div>
             ))}
           </div>
-        )}
+)}
       </div>
+
+      {/* Link Job Modal */}
+      <LinkJobModal
+        open={linkJobModalOpen}
+        onOpenChange={setLinkJobModalOpen}
+        candidateId={selectedCandidate?.id || ""}
+        candidateName={selectedCandidate?.name || ""}
+        currentLinkedJobIds={selectedCandidate?.linkedJobIds || []}
+      />
     </div>
   );
 }

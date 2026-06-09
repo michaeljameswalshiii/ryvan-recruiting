@@ -14,7 +14,8 @@ import {
   leadsTable,
 } from '../dynamodb';
 import { getCached, setCached, invalidateTenantCache, makeCacheKey } from '../../cache';
-import { type Lead, type CreateLeadInput, type UpdateLeadInput } from '../../schemas/lead';
+import { type Lead, type CreateLeadInput, type UpdateLeadInput, type LinkedJob } from '../../schemas/lead';
+import { getJobById, getAllJobs } from './job-repository';
 
 // Cache TTL: 5 minutes
 const CACHE_TTL = 300;
@@ -67,6 +68,43 @@ export async function getAllLeads(tenantId: string): Promise<Lead[]> {
   await setCached(cacheKey, leads, CACHE_TTL);
 
   return leads;
+}
+
+/**
+ * Get all leads with enriched linked job data
+ * Fetches job info for all linkedJobIds and returns enriched leads
+ */
+export async function getAllLeadsWithLinkedJobs(tenantId: string): Promise<(Lead & { linkedJobs: LinkedJob[] })[]> {
+  const leads = await getAllLeads(tenantId);
+  
+  // Get all jobs for the tenant to look up by ID
+  const allJobs = await getAllJobs(tenantId);
+  const jobsMap = new Map(allJobs.map(job => [job.id, job]));
+  
+  // Enrich leads with linked job data
+  const enrichedLeads = leads.map(lead => {
+    const linkedJobs: LinkedJob[] = [];
+    
+    if (lead.linkedJobIds && lead.linkedJobIds.length > 0) {
+      for (const jobId of lead.linkedJobIds) {
+        const job = jobsMap.get(jobId);
+        if (job) {
+          linkedJobs.push({
+            id: job.id,
+            title: job.title,
+            companyName: job.companyName,
+          });
+        }
+      }
+    }
+    
+    return {
+      ...lead,
+      linkedJobs,
+    };
+  });
+  
+  return enrichedLeads;
 }
 
 /**
@@ -133,6 +171,7 @@ const lead: Lead = {
     notes: validated.notes || '',
     linkedin_url: validated.linkedin_url || '',
     resume_url: validated.resume_url || '',
+    linkedJobIds: validated.linkedJobIds || [],
     created_at: new Date().toISOString(),
   };
 
@@ -238,10 +277,15 @@ if (data.resume_url !== undefined) {
     values[':education'] = data.education;
     names['#education'] = 'education';
   }
-  if (data.certifications !== undefined) {
+if (data.certifications !== undefined) {
     updates.push('#certifications = :certifications');
     values[':certifications'] = data.certifications;
     names['#certifications'] = 'certifications';
+  }
+  if (data.linkedJobIds !== undefined) {
+    updates.push('#linkedJobIds = :linkedJobIds');
+    values[':linkedJobIds'] = data.linkedJobIds;
+    names['#linkedJobIds'] = 'linkedJobIds';
   }
 
   if (updates.length === 0) {

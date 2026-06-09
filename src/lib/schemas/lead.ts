@@ -5,6 +5,13 @@ import { z } from 'zod';
  * Validation schema for lead data
  */
 
+// Linked job type for enriched data
+export const linkedJobSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  companyName: z.string().optional(),
+});
+
 export const leadSchema = z.object({
   tenant_id: z.string().optional(),
   id: z.string().uuid().optional(),
@@ -34,6 +41,7 @@ export const leadSchema = z.object({
   notes: z.string().max(2000).optional().or(z.literal('')),
   linkedin_url: z.string().max(200).optional().or(z.literal('')),
   resume_url: z.string().max(500).optional().or(z.literal('')),
+  linkedJobIds: z.array(z.string()).optional(),
   created_at: z.string().optional(),
   modified_at: z.string().optional(),
 });
@@ -62,6 +70,7 @@ export const updateLeadSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
   linkedin_url: z.string().max(200).optional().nullable(),
   resume_url: z.string().max(500).optional().nullable(),
+  linkedJobIds: z.array(z.string()).optional().nullable(),
   created_at: z.string().optional(),
   modified_at: z.string().optional(),
 }).passthrough(); // Allow extra fields
@@ -77,3 +86,4 @@ export const leadQuerySchema = z.object({
 export type Lead = z.infer<typeof leadSchema>;
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;
+export type LinkedJob = z.infer<typeof linkedJobSchema>;
