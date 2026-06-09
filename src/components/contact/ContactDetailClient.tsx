@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SendEmailModal } from "@/components/email/send-email-modal";
+import { useJobsForCompany } from "@/lib/hooks/query-job";
+import { useLeads } from "@/lib/hooks/query-lead";
 import { toast } from "sonner";
 
 // Note Types
@@ -64,6 +66,18 @@ export function ContactDetailClient({ contact }: ContactDetailClientProps) {
   const [newNoteText, setNewNoteText] = useState("");
   const [newNoteType, setNewNoteType] = useState("general");
   const [addingNote, setAddingNote] = useState(false);
+
+  // Fetch company data for stats
+  const { data: companyJobs = [], isLoading: jobsLoading } = useJobsForCompany(contact.companyId);
+  const { data: allLeads = [], isLoading: leadsLoading } = useLeads();
+  
+  // Filter candidates for this company
+  const companyCandidates = allLeads.filter((lead: any) => 
+    lead.company?.toLowerCase() === contact.companyName?.toLowerCase()
+  );
+  
+  const openJobsCount = companyJobs.filter((job: any) => job.status === "Open").length;
+  const candidatesCount = companyCandidates.length;
 
   // Fetch activities on mount
   useEffect(() => {
@@ -502,17 +516,25 @@ export function ContactDetailClient({ contact }: ContactDetailClientProps) {
                   </Link>
                 </div>
 
-                {/* Quick Stats (placeholder for now - can add job count, etc.) */}
+{/* Quick Stats - Real data from hooks */}
                 <div className="pt-4 border-t">
                   <p className="text-sm text-muted-foreground">Quick Stats</p>
                   <div className="mt-2 space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Open Jobs</span>
-                      <Badge variant="outline">0</Badge>
+                      {jobsLoading ? (
+                        <Badge variant="outline">...</Badge>
+                      ) : (
+                        <Badge variant="default">{openJobsCount}</Badge>
+                      )}
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Candidates</span>
-                      <Badge variant="outline">0</Badge>
+                      {leadsLoading ? (
+                        <Badge variant="outline">...</Badge>
+                      ) : (
+                        <Badge variant="default">{candidatesCount}</Badge>
+                      )}
                     </div>
                   </div>
                 </div>
