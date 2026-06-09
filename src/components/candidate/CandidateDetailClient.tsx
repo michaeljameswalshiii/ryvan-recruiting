@@ -55,6 +55,29 @@ interface CandidateDetailClientProps {
 
 type Tab = "overview" | "timeline" | "resume" | "linked-jobs";
 
+// Pipeline stages
+const PIPELINE_STAGES = ["Identified", "Submitted", "Interviewing", "Offer Out", "Accepted"];
+const STAGE_COLORS: Record<string, string> = {
+  "Identified": "bg-gray-100 text-gray-600",
+  "Submitted": "bg-blue-100 text-blue-600",
+  "Interviewing": "bg-purple-100 text-purple-600",
+  "Offer Out": "bg-yellow-100 text-yellow-600",
+  "Accepted": "bg-green-100 text-green-600",
+};
+
+// Activity types with colors
+const ACTIVITY_TYPES = [
+  { value: "conversation", label: "Conversation", color: "bg-blue-100 text-blue-800" },
+  { value: "interview_scheduled", label: "Interview Scheduled", color: "bg-purple-100 text-purple-800" },
+  { value: "submitted", label: "Submitted", color: "bg-indigo-100 text-indigo-800" },
+  { value: "left_message", label: "Left Message", color: "bg-orange-100 text-orange-800" },
+  { value: "email_sent", label: "Email Sent", color: "bg-cyan-100 text-cyan-800" },
+  { value: "offer_extended", label: "Offer Extended", color: "bg-yellow-100 text-yellow-800" },
+  { value: "offer_accepted", label: "Offer Accepted", color: "bg-green-100 text-green-800" },
+  { value: "rejected", label: "Rejected", color: "bg-red-100 text-red-800" },
+  { value: "other", label: "Other", color: "bg-gray-100 text-gray-800" },
+];
+
 export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [currentResumeUrl, setCurrentResumeUrl] = useState(candidate.resumeUrl || "");
@@ -102,7 +125,16 @@ const [editAddress, setEditAddress] = useState({
   // Location preferences options
   const locationOptions = ["On-Site", "Hybrid", "Remote"];
 
-// Notes state
+// Pipeline stage state
+  const [currentStage, setCurrentStage] = useState(candidate.status || "Identified");
+  const [updatingStage, setUpdatingStage] = useState(false);
+
+// Activity/Notes state for new design
+  const [activityNote, setActivityNote] = useState("");
+  const [activityType, setActivityType] = useState("conversation");
+  const [loggingActivity, setLoggingActivity] = useState(false);
+
+  // Notes/Activity legacy state (for backward compatibility)
   const [notes, setNotes] = useState<Note[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
   const [newNote, setNewNote] = useState("");
@@ -349,7 +381,48 @@ toast.success('Candidate updated successfully');
     window.location.reload();
   };
 
-// Handle delete resume
+// Pipeline Stage handlers
+  const getCurrentStageIndex = () => PIPELINE_STAGES.indexOf(currentStage);
+  
+  const handleAdvanceStage = async (newStage: string) => {
+    if (!newStage || newStage === currentStage) return;
+    try {
+      setUpdatingStage(true);
+      const response = await fetch(`/api/data/leads/${candidate.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStage }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.error) {
+        throw new Error(result.error || 'Failed to update stage');
+      }
+      setCurrentStage(newStage);
+      toast.success(`Stage updated to ${newStage}`);
+    } catch (err: any) {
+      console.error('Error updating stage:', err);
+      toast.error(err.message || 'Failed to update stage');
+    } finally {
+      setUpdatingStage(false);
+    }
+  };
+  
+  const handleMoveBack = () => {
+    const currentIndex = getCurrentStageIndex();
+    if (currentIndex > 0) {
+      handleAdvanceStage(PIPELINE_STAGES[currentIndex - 1]);
+    }
+  };
+  
+  const handleAdvanceToOffer = () => {
+    handleAdvanceStage("Offer Out");
+  };
+  
+  const handleReject = () => {
+    handleAdvanceStage("Rejected");
+  };
+
+  // Handle delete resume
   const handleDeleteResume = async () => {
     if (!confirm("Are you sure you want to delete this resume?")) return;
     
@@ -798,71 +871,90 @@ return (
 
 {/* Resume Section - Quick View - REMOVED per user request */}
 
-{/* === NOTES SECTION (Dark Mode Friendly) === */}
-<div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-  <div className="flex items-center justify-between mb-5">
-    <h3 className="text-lg font-semibold flex items-center gap-2">
-      📝 Notes
-    </h3>
-    <Button 
-      variant="outline" 
-      size="sm"
-      onClick={() => setActiveTab('timeline')}
-    >
-      View Full Timeline →
-    </Button>
+{/* NOTES & ACTIVITY LOG - Full Ryvan Style */}
+<div className="mt-8">
+  <div className="flex items-center justify-between mb-6">
+    <h3 className="text-xl font-semibold">NOTES & ACTIVITY LOG</h3>
+    <Badge variant="outline">{notes?.length || 0} entries</Badge>
   </div>
 
-  {/* Note Type */}
-  <div className="mb-4">
-    <label className="text-sm font-medium text-foreground mb-1.5 block">
-      Note Type
-    </label>
-    <select
-      value={noteType}
-      onChange={(e) => setNoteType(e.target.value)}
-      className="w-full p-3 border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary text-sm"
-    >
-      {noteTypes.map((type: any) => (
-        <option key={type.value} value={type.value} className="bg-background text-foreground">
-          {type.label}
-        </option>
-      ))}
-    </select>
-  </div>
+  {/* Add New Note - Horizontal Form */}
+  <div className="bg-card border rounded-2xl p-6 mb-8">
+    <div className="flex flex-col md:flex-row gap-4">
+      <div className="md:w-48">
+        <label className="text-sm font-medium mb-1.5 block">Action Type</label>
+        <select
+          value={noteType}
+          onChange={(e) => setNoteType(e.target.value)}
+          className="w-full border rounded-lg p-3 bg-background"
+        >
+          {noteTypes.map((type: any) => (
+            <option key={type.value} value={type.value}>{type.label}</option>
+          ))}
+        </select>
+      </div>
 
-  {/* Note Textarea */}
-  <div className="mb-5">
-    <label className="text-sm font-medium text-foreground mb-1.5 block">
-      Note
-    </label>
-    <Textarea
-      value={newNote}
-      onChange={(e) => setNewNote(e.target.value)}
-      placeholder="Add a note about this candidate..."
-      className="min-h-[120px] resize-y bg-background border-input text-foreground"
-    />
-  </div>
+      <div className="flex-1">
+        <label className="text-sm font-medium mb-1.5 block">Note Details</label>
+        <Textarea
+          value={newNote}
+          onChange={(e) => setNewNote(e.target.value)}
+          placeholder="Add note detail here..."
+          className="min-h-[80px]"
+        />
+      </div>
 
-  <Button 
-    onClick={handleAddNote} 
-    disabled={addingNote || !newNote?.trim()}
-    className="w-full"
-  >
-    {addingNote ? 'Adding Note...' : 'Add Note'}
-  </Button>
-
-  {/* Recent notes preview */}
-  {notes && notes.length > 0 && (
-    <div className="mt-6 pt-4 border-t border-border">
-      <p className="text-xs text-muted-foreground mb-2">Recent Notes</p>
-      {notes.slice(0, 2).map((note: any) => (
-        <div key={note.id} className="text-sm text-muted-foreground py-1">
-          • {note.description?.substring(0, 80)}...
-        </div>
-      ))}
+      <div className="flex items-end">
+        <Button onClick={handleAddNote} disabled={addingNote || !newNote?.trim()} className="w-full md:w-auto">
+          {addingNote ? "Logging..." : "Log"}
+        </Button>
+      </div>
     </div>
-  )}
+  </div>
+
+  {/* Full Activity Table */}
+  <Card>
+    <CardContent className="p-0">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b bg-muted/50">
+            <th className="text-left p-4 font-medium w-40">DATE</th>
+            <th className="text-left p-4 font-medium w-44">ACTION TYPE</th>
+            <th className="text-left p-4 font-medium">NOTE</th>
+          </tr>
+        </thead>
+        <tbody>
+          {notes && notes.length > 0 ? (
+            notes.map((note: any, index: number) => (
+              <tr key={note.id || index} className="border-b hover:bg-muted/50">
+                <td className="p-4 text-sm text-muted-foreground">
+                  {new Date(note.createdAt || note.date).toLocaleDateString()} 
+                  <br />
+                  <span className="text-xs">{new Date(note.createdAt || note.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                </td>
+                <td className="p-4">
+                  <Badge variant="secondary" className={
+                    note.eventType === "conversation" || note.eventType === "NOTE" ? "bg-green-100 text-green-700" :
+                    note.eventType === "interview_scheduled" || note.eventType === "MEETING" ? "bg-amber-100 text-amber-700" :
+                    note.eventType === "email_sent" || note.eventType === "EMAIL_SENT" ? "bg-blue-100 text-blue-700" : ""
+                  }>
+                    {note.eventType ? note.eventType : "Note"}
+                  </Badge>
+                </td>
+                <td className="p-4 text-sm">{note.description || note.title}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={3} className="p-12 text-center text-muted-foreground">
+                No notes yet. Add one above.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </CardContent>
+  </Card>
 </div>
             </div>
 
