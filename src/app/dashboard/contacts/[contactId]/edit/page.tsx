@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,10 +15,11 @@ import { toast } from "sonner";
 
 export default function EditContactPage() {
   const router = useRouter();
+  const params = useParams();
   const searchParams = useSearchParams();
   
-  const contactId = searchParams.get("contactId");
-  const companyIdParam = searchParams.get("companyId");
+  const contactId = params.contactId as string;
+  const companyIdParam = searchParams.get("companyId") || "";
   
   const { data: clients = [], isLoading } = useClients();
   const updateContactMutation = useUpdateContact();
