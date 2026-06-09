@@ -8,7 +8,7 @@
 'use server';
 
 import { getSessionTenantId, getSessionUserId } from '../server-auth';
-import { getAllLeads, createLead as createLeadRepo, updateLead, deleteLead } from '../db/repositories/lead-repository';
+import { getAllLeads, getAllLeadsWithLinkedJobs, createLead as createLeadRepo, updateLead, deleteLead } from '../db/repositories/lead-repository';
 import { createLeadSchema, updateLeadSchema } from '../schemas/lead';
 import { recordStatusChange } from '../events/candidate-events';
 import { z } from 'zod';
@@ -30,8 +30,9 @@ export async function getLeads() {
     return { leads: [] };
   }
 
-  try {
-    const leads = await getAllLeads(tenantId);
+try {
+    // Use enriched leads with linkedJobs data for the candidates page
+    const leads = await getAllLeadsWithLinkedJobs(tenantId);
     return { leads };
   } catch (error: any) {
     return { error: error.message || 'Failed to get leads' };

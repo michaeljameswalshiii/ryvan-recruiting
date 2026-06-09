@@ -345,23 +345,23 @@ className="grid grid-cols-9 gap-4 px-4 py-3 items-center hover:bg-muted/50 trans
                       </div>
                     </div>
                     
-{/* Linked Job */}
-                    <div className="hidden md:block">
-                      {candidate.linkedJobIds && candidate.linkedJobIds.length > 0 ? (
+{/* Linked Job - Using enriched linkedJobs data */}
+                    <div className="hidden md-block">
+                      {candidate.linkedJobs && candidate.linkedJobs.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
-                          {candidate.linkedJobIds.slice(0, 2).map((jobId: string, idx: number) => (
+                          {candidate.linkedJobs.slice(0, 2).map((job: any) => (
                             <Link
-                              key={jobId}
-                              href={`/dashboard/jobs/${jobId}`}
+                              key={job.id}
+                              href={`/dashboard/jobs/${job.id}`}
                               className="text-xs bg-primary/10 text-primary hover:bg-primary/20 px-2 py-0.5 rounded-full truncate max-w-[100px]"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              {candidate.linkedJobs?.[idx]?.title || `Job ${idx + 1}`}
+                              {job.title}
                             </Link>
                           ))}
-                          {candidate.linkedJobIds.length > 2 && (
+                          {candidate.linkedJobs.length > 2 && (
                             <span className="text-xs text-muted-foreground">
-                              +{candidate.linkedJobIds.length - 2} more
+                              +{candidate.linkedJobs.length - 2} more
                             </span>
                           )}
                         </div>
