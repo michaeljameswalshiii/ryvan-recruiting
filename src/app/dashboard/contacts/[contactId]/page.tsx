@@ -60,12 +60,13 @@ export default async function ContactDetailPage({ params, searchParams }: Props)
     notFound();
   }
 
-  // Map contact to compatible format for client component
+// Map contact to compatible format for client component
   const contactData = {
     id: contact.id || "",
     name: contact.name || "",
     email: contact.email || "",
     phone: contact.phone || "",
+    phones: contact.phones || [],
     title: contact.title || "",
     isPrimary: contact.isPrimary || false,
     notes: contact.notes || "",

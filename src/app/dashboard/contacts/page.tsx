@@ -18,12 +18,20 @@ import {
 import { SendEmailModal } from '@/components/email/send-email-modal';
 import { toast } from 'sonner';
 
+interface ContactPhone {
+  id: string;
+  number: string;
+  type: string;
+  isPreferred?: boolean;
+}
+
 interface Contact {
   id: string;
   name: string;
   title?: string;
   email?: string;
   phone?: string;
+  phones?: ContactPhone[];
   isPrimary?: boolean;
   notes?: string;
   companyId: string;
@@ -50,7 +58,7 @@ export default function ContactsPage() {
   const { data: clients = [], isLoading, error, refetch } = useClients();
   const removeContactMutation = useRemoveContact();
 
-  // Flatten all contacts from all companies
+// Flatten all contacts from all companies
   const allContacts: Contact[] = useMemo(() => {
     const contacts: Contact[] = [];
     clients.forEach((client: any) => {
@@ -62,6 +70,7 @@ export default function ContactsPage() {
             title: contact.title || '',
             email: contact.email || '',
             phone: contact.phone || '',
+            phones: contact.phones || [],
             isPrimary: contact.isPrimary || false,
             notes: contact.notes || '',
             companyId: client.id,
@@ -346,13 +355,30 @@ export default function ContactsPage() {
                             <span className="truncate">{contact.email}</span>
                           </button>
                         )}
-                        {contact.phone && (
+                        {contact.phones && contact.phones.length > 0 ? (
+                          contact.phones
+                            .filter((p: ContactPhone) => p.number)
+                            .slice(0, 2)
+                            .map((phone: ContactPhone, idx: number) => (
+                              <div key={phone.id} className="flex items-center gap-2 text-muted-foreground">
+                                <Phone className="h-3 w-3" />
+                                <span className="text-xs capitalize">{phone.type}:</span>
+                                <a href={`tel:${phone.number}`} className="hover:underline">
+                                  {phone.number}
+                                </a>
+                                {phone.isPreferred && (
+                                  <Badge variant="secondary" className="text-[10px] px-1">
+                                    Pref
+                                  </Badge>
+                                )}
+                              </div>
+                            ))
+                        ) : contact.phone ? (
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <Phone className="h-3 w-3" />
                             <span>{contact.phone}</span>
                           </div>
-                        )}
-                        {!contact.email && !contact.phone && (
+                        ) : !contact.email && (
                           <span className="text-muted-foreground">-</span>
                         )}
                       </div>
