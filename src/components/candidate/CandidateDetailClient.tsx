@@ -5,11 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import EventTimeline from "@/components/EventTimeline";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { ResumeUpload } from "@/components/candidate/ResumeUpload";
 import { SendEmailModal } from "@/components/email/send-email-modal";
-import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download, Plus, Upload } from "lucide-react";
+import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download, Plus, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useUnlinkCandidateFromJob, useJobs } from "@/lib/hooks/query-job";
 
@@ -32,6 +33,7 @@ interface Candidate {
   company?: string;
   linkedin?: string;
   resumeUrl?: string;
+  resumeFileName?: string;
   status: string;
   source?: string;
   location?: string;
@@ -341,6 +343,38 @@ toast.success('Candidate updated successfully');
     setIsEditing(false);
   };
 
+  // Handle resume replace - refresh the page to get new resume
+  const handleResumeReplace = () => {
+    window.location.reload();
+  };
+
+  // Handle delete resume
+  const handleDeleteResume = async () => {
+    if (!confirm("Are you sure you want to delete this resume?")) return;
+    
+    try {
+      const response = await fetch(`/api/data/leads/${candidate.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resume_url: null,
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok || result.error) {
+        throw new Error(result.error || 'Failed to delete resume');
+      }
+
+      toast.success('Resume deleted successfully');
+      window.location.reload();
+    } catch (err: any) {
+      console.error('Error deleting resume:', err);
+      toast.error(err.message || 'Failed to delete resume');
+    }
+  };
+
 return (
     <div className="min-h-screen bg-background text-foreground">
 {/* Header */}
@@ -404,7 +438,7 @@ return (
       <div className="w-full p-6 space-y-8">
 {/* Overview Tab */}
         {activeTab === "overview" && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 {/* Left Column - Profile Info (60%) */}
             <div className="lg:col-span-7 space-y-6">
 {/* CONTACT INFORMATION - THEME FRIENDLY */}
@@ -856,44 +890,53 @@ return (
 
 {/* Right Column - Resume Viewer (40%) */}
             <div className="lg:col-span-5">
-              <div className="bg-card border border-border rounded-2xl p-6 shadow-sm sticky top-24">
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <FileText className="h-5 w-5" /> Resume
-                </h2>
-                <div className="min-h-[500px]">
-                  {candidate.resumeUrl ? (
-                    <ResumeViewer 
-                      url={candidate.resumeUrl} 
-                      candidateId={candidate.id} 
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-[200px] text-center text-muted-foreground">
-                      <FileText className="h-12 w-12 mb-3 opacity-50" />
-                      <p className="text-sm">No resume uploaded</p>
+              <div className="sticky top-24">
+                <Card className="h-[calc(100vh-120px)] flex flex-col">
+                  <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" /> Resume
+                    </CardTitle>
+                    {candidate.resumeUrl && (
+                      <div className="text-xs text-muted-foreground font-mono">
+                        {candidate.resumeFileName || "resume.pdf"}
+                      </div>
+                    )}
+                  </CardHeader>
+
+                  <CardContent className="flex-1 p-0 overflow-hidden">
+                    {candidate.resumeUrl ? (
+                      <ResumeViewer 
+                        url={candidate.resumeUrl} 
+                        candidateId={candidate.id}
+                        className="h-full"
+                      />
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-muted-foreground">
+                        No resume uploaded yet
+                      </div>
+                    )}
+                  </CardContent>
+
+                  {/* Action Buttons */}
+<div className="p-4 border-t flex gap-3">
+                      <ResumeUpload
+                        candidateId={candidate.id}
+                        onSuccess={handleResumeReplace}
+                        buttonText="Replace Resume"
+                        className="flex-1"
+                      />
+                    {candidate.resumeUrl && (
                       <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="mt-3"
-                        onClick={() => setActiveTab("resume")}
+                        variant="destructive" 
+                        onClick={handleDeleteResume}
+                        className="flex-1"
                       >
-                        Upload Resume
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete Resume
                       </Button>
-                    </div>
-                  )}
-                </div>
-                
-                {/* AI Evaluation Buttons - Below Resume */}
-                <div className="mt-4 pt-4 border-t border-border space-y-2">
-                  <Button variant="outline" size="sm" className="w-full justify-start">
-                    <span className="mr-2">⭐</span> Rate This Candidate
-                  </Button>
-                  <Button variant="outline" size="sm" className="w-full justify-start">
-                    <span className="mr-2">🎯</span> Match to Jobs
-                  </Button>
-                  <Button variant="outline" size="sm" className="w-full justify-start">
-                    <span className="mr-2">🤖</span> AI Summary
-                  </Button>
-                </div>
+                    )}
+                  </div>
+                </Card>
               </div>
             </div>
           </div>

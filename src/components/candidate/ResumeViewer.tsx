@@ -9,6 +9,7 @@ interface ResumeViewerProps {
   fileName?: string;
   candidateId?: string;
   fileKey?: string;
+  className?: string;
   onUrlUpdated?: (newUrl: string) => void;
 }
 
@@ -30,7 +31,7 @@ function detectFileType(url: string, fileName?: string): "pdf" | "docx" | "doc" 
   return "unknown";
 }
 
-export function ResumeViewer({ url, fileName, candidateId, fileKey, onUrlUpdated }: ResumeViewerProps) {
+export function ResumeViewer({ url, fileName, candidateId, fileKey, className, onUrlUpdated }: ResumeViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fileType, setFileType] = useState<"pdf" | "docx" | "doc" | "unknown">("unknown");
@@ -206,9 +207,9 @@ export function ResumeViewer({ url, fileName, candidateId, fileKey, onUrlUpdated
     );
   }
 
-  // Render PDF (default)
+// Render PDF (default)
   return (
-    <div className="flex flex-col h-full">
+    <div className={`flex flex-col h-full ${className || ""}`}>
       {/* Toolbar */}
       <div className="flex items-center justify-between p-2 bg-gray-100 border-b shrink-0">
         <div className="flex items-center gap-2">

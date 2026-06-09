@@ -8,7 +8,9 @@ import { FileText, Upload, X, Loader2, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 
 interface ResumeUploadProps {
-  candidateId: string;
+  candidateId?: string;
+  buttonText?: string;
+  className?: string;
   onSuccess?: (resumeUrl: string, parsedData?: any) => void;
   onError?: (error: string) => void;
 }
@@ -29,7 +31,7 @@ interface ParsedResumeData {
   certifications?: string[];
 }
 
-export function ResumeUpload({ candidateId, onSuccess, onError }: ResumeUploadProps) {
+export function ResumeUpload({ candidateId, buttonText, className, onSuccess, onError }: ResumeUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
@@ -212,8 +214,8 @@ const handleUpload = async () => {
     }
   };
 
-  return (
-    <div className="space-y-4">
+return (
+    <div className={`space-y-4 ${className || ""}`}>
       {/* Drag & Drop Zone */}
       <div
         className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
