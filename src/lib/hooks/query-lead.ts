@@ -35,8 +35,18 @@ export function useLeads() {
   return useQuery({
     queryKey: leadKeys.lists(),
     queryFn: async () => {
+      console.log('[useLeads] Fetching leads...');
       const result = await getLeads();
+      console.log('[useLeads] Got result:', result?.leads?.length, 'leads');
+      
+      // Check first lead for linkedJobs
+      if (result.leads && result.leads.length > 0) {
+        const firstLead = result.leads[0];
+        console.log('[useLeads] First lead:', firstLead.name, 'linkedJobs:', firstLead.linkedJobs, 'linkedJobIds:', firstLead.linkedJobIds);
+      }
+      
       if (result.error) {
+        console.error('[useLeads] Error:', result.error);
         throw new Error(result.error);
       }
       return result.leads || [];

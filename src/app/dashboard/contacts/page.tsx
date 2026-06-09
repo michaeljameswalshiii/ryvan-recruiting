@@ -15,6 +15,7 @@ import {
   useRemoveContact,
   clientKeys
 } from '@/lib/hooks/query-client';
+import { SendEmailModal } from '@/components/email/send-email-modal';
 import { toast } from 'sonner';
 
 interface Contact {
@@ -34,6 +35,16 @@ export default function ContactsPage() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
+  
+  // Send Email Modal state
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<{
+    id: string;
+    name: string;
+    email: string;
+    companyId: string;
+    companyName: string;
+  } | null>(null);
 
   // Use TanStack Query hooks
   const { data: clients = [], isLoading, error, refetch } = useClients();
@@ -104,7 +115,7 @@ export default function ContactsPage() {
     router.push('/dashboard/contacts/new');
   };
 
-  // Handle delete contact
+// Handle delete contact
   const handleDeleteContact = async (companyId: string, contactId: string, contactName: string) => {
     if (!confirm(`Are you sure you want to remove ${contactName}?`)) return;
     
@@ -119,6 +130,52 @@ export default function ContactsPage() {
       toast.error('Failed to remove contact', {
         description: err instanceof Error ? err.message : 'Please try again',
       });
+    }
+  };
+
+  // Handle send email click
+  const handleEmailClick = (contact: Contact) => {
+    setSelectedContact({
+      id: contact.id,
+      name: contact.name,
+      email: contact.email || '',
+      companyId: contact.companyId,
+      companyName: contact.companyName,
+    });
+    setEmailModalOpen(true);
+  };
+
+  // Handle send email with tracking
+  const handleSendEmail = async (subject: string, body: string) => {
+    if (!selectedContact) return;
+    
+    try {
+      // Log the activity to the company's activity timeline
+      const response = await fetch(`/api/company/${selectedContact.companyId}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventType: 'EMAIL_SENT',
+          title: 'Email Sent',
+          description: `Email sent to ${selectedContact.name} (${selectedContact.email}) - Subject: ${subject}`,
+          metadata: {
+            subject,
+            body,
+            contactId: selectedContact.id,
+            contactEmail: selectedContact.email,
+          }
+        })
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to log email event');
+      }
+      
+      toast.success(`Email sent to ${selectedContact.email}`);
+    } catch (err) {
+      console.error('Error logging email event:', err);
+      // Still show success since email was sent
+      toast.success(`Email sent to ${selectedContact.email}`);
     }
   };
 
@@ -276,23 +333,27 @@ export default function ContactsPage() {
                       </Link>
                     </td>
                     
-                    {/* CONTACT INFO */}
+{/* CONTACT INFO */}
                     <td className="p-4">
-                      <div className="space-y-1 text-sm text-muted-foreground">
+                      <div className="space-y-1 text-sm">
                         {contact.email && (
-                          <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleEmailClick(contact)}
+                            className="flex items-center gap-2 text-blue-400 hover:text-blue-600 hover:underline cursor-pointer transition-colors"
+                            title="Click to send email"
+                          >
                             <Mail className="h-3 w-3" />
                             <span className="truncate">{contact.email}</span>
-                          </div>
+                          </button>
                         )}
                         {contact.phone && (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 text-muted-foreground">
                             <Phone className="h-3 w-3" />
                             <span>{contact.phone}</span>
                           </div>
                         )}
                         {!contact.email && !contact.phone && (
-                          <span>-</span>
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </div>
                     </td>
@@ -330,8 +391,19 @@ export default function ContactsPage() {
               Showing {filteredContacts.length} contacts
             </div>
           )}
-        </CardContent>
+</CardContent>
       </Card>
+
+      {/* Send Email Modal */}
+      <SendEmailModal
+        open={emailModalOpen}
+        onOpenChange={setEmailModalOpen}
+        candidate={selectedContact ? {
+          email: selectedContact.email,
+          name: selectedContact.name,
+        } : null}
+        onSend={handleSendEmail}
+      />
     </div>
   );
 }

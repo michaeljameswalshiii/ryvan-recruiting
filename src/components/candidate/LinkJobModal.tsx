@@ -86,9 +86,14 @@ export function LinkJobModal({
         throw new Error(result.error || "Failed to update linked jobs");
       }
 
-      // Invalidate queries to refresh the list
+// Invalidate ALL lead queries to ensure fresh data
       queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: ["leads", "detail", candidateId] });
+      queryClient.invalidateQueries({ queryKey: leadKeys.details() });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      
+      // Force refetch of leads
+      await queryClient.refetchQueries({ queryKey: leadKeys.lists() });
 
       toast.success(
         selectedJobIds.length > 0

@@ -33,6 +33,9 @@ const tabs = [
   { id: "contacts", label: "Contacts", icon: User },
 ];
 
+// Import SendEmailModal
+import { SendEmailModal } from "@/components/email/send-email-modal";
+
 export default function CompanyDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -48,7 +51,58 @@ export default function CompanyDetailPage() {
     );
   }
   
-  const [activeTab, setActiveTab] = useState("overview");
+const [activeTab, setActiveTab] = useState("overview");
+  
+  // Send Email Modal state
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<{
+    id: string;
+    name: string;
+    email: string;
+  } | null>(null);
+
+  // Handle send email click from contacts
+  const handleEmailClick = (contact: any) => {
+    setSelectedContact({
+      id: contact.id,
+      name: contact.name,
+      email: contact.email,
+    });
+    setEmailModalOpen(true);
+  };
+
+  // Handle send email with tracking
+  const handleSendEmail = async (subject: string, body: string) => {
+    if (!selectedContact) return;
+    
+    try {
+      // Log the activity to the company's activity timeline
+      const response = await fetch(`/api/company/${company.id}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventType: 'EMAIL_SENT',
+          title: 'Email Sent',
+          description: `Email sent to ${selectedContact.name} (${selectedContact.email}) - Subject: ${subject}`,
+          metadata: {
+            subject,
+            body,
+            contactId: selectedContact.id,
+            contactEmail: selectedContact.email,
+          }
+        })
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to log email event');
+      }
+      
+      toast.success(`Email sent to ${selectedContact.email}`);
+    } catch (err) {
+      console.error('Error logging email event:', err);
+      toast.success(`Email sent to ${selectedContact.email}`);
+    }
+  };
   
   // Fetch company data
   const { data: company, isLoading, error } = useClient(clientId);
@@ -210,8 +264,19 @@ export default function CompanyDetailPage() {
         {activeTab === "overview" && <OverviewTab company={company} />}
         {activeTab === "history" && <HistoryTab company={company} />}
         {activeTab === "jobs" && <JobsTab companyId={company.id} companyName={company.name} />}
-        {activeTab === "contacts" && <ContactsTab company={company} leads={companyLeads} />}
+        {activeTab === "contacts" && <ContactsTab company={company} leads={companyLeads} onEmailClick={handleEmailClick} />}
       </div>
+
+      {/* Send Email Modal */}
+      <SendEmailModal
+        open={emailModalOpen}
+        onOpenChange={setEmailModalOpen}
+        candidate={selectedContact ? {
+          email: selectedContact.email,
+          name: selectedContact.name,
+        } : null}
+        onSend={handleSendEmail}
+      />
     </div>
   );
 }
@@ -466,7 +531,7 @@ function JobsTab({ companyId, companyName }: { companyId: string; companyName: s
 }
 
 // Contacts Tab Component
-function ContactsTab({ company }: { company: any; leads: any[] }) {
+function ContactsTab({ company, leads, onEmailClick }: { company: any; leads: any[]; onEmailClick?: (contact: any) => void }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingContact, setEditingContact] = useState<any>(null);
   const [deletingContact, setDeletingContact] = useState<any>(null);
@@ -589,7 +654,16 @@ function ContactsTab({ company }: { company: any; leads: any[] }) {
                   )}
                   
                   <div className="flex flex-wrap gap-2 mt-3">
-                    {contact.email && (
+                    {contact.email && onEmailClick ? (
+                      <button 
+                        onClick={() => onEmailClick(contact)}
+                        className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-600 hover:underline cursor-pointer"
+                        title="Click to send email"
+                      >
+                        <Mail className="h-3 w-3" />
+                        {contact.email}
+                      </button>
+                    ) : contact.email && (
                       <a 
                         href={`mailto:${contact.email}`}
                         className="flex items-center gap-1 text-sm text-primary hover:underline"

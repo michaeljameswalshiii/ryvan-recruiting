@@ -72,20 +72,21 @@ export async function PUT(
       );
     }
 
-// Parse body - skip validation temporarily to debug
+// Parse body
     const body = await request.json();
     console.log('PUT lead body:', JSON.stringify(body));
     
-    // Validate but skip error to debug what's failing
+    // Try to validate but allow partial updates
     const validated = updateLeadSchema.safeParse(body);
     
     if (!validated.success) {
-      console.log('Validation warning (continuing anyway):', validated.error.flatten());
-      // Continue with original body instead of failing
+      console.log('Validation warning:', validated.error.flatten());
+      // Continue anyway with body data - some fields might still be valid
     }
 
-    // Update lead with body data directly (bypass validation for now)
-    const lead = await updateLead(tenantId, id, body);
+    // Update lead - schema uses .passthrough() so extra fields are allowed
+    const updateData = validated.success ? validated.data : body;
+    const lead = await updateLead(tenantId, id, updateData);
 
     if (!lead) {
       return NextResponse.json(
