@@ -32,11 +32,19 @@ interface ActivityEvent {
   createdBy?: string;
 }
 
+interface ContactPhone {
+  id: string;
+  number: string;
+  type: string;
+  isPreferred?: boolean;
+}
+
 interface ContactData {
   id: string;
   name: string;
   email: string;
   phone?: string;
+  phones?: ContactPhone[];
   title?: string;
   isPrimary?: boolean;
   notes?: string;
@@ -396,6 +404,44 @@ export function ContactDetailClient({ contact }: ContactDetailClientProps) {
                       {contact.notes}
                     </p>
                   </div>
+                )}
+</CardContent>
+            </Card>
+
+{/* Phones Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Phone className="h-5 w-5" />
+                  Phone Numbers
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {contact.phones?.map((phone) => (
+                  <div key={phone.id} className="flex items-center justify-between bg-muted/50 rounded-lg p-3">
+                    <div className="flex items-center gap-4">
+                      <Badge variant="outline" className="capitalize w-20 justify-center">
+                        {phone.type}
+                      </Badge>
+                      <a 
+                        href={`tel:${phone.number}`}
+                        className="font-medium hover:underline"
+                      >
+                        {phone.number}
+                      </a>
+                    </div>
+
+                    {phone.isPreferred && (
+                      <Badge variant="secondary" className="flex items-center gap-1">
+                        <Star className="h-3 w-3 fill-current" />
+                        Preferred
+                      </Badge>
+                    )}
+                  </div>
+                ))}
+
+                {(!contact.phones || contact.phones.length === 0) && (
+                  <p className="text-muted-foreground text-sm">No phone numbers added yet.</p>
                 )}
               </CardContent>
             </Card>

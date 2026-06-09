@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, Plus, Star, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,25 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useClients, useUpdateContact } from "@/lib/hooks/query-client";
 import { toast } from "sonner";
+
+// Phone types
+const PHONE_TYPES = [
+  { value: "work", label: "Work" },
+  { value: "direct", label: "Direct" },
+  { value: "cell", label: "Cell" },
+  { value: "other", label: "Other" },
+];
+
+interface PhoneEntry {
+  id: string;
+  type: string;
+  number: string;
+  isPreferred: boolean;
+}
+
+function generateId() {
+  return Math.random().toString(36).substring(2, 15);
+}
 
 export default function EditContactPage() {
   const router = useRouter();
@@ -39,26 +58,61 @@ export default function EditContactPage() {
     name: "",
     title: "",
     email: "",
-    phone: "",
     isPrimary: false,
     notes: "",
     companyId: companyIdParam || "",
   });
 
-  // Pre-fill form with contact data when loaded
+  const [phones, setPhones] = useState<PhoneEntry[]>([
+    { id: generateId(), type: "work", number: "", isPreferred: true },
+  ]);
+
+// Pre-fill form with contact data when loaded
   useEffect(() => {
     if (contactData) {
       setFormData({
         name: contactData.name || "",
         title: contactData.title || "",
         email: contactData.email || "",
-        phone: contactData.phone || "",
         isPrimary: contactData.isPrimary || false,
         notes: contactData.notes || "",
         companyId: companyIdParam || "",
       });
+      
+      // Load phones if available, otherwise default to one empty phone
+      if (contactData.phones && contactData.phones.length > 0) {
+        setPhones(contactData.phones.map((p: any) => ({
+          id: p.id || generateId(),
+          type: p.type || "work",
+          number: p.number || "",
+          isPreferred: p.isPreferred || false,
+        })));
+      }
     }
   }, [contactData, companyIdParam]);
+
+  const handleAddPhone = () => {
+    setPhones([
+      ...phones,
+      { id: generateId(), type: "cell", number: "", isPreferred: false },
+    ]);
+  };
+
+  const handleRemovePhone = (id: string) => {
+    if (phones.length === 1) {
+      toast.error("At least one phone number is required");
+      return;
+    }
+    setPhones(phones.filter((p) => p.id !== id));
+  };
+
+  const handlePhoneChange = (id: string, field: keyof PhoneEntry, value: string | boolean) => {
+    if (field === "isPreferred" && value === true) {
+      setPhones(phones.map((p) => (p.id === id ? { ...p, isPreferred: true } : { ...p, isPreferred: false })));
+    } else {
+      setPhones(phones.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +132,9 @@ export default function EditContactPage() {
       return;
     }
 
+// Filter out empty phones
+    const validPhones = phones.filter((p) => p.number.trim() !== "");
+
     try {
       await updateContactMutation.mutateAsync({
         clientId: companyIdParam,
@@ -86,7 +143,7 @@ export default function EditContactPage() {
           name: formData.name,
           title: formData.title,
           email: formData.email,
-          phone: formData.phone,
+          phones: validPhones,
           isPrimary: formData.isPrimary,
           notes: formData.notes,
         },
@@ -185,7 +242,7 @@ export default function EditContactPage() {
               />
             </div>
 
-            <div>
+<div>
               <Label htmlFor="email">Email *</Label>
               <Input
                 id="email"
@@ -197,14 +254,56 @@ export default function EditContactPage() {
               />
             </div>
 
+            {/* Phone Numbers Section */}
             <div>
-              <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="(555) 123-4567"
-              />
+              <Label>Phone Numbers</Label>
+              <div className="space-y-3 mt-2">
+                {phones.map((phone) => (
+                  <div key={phone.id} className="flex items-center gap-2 p-3 border rounded-lg bg-background">
+                    <select
+                      value={phone.type}
+                      onChange={(e) => handlePhoneChange(phone.id, "type", e.target.value)}
+                      className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm w-28"
+                    >
+                      {PHONE_TYPES.map((type) => (
+                        <option key={type.value} value={type.value}>
+                          {type.label}
+                        </option>
+                      ))}
+                    </select>
+                    <Input
+                      value={phone.number}
+                      onChange={(e) => handlePhoneChange(phone.id, "number", e.target.value)}
+                      placeholder="(555) 123-4567"
+                      className="flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handlePhoneChange(phone.id, "isPreferred", !phone.isPreferred)}
+                      className={`flex items-center justify-center w-10 h-10 rounded-md border ${
+                        phone.isPreferred
+                          ? "border-amber-500 bg-amber-50 text-amber-600"
+                          : "border-input text-muted-foreground hover:text-foreground"
+                      }`}
+                      title={phone.isPreferred ? "Preferred" : "Mark as Preferred"}
+                    >
+                      <Star className={`h-4 w-4 ${phone.isPreferred ? "fill-current" : ""}`} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePhone(phone.id)}
+                      className="flex items-center justify-center w-10 h-10 rounded-md border border-input text-muted-foreground hover:text-destructive hover:border-destructive"
+                      title="Remove phone"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" onClick={handleAddPhone} className="w-full">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Another Phone
+                </Button>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
