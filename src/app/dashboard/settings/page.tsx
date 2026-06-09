@@ -36,6 +36,11 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState<string | null>(null);
   
+  // Check if OAuth is configured (these would come from env vars on the server side)
+  // For client-side, we check via the API response
+  const [gmailConfigured, setGmailConfigured] = useState<boolean | null>(null);
+  const [outlookConfigured, setOutlookConfigured] = useState<boolean | null>(null);
+  
   // Get user ID from session (in real app, get from auth)
   const userId = 'demo-user'; // TODO: Get from session
   
@@ -53,6 +58,24 @@ export default function SettingsPage() {
       toast.error(`Email error: ${emailError}`);
     }
   }, [searchParams]);
+  
+  // Check if OAuth is configured
+  const checkOAuthConfig = async () => {
+    try {
+      // Try to initiate OAuth - it will return an error if not configured
+      const gmailResponse = await fetch('/api/email/oauth/gmail?userId=test', { method: 'HEAD' });
+      const outlookResponse = await fetch('/api/email/oauth/outlook?userId=test', { method: 'HEAD' });
+      
+      // If we get 400, it's because userId is required (so it's configured)
+      // If we get 503, it's not configured
+      setGmailConfigured(gmailResponse.status !== 503);
+      setOutlookConfigured(outlookResponse.status !== 503);
+    } catch (error) {
+      console.error('Failed to check OAuth config:', error);
+      setGmailConfigured(false);
+      setOutlookConfigured(false);
+    }
+  };
   
   // Fetch email connections
   const fetchConnections = async () => {
@@ -73,15 +96,24 @@ export default function SettingsPage() {
   
   useEffect(() => {
     fetchConnections();
+    checkOAuthConfig();
   }, [userId]);
   
   // Connect Gmail
   const connectGmail = () => {
+    if (!gmailConfigured) {
+      toast.error('Gmail OAuth is not configured. Please contact your administrator.');
+      return;
+    }
     window.location.href = `/api/email/oauth/gmail?userId=${userId}`;
   };
   
   // Connect Outlook
   const connectOutlook = () => {
+    if (!outlookConfigured) {
+      toast.error('Outlook OAuth is not configured. Please contact your administrator.');
+      return;
+    }
     window.location.href = `/api/email/oauth/outlook?userId=${userId}`;
   };
   

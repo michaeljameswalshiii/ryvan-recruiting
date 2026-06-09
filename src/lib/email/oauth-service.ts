@@ -19,12 +19,26 @@ const region = process.env.AWS_REGION || 'us-east-1';
 // Gmail OAuth
 const gmailClientId = process.env.GMAIL_CLIENT_ID;
 const gmailClientSecret = process.env.GMAIL_CLIENT_SECRET;
-const gmailRedirectUri = process.env.GMAIL_REDIRECT_URI || 'http://localhost:3000/api/email/oauth/gmail/callback';
+const gmailRedirectUri = process.env.GMAIL_REDIRECT_URI || 
+  (process.env.VERCEL_URL 
+    ? `https://${process.env.VERCEL_URL}/api/email/oauth/gmail/callback`
+    : 'http://localhost:3000/api/email/oauth/gmail/callback');
 
 // Outlook OAuth (Microsoft) 
 const outlookClientId = process.env.OUTLOOK_CLIENT_ID;
 const outlookClientSecret = process.env.OUTLOOK_CLIENT_SECRET;
-const outlookRedirectUri = process.env.OUTLOOK_REDIRECT_URI || 'http://localhost:3000/api/email/oauth/outlook/callback';
+const outlookRedirectUri = process.env.OUTLOOK_REDIRECT_URI ||
+  (process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}/api/email/oauth/outlook/callback`
+    : 'http://localhost:3000/api/email/oauth/outlook/callback');
+
+// Validate required env vars
+if (!gmailClientId && process.env.NODE_ENV === 'production') {
+  console.warn('[EMAIL] GMAIL_CLIENT_ID is not set - Gmail OAuth will fail');
+}
+if (!outlookClientId && process.env.NODE_ENV === 'production') {
+  console.warn('[EMAIL] OUTLOOK_CLIENT_ID is not set - Outlook OAuth will fail');
+}
 
 // Scopes
 const GMAIL_SCOPES = [
@@ -49,6 +63,10 @@ const OUTLOOK_SCOPES = [
  * Generate Gmail OAuth URL
  */
 export function getGmailOAuthUrl(state: string): string {
+  if (!gmailClientId || !gmailClientSecret) {
+    throw new Error('GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET are required');
+  }
+  
   const oauth2Client = new google.auth.OAuth2(
     gmailClientId,
     gmailClientSecret,
@@ -67,8 +85,12 @@ export function getGmailOAuthUrl(state: string): string {
  * Generate Outlook OAuth URL
  */
 export function getOutlookOAuthUrl(state: string): string {
+  if (!outlookClientId || !outlookClientSecret) {
+    throw new Error('OUTLOOK_CLIENT_ID and OUTLOOK_CLIENT_SECRET are required');
+  }
+  
   const params = new URLSearchParams({
-    client_id: outlookClientId || '',
+    client_id: outlookClientId,
     response_type: 'code',
     redirect_uri: outlookRedirectUri,
     scope: OUTLOOK_SCOPES.join(' '),
@@ -90,11 +112,15 @@ export async function exchangeGmailCode(
   userId: string,
   code: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (!gmailClientId || !gmailClientSecret) {
+    return { success: false, error: 'Gmail OAuth not configured' };
+  }
+  
   try {
     const oauth2Client = new google.auth.OAuth2(
       gmailClientId,
       gmailClientSecret,
-      gmailRedirectUri
+      gmailRedirectUri || ''
     );
     
     // Get tokens
@@ -143,9 +169,13 @@ export async function exchangeOutlookCode(
   userId: string,
   code: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (!outlookClientId || !outlookClientSecret) {
+    return { success: false, error: 'Outlook OAuth not configured' };
+  }
+  
   try {
     const params = new URLSearchParams({
-      client_id: outlookClientId || '',
+      client_id: outlookClientId,
       client_secret: outlookClientSecret,
       code,
       redirect_uri: outlookRedirectUri,
@@ -216,6 +246,10 @@ export async function exchangeOutlookCode(
 export async function refreshGmailToken(
   userId: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (!gmailClientId || !gmailClientSecret) {
+    return { success: false, error: 'Gmail OAuth not configured' };
+  }
+  
   try {
     const connection = await getEmailConnection(userId, 'gmail');
     
@@ -226,24 +260,25 @@ export async function refreshGmailToken(
     const oauth2Client = new google.auth.OAuth2(
       gmailClientId,
       gmailClientSecret,
-      gmailRedirectUri
+      gmailRedirectUri || ''
     );
     
     oauth2Client.setCredentials({
       refresh_token: connection.refreshToken,
     });
     
-    const { credentials } = await oauth2Client.getAccessToken();
+    // Refresh the token
+    const newCredentials = await oauth2Client.refreshAccessToken();
     
-    if (!credentials.access_token) {
+    if (!newCredentials.credentials || !newCredentials.credentials.access_token) {
       return { success: false, error: 'Failed to get access token' };
     }
     
     // Update stored tokens
     await updateEmailConnection(userId, 'gmail', {
-      accessToken: credentials.access_token,
-      tokenType: credentials.token_type,
-      expiresAt: credentials.expiry_date,
+      accessToken: newCredentials.credentials.access_token,
+      tokenType: newCredentials.credentials.token_type,
+      expiresAt: newCredentials.credentials.expiry_date,
     });
     
     return { success: true };
@@ -269,6 +304,10 @@ export async function refreshGmailToken(
 export async function refreshOutlookToken(
   userId: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (!outlookClientId || !outlookClientSecret) {
+    return { success: false, error: 'Outlook OAuth not configured' };
+  }
+  
   try {
     const connection = await getEmailConnection(userId, 'outlook');
     
@@ -277,8 +316,8 @@ export async function refreshOutlookToken(
     }
     
     const params = new URLSearchParams({
-      client_id: outlookClientId || '',
-      client_secret: outlookClientSecret,
+      client_id: outlookClientId,
+      client_secret: outlookClientSecret || '',
       refresh_token: connection.refreshToken,
       grant_type: 'refresh_token',
       scope: OUTLOOK_SCOPES.join(' '),
@@ -348,6 +387,10 @@ export async function refreshOutlookToken(
 export async function getGmailClient(
   userId: string
 ): Promise<{ oauth2Client: Auth.OAuth2Client; emailAddress: string } | null> {
+  if (!gmailClientId || !gmailClientSecret) {
+    return null;
+  }
+  
   const connection = await getEmailConnection(userId, 'gmail');
   
   if (!connection) {
@@ -368,7 +411,7 @@ export async function getGmailClient(
   const oauth2Client = new google.auth.OAuth2(
     gmailClientId,
     gmailClientSecret,
-    gmailRedirectUri
+    gmailRedirectUri || ''
   );
   
   oauth2Client.setCredentials({

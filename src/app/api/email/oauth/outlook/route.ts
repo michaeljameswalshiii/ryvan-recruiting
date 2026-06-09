@@ -19,6 +19,14 @@ export async function GET(request: NextRequest) {
       );
     }
     
+    // Check if Outlook OAuth is configured before attempting
+    if (!process.env.OUTLOOK_CLIENT_ID || !process.env.OUTLOOK_CLIENT_SECRET) {
+      return NextResponse.json(
+        { error: 'Outlook OAuth is not configured. Please set OUTLOOK_CLIENT_ID and OUTLOOK_CLIENT_SECRET environment variables.' },
+        { status: 503 }
+      );
+    }
+    
     // Generate state with userId for security
     const state = Buffer.from(JSON.stringify({ userId })).toString('base64');
     
@@ -29,7 +37,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[OUTLOOK OAuth] Error:', error);
     return NextResponse.json(
-      { error: 'Failed to generate OAuth URL' },
+      { error: error instanceof Error ? error.message : 'Failed to generate OAuth URL' },
       { status: 500 }
     );
   }
