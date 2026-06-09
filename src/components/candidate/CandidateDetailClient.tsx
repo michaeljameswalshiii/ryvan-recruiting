@@ -796,31 +796,7 @@ return (
 {/* Linked Jobs Section */}
               <LinkedJobsSection candidateId={candidate.id} candidateName={candidate.name} />
 
-{/* Resume Section - Quick View */}
-              {candidate.resumeUrl && (
-                <div className="bg-card border border-border rounded-2xl p-6">
-                  <h2 className="font-semibold mb-4 flex items-center gap-2">
-                    <FileText className="h-5 w-5" /> Resume
-                  </h2>
-                  <div className="flex items-center gap-3">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setActiveTab("resume")}
-                    >
-                      View Resume
-                    </Button>
-                    <a
-                      href={candidate.resumeUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Download
-                    </a>
-                  </div>
-                </div>
-              )}
+{/* Resume Section - Quick View - REMOVED per user request */}
 
 {/* === NOTES SECTION (Dark Mode Friendly) === */}
 <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
