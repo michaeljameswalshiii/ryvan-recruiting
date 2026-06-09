@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { IdBadge } from "@/components/ui/id-badge";
 import { useClients, useUpdateClientStatus } from "@/lib/hooks/query-client";
 import { toast } from "sonner";
 
@@ -146,12 +147,13 @@ return (
             <table className="w-full">
               <thead>
                 <tr className="border-b">
-                  <th className="text-left p-4">COMPANY</th>
+<th className="text-left p-4">COMPANY</th>
                   <th className="text-left p-4">INDUSTRY</th>
                   <th className="text-left p-4">LOCATION</th>
                   <th className="text-left p-4">PRIMARY CONTACT</th>
                   <th className="text-left p-4">OPEN ROLES</th>
                   <th className="text-left p-4">STATUS</th>
+                  <th className="text-left p-4">ID</th>
                 </tr>
               </thead>
               <tbody>
@@ -166,8 +168,11 @@ return (
                     <td className="p-4 text-muted-foreground">{company.location || "-"}</td>
                     <td className="p-4 text-muted-foreground">-</td>
                     <td className="p-4 text-muted-foreground">{company.openRoles || 0}</td>
-                    <td className="p-4">
+<td className="p-4">
                       <Badge variant="outline">{company.status || "Targeting"}</Badge>
+                    </td>
+                    <td className="p-4">
+                      <IdBadge id={company.id} />
                     </td>
                   </tr>
                 ))}

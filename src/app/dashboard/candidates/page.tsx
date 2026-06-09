@@ -2,13 +2,15 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Search, Plus, LayoutList, Kanban, User, RefreshCw } from "lucide-react";
+import { Search, Plus, LayoutList, Kanban, User, RefreshCw, Trash2, MoreVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
+import { IdBadge } from "@/components/ui/id-badge";
 import { useLeads, leadKeys } from "@/lib/hooks/query-lead";
+import { deleteLeadAction } from "@/lib/actions/lead-actions";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -82,6 +84,8 @@ export default function CandidatesPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [sortField, setSortField] = useState<SortField>("created_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -153,9 +157,27 @@ export default function CandidatesPage() {
     rejected: pipelineGroups.rejected.length,
   };
 
-  const handleRefresh = () => {
+const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
     toast.success("Candidates refreshed");
+  };
+
+  const handleDelete = async (leadId: string) => {
+    setDeleting(true);
+    try {
+      const result = await deleteLeadAction(leadId);
+      if (result?.error) {
+        toast.error(result.error);
+      } else {
+        toast.success("Candidate deleted");
+        queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete");
+    } finally {
+      setDeleting(false);
+      setDeleteDialogOpen(null);
+    }
   };
 
   if (isLoading) {
@@ -253,9 +275,9 @@ export default function CandidatesPage() {
 
 {/* Content: List View */}
         {viewMode === "list" && (
-          <div className="rounded-md border bg-card">
+<div className="rounded-md border bg-card">
             {/* Table Header */}
-            <div className="grid grid-cols-7 gap-4 px-4 py-3 bg-muted/50 text-sm font-medium text-muted-foreground border-b">
+<div className="grid grid-cols-9 gap-4 px-4 py-3 bg-muted/50 text-sm font-medium text-muted-foreground border-b">
               <div className="col-span-2">CANDIDATE</div>
               <div className="hidden md:block">LINKED JOB</div>
               <div className="hidden lg:block">SOURCE</div>
@@ -272,6 +294,8 @@ export default function CandidatesPage() {
               >
                 LAST ACTIVITY {sortField === "modified_at" && (sortDirection === "desc" ? "↓" : "↑")}
               </button>
+              <div className="text-center">ACTIONS</div>
+              <div className="text-left">ID</div>
             </div>
             
             {/* Table Body */}
@@ -295,7 +319,7 @@ recentCandidates.map((candidate: any) => (
 <Link
                     key={candidate.id}
                     href={`/dashboard/candidates/${candidate.id}`}
-                    className="grid grid-cols-7 gap-4 px-4 py-3 items-center hover:bg-muted/50 transition-colors"
+className="grid grid-cols-9 gap-4 px-4 py-3 items-center hover:bg-muted/50 transition-colors"
                   >
                     {/* Candidate Column */}
                     <div className="col-span-2 flex items-center gap-3">
@@ -348,6 +372,30 @@ recentCandidates.map((candidate: any) => (
                     {/* Last Modified Date */}
                     <div className="text-right text-sm text-muted-foreground">
                       {getTimeAgo(candidate.modified_at || candidate.created_at)}
+                    </div>
+                    
+                    {/* Actions Column */}
+                    <div className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (confirm(`Delete ${candidate.name}?`)) {
+                            handleDelete(candidate.id);
+                          }
+                        }}
+                        disabled={deleting}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    
+                    {/* ID Column */}
+                    <div>
+                      <IdBadge id={candidate.id} />
                     </div>
                   </Link>
                 ))

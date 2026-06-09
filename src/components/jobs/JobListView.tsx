@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { IdBadge } from '@/components/ui/id-badge';
 
 interface Job {
   id: string;
@@ -36,6 +37,7 @@ export function JobListView({ jobs }: JobListViewProps) {
             <th className="text-left p-4">Candidates</th>
             <th className="text-left p-4">Date Added</th>
             <th className="text-left p-4">Status</th>
+            <th className="text-left p-4">ID</th>
           </tr>
         </thead>
         <tbody>
@@ -64,6 +66,9 @@ export function JobListView({ jobs }: JobListViewProps) {
                 }`}>
                   {job.status}
                 </span>
+              </td>
+              <td className="p-4">
+                <IdBadge id={job.id} />
               </td>
             </tr>
           ))}
