@@ -282,182 +282,176 @@ const handleRefresh = () => {
           />
         </div>
 
-{/* Content: List View */}
+{/* Content: List View - FIXED TABLE LAYOUT */}
         {viewMode === "list" && (
-<div className="rounded-md border bg-card">
-            {/* Table Header */}
-<div className="grid grid-cols-9 gap-4 px-4 py-3 bg-muted/50 text-sm font-medium text-muted-foreground border-b">
-              <div className="col-span-2">CANDIDATE</div>
-              <div className="hidden md:block">LINKED JOB</div>
-              <div className="hidden lg:block">SOURCE</div>
-              <div className="hidden sm:block">STAGE</div>
-              <button 
-                onClick={() => handleSort("created_at")}
-                className="text-right hover:text-foreground transition-colors cursor-pointer"
-              >
-                ADDED {sortField === "created_at" && (sortDirection === "desc" ? "↓" : "↑")}
-              </button>
-              <button 
-                onClick={() => handleSort("modified_at")}
-                className="text-right hover:text-foreground transition-colors cursor-pointer"
-              >
-                LAST ACTIVITY {sortField === "modified_at" && (sortDirection === "desc" ? "↓" : "↑")}
-              </button>
-              <div className="text-center">ACTIONS</div>
-              <div className="text-left">ID</div>
-            </div>
-            
-            {/* Table Body */}
-            <div className="divide-y">
-              {recentCandidates.length === 0 ? (
-                <div className="py-12 text-center text-muted-foreground">
-                  <User className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No candidates found</p>
-                  {searchQuery && (
-                    <Button 
-                      variant="link" 
-                      onClick={() => setSearchQuery("")}
-                      className="mt-2"
-                    >
-                      Clear search
-                    </Button>
-                  )}
-                </div>
-              ) : (
-recentCandidates.map((candidate: any) => (
-<Link
-                    key={candidate.id}
-                    href={`/dashboard/candidates/${candidate.id}`}
-className="grid grid-cols-9 gap-4 px-4 py-3 items-center hover:bg-muted/50 transition-colors"
-                  >
-                    {/* Candidate Column */}
-                    <div className="col-span-2 flex items-center gap-3">
-                      <Avatar
-                        fallback={candidate.name}
-                        size="sm"
-                        className="h-9 w-9"
-                      />
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{candidate.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {candidate.title || "No title"}
-                        </p>
-                      </div>
-                    </div>
-                    
-{/* Linked Job - Using enriched linkedJobs data */}
-                    <div className="hidden md-block">
-                      {candidate.linkedJobs && candidate.linkedJobs.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {candidate.linkedJobs.slice(0, 2).map((job: any) => (
-                            <Link
-                              key={job.id}
-                              href={`/dashboard/jobs/${job.id}`}
-                              className="text-xs bg-primary/10 text-primary hover:bg-primary/20 px-2 py-0.5 rounded-full truncate max-w-[100px]"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {job.title}
-                            </Link>
-                          ))}
-                          {candidate.linkedJobs.length > 2 && (
-                            <span className="text-xs text-muted-foreground">
-                              +{candidate.linkedJobs.length - 2} more
-                            </span>
+          <Card>
+            <CardContent className="p-0">
+              <table className="w-full table-fixed">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="text-left p-4 font-medium w-12"></th>
+                    <th className="text-left p-4 font-medium">CANDIDATE</th>
+                    <th className="text-left p-4 font-medium w-52">LINKED JOB</th>
+                    <th className="text-left p-4 font-medium w-40">SOURCE</th>
+                    <th className="text-left p-4 font-medium w-40">STAGE</th>
+                    <th className="text-left p-4 font-medium w-36">
+                      <button 
+                        onClick={() => handleSort("created_at")}
+                        className="hover:text-foreground transition-colors cursor-pointer text-left"
+                      >
+                        ADDED {sortField === "created_at" && (sortDirection === "desc" ? "↓" : "↑")}
+                      </button>
+                    </th>
+                    <th className="text-left p-4 font-medium w-36">
+                      <button 
+                        onClick={() => handleSort("modified_at")}
+                        className="hover:text-foreground transition-colors cursor-pointer text-left"
+                      >
+                        LAST ACTIVITY {sortField === "modified_at" && (sortDirection === "desc" ? "↓" : "↑")}
+                      </button>
+                    </th>
+                    <th className="text-left p-4 font-medium w-32">ACTIONS</th>
+                    <th className="text-left p-4 font-medium w-28">ID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentCandidates.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="p-12 text-center text-muted-foreground">
+                        <User className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                        <p>No candidates found</p>
+                        {searchQuery && (
+                          <Button 
+                            variant="link" 
+                            onClick={() => setSearchQuery("")}
+                            className="mt-2"
+                          >
+                            Clear search
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ) : (
+                    recentCandidates.map((candidate: any) => (
+                      <tr key={candidate.id} className="border-b hover:bg-muted/50 group">
+                        {/* Avatar */}
+                        <td className="p-4">
+                          <Avatar fallback={candidate.name} size="sm" className="h-9 w-9" />
+                        </td>
+                        
+                        {/* CANDIDATE */}
+                        <td className="p-4">
+                          <Link href={`/dashboard/candidates/${candidate.id}`} className="hover:underline">
+                            <div className="font-medium">{candidate.name}</div>
+                            <div className="text-sm text-muted-foreground">{candidate.title || "No title"}</div>
+                          </Link>
+                        </td>
+                        
+                        {/* LINKED JOB - FIXED with proper linkedJobs rendering */}
+                        <td className="p-4">
+                          {candidate.linkedJobs && candidate.linkedJobs.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {candidate.linkedJobs.slice(0, 2).map((job: any) => (
+                                <Link
+                                  key={job.id}
+                                  href={`/dashboard/jobs/${job.id}`}
+                                  className="inline-flex px-3 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full transition-colors whitespace-nowrap"
+                                >
+                                  {job.title}
+                                </Link>
+                              ))}
+                              {candidate.linkedJobs.length > 2 && (
+                                <span className="text-xs text-muted-foreground self-center">+{candidate.linkedJobs.length - 2} more</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-sm italic">— No job linked —</span>
                           )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">— No jobs linked —</span>
-                      )}
-                    </div>
-                    
-                    {/* Source */}
-                    <div className="hidden lg:block">
-                      <Badge variant="outline" className="text-xs">
-                        {candidate.source || "Direct"}
-                      </Badge>
-                    </div>
-                    
-                    {/* Stage */}
-                    <div className="hidden sm:block">
-                      <Badge
-                        variant={
-                          candidate.status === "accept" || candidate.status === "accepted"
-                            ? "default"
-                            : candidate.status === "interview"
-                            ? "secondary"
-                            : "outline"
-                        }
-                        className="text-xs"
-                      >
-                        {candidate.status || "New"}
-                      </Badge>
-                    </div>
-                    
-                    {/* Added Date */}
-                    <div className="text-right text-sm text-muted-foreground">
-                      {formatDate(candidate.created_at)}
-                    </div>
-                    
-                    {/* Last Modified Date */}
-                    <div className="text-right text-sm text-muted-foreground">
-                      {getTimeAgo(candidate.modified_at || candidate.created_at)}
-                    </div>
-                    
-{/* Actions Column */}
-                    <div className="text-center flex items-center justify-center gap-1">
-                      {/* Link Job Button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-primary hover:text-primary hover:bg-primary/10"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setSelectedCandidate({
-                            id: candidate.id,
-                            name: candidate.name,
-                            linkedJobIds: candidate.linkedJobIds || [],
-                          });
-                          setLinkJobModalOpen(true);
-                        }}
-                        title="Link Job"
-                      >
-                        <Link2 className="h-4 w-4" />
-                      </Button>
-                      {/* Delete Button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (confirm(`Delete ${candidate.name}?`)) {
-                            handleDelete(candidate.id);
-                          }
-                        }}
-                        disabled={deleting}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    
-                    {/* ID Column */}
-                    <div>
-                      <IdBadge id={candidate.id} />
-                    </div>
-                  </Link>
-                ))
+                        </td>
+                        
+                        {/* SOURCE */}
+                        <td className="p-4 text-sm text-muted-foreground">
+                          {candidate.source || "Direct"}
+                        </td>
+                        
+                        {/* STAGE */}
+                        <td className="p-4">
+                          <Badge
+                            variant={
+                              candidate.status === "accept" || candidate.status === "accepted"
+                                ? "default"
+                                : candidate.status === "interview"
+                                ? "secondary"
+                                : "outline"
+                            }
+                            className="text-xs"
+                          >
+                            {candidate.status || "New"}
+                          </Badge>
+                        </td>
+                        
+                        {/* ADDED */}
+                        <td className="p-4 text-sm text-muted-foreground">
+                          {formatDate(candidate.created_at)}
+                        </td>
+                        
+                        {/* LAST ACTIVITY */}
+                        <td className="p-4 text-sm text-muted-foreground">
+                          {getTimeAgo(candidate.modified_at || candidate.created_at)}
+                        </td>
+                        
+                        {/* ACTIONS */}
+                        <td className="p-4">
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-primary hover:bg-primary/10"
+                              onClick={() => {
+                                setSelectedCandidate({
+                                  id: candidate.id,
+                                  name: candidate.name,
+                                  linkedJobIds: candidate.linkedJobIds || [],
+                                });
+                                setLinkJobModalOpen(true);
+                              }}
+                            >
+                              <Link2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => {
+                                if (confirm(`Delete ${candidate.name}?`)) {
+                                  handleDelete(candidate.id);
+                                }
+                              }}
+                              disabled={deleting}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                        
+                        {/* ID */}
+                        <td className="p-4">
+                          <IdBadge id={candidate.id} />
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+              
+              {/* Table Footer */}
+              {recentCandidates.length > 0 && (
+                <div className="px-4 py-2 bg-muted/30 text-xs text-muted-foreground border-t">
+                  Showing {recentCandidates.length} most recent candidates
+                </div>
               )}
-            </div>
-            
-            {/* Table Footer - Last Activity indicator */}
-            {recentCandidates.length > 0 && (
-              <div className="px-4 py-2 bg-muted/30 text-xs text-muted-foreground border-t">
-                Showing {recentCandidates.length} most recent candidates
-              </div>
-            )}
-          </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Content: Pipeline View (Kanban) */}
