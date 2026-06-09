@@ -280,8 +280,8 @@ export default function CompanyEditModal({
             </div>
           </div>
 
-          {/* Employees and Revenue - side by side */}
-          <div className="grid grid-cols-2 gap-2">
+{/* Hide Employees and Revenue from UI - kept in DB only */}
+          {/* <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-2">
               <Label htmlFor="company-employees">Employees</Label>
               <Input
@@ -301,7 +301,7 @@ export default function CompanyEditModal({
                 placeholder="$25M-$50M"
               />
             </div>
-          </div>
+          </div> */}
 
           {/* LinkedIn URL */}
           <div className="grid gap-2">

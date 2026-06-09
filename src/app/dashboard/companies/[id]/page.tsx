@@ -296,14 +296,15 @@ function OverviewTab({ company }: { company: any }) {
           Company Information
         </h3>
         
-        <div className="space-y-3">
+<div className="space-y-3">
           {company.industry && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Industry</span>
               <span className="font-medium">{company.industry}</span>
             </div>
           )}
-          {company.employee_count && (
+          {/* Hide Employees and Revenue from UI - kept in DB */}
+          {/* {company.employee_count && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Employees</span>
               <span className="font-medium">{company.employee_count}</span>
@@ -314,7 +315,7 @@ function OverviewTab({ company }: { company: any }) {
               <span className="text-muted-foreground">Revenue</span>
               <span className="font-medium">{company.revenue}</span>
             </div>
-          )}
+          )} */}
           {company.country && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Country</span>

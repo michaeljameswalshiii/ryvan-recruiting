@@ -16,8 +16,8 @@ import { toast } from "sonner";
 // Phone types
 const PHONE_TYPES = [
   { value: "work", label: "Work" },
-  { value: "direct", label: "Direct" },
-  { value: "cell", label: "Cell" },
+  { value: "mobile", label: "Mobile" },
+  { value: "home", label: "Home" },
   { value: "other", label: "Other" },
 ];
 
@@ -91,10 +91,10 @@ export default function EditContactPage() {
     }
   }, [contactData, companyIdParam]);
 
-  const handleAddPhone = () => {
+const handleAddPhone = () => {
     setPhones([
       ...phones,
-      { id: generateId(), type: "cell", number: "", isPreferred: false },
+      { id: generateId(), type: "mobile", number: "", isPreferred: false },
     ]);
   };
 
