@@ -40,9 +40,16 @@ export async function getClients() {
  * Get a single client by ID
  */
 export async function getClientByIdAction(clientId: string) {
-  const tenantId = await getSessionTenantId();
+  let tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
   
-  console.log('[getClientByIdAction] Request for clientId:', clientId, 'tenantId:', tenantId);
+  console.log('[getClientByIdAction] Request for clientId:', clientId, 'tenantId:', tenantId, 'userId:', userId);
+  
+  // If no tenantId but user is logged in, use default tenant (same logic as createClient)
+  if (!tenantId && userId) {
+    console.log('[getClientByIdAction] No tenantId, using default tenant:', `tenant-${userId}`);
+    tenantId = `tenant-${userId}`;
+  }
   
   if (!tenantId) {
     console.log('[getClientByIdAction] No tenantId found - returning Unauthorized');
@@ -123,7 +130,13 @@ const validated = createClientSchema.safeParse(rawData);
  * Update an existing client
  */
 export async function updateClientAction(clientId: string, formData: FormData) {
-  const tenantId = await getSessionTenantId();
+  let tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+  
+  // If no tenantId but user is logged in, use default tenant (same logic as createClient)
+  if (!tenantId && userId) {
+    tenantId = `tenant-${userId}`;
+  }
   
   if (!tenantId) {
     return { error: 'Unauthorized' };
@@ -165,7 +178,13 @@ export async function updateClientAction(clientId: string, formData: FormData) {
  * Delete a client
  */
 export async function deleteClientAction(clientId: string) {
-  const tenantId = await getSessionTenantId();
+  let tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+  
+  // If no tenantId but user is logged in, use default tenant (same logic as createClient)
+  if (!tenantId && userId) {
+    tenantId = `tenant-${userId}`;
+  }
   
   if (!tenantId) {
     return { error: 'Unauthorized' };
@@ -183,7 +202,13 @@ export async function deleteClientAction(clientId: string) {
  * Update client status (for pipeline movement)
  */
 export async function updateClientStatusAction(clientId: string, status: string) {
-  const tenantId = await getSessionTenantId();
+  let tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+  
+  // If no tenantId but user is logged in, use default tenant (same logic as createClient)
+  if (!tenantId && userId) {
+    tenantId = `tenant-${userId}`;
+  }
   
   if (!tenantId) {
     return { error: 'Unauthorized' };
