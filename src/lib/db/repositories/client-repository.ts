@@ -52,25 +52,37 @@ export async function getAllClients(tenantId: string): Promise<Client[]> {
  * Get a single client by ID
  */
 export async function getClientById(tenantId: string, clientId: string): Promise<Client | null> {
-  const cacheKey = makeCacheKey(tenantId, 'clients', clientId);
-  
-  // Try cache first
-  const cached = await getCached<Client>(cacheKey);
-  if (cached) {
-    return cached;
-  }
-  
-  // Get from DynamoDB
-  const client = await getItem<Client>(clientsTable, {
-    tenant_id: tenantId,
-    id: clientId,
-  });
-  
-  if (client) {
+  try {
+    const cacheKey = makeCacheKey(tenantId, 'clients', clientId);
+    
+    // Try cache first
+    const cached = await getCached<Client>(cacheKey);
+    if (cached) {
+      console.log('[getClientById] Cache hit for client:', clientId);
+      return cached;
+    }
+    
+    console.log('[getClientById] Querying DynamoDB for client:', { tenantId, clientId });
+    
+    // Get from DynamoDB
+    const client = await getItem<Client>(clientsTable, {
+      tenant_id: tenantId,
+      id: clientId,
+    });
+    
+    if (!client) {
+      console.log('[getClientById] Client not found in DynamoDB:', { tenantId, clientId });
+      return null;
+    }
+    
+    console.log('[getClientById] Client found:', client.name);
     await setCached(cacheKey, client, CACHE_TTL);
+    
+    return client;
+  } catch (error) {
+    console.error('[getClientById] Error fetching client:', { tenantId, clientId, error });
+    throw error;
   }
-  
-  return client;
 }
 
 /**

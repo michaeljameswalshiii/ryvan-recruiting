@@ -42,14 +42,25 @@ export async function getClients() {
 export async function getClientByIdAction(clientId: string) {
   const tenantId = await getSessionTenantId();
   
+  console.log('[getClientByIdAction] Request for clientId:', clientId, 'tenantId:', tenantId);
+  
   if (!tenantId) {
+    console.log('[getClientByIdAction] No tenantId found - returning Unauthorized');
     return { error: 'Unauthorized' };
   }
 
   try {
     const client = await getClientById(tenantId, clientId);
+    
+    if (!client) {
+      console.log('[getClientByIdAction] Client not found:', { tenantId, clientId });
+      return { error: 'Client not found', client: null };
+    }
+    
+    console.log('[getClientByIdAction] Client found:', client.name);
     return { client };
   } catch (error: any) {
+    console.error('[getClientByIdAction] Error:', error);
     return { error: error.message || 'Failed to get client' };
   }
 }

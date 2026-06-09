@@ -70,8 +70,13 @@ export default function CompanyDetailPage() {
     );
   }
 
-  // Error state
+// Error state
   if (error || !company) {
+    const errorMessage = error?.message || "The company you're looking for doesn't exist or has been deleted.";
+    
+    // Log detailed error for debugging
+    console.error('[CompanyDetailPage] Error loading company:', { clientId, error: error?.message });
+    
     return (
       <div className="space-y-6">
         <Link href="/dashboard/companies">
@@ -83,14 +88,26 @@ export default function CompanyDetailPage() {
         <div className="p-6 rounded-lg border border-destructive/50 bg-destructive/10">
           <h2 className="text-lg font-semibold text-destructive">Company Not Found</h2>
           <p className="text-muted-foreground mt-1">
-            {error?.message || "The company you're looking for doesn't exist or has been deleted."}
+            {errorMessage}
           </p>
-          <Button 
-            onClick={() => router.push("/dashboard/companies")}
-            className="mt-4"
-          >
-            Return to Companies
-          </Button>
+          {error?.message && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Error details: {error.message}
+            </p>
+          )}
+          <div className="flex gap-2 mt-4">
+            <Button 
+              onClick={() => router.push("/dashboard/companies")}
+            >
+              Return to Companies
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => window.location.reload()}
+            >
+              Try Again
+            </Button>
+          </div>
         </div>
       </div>
     );
