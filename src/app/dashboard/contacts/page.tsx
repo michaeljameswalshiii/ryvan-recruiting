@@ -358,13 +358,15 @@ export default function ContactsPage() {
                       </div>
                     </td>
                     
-                    {/* ACTIONS */}
+{/* ACTIONS */}
                     <td className="p-4">
                       <div className="flex items-center gap-2">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-muted-foreground"
+                          onClick={() => router.push(`/dashboard/companies/${contact.companyId}?contactId=${contact.id}`)}
+                          className="h-8 w-8 text-muted-foreground hover:text-primary"
+                          title="Edit contact"
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
