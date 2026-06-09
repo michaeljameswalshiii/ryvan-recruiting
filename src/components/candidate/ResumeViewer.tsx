@@ -77,9 +77,12 @@ export function ResumeViewer({ url, fileName, candidateId, fileKey, className, o
     }
   }, [candidateId, fileKey]);
 
-  // Auto-refresh on mount if URL looks expired or not provided
+// Auto-refresh on mount if URL looks expired or not provided
+  // Also refresh if the URL looks like an S3 key (starts with "resumes/" or similar path)
   useEffect(() => {
-    const needsRefresh = !url || url.includes('X-Amz-Expires=') || url.length < 50;
+    // Check if URL is missing, looks expired (has AWS params), is too short, or is actually an S3 key (not a full URL)
+    const isS3Key = url && (url.startsWith('resumes/') || url.startsWith('candidates/') || url.startsWith('uploads/'));
+    const needsRefresh = !url || url.includes('X-Amz-Expires=') || url.length < 50 || isS3Key;
 
     if ((needsRefresh || !url) && (candidateId || fileKey) && !hasTriedAutoRefresh) {
       // Wait a moment for mount to complete
