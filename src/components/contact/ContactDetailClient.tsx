@@ -1,14 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Mail, Phone, Edit2, ExternalLink, Linkedin, MapPin, Building2, Star, User, Briefcase, Calendar, Loader2 } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Edit2, ExternalLink, Linkedin, MapPin, Building2, Star, User, Briefcase, Calendar, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { toast } from "sonner";
+
+// Note Types
+const noteTypes = [
+  { value: 'general', label: 'General Note' },
+  { value: 'phone_call', label: 'Phone call' },
+  { value: 'email_sent', label: 'Email sent' },
+  { value: 'meeting', label: 'Meeting' },
+  { value: 'follow_up', label: 'Follow-up' },
+  { value: 'check_in', label: 'Check-in' },
+  { value: 'other', label: 'Other' },
+];
+
+interface ActivityEvent {
+  id: string;
+  eventType: string;
+  title: string;
+  description?: string;
+  createdAt: string;
+  createdBy?: string;
+}
 
 interface ContactData {
   id: string;
@@ -37,6 +57,88 @@ export function ContactDetailClient({ contact }: ContactDetailClientProps) {
   const router = useRouter();
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Activity/Notes state
+  const [activities, setActivities] = useState<ActivityEvent[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [newNoteText, setNewNoteText] = useState("");
+  const [newNoteType, setNewNoteType] = useState("general");
+  const [addingNote, setAddingNote] = useState(false);
+
+  // Fetch activities on mount
+  useEffect(() => {
+    fetchActivities();
+  }, [contact.companyId, contact.id]);
+
+  async function fetchActivities() {
+    try {
+      setActivitiesLoading(true);
+      const response = await fetch(`/api/company/${contact.companyId}/events?limit=20`);
+      if (!response.ok) throw new Error('Failed to fetch activities');
+      const data = await response.json();
+      // Filter to show only events related to this contact
+      const contactEvents = (data.events || []).filter((event: any) => 
+        event.metadata?.contactId === contact.id || 
+        event.description?.includes(contact.email)
+      );
+      // Sort newest first
+      const sorted = contactEvents.sort((a: any, b: any) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      setActivities(sorted);
+    } catch (err) {
+      console.error('Failed to fetch activities:', err);
+    } finally {
+      setActivitiesLoading(false);
+    }
+  }
+
+  async function handleAddNote() {
+    if (!newNoteText.trim()) return;
+    
+    try {
+      setAddingNote(true);
+      const response = await fetch(`/api/company/${contact.companyId}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventType: 'NOTE',
+          title: `${noteTypes.find(n => n.value === newNoteType)?.label || 'Note'}`,
+          description: newNoteText,
+          metadata: {
+            noteType: newNoteType,
+            contactId: contact.id,
+            contactEmail: contact.email,
+          }
+        })
+      });
+      
+      if (!response.ok) throw new Error('Failed to add note');
+      
+      setNewNoteText("");
+      setNewNoteType("general");
+      toast.success('Note added');
+      await fetchActivities();
+    } catch (err) {
+      console.error('Failed to add note:', err);
+      toast.error('Failed to add note');
+    } finally {
+      setAddingNote(false);
+    }
+  }
+
+  // Get color and icon for event type
+  function getEventStyle(eventType: string) {
+    const styles: Record<string, { bg: string; color: string; icon: string }> = {
+      'EMAIL_SENT': { bg: 'bg-blue-100', color: 'text-blue-800', icon: '📧' },
+      'NOTE': { bg: 'bg-yellow-100', color: 'text-yellow-800', icon: '📝' },
+      'phone_call': { bg: 'bg-green-100', color: 'text-green-800', icon: '📞' },
+      'meeting': { bg: 'bg-purple-100', color: 'text-purple-800', icon: '📅' },
+      'follow_up': { bg: 'bg-orange-100', color: 'text-orange-800', icon: '🔄' },
+      'check_in': { bg: 'bg-cyan-100', color: 'text-cyan-800', icon: '✅' },
+    };
+    return styles[eventType] || styles['NOTE'];
+  }
 
   // Handle send email with event recording
   const handleSendEmail = async (subject: string, body: string) => {
@@ -284,7 +386,7 @@ export function ContactDetailClient({ contact }: ContactDetailClientProps) {
               </CardContent>
             </Card>
 
-            {/* Activity & Notes Card */}
+{/* Activity & Notes Card */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -292,12 +394,89 @@ export function ContactDetailClient({ contact }: ContactDetailClientProps) {
                   Activity & Notes
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No activity yet</p>
-                  <p className="text-sm mt-1">Activity will appear here</p>
+              <CardContent className="space-y-4">
+                {/* Add Note Form */}
+                <div className="border border-border rounded-lg p-4 bg-background">
+                  <div className="mb-3">
+                    <label className="text-sm font-medium mb-2 block">Note Type</label>
+                    <select
+                      value={newNoteType}
+                      onChange={(e) => setNewNoteType(e.target.value)}
+                      className="w-full p-2 text-sm border border-input rounded-md bg-background"
+                    >
+                      {noteTypes.map((type) => (
+                        <option key={type.value} value={type.value}>{type.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="mb-3">
+                    <label className="text-sm font-medium mb-2 block">Notes</label>
+                    <textarea
+                      placeholder="Add a note..."
+                      value={newNoteText}
+                      onChange={(e) => setNewNoteText(e.target.value)}
+                      rows={2}
+                      className="w-full p-2 text-sm border border-input rounded-md resize-y min-h-[60px]"
+                    />
+                  </div>
+                  <Button 
+                    onClick={handleAddNote} 
+                    disabled={addingNote || !newNoteText.trim()}
+                    className="w-full"
+                  >
+                    {addingNote ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Add Note
+                      </>
+                    )}
+                  </Button>
                 </div>
+
+                {/* Activity List */}
+                {activitiesLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Loader2 className="h-8 w-8 mx-auto animate-spin" />
+                    <p className="mt-2">Loading activity...</p>
+                  </div>
+                ) : activities.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No activity yet</p>
+                    <p className="text-sm mt-1">Add a note to get started</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {activities.map((activity) => {
+                      const style = getEventStyle(activity.eventType);
+                      return (
+                        <div key={activity.id} className="flex gap-3 border-l-2 border-border pl-4">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${style.bg} ${style.color}`}>
+                            {style.icon}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${style.bg} ${style.color}`}>
+                                {activity.title}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(activity.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                            </div>
+                            <div className="text-sm text-foreground">
+                              {activity.description}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
