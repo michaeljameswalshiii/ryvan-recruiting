@@ -227,7 +227,7 @@ const data = await response.json();
 const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "timeline", label: "Timeline" },
-    { id: "resume", label: "Resume" },
+    { id: "resume", label: "Resume (Archive)" },
     { id: "linked-jobs", label: "Linked Jobs" },
   ];
 
