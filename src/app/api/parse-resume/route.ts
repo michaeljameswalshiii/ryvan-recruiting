@@ -12,6 +12,7 @@ const SEVEN_DAYS_SECONDS = 604800;
 
 /**
  * Enhanced Resume Parser with section-based extraction
+ * Deployed for testing parse-resume endpoint
  */
 function enhancedParseResume(text: string): {
   name: string;
