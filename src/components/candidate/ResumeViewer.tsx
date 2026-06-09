@@ -93,11 +93,18 @@ export function ResumeViewer({ url, fileName, candidateId, fileKey, className, o
     }
   }, [url, candidateId, fileKey, hasTriedAutoRefresh, refreshUrl]);
 
-  // Detect file type and set URL on mount or when props change
+// Detect file type and set URL on mount or when props change
+  // BUT: Don't use the URL if it looks like an S3 key - we'll refresh it instead
   useEffect(() => {
     const type = detectFileType(url || "", fileName);
     setFileType(type);
-    if (url && !hasTriedAutoRefresh) {
+    
+    // Check if URL looks like an S3 key (not a full URL)
+    const isS3Key = url && (url.startsWith('resumes/') || url.startsWith('candidates/') || url.startsWith('uploads/'));
+    
+    // Only use URL directly if it's a valid URL (not an S3 key)
+    // If it's an S3 key, we'll auto-refresh in the other useEffect
+    if (url && !hasTriedAutoRefresh && !isS3Key) {
       setCurrentUrl(url);
     }
   }, [url, fileName, hasTriedAutoRefresh]);
