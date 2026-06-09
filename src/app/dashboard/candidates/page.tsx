@@ -287,13 +287,12 @@ const handleRefresh = () => {
           <Card>
             <CardContent className="p-0">
               <table className="w-full table-fixed">
-                <thead>
+<thead>
                   <tr className="border-b bg-muted/50">
                     <th className="text-left p-4 font-medium w-12"></th>
                     <th className="text-left p-4 font-medium">CANDIDATE</th>
-                    <th className="text-left p-4 font-medium w-52">LINKED JOB</th>
-                    <th className="text-left p-4 font-medium w-40">SOURCE</th>
-                    <th className="text-left p-4 font-medium w-40">STAGE</th>
+                    <th className="text-left p-4 font-medium w-80">LINKED JOB</th>
+                    <th className="text-left p-4 font-medium w-36">STAGE</th>
                     <th className="text-left p-4 font-medium w-36">
                       <button 
                         onClick={() => handleSort("created_at")}
@@ -315,9 +314,9 @@ const handleRefresh = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentCandidates.length === 0 ? (
+{recentCandidates.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="p-12 text-center text-muted-foreground">
+                      <td colSpan={8} className="p-12 text-center text-muted-foreground">
                         <User className="h-12 w-12 mx-auto mb-3 opacity-50" />
                         <p>No candidates found</p>
                         {searchQuery && (
@@ -367,11 +366,6 @@ const handleRefresh = () => {
                           ) : (
                             <span className="text-muted-foreground text-sm italic">— No job linked —</span>
                           )}
-                        </td>
-                        
-                        {/* SOURCE */}
-                        <td className="p-4 text-sm text-muted-foreground">
-                          {candidate.source || "Direct"}
                         </td>
                         
                         {/* STAGE */}
