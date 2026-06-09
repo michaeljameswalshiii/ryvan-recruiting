@@ -1,13 +1,14 @@
 import { notFound } from "next/navigation";
 import { ContactDetailClient } from "@/components/contact/ContactDetailClient";
-import { getAllClients } from "@/lib/db/repositories/client-repository";
+import { getClientById } from "@/lib/db/repositories/client-repository";
 import { getSessionTenantId } from "@/lib/server-auth";
 
 interface Props {
   params: { contactId: string };
+  searchParams: { companyId?: string };
 }
 
-export default async function ContactDetailPage({ params }: Props) {
+export default async function ContactDetailPage({ params, searchParams }: Props) {
   // Get tenant from session
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
@@ -15,28 +16,47 @@ export default async function ContactDetailPage({ params }: Props) {
   }
 
   const { contactId } = params;
+  const companyIdParam = searchParams.companyId;
 
-  // Get all clients to search for the contact
-  const clients = await getAllClients(tenantId);
-  
-  // Find the contact by searching through all clients' contacts
   let contact: any = null;
-  let companyId: string = "";
-  let companyName: string = "";
-  
-  for (const client of clients) {
-    if (client.contacts && client.contacts.length > 0) {
+  let companyId = "";
+  let companyName = "";
+
+  // If companyId is provided, fetch that specific client (more efficient)
+  if (companyIdParam) {
+    const client = await getClientById(tenantId, companyIdParam);
+    if (client && client.contacts && client.contacts.length > 0) {
       const foundContact = client.contacts.find((c: any) => c.id === contactId);
       if (foundContact) {
         contact = foundContact;
         companyId = client.id;
         companyName = client.name;
-        break;
+      }
+    }
+  }
+
+  // Fallback: If not found via companyId, search all clients (less efficient but works)
+  if (!contact && !companyIdParam) {
+    console.log('[ContactDetailPage] No companyId provided, searching all clients');
+    // Dynamic import to avoid issues
+    const { getAllClients } = await import('@/lib/db/repositories/client-repository');
+    const clients = await getAllClients(tenantId);
+    
+    for (const client of clients) {
+      if (client.contacts && client.contacts.length > 0) {
+        const foundContact = client.contacts.find((c: any) => c.id === contactId);
+        if (foundContact) {
+          contact = foundContact;
+          companyId = client.id;
+          companyName = client.name;
+          break;
+        }
       }
     }
   }
 
   if (!contact) {
+    console.log('[ContactDetailPage] Contact not found:', { contactId, companyIdParam });
     notFound();
   }
 
@@ -59,6 +79,8 @@ export default async function ContactDetailPage({ params }: Props) {
     location: (contact as any).location || "",
     source: (contact as any).source || "",
   };
+
+  console.log('[ContactDetailPage] Found contact:', contactData.name, 'at company:', companyName);
 
   return <ContactDetailClient contact={contactData} />;
 }
