@@ -282,19 +282,21 @@ export default function ContactsPage() {
       <Card>
         <CardContent className="p-0">
           <table className="w-full">
-            <thead>
+<thead>
               <tr className="border-b bg-muted/50 text-sm font-medium text-muted-foreground">
                 <th className="text-left p-4">CONTACT</th>
                 <th className="text-left p-4">TITLE</th>
                 <th className="text-left p-4">COMPANY</th>
-                <th className="text-left p-4">CONTACT INFO</th>
+                <th className="text-left p-4">EMAIL</th>
+                <th className="text-left p-4">PREFERRED PHONE</th>
+                <th className="text-left p-4">PHONE TYPE</th>
                 <th className="text-left p-4">ACTIONS</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {filteredContacts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-12 text-center text-muted-foreground">
+<td colSpan={7} className="p-12 text-center text-muted-foreground">
                     <User className="h-12 w-12 mx-auto mb-3 opacity-50" />
                     <p>No contacts found</p>
                     {(searchQuery || companyFilter) && (
@@ -342,46 +344,60 @@ export default function ContactsPage() {
                       </Link>
                     </td>
                     
-{/* CONTACT INFO */}
+{/* EMAIL */}
                     <td className="p-4">
-                      <div className="space-y-1 text-sm">
-                        {contact.email && (
-                          <button
-                            onClick={() => handleEmailClick(contact)}
-                            className="flex items-center gap-2 text-blue-400 hover:text-blue-600 hover:underline cursor-pointer transition-colors"
-                            title="Click to send email"
-                          >
-                            <Mail className="h-3 w-3" />
-                            <span className="truncate">{contact.email}</span>
-                          </button>
-                        )}
-                        {contact.phones && contact.phones.length > 0 ? (
-                          contact.phones
-                            .filter((p: ContactPhone) => p.number)
-                            .slice(0, 2)
-                            .map((phone: ContactPhone, idx: number) => (
-                              <div key={phone.id} className="flex items-center gap-2 text-muted-foreground">
-                                <Phone className="h-3 w-3" />
-                                <span className="text-xs capitalize">{phone.type}:</span>
-                                <a href={`tel:${phone.number}`} className="hover:underline">
-                                  {phone.number}
-                                </a>
-                                {phone.isPreferred && (
-                                  <Badge variant="secondary" className="text-[10px] px-1">
-                                    Pref
-                                  </Badge>
-                                )}
-                              </div>
-                            ))
-                        ) : contact.phone ? (
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <Phone className="h-3 w-3" />
-                            <span>{contact.phone}</span>
-                          </div>
-                        ) : !contact.email && (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </div>
+                      {contact.email ? (
+                        <button
+                          onClick={() => handleEmailClick(contact)}
+                          className="flex items-center gap-2 text-blue-400 hover:text-blue-600 hover:underline cursor-pointer transition-colors"
+                          title="Click to send email"
+                        >
+                          <Mail className="h-3 w-3" />
+                          <span className="truncate">{contact.email}</span>
+                        </button>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    
+                    {/* PREFERRED PHONE */}
+                    <td className="p-4">
+                      {contact.phones && contact.phones.find((p: ContactPhone) => p.isPreferred)?.number ? (
+                        <a 
+                          href={`tel:${contact.phones.find((p: ContactPhone) => p.isPreferred)?.number}`}
+                          className="hover:underline"
+                        >
+                          {contact.phones.find((p: ContactPhone) => p.isPreferred)?.number}
+                        </a>
+                      ) : contact.phones && contact.phones.length > 0 ? (
+                        <a 
+                          href={`tel:${contact.phones[0].number}`}
+                          className="hover:underline"
+                        >
+                          {contact.phones[0].number}
+                        </a>
+                      ) : contact.phone ? (
+                        <a href={`tel:${contact.phone}`} className="hover:underline">
+                          {contact.phone}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    
+                    {/* PHONE TYPE */}
+                    <td className="p-4">
+                      {contact.phones && contact.phones.find((p: ContactPhone) => p.isPreferred) ? (
+                        <Badge variant="outline" className="capitalize">
+                          {contact.phones.find((p: ContactPhone) => p.isPreferred)?.type}
+                        </Badge>
+                      ) : contact.phones && contact.phones.length > 0 ? (
+                        <Badge variant="outline" className="capitalize">
+                          {contact.phones[0].type}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </td>
                     
 {/* ACTIONS */}
