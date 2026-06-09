@@ -364,7 +364,7 @@ export default function ContactsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => router.push(`/dashboard/companies/${contact.companyId}?contactId=${contact.id}`)}
+                          onClick={() => router.push(`/dashboard/contacts/${contact.id}/edit?companyId=${contact.companyId}`)}
                           className="h-8 w-8 text-muted-foreground hover:text-primary"
                           title="Edit contact"
                         >
