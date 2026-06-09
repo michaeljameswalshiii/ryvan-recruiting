@@ -56,7 +56,8 @@ interface CandidateDetailClientProps {
 type Tab = "overview" | "timeline" | "resume" | "linked-jobs";
 
 export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
-const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [currentResumeUrl, setCurrentResumeUrl] = useState(candidate.resumeUrl || "");
   const [isEditing, setIsEditing] = useState(false);
 const [editForm, setEditForm] = useState({
     name: candidate.name || "",
@@ -348,7 +349,7 @@ toast.success('Candidate updated successfully');
     window.location.reload();
   };
 
-  // Handle delete resume
+// Handle delete resume
   const handleDeleteResume = async () => {
     if (!confirm("Are you sure you want to delete this resume?")) return;
     
@@ -368,7 +369,8 @@ toast.success('Candidate updated successfully');
       }
 
       toast.success('Resume deleted successfully');
-      window.location.reload();
+      // Clear the local state instead of reloading the page
+      setCurrentResumeUrl("");
     } catch (err: any) {
       console.error('Error deleting resume:', err);
       toast.error(err.message || 'Failed to delete resume');
@@ -892,11 +894,11 @@ return (
             <div className="lg:col-span-5">
               <div className="sticky top-24">
                 <Card className="h-[calc(100vh-120px)] flex flex-col">
-                  <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
+<CardHeader className="flex flex-row items-center justify-between border-b pb-4">
                     <CardTitle className="flex items-center gap-2">
                       <FileText className="h-5 w-5" /> Resume
                     </CardTitle>
-                    {candidate.resumeUrl && (
+                    {currentResumeUrl && (
                       <div className="text-xs text-muted-foreground font-mono">
                         {candidate.resumeFileName || "resume.pdf"}
                       </div>
@@ -904,9 +906,9 @@ return (
                   </CardHeader>
 
                   <CardContent className="flex-1 p-0 overflow-hidden">
-                    {candidate.resumeUrl ? (
+                    {currentResumeUrl ? (
                       <ResumeViewer 
-                        url={candidate.resumeUrl} 
+                        url={currentResumeUrl} 
                         candidateId={candidate.id}
                         className="h-full"
                       />
@@ -925,7 +927,7 @@ return (
                         buttonText="Replace Resume"
                         className="flex-1"
                       />
-                    {candidate.resumeUrl && (
+                    {currentResumeUrl && (
                       <Button 
                         variant="destructive" 
                         onClick={handleDeleteResume}
