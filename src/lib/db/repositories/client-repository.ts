@@ -14,7 +14,36 @@ import {
   clientsTable,
 } from '../dynamodb';
 import { getCached, setCached, invalidateTenantCache, makeCacheKey } from '../../cache';
-import { type Client, type CreateClientInput, type UpdateClientInput, type Contact } from '../../schemas/client';
+import { type Client, type CreateClientInput, type UpdateClientInput, type Contact, type ContactPhone } from '../../schemas/client';
+
+/**
+ * Helper to extract preferred phone data from phones array
+ */
+function extractPreferredPhone(phones?: ContactPhone[]): { preferredPhone: string; preferredPhoneType: string } {
+  if (!phones || phones.length === 0) {
+    return { preferredPhone: '', preferredPhoneType: '' };
+  }
+  
+  // Find phone marked as preferred
+  const preferred = phones.find(p => p.isPreferred === true);
+  if (preferred && preferred.number) {
+    return { 
+      preferredPhone: preferred.number, 
+      preferredPhoneType: preferred.type || '' 
+    };
+  }
+  
+  // Fall back to first phone in array
+  const firstPhone = phones[0];
+  if (firstPhone && firstPhone.number) {
+    return { 
+      preferredPhone: firstPhone.number, 
+      preferredPhoneType: firstPhone.type || '' 
+    };
+  }
+  
+  return { preferredPhone: '', preferredPhoneType: '' };
+}
 
 // Cache TTL: 5 minutes
 const CACHE_TTL = 300;
@@ -253,9 +282,14 @@ export async function addContactToClient(
   }
 
   const now = new Date().toISOString();
+  
+  // Auto-calculate preferredPhone/preferredPhoneType from phones array
+  const preferredData = extractPreferredPhone(contact.phones);
+  
   const newContact: Contact = {
     id: generateId(),
     ...contact,
+    ...preferredData,
     createdAt: now,
     updatedAt: now,
   };
@@ -334,14 +368,19 @@ export async function updateClientContact(
     }
   }
 
-  // Update the contact
+  // Auto-calculate preferredPhone/preferredPhoneType if phones array is being updated
+  const phonesToUse = data.phones ?? updatedContacts[contactIndex].phones;
+  const preferredData = extractPreferredPhone(phonesToUse);
+
+  // Update the contact with all data including flattened fields
   updatedContacts[contactIndex] = {
     ...updatedContacts[contactIndex],
     ...data,
+    ...preferredData,
     updatedAt: now,
   };
 
-// Determine primary contact ID
+  // Determine primary contact ID
   let primaryContactId = client.primaryContactId;
   if (data.isPrimary === true) {
     primaryContactId = contactId;

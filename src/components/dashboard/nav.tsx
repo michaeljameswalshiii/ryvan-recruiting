@@ -14,6 +14,8 @@ import {
   Sparkles,
   Activity,
   Database,
+  Mail,
+  Kanban,
 } from "lucide-react";
 import { logout } from "@/lib/api/auth-client";
 import { useTheme } from "@/components/ThemeProvider";
@@ -30,9 +32,11 @@ const navItems = [
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
   { href: "/dashboard/contacts", label: "Contacts", icon: User },
   { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
+  { href: "/dashboard/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
   { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
+  { href: "/dashboard/settings", label: "Email", icon: Mail },
   { href: "/admin/dynamodb", label: "DynamoDB Viewer", icon: Database },
 ];
 

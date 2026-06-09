@@ -32,6 +32,8 @@ const getPhoneTypeLabel = (type: string | undefined): string => {
     work: "Work",
     direct: "Direct", 
     cell: "Cell",
+    mobile: "Mobile",
+    home: "Home",
     other: "Other",
   };
   return labels[type] || type;
@@ -44,10 +46,41 @@ interface Contact {
   email?: string;
   phone?: string;
   phones?: ContactPhone[];
+  // Flattened preferred phone fields
+  preferredPhone?: string;
+  preferredPhoneType?: string;
   isPrimary?: boolean;
   notes?: string;
   companyId: string;
   companyName: string;
+}
+
+// Helper to get preferred phone number - uses flattened field first, then falls back to phones array
+function getPreferredPhoneNumber(contact: Contact): string | undefined {
+  if (contact.preferredPhone) {
+    return contact.preferredPhone;
+  }
+  // Fall back to phones array
+  if (contact.phones && contact.phones.length > 0) {
+    const preferred = contact.phones.find(p => p.isPreferred);
+    if (preferred?.number) return preferred.number;
+    return contact.phones[0]?.number;
+  }
+  return contact.phone;
+}
+
+// Helper to get preferred phone type - uses flattened field first, then falls back to phones array
+function getPreferredPhoneType(contact: Contact): string | undefined {
+  if (contact.preferredPhoneType) {
+    return contact.preferredPhoneType;
+  }
+  // Fall back to phones array
+  if (contact.phones && contact.phones.length > 0) {
+    const preferred = contact.phones.find(p => p.isPreferred);
+    if (preferred?.type) return preferred.type;
+    return contact.phones[0]?.type;
+  }
+  return undefined;
 }
 
 export default function ContactsPage() {
@@ -83,6 +116,9 @@ export default function ContactsPage() {
             email: contact.email || '',
             phone: contact.phone || '',
             phones: contact.phones || [],
+            // Include flattened preferred phone fields (from backend or legacy data)
+            preferredPhone: contact.preferredPhone || '',
+            preferredPhoneType: contact.preferredPhoneType || '',
             isPrimary: contact.isPrimary || false,
             notes: contact.notes || '',
             companyId: client.id,
@@ -372,44 +408,35 @@ export default function ContactsPage() {
                       )}
                     </td>
                     
-                    {/* PREFERRED PHONE */}
+{/* PREFERRED PHONE - uses flattened preferredPhone field, falls back to phones array */}
                     <td className="p-4">
-                      {contact.phones && contact.phones.find((p: ContactPhone) => p.isPreferred)?.number ? (
-                        <a 
-                          href={`tel:${contact.phones.find((p: ContactPhone) => p.isPreferred)?.number}`}
-                          className="hover:underline"
-                        >
-                          {contact.phones.find((p: ContactPhone) => p.isPreferred)?.number}
-                        </a>
-                      ) : contact.phones && contact.phones.length > 0 ? (
-                        <a 
-                          href={`tel:${contact.phones[0].number}`}
-                          className="hover:underline"
-                        >
-                          {contact.phones[0].number}
-                        </a>
-                      ) : contact.phone ? (
-                        <a href={`tel:${contact.phone}`} className="hover:underline">
-                          {contact.phone}
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
+                      {(() => {
+                        const phoneNum = getPreferredPhoneNumber(contact);
+                        return phoneNum ? (
+                          <a 
+                            href={`tel:${phoneNum}`}
+                            className="hover:underline flex items-center gap-1.5"
+                          >
+                            📞 {phoneNum}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        );
+                      })()}
                     </td>
                     
-{/* PHONE TYPE */}
+{/* PHONE TYPE - uses flattened preferredPhoneType field, falls back to phones array */}
                     <td className="p-4">
-                      {contact.phones && contact.phones.find((p: ContactPhone) => p.isPreferred) ? (
-                        <Badge variant="outline">
-                          {getPhoneTypeLabel(contact.phones.find((p: ContactPhone) => p.isPreferred)?.type)}
-                        </Badge>
-                      ) : contact.phones && contact.phones.length > 0 ? (
-                        <Badge variant="outline">
-                          {getPhoneTypeLabel(contact.phones[0].type)}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
+                      {(() => {
+                        const phoneType = getPreferredPhoneType(contact);
+                        return phoneType ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 capitalize">
+                            {getPhoneTypeLabel(phoneType)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        );
+                      })()}
                     </td>
                     
 {/* ACTIONS */}

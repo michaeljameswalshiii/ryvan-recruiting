@@ -18,6 +18,19 @@ const companyStageValues = [
 ] as const;
 
 // -----------------------------------------------------------------------------
+// Contact Phone Schema
+// -----------------------------------------------------------------------------
+
+export const contactPhoneSchema = z.object({
+  id: z.string(),
+  type: z.string().max(20).optional().or(z.literal('')),
+  number: z.string().max(20).optional().or(z.literal('')),
+  isPreferred: z.boolean().default(false),
+});
+
+export type ContactPhone = z.infer<typeof contactPhoneSchema>;
+
+// -----------------------------------------------------------------------------
 // Contact Schema
 // -----------------------------------------------------------------------------
 
@@ -28,6 +41,11 @@ export const contactSchema = z.object({
   title: z.string().max(100).optional().or(z.literal('')),
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().max(20).optional().or(z.literal('')),
+  // Multi-phone support
+  phones: z.array(contactPhoneSchema).optional(),
+  // Flattened preferred phone fields (auto-populated from phones array)
+  preferredPhone: z.string().max(20).optional().or(z.literal('')),
+  preferredPhoneType: z.string().max(20).optional().or(z.literal('')),
   isPrimary: z.boolean().default(false),
   notes: z.string().max(500).optional().or(z.literal('')),
   createdAt: z.string().optional(),
@@ -41,9 +59,13 @@ export const createContactSchema = contactSchema.omit({
   id: true, 
   createdAt: true, 
   updatedAt: true,
-  isPrimary: true  // Default to false
+  isPrimary: true,
+  preferredPhone: true,
+  preferredPhoneType: true,
 }).extend({
   isPrimary: z.boolean().default(false),
+  // phones is optional, but if provided should be an array
+  phones: z.array(contactPhoneSchema).optional(),
 });
 
 // Update input (all fields optional)

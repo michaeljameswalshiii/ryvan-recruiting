@@ -201,6 +201,7 @@ export function useAddContact() {
       title?: string;
       email?: string;
       phone?: string;
+      phones?: { id: string; type: string; number: string; isPreferred: boolean }[];
       isPrimary?: boolean;
       notes?: string;
     }}) => {
@@ -235,6 +236,7 @@ export function useUpdateContact() {
       title?: string;
       email?: string;
       phone?: string;
+      phones?: { id: string; type: string; number: string; isPreferred: boolean }[];
       isPrimary?: boolean;
       notes?: string;
     }}) => {

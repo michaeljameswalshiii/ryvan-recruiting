@@ -275,12 +275,15 @@ import { recordContactAddedToCompany, recordContactUpdatedForCompany, recordCont
 
 /**
  * Add a contact to a client
+ * Includes phones array for multi-phone support
  */
 export async function addContactAction(clientId: string, contactData: {
   name: string;
   title?: string;
   email?: string;
   phone?: string;
+  // Multi-phone support
+  phones?: { id: string; type: string; number: string; isPreferred: boolean }[];
   isPrimary?: boolean;
   notes?: string;
 }) {
@@ -291,8 +294,22 @@ export async function addContactAction(clientId: string, contactData: {
     return { error: 'Unauthorized' };
   }
 
+  // Flatten phones to include in validation
+  // For contacts without phones array, create one from the phone field
+  let phones = contactData.phones;
+  if (!phones && contactData.phone) {
+    // Create a single phone entry from the legacy phone field
+    phones = [{
+      id: crypto.randomUUID(),
+      number: contactData.phone,
+      type: 'work',
+      isPreferred: true,
+    }];
+  }
+
   const validated = createContactSchema.safeParse({
     ...contactData,
+    phones,
     isPrimary: contactData.isPrimary || false,
   });
 
@@ -325,12 +342,15 @@ export async function addContactAction(clientId: string, contactData: {
 
 /**
  * Update a contact on a client
+ * Includes phones array for multi-phone support
  */
 export async function updateContactAction(clientId: string, contactId: string, contactData: {
   name?: string;
   title?: string;
   email?: string;
   phone?: string;
+  // Multi-phone support
+  phones?: { id: string; type: string; number: string; isPreferred: boolean }[];
   isPrimary?: boolean;
   notes?: string;
 }) {
@@ -341,8 +361,26 @@ export async function updateContactAction(clientId: string, contactId: string, c
     return { error: 'Unauthorized' };
   }
 
+  // Flatten phones to include in validation
+  // For contacts without phones array, create one from the phone field
+  let phones = contactData.phones;
+  if (!phones && contactData.phone) {
+    // Create a single phone entry from the legacy phone field
+    phones = [{
+      id: crypto.randomUUID(),
+      number: contactData.phone,
+      type: 'work',
+      isPreferred: true,
+    }];
+  }
+
+  const updateData = {
+    ...contactData,
+    ...(phones && { phones }),
+  };
+
   try {
-    const client = await updateClientContact(tenantId, clientId, contactId, contactData);
+    const client = await updateClientContact(tenantId, clientId, contactId, updateData);
     
     if (!client) {
       return { error: 'Client or contact not found' };
