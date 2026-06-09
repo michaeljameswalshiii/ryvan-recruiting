@@ -25,6 +25,18 @@ interface ContactPhone {
   isPreferred?: boolean;
 }
 
+// Phone type helper to get label from value
+const getPhoneTypeLabel = (type: string | undefined): string => {
+  if (!type) return "";
+  const labels: Record<string, string> = {
+    work: "Work",
+    direct: "Direct", 
+    cell: "Cell",
+    other: "Other",
+  };
+  return labels[type] || type;
+};
+
 interface Contact {
   id: string;
   name: string;
@@ -385,15 +397,15 @@ export default function ContactsPage() {
                       )}
                     </td>
                     
-                    {/* PHONE TYPE */}
+{/* PHONE TYPE */}
                     <td className="p-4">
                       {contact.phones && contact.phones.find((p: ContactPhone) => p.isPreferred) ? (
-                        <Badge variant="outline" className="capitalize">
-                          {contact.phones.find((p: ContactPhone) => p.isPreferred)?.type}
+                        <Badge variant="outline">
+                          {getPhoneTypeLabel(contact.phones.find((p: ContactPhone) => p.isPreferred)?.type)}
                         </Badge>
                       ) : contact.phones && contact.phones.length > 0 ? (
-                        <Badge variant="outline" className="capitalize">
-                          {contact.phones[0].type}
+                        <Badge variant="outline">
+                          {getPhoneTypeLabel(contact.phones[0].type)}
                         </Badge>
                       ) : (
                         <span className="text-muted-foreground">-</span>

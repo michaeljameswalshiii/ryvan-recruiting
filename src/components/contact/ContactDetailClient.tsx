@@ -39,6 +39,18 @@ interface ContactPhone {
   isPreferred?: boolean;
 }
 
+// Phone type helper to get label from value
+const getPhoneTypeLabel = (type: string | undefined): string => {
+  if (!type) return "";
+  const labels: Record<string, string> = {
+    work: "Work",
+    direct: "Direct", 
+    cell: "Cell",
+    other: "Other",
+  };
+  return labels[type] || type;
+};
+
 interface ContactData {
   id: string;
   name: string;
@@ -420,8 +432,8 @@ export function ContactDetailClient({ contact }: ContactDetailClientProps) {
                 {contact.phones?.map((phone) => (
                   <div key={phone.id} className="flex items-center justify-between bg-muted/50 rounded-lg p-3">
                     <div className="flex items-center gap-4">
-                      <Badge variant="outline" className="capitalize w-20 justify-center">
-                        {phone.type}
+                      <Badge variant="outline" className="w-20 justify-center">
+                        {getPhoneTypeLabel(phone.type)}
                       </Badge>
                       <a 
                         href={`tel:${phone.number}`}
