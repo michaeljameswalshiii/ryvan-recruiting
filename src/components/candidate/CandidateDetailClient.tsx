@@ -11,7 +11,7 @@ import { ResumeUpload } from "@/components/candidate/ResumeUpload";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useJobs } from "@/lib/hooks/query-job";
+import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useUnlinkCandidateFromJob, useJobs } from "@/lib/hooks/query-job";
 
 interface Note {
   id: string;
@@ -288,18 +288,19 @@ const tabs: { id: Tab; label: string }[] = [
     setIsSaving(true);
     
     try {
+      // Map camelCase to snake_case for the API
       const response = await fetch(`/api/data/leads/${candidate.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({
+        body: JSON.stringify({
           name: editForm.name,
           phone: editForm.phone,
           email: editForm.email,
           title: jobTitles.join(","),
           location: editAddress.fullAddress,
-          linkedin: editForm.linkedin,
-          fullAddress: editAddress.fullAddress,
-          salaryRequirements: editForm.salaryRequirements,
+          linkedin_url: editForm.linkedin,
+          full_address: editAddress.fullAddress,
+          salary_requirements: editForm.salaryRequirements,
           resume_url: editForm.resumeUrl,
         }),
       });
@@ -342,9 +343,9 @@ toast.success('Candidate updated successfully');
 
 return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Header */}
+{/* Header */}
       <div className="bg-card border-b sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="w-full px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
 <Button variant="ghost" size="icon" asChild>
               <a href="https://turnkey-optimization.vercel.app/dashboard">
@@ -379,8 +380,8 @@ return (
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="max-w-6xl mx-auto px-6">
+{/* Tabs - full width */}
+        <div className="w-full px-6">
           <nav className="flex gap-8 border-b text-sm">
             {tabs.map((tab) => (
               <button
@@ -399,12 +400,13 @@ return (
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-6xl mx-auto p-6 space-y-8">
+{/* Main Content - full width */}
+      <div className="w-full p-6 space-y-8">
 {/* Overview Tab */}
         {activeTab === "overview" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="col-span-1 md:col-span-2 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+{/* Left Column - Profile Info (60%) */}
+            <div className="lg:col-span-7 space-y-6">
 {/* CONTACT INFORMATION - THEME FRIENDLY */}
               <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
                 <h2 className="text-xl font-semibold mb-6 flex items-center gap-3">
@@ -676,7 +678,7 @@ return (
 {/* Summary Display */}
                     {(candidate as any).summary && (
                       <div className="col-span-1 sm:col-span-2 mt-2">
-                        <span className="text-gray-500">Summary:</span>
+                        <span className="text-gray-500">Summary:</span>{" "}
                         <p className="text-sm mt-1">{(candidate as any).summary}</p>
                       </div>
                     )}
@@ -684,7 +686,7 @@ return (
                     {/* Skills Display */}
                     {(candidate as any).skills && (candidate as any).skills.length > 0 && (
                       <div className="col-span-1 sm:col-span-2 mt-2">
-                        <span className="text-gray-500">Skills:</span>
+                        <span className="text-gray-500">Skills:</span>{" "}
                         <div className="flex flex-wrap gap-1 mt-1">
                           {(candidate as any).skills.map((skill: string, idx: number) => (
                             <span
@@ -698,10 +700,10 @@ return (
                       </div>
                     )}
 
-                    {/* Experience Display */}
+{/* Experience Display */}
                     {(candidate as any).experience && (candidate as any).experience.length > 0 && (
                       <div className="col-span-1 sm:col-span-2 mt-2">
-                        <span className="text-gray-500">Experience:</span>
+                        <span className="text-gray-500">Experience:</span>{" "}
                         <div className="space-y-2 mt-1">
                           {(candidate as any).experience.map((exp: any, idx: number) => (
                             <div key={idx} className="text-sm border-l-2 border-blue-300 pl-3">
@@ -718,10 +720,10 @@ return (
                       </div>
                     )}
 
-                    {/* Education Display */}
+{/* Education Display */}
                     {(candidate as any).education && (candidate as any).education.length > 0 && (
                       <div className="col-span-1 sm:col-span-2 mt-2">
-                        <span className="text-gray-500">Education:</span>
+                        <span className="text-gray-500">Education:</span>{" "}
                         <div className="space-y-2 mt-1">
                           {(candidate as any).education.map((edu: any, idx: number) => (
                             <div key={idx} className="text-sm">
@@ -735,10 +737,10 @@ return (
                       </div>
                     )}
 
-                    {/* Certifications Display */}
+{/* Certifications Display */}
                     {(candidate as any).certifications && (candidate as any).certifications.length > 0 && (
                       <div className="col-span-1 sm:col-span-2 mt-2">
-                        <span className="text-gray-500">Certifications:</span>
+                        <span className="text-gray-500">Certifications:</span>{" "}
                         <div className="flex flex-wrap gap-1 mt-1">
                           {(candidate as any).certifications.map((cert: string, idx: number) => (
                             <span
@@ -852,7 +854,48 @@ return (
 </div>
             </div>
 
-
+{/* Right Column - Resume Viewer (40%) */}
+            <div className="lg:col-span-5">
+              <div className="bg-card border border-border rounded-2xl p-6 shadow-sm sticky top-24">
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <FileText className="h-5 w-5" /> Resume
+                </h2>
+                <div className="min-h-[500px]">
+                  {candidate.resumeUrl ? (
+                    <ResumeViewer 
+                      url={candidate.resumeUrl} 
+                      candidateId={candidate.id} 
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-[200px] text-center text-muted-foreground">
+                      <FileText className="h-12 w-12 mb-3 opacity-50" />
+                      <p className="text-sm">No resume uploaded</p>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-3"
+                        onClick={() => setActiveTab("resume")}
+                      >
+                        Upload Resume
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                
+                {/* AI Evaluation Buttons - Below Resume */}
+                <div className="mt-4 pt-4 border-t border-border space-y-2">
+                  <Button variant="outline" size="sm" className="w-full justify-start">
+                    <span className="mr-2">⭐</span> Rate This Candidate
+                  </Button>
+                  <Button variant="outline" size="sm" className="w-full justify-start">
+                    <span className="mr-2">🎯</span> Match to Jobs
+                  </Button>
+                  <Button variant="outline" size="sm" className="w-full justify-start">
+                    <span className="mr-2">🤖</span> AI Summary
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -898,10 +941,13 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
   const { data: jobs, isLoading, isError, refetch } = useJobsForCandidate(candidateId);
   const updateStage = useUpdateCandidateStageInJob();
   const linkCandidate = useLinkCandidateToJob();
+  const unlinkCandidate = useUnlinkCandidateFromJob();
   const { data: allJobs } = useJobs();
   
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState("");
+  const [showUnlinkDialog, setShowUnlinkDialog] = useState(false);
+  const [jobToUnlink, setJobToUnlink] = useState<any>(null);
 
   const getCurrentStage = (job: any) => {
     const linked = (job.candidates || []).find((lc: any) => lc.candidateId === candidateId);
@@ -915,7 +961,7 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
     !job.candidates?.some((lc: any) => lc.candidateId === candidateId)
   ) || [];
 
-const handleLinkJob = async () => {
+  const handleLinkJob = async () => {
     if (!selectedJobId) return;
     
     try {
@@ -923,7 +969,7 @@ const handleLinkJob = async () => {
         jobId: selectedJobId,
         candidateData: {
           candidateId,
-candidateName: candidateName || "Unknown",
+          candidateName: candidateName || "Unknown",
           stage: "Applied",
         }
       });
@@ -935,6 +981,29 @@ candidateName: candidateName || "Unknown",
       console.error('Link job error:', err);
       toast.error(err.message || 'Failed to link job');
     }
+  };
+
+  const handleUnlinkJob = async () => {
+    if (!jobToUnlink) return;
+    
+    try {
+      await unlinkCandidate.mutateAsync({
+        jobId: jobToUnlink.id,
+        candidateId,
+      });
+      toast.success('Job unlinked successfully');
+      setShowUnlinkDialog(false);
+      setJobToUnlink(null);
+      refetch();
+    } catch (err: any) {
+      console.error('Unlink job error:', err);
+      toast.error(err.message || 'Failed to unlink job');
+    }
+  };
+
+  const confirmUnlink = (job: any) => {
+    setJobToUnlink(job);
+    setShowUnlinkDialog(true);
   };
 
 return (
@@ -973,7 +1042,7 @@ return (
                   <p className="text-xs text-muted-foreground">{job.companyName || "Company"}</p>
                 </div>
 
-                <div className="flex items-center gap-2">
+<div className="flex items-center gap-2">
                   <select
                     value={currentStage}
                     onChange={(e) =>
@@ -995,6 +1064,16 @@ return (
 
                   <Button variant="outline" size="sm" asChild>
                     <a href={`/dashboard/jobs/${job.id}`}>View Job</a>
+                  </Button>
+                  
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => confirmUnlink(job)}
+                    disabled={unlinkCandidate.isPending}
+                  >
+                    Unlink
                   </Button>
                 </div>
               </div>
@@ -1050,6 +1129,42 @@ return (
             </div>
           </div>
         </div>
+)}
+
+      {/* Unlink Job Confirmation Dialog */}
+      {showUnlinkDialog && jobToUnlink && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md">
+            <h3 className="font-semibold text-lg mb-4 text-foreground">Unlink Job</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Are you sure you want to unlink <span className="font-medium text-foreground">{jobToUnlink.title}</span> from this candidate? This will remove the candidate from this job's pipeline.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowUnlinkDialog(false);
+                  setJobToUnlink(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive"
+                onClick={handleUnlinkJob}
+                disabled={unlinkCandidate.isPending}
+              >
+                {unlinkCandidate.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Unlinking...
+                  </>
+                ) : (
+                  'Unlink'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1059,6 +1174,10 @@ return (
 function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; candidateName: string }) {
   const { data: jobs, isLoading, isError, refetch } = useJobsForCandidate(candidateId);
   const updateStage = useUpdateCandidateStageInJob();
+  const unlinkCandidate = useUnlinkCandidateFromJob();
+  
+  const [showUnlinkDialog, setShowUnlinkDialog] = useState(false);
+  const [jobToUnlink, setJobToUnlink] = useState<any>(null);
 
   // Group jobs by stage - matching schema stage names
   const jobsByStage: Record<string, any[]> = {
@@ -1106,9 +1225,33 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
     }
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
+  };
+
+  // Unlink job handlers
+  const handleUnlinkJob = async () => {
+    if (!jobToUnlink) return;
+    
+    try {
+      await unlinkCandidate.mutateAsync({
+        jobId: jobToUnlink.id,
+        candidateId,
+      });
+      toast.success('Job unlinked successfully');
+      setShowUnlinkDialog(false);
+      setJobToUnlink(null);
+      refetch();
+    } catch (err: any) {
+      console.error('Unlink job error:', err);
+      toast.error(err.message || 'Failed to unlink job');
+    }
+  };
+
+  const confirmUnlink = (job: any) => {
+    setJobToUnlink(job);
+    setShowUnlinkDialog(true);
   };
 
   const stageLabels: Record<string, string> = {
@@ -1193,7 +1336,7 @@ if (!jobs || jobs.length === 0) {
                 {stageJobs.length}
               </span>
             </h3>
-            <div className="space-y-2">
+<div className="space-y-2">
               {stageJobs.map((job: any) => (
                 <div
                   key={job.id}
@@ -1203,18 +1346,64 @@ if (!jobs || jobs.length === 0) {
                 >
                   <p className="font-medium text-sm">{job.title}</p>
                   <p className="text-xs text-gray-500">{job.companyName}</p>
-                  <Button variant="ghost" size="sm" className="mt-2 h-6 text-xs" asChild>
-                    <a href={`/dashboard/jobs/${job.id}`}>View Job</a>
-                  </Button>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Button variant="ghost" size="sm" className="h-6 text-xs" asChild>
+                      <a href={`/dashboard/jobs/${job.id}`}>View Job</a>
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-6 text-xs text-red-500 hover:text-red-700"
+                      onClick={() => confirmUnlink(job)}
+                    >
+                      Unlink
+                    </Button>
+                  </div>
                 </div>
               ))}
               {stageJobs.length === 0 && (
                 <p className="text-xs text-gray-400 italic">Drop here</p>
               )}
             </div>
-          </div>
+</div>
         ))}
       </div>
+
+      {/* Unlink Job Confirmation Dialog */}
+      {showUnlinkDialog && jobToUnlink && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md">
+            <h3 className="font-semibold text-lg mb-4 text-foreground">Unlink Job</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Are you sure you want to unlink <span className="font-medium text-foreground">{jobToUnlink.title}</span> from this candidate? This will remove the candidate from this job's pipeline.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowUnlinkDialog(false);
+                  setJobToUnlink(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive"
+                onClick={handleUnlinkJob}
+                disabled={unlinkCandidate.isPending}
+              >
+                {unlinkCandidate.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Unlinking...
+                  </>
+                ) : (
+                  'Unlink'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
