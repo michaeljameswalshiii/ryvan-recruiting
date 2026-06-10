@@ -320,12 +320,147 @@ function extractContactInfo(rawText: string): {
   return result;
 }
 
+/**
+ * Fetch Google Document and export as plain text
+ * Uses Google's public export feature for shared documents
+ */
+async function fetchGoogleDocAsText(docId: string): Promise<{ text: string; error?: string }> {
+  try {
+    // Try to export as plain text using Google's export API
+    const exportUrl = `https://docs.google.com/document/d/${docId}/export?format=txt`;
+    
+    const response = await fetch(exportUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'text/plain',
+      },
+    });
+    
+    if (!response.ok) {
+      // Fallback: try to fetch the HTML version
+      const htmlUrl = `https://docs.google.com/document/d/${docId}/export?format=html`;
+      const htmlResponse = await fetch(htmlUrl);
+      
+      if (!htmlResponse.ok) {
+        return { text: '', error: 'Failed to fetch Google Doc' };
+      }
+      
+      const htmlText = await htmlResponse.text();
+      // Strip HTML tags for basic text extraction
+      const text = htmlText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      return { text };
+    }
+    
+    const text = await response.text();
+    return { text };
+  } catch (err) {
+    console.error('fetchGoogleDocAsText error:', err);
+    return { text: '', error: 'Failed to fetch Google Doc' };
+  }
+}
+
+/**
+ * Extract Google Doc ID from URL
+ */
+function extractGoogleDocId(url: string): string | null {
+  const match = url.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : null;
+}
+
 export async function POST(req: NextRequest) {
   console.log('parse-resume: starting');
   let fileName = 'resume.pdf';
   
   try {
     const formData = await req.formData();
+    
+    // Check for Google Docs URL first
+    const googleDocUrl = formData.get('googleDocUrl') as string;
+    
+    if (googleDocUrl) {
+      // Handle Google Docs import
+      console.log('parse-resume: processing Google Doc URL');
+      
+      const docId = extractGoogleDocId(googleDocUrl);
+      if (!docId) {
+        return NextResponse.json({ error: 'Invalid Google Docs URL' }, { status: 400 });
+      }
+      
+      // Fetch the document
+      const { text: rawText, error } = await fetchGoogleDocAsText(docId);
+      
+      if (error || !rawText) {
+        return NextResponse.json({ error: error || 'Failed to fetch Google Doc content' }, { status: 400 });
+      }
+      
+      console.log('parse-resume: Google Doc fetched, chars =', rawText.length);
+      
+      // Reuse the same parsing logic
+      const cleanText = rawText.trim().replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim();
+      const contactInfo = extractContactInfo(cleanText);
+      
+      // Use regex-based extraction for Google Docs content
+      const parsedResume: any = {};
+      
+      if (cleanText.length > 50) {
+        const commonSkills = ['javascript', 'typescript', 'python', 'java', 'react', 'node', 'node.js', 'angular', 'vue', 'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'sql', 'nosql', 'mongodb', 'postgresql', 'mysql', 'redis', 'graphql', 'rest', 'api', 'html', 'css', 'sass', 'less', 'git', 'ci/cd', 'jenkins', 'terraform', 'linux', 'windows', 'macos', 'agile', 'scrum', 'jira', 'confluence', 'figma', 'excel', 'powerpoint'];
+        const foundSkills: string[] = [];
+        const lowerText = cleanText.toLowerCase();
+        for (const skill of commonSkills) {
+          if (lowerText.includes(skill)) {
+            foundSkills.push(skill);
+          }
+        }
+        parsedResume.skills = foundSkills.slice(0, 15);
+        
+        const titleMatch = cleanText.match(/(?:software|software engineer|developer|manager|director|lead|associate|junior|senior|principal|staff)\s+(?:engineer|developer|manager|analyst|designer|specialist)/i);
+        if (titleMatch) {
+          parsedResume.title = titleMatch[0];
+        }
+        
+        const salaryMatch = cleanText.match(/\$[\d,]+(?:\s*-\s*\$[\d,]+|\s*(?:k|K|per year|yr))?/);
+        if (salaryMatch) {
+          parsedResume.salary_requirements = salaryMatch[0];
+        }
+      }
+      
+      const normalizeArray = (val: any) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'string') {
+          return val.split(',').map((s: string) => s.trim()).filter(Boolean);
+        }
+        return [];
+      };
+      
+      const finalResume = {
+        name: contactInfo.name || parsedResume.name || '',
+        title: parsedResume.title || '',
+        email: contactInfo.email || parsedResume.email || '',
+        phone: contactInfo.phone || parsedResume.phone || '',
+        location: contactInfo.location || parsedResume.location || '',
+        linkedin: contactInfo.linkedin || parsedResume.linkedin || '',
+        summary: parsedResume.summary || '',
+        salaryRequirements: parsedResume.salary_requirements || '',
+        skills: normalizeArray(parsedResume.skills),
+        experience: [],
+        education: [],
+        certifications: [],
+      };
+      
+      console.log('parse-resume: Google Doc parsed, name =', finalResume.name, 'email =', finalResume.email);
+      
+      // For Google Docs, we don't upload to S3 - just return the URL
+      return NextResponse.json({
+        success: true,
+        resume: finalResume,
+        extractionMethod: 'google-doc',
+        resumeUrl: googleDocUrl,
+        fileKey: null,
+      });
+    }
+    
+    // Handle file upload
     const file = formData.get('resume') as File;
     if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
 
