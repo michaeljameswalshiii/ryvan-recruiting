@@ -2,6 +2,7 @@ import { DashboardNav } from "@/components/dashboard/nav";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { getSession } from "@/lib/server-auth";
 import { redirect } from "next/navigation";
+import { DragDropProvider } from "@/components/providers/dnd-provider";
 
 /**
  * Dashboard Layout - Server-side auth enforcement
@@ -41,13 +42,15 @@ export default async function DashboardLayout({
     role: 'member', // Could fetch from profile if needed
   };
 
-  return (
-<div className="min-h-screen bg-background">
-      <DashboardNav session={tenantInfo} />
-      <div className="pl-64">
-        <DashboardHeader user={tenantInfo} />
-        <main className="p-6">{children}</main>
+return (
+    <DragDropProvider>
+      <div className="min-h-screen bg-background">
+        <DashboardNav session={tenantInfo} />
+        <div className="pl-64">
+          <DashboardHeader user={tenantInfo} />
+          <main className="p-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </DragDropProvider>
   );
 }

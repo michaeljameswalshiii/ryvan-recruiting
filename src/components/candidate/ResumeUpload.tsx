@@ -327,8 +327,9 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
   return (
     <div className={`space-y-4 ${className || ""}`}>
       {/* Drag & Drop Zone using react-dropzone */}
-      <div
+<div
         {...getRootProps()}
+        onClick={(e) => e.stopPropagation()}
         className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
           isDragActive 
             ? 'border-blue-500 bg-blue-50' 
