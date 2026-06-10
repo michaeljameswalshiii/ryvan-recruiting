@@ -66,7 +66,7 @@ export default function JobsPage() {
   const [newJobCompanyId, setNewJobCompanyId] = useState("");
   const [newJobCompanyName, setNewJobCompanyName] = useState("");
 
-  // Convert data to Job interface
+// Convert data to Job interface
   const jobs: Job[] = (jobsData?.jobs || []).map((item: any) => ({
     id: item.id,
     title: item.title || "",
@@ -80,6 +80,11 @@ export default function JobsPage() {
     candidates: item.candidates || [],
     createdAt: item.created_at || new Date().toISOString(),
   }));
+
+  // Filter out closed jobs for active jobs view (keep all jobs for stats/reports)
+  const activeJobs = jobs.filter(job => 
+    job.status !== "Closed" && job.status !== "closed" && job.status !== "CLOSED"
+  );
 
   // Get stats
   const totalJobs = jobs.length;
@@ -244,11 +249,11 @@ export default function JobsPage() {
         </div>
       </div>
 
-      {/* Main Content */}
+{/* Main Content */}
       {viewMode === 'list' ? (
-        <JobListView jobs={jobs} />
+        <JobListView jobs={activeJobs} />
       ) : (
-        <JobPipelineView stages={jobStages} jobs={jobs} />
+        <JobPipelineView stages={jobStages} jobs={activeJobs} />
       )}
 
       {/* Add Job Dialog */}
