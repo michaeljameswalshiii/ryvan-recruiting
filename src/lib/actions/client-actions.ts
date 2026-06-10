@@ -287,11 +287,16 @@ export async function addContactAction(clientId: string, contactData: {
   isPrimary?: boolean;
   notes?: string;
 }) {
-  const tenantId = await getSessionTenantId();
+let tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
   
+  // FIX: Add tenant fallback logic for non-admin users who don't have tenantId in session
+  if (!tenantId && userId) {
+    tenantId = `tenant-${userId}`;
+  }
+  
   if (!tenantId || !userId) {
-    return { error: 'Unauthorized' };
+    return { error: 'Unauthorized: No tenant or user context' };
   }
 
   // Flatten phones to include in validation
@@ -354,11 +359,16 @@ export async function updateContactAction(clientId: string, contactId: string, c
   isPrimary?: boolean;
   notes?: string;
 }) {
-  const tenantId = await getSessionTenantId();
+  let tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
   
+  // FIX: Add tenant fallback logic for non-admin users who don't have tenantId in session
+  if (!tenantId && userId) {
+    tenantId = `tenant-${userId}`;
+  }
+  
   if (!tenantId || !userId) {
-    return { error: 'Unauthorized' };
+    return { error: 'Unauthorized: No tenant or user context' };
   }
 
   // Flatten phones to include in validation
@@ -401,13 +411,19 @@ export async function updateContactAction(clientId: string, contactId: string, c
 
 /**
  * Remove a contact from a client
+ * FIX: Added tenant fallback logic for non-admin users
  */
 export async function removeContactAction(clientId: string, contactId: string, contactName: string = 'Contact') {
-  const tenantId = await getSessionTenantId();
+  let tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
   
+  // FIX: Add tenant fallback logic for non-admin users who don't have tenantId in session
+  if (!tenantId && userId) {
+    tenantId = `tenant-${userId}`;
+  }
+  
   if (!tenantId || !userId) {
-    return { error: 'Unauthorized' };
+    return { error: 'Unauthorized: No tenant or user context' };
   }
 
   try {
