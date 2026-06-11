@@ -74,7 +74,7 @@ export default function JobsPage() {
     location: item.location || "",
     salaryRange: item.salaryRange || "",
     employmentType: item.employmentType || "Full-time",
-    companyId: item.companyId || "",
+    companyId: item.company_id || item.companyId || "",
     companyName: item.companyName || "",
     status: (item.status as Job["status"]) || "Open",
     candidates: item.candidates || [],

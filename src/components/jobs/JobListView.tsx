@@ -7,6 +7,7 @@ interface Job {
   id: string;
   title: string;
   employmentType?: string;
+  companyId?: string;
   companyName?: string;
   status: "Open" | "On Hold" | "Closed";
   candidates?: any[];
@@ -48,7 +49,20 @@ export function JobListView({ jobs }: JobListViewProps) {
                   {job.title}
                 </Link>
               </td>
-              <td className="p-4 text-blue-400">{job.companyName || 'Company'}</td>
+<td className="p-4">
+                {job.companyId ? (
+                  <Link 
+                    href={`/dashboard/companies/${job.companyId}`}
+                    className="hover:underline hover:text-blue-600 font-medium transition-colors"
+                  >
+                    {job.companyName || 'Unknown Company'}
+                  </Link>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {job.companyName || '—'}
+                  </span>
+                )}
+              </td>
               <td className="p-4">
                 <span className="bg-green-500/10 text-green-500 px-2 py-1 rounded">
                   {job.employmentType || 'Full-time'}
