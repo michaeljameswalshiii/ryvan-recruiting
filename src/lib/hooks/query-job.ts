@@ -549,3 +549,32 @@ export function useUnlinkCandidateFromJobAppCentric() {
     },
   });
 }
+
+/**
+ * Get linked jobs for a specific candidate (application-centric)
+ * Reads from candidate's linkedJobs[] data
+ */
+export function useLinkedJobsForCandidate(candidateId: string) {
+  return useQuery({
+    queryKey: ['linkedJobsForCandidate', candidateId],
+    queryFn: async () => {
+      // Get the candidate's data including linkedJobs
+      const response = await fetch(`/api/data/leads/${candidateId}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch candidate data');
+      }
+      
+      const data = await response.json();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      // Return the linkedJobs array from the candidate record
+      return data.lead?.linkedJobs || [];
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    retry: 2,
+    enabled: !!candidateId,
+  });
+}

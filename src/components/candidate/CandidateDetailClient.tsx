@@ -12,7 +12,7 @@ import { ResumeUpload } from "@/components/candidate/ResumeUpload";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download, Plus, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useUnlinkCandidateFromJob, useJobs, useUpdateCandidateStageInJobAppCentric, useAddJobSpecificNote } from "@/lib/hooks/query-job";
+import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useUnlinkCandidateFromJob, useJobs, useUpdateCandidateStageInJobAppCentric, useAddJobSpecificNote, useLinkedJobsForCandidate, useLinkCandidateToJobAppCentric, useUnlinkCandidateFromJobAppCentric } from "@/lib/hooks/query-job";
 import { APPLICATION_STAGES, getStageLabel, getStageColor } from "@/lib/schemas/lead";
 
 interface Note {
@@ -1095,10 +1095,11 @@ return (
 }
 
 function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string; candidateName?: string }) {
-  const { data: jobs, isLoading, isError, refetch } = useJobsForCandidate(candidateId);
+  // Use app-centric hook to get linked jobs from candidate's linkedJobs[]
+  const { data: linkedJobsData, isLoading, isError, refetch } = useLinkedJobsForCandidate(candidateId);
   const updateStage = useUpdateCandidateStageInJobAppCentric();
-  const linkCandidate = useLinkCandidateToJob();
-  const unlinkCandidate = useUnlinkCandidateFromJob();
+  const linkCandidate = useLinkCandidateToJobAppCentric();
+  const unlinkCandidate = useUnlinkCandidateFromJobAppCentric();
   const addNote = useAddJobSpecificNote();
   const { data: allJobs } = useJobs();
   
@@ -1113,9 +1114,8 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
   const [stageNote, setStageNote] = useState("");
   const [isSavingStage, setIsSavingStage] = useState(false);
 
-  const getCurrentStage = (job: any) => {
-    const linked = (job.candidates || []).find((lc: any) => lc.candidateId === candidateId);
-    return linked?.stage || "sourced";
+  const getCurrentStage = (linkedJob: any) => {
+    return linkedJob?.stage || "sourced";
   };
 
   // Get stage label from value
