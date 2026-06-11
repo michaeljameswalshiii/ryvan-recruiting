@@ -81,17 +81,24 @@ export default function JobsPage() {
     createdAt: item.created_at || new Date().toISOString(),
   }));
 
-  // Filter out closed jobs for active jobs view (keep all jobs for stats/reports)
-  const activeJobs = jobs.filter(job => 
-    job.status !== "Closed" && job.status !== "closed" && job.status !== "CLOSED"
-  );
+// Filter out only truly "closed" jobs - use case-insensitive comparison
+  const activeJobs = jobs.filter(job => {
+    const status = (job.status || '').toLowerCase();
+    // Only hide jobs that are truly closed/done
+    return status !== 'closed';
+  });
 
-  // Get stats
+  // Get stats - use case-insensitive comparison
   const totalJobs = jobs.length;
-  const openJobs = jobs.filter(j => j.status === "Open").length;
-  const onHoldJobs = jobs.filter(j => j.status === "On Hold").length;
-  const filledJobs = jobs.filter(j => j.status === "Filled").length;
-  const closedJobs = jobs.filter(j => j.status === "Closed").length;
+  const openJobs = jobs.filter(j => (j.status || '').toLowerCase() === 'open').length;
+  const onHoldJobs = jobs.filter(j => (j.status || '').toLowerCase() === 'on hold').length;
+  const filledJobs = jobs.filter(j => (j.status || '').toLowerCase() === 'filled').length;
+  const closedJobs = jobs.filter(j => (j.status || '').toLowerCase() === 'closed').length;
+
+  // Debug log
+  console.log('Total jobs from DB:', totalJobs);
+  console.log('Displayed jobs:', activeJobs.length);
+  console.log('Hidden (closed) jobs:', closedJobs);
 
   // Handle add job
   const handleAddJob = async () => {
