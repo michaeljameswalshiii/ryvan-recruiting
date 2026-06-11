@@ -15,18 +15,16 @@ import { deleteLeadAction } from "@/lib/actions/lead-actions";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { LinkJobModal } from "@/components/candidate/LinkJobModal";
+import { APPLICATION_STAGES, getStageLabel, getStageColor } from "@/lib/schemas/lead";
 
 type ViewMode = "list" | "pipeline";
 
-const pipelineStages = [
-  { id: "identification", label: "Identification", color: "bg-gray-500" },
-  { id: "outreach", label: "Attempted Outreach", color: "bg-blue-500" },
-  { id: "conversation", label: "Conversation", color: "bg-indigo-500" },
-  { id: "presented", label: "Candidate Presented", color: "bg-purple-500" },
-  { id: "interview", label: "Interview", color: "bg-amber-500" },
-  { id: "accept", label: "Accept", color: "bg-green-500" },
-  { id: "rejected", label: "Rejected", color: "bg-red-500" },
-];
+// Pipeline stages using new APPLICATION_STAGES model
+const pipelineStages = APPLICATION_STAGES.map((stage) => ({
+  id: stage.value,
+  label: stage.label,
+  color: `bg-${stage.color}-500`,
+}));
 
 // Format date for display
 function formatDate(dateStr: string | undefined): string {
@@ -62,19 +60,26 @@ function getTimeAgo(dateStr: string | undefined): string {
   }
 }
 
-// Map lead status to pipeline stage
+// Map lead status to new APPLICATION_STAGES
 function mapStatusToPipeline(status: string | undefined): string {
-  if (!status) return "identification";
+  if (!status) return "sourced";
   const statusLower = status.toLowerCase();
   
-  if (["accept", "accepted"].includes(statusLower)) return "accept";
-  if (["rejected", "reject"].includes(statusLower)) return "rejected";
-  if (["interview"].includes(statusLower)) return "interview";
-  if (["presented"].includes(statusLower)) return "presented";
-  if (["conversation"].includes(statusLower)) return "conversation";
-  if (["outreach", "contacted", "interested", "qualified"].includes(statusLower)) return "outreach";
+  // Map legacy statuses to new APPLICATION_STAGES
+  if (["offer_accepted", "accept", "accepted"].includes(statusLower)) return "offer_accepted";
+  if (["placed"].includes(statusLower)) return "placed";
+  if (["offer_out", "offer"].includes(statusLower)) return "offer_out";
+  if (["interview", "interviewing"].includes(statusLower)) return "interviewing";
+  if (["submitted", "presented"].includes(statusLower)) return "submitted";
+  if (["pre_screened", "screened"].includes(statusLower)) return "pre_screened";
+  if (["contacted"].includes(statusLower)) return "contacted";
+  if (["email", "text", "left_message"].includes(statusLower)) return statusLower === "email" ? "email" : statusLower === "text" ? "text" : "left_message";
+  if (["rejected"].includes(statusLower)) return "rejected";
+  if (["not_interested"].includes(statusLower)) return "not_interested";
+  if (["outreach", "interested", "qualified", "conversation"].includes(statusLower)) return "contacted";
   
-  return "identification";
+  // Default to sourced for new/unknown statuses
+  return "sourced";
 }
 
 type SortField = "created_at" | "modified_at";
@@ -135,22 +140,23 @@ export default function CandidatesPage() {
       .slice(0, 20);
   }, [filteredCandidates, sortField, sortDirection]);
 
-// Group candidates by pipeline stage
+// Group candidates by pipeline stage using APPLICATION_STAGES
   const pipelineGroups = useMemo(() => {
-    const groups: Record<string, any[]> = {
-      identification: [],
-      outreach: [],
-      conversation: [],
-      presented: [],
-      interview: [],
-      accept: [],
-      rejected: [],
-    };
+    const groups: Record<string, any[]> = {};
+    
+    // Initialize groups for all APPLICATION_STAGES
+    APPLICATION_STAGES.forEach((stage) => {
+      groups[stage.value] = [];
+    });
     
     filteredCandidates.forEach((lead: any) => {
-      const stage = mapStatusToPipeline(lead.status);
-      if (groups[stage]) {
-        groups[stage].push(lead);
+      // Map legacy status to new APPLICATION_STAGES
+      const mappedStage = mapStatusToPipeline(lead.status);
+      if (groups[mappedStage]) {
+        groups[mappedStage].push(lead);
+      } else {
+        // Default to 'sourced' for unknown stages
+        groups['sourced'].push(lead);
       }
     });
     
@@ -158,15 +164,10 @@ export default function CandidatesPage() {
   }, [filteredCandidates]);
 
   // Pipeline counts
-  const pipelineCounts = {
-    identification: pipelineGroups.identification.length,
-    outreach: pipelineGroups.outreach.length,
-    conversation: pipelineGroups.conversation.length,
-    presented: pipelineGroups.presented.length,
-    interview: pipelineGroups.interview.length,
-    accept: pipelineGroups.accept.length,
-    rejected: pipelineGroups.rejected.length,
-  };
+  const pipelineCounts: Record<string, number> = {};
+  APPLICATION_STAGES.forEach((stage) => {
+    pipelineCounts[stage.value] = pipelineGroups[stage.value]?.length || 0;
+  });
 
 const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
@@ -348,21 +349,31 @@ const handleRefresh = () => {
                           </Link>
                         </td>
                         
-{/* LINKED JOB - showing up to 2 jobs with +X more badge */}
+{/* LINKED JOB - showing up to 2 jobs with +X more badge and stage */}
                         <td className="p-4">
                           <div className="flex items-center gap-2">
-                            <div className="flex-1 flex flex-wrap gap-1">
+                            <div className="flex-1 flex flex-col gap-1">
                               {candidate.linkedJobs && candidate.linkedJobs.length > 0 ? (
                                 <>
                                   {candidate.linkedJobs.slice(0, 2).map((job: any) => (
-                                    <Badge 
-                                      key={job.jobId} 
-                                      variant="secondary" 
-                                      className="cursor-pointer hover:bg-blue-100 text-xs"
-                                      onClick={() => router.push(`/dashboard/jobs/${job.jobId}`)}
-                                    >
-                                      {job.jobTitle}
-                                    </Badge>
+                                    <div key={job.jobId} className="flex items-center gap-1">
+                                      <Badge 
+                                        variant="secondary" 
+                                        className="cursor-pointer hover:bg-blue-100 text-xs"
+                                        onClick={() => router.push(`/dashboard/jobs/${job.jobId}`)}
+                                      >
+                                        {job.jobTitle}
+                                      </Badge>
+                                      {/* Show job-specific stage if available */}
+                                      {job.stage && (
+                                        <span 
+                                          className={`text-xs px-1.5 py-0.5 rounded-full ${getStageColor(job.stage)}`}
+                                          title={`Stage: ${getStageLabel(job.stage)}`}
+                                        >
+                                          {getStageLabel(job.stage)}
+                                        </span>
+                                      )}
+                                    </div>
                                   ))}
                                   {candidate.linkedJobs.length > 2 && (
                                     <Badge variant="outline" className="text-xs">

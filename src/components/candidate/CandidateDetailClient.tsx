@@ -12,7 +12,8 @@ import { ResumeUpload } from "@/components/candidate/ResumeUpload";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download, Plus, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useUnlinkCandidateFromJob, useJobs } from "@/lib/hooks/query-job";
+import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useUnlinkCandidateFromJob, useJobs, useUpdateCandidateStageInJobAppCentric, useAddJobSpecificNote } from "@/lib/hooks/query-job";
+import { APPLICATION_STAGES, getStageLabel, getStageColor } from "@/lib/schemas/lead";
 
 interface Note {
   id: string;
@@ -1095,22 +1096,120 @@ return (
 
 function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string; candidateName?: string }) {
   const { data: jobs, isLoading, isError, refetch } = useJobsForCandidate(candidateId);
-  const updateStage = useUpdateCandidateStageInJob();
+  const updateStage = useUpdateCandidateStageInJobAppCentric();
   const linkCandidate = useLinkCandidateToJob();
   const unlinkCandidate = useUnlinkCandidateFromJob();
+  const addNote = useAddJobSpecificNote();
   const { data: allJobs } = useJobs();
   
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState("");
   const [showUnlinkDialog, setShowUnlinkDialog] = useState(false);
   const [jobToUnlink, setJobToUnlink] = useState<any>(null);
+  
+  // Auto-prompt for stage change
+  const [showStagePrompt, setShowStagePrompt] = useState(false);
+  const [pendingStageChange, setPendingStageChange] = useState<{ jobId: string; jobTitle: string; oldStage: string; newStage: string } | null>(null);
+  const [stageNote, setStageNote] = useState("");
+  const [isSavingStage, setIsSavingStage] = useState(false);
 
   const getCurrentStage = (job: any) => {
     const linked = (job.candidates || []).find((lc: any) => lc.candidateId === candidateId);
-    return linked?.stage || "Applied";
+    return linked?.stage || "sourced";
   };
 
-  const stageOptions = ["Applied", "Screening", "Interviewing", "Offered", "Placed", "Rejected", "Withdrawn"];
+  // Get stage label from value
+  const getStageLabel = (stageValue: string): string => {
+    const stage = APPLICATION_STAGES.find(s => s.value === stageValue);
+    return stage?.label || stageValue;
+  };
+
+  // Handle stage change with auto-prompt
+  const handleStageChange = async (job: any, newStage: string) => {
+    const currentStage = getCurrentStage(job);
+    if (newStage === currentStage) return;
+    
+    // Store the pending stage change and show prompt
+    setPendingStageChange({
+      jobId: job.id,
+      jobTitle: job.title || "Untitled Job",
+      oldStage: currentStage,
+      newStage: newStage
+    });
+    setShowStagePrompt(true);
+    setStageNote("");
+  };
+
+  // Confirm stage change (with or without note)
+  const handleConfirmStageChange = async () => {
+    if (!pendingStageChange) return;
+    
+    setIsSavingStage(true);
+    try {
+      // Update the stage
+      await updateStage.mutateAsync({
+        jobId: pendingStageChange.jobId,
+        candidateId,
+        stage: pendingStageChange.newStage,
+      });
+      
+      // If note was provided, add it
+      if (stageNote.trim()) {
+        await addNote.mutateAsync({
+          jobId: pendingStageChange.jobId,
+          candidateId,
+          content: stageNote.trim(),
+          relatedStage: pendingStageChange.newStage,
+        });
+      }
+      
+      toast.success(`Stage updated to ${getStageLabel(pendingStageChange.newStage)}`);
+      setShowStagePrompt(false);
+      setPendingStageChange(null);
+      setStageNote("");
+      refetch();
+    } catch (err: any) {
+      console.error('Stage change error:', err);
+      toast.error(err.message || 'Failed to update stage');
+    } finally {
+      setIsSavingStage(false);
+    }
+  };
+
+  // Skip the note and just update stage
+  const handleSkipNote = async () => {
+    if (!pendingStageChange) return;
+    
+    setIsSavingStage(true);
+    try {
+      await updateStage.mutateAsync({
+        jobId: pendingStageChange.jobId,
+        candidateId,
+        stage: pendingStageChange.newStage,
+      });
+      
+      toast.success(`Stage updated to ${getStageLabel(pendingStageChange.newStage)}`);
+      setShowStagePrompt(false);
+      setPendingStageChange(null);
+      setStageNote("");
+      refetch();
+    } catch (err: any) {
+      console.error('Stage change error:', err);
+      toast.error(err.message || 'Failed to update stage');
+    } finally {
+      setIsSavingStage(false);
+    }
+  };
+
+  // Close stage prompt without doing anything
+  const handleCloseStagePrompt = () => {
+    setShowStagePrompt(false);
+    setPendingStageChange(null);
+    setStageNote("");
+  };
+
+  // Use APPLICATION_STAGES for stage options
+  const stageOptions = APPLICATION_STAGES;
 
   // Get jobs that are not already linked
   const availableJobs = allJobs?.filter((job: any) => 
@@ -1199,21 +1298,15 @@ return (
                 </div>
 
 <div className="flex items-center gap-2">
-                  <select
+<select
                     value={currentStage}
-                    onChange={(e) =>
-                      updateStage.mutate({
-                        jobId: job.id,
-                        candidateId,
-                        stage: e.target.value,
-                      })
-                    }
+                    onChange={(e) => handleStageChange(job, e.target.value)}
                     className="border border-input rounded-md px-2 py-1 text-sm bg-background text-foreground"
                     disabled={updateStage.isPending}
                   >
-                    {stageOptions.map((stage) => (
-                      <option key={stage} value={stage}>
-                        {stage}
+                    {stageOptions.map((stage: any) => (
+                      <option key={stage.value} value={stage.value}>
+                        {stage.label}
                       </option>
                     ))}
                   </select>
@@ -1287,7 +1380,7 @@ return (
         </div>
 )}
 
-      {/* Unlink Job Confirmation Dialog */}
+{/* Unlink Job Confirmation Dialog */}
       {showUnlinkDialog && jobToUnlink && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md">
@@ -1322,11 +1415,61 @@ return (
           </div>
         </div>
       )}
+
+      {/* Stage Change Prompt Modal */}
+      {showStagePrompt && pendingStageChange && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md">
+            <h3 className="font-semibold text-lg mb-2 text-foreground">Stage Changed</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              You changed the stage to <span className="font-medium text-foreground">{getStageLabel(pendingStageChange.newStage)}</span> for <span className="font-medium text-foreground">{pendingStageChange.jobTitle}</span>.
+            </p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Would you like to add a note about this change?
+            </p>
+            
+            <div className="mb-4">
+              <Textarea
+                placeholder="Add a note (optional)..."
+                value={stageNote}
+                onChange={(e) => setStageNote(e.target.value)}
+                rows={3}
+                className="w-full p-2 text-sm border border-input rounded-md resize-y min-h-[60px]"
+              />
+            </div>
+            
+            <div className="flex gap-2 justify-end">
+              <Button 
+                variant="outline" 
+                onClick={handleSkipNote}
+                disabled={isSavingStage}
+              >
+                {isSavingStage ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : null}
+                Skip
+              </Button>
+              <Button 
+                onClick={handleConfirmStageChange}
+                disabled={isSavingStage}
+              >
+                {isSavingStage ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...
+                  </>
+                ) : (
+                  'Save'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// Full Linked Jobs Tab with stage management
+// Full Linked Jobs Tab
 function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; candidateName: string }) {
   const { data: jobs, isLoading, isError, refetch } = useJobsForCandidate(candidateId);
   const updateStage = useUpdateCandidateStageInJob();

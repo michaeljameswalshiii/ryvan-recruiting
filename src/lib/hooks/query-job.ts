@@ -365,3 +365,187 @@ export function useJobsForCompany(companyId: string) {
     enabled: !!companyId,
   });
 }
+
+// ============================================================================
+// NEW: Application-Centric Model Hooks
+// ============================================================================
+
+/**
+ * Update candidate stage in a specific job (application-centric)
+ * Uses the new linkedJobs[] structure on the candidate
+ */
+export function useUpdateCandidateStageInJobAppCentric() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      candidateId, 
+      jobId, 
+      stage 
+    }: { 
+      candidateId: string; 
+      jobId: string; 
+      stage: string;
+    }) => {
+      // Call the server action for application-centric update
+      const response = await fetch(`/api/data/leads/${candidateId}/job/${jobId}/stage`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage }),
+      });
+      
+      const result = await response.json();
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    onSuccess: (_, variables) => {
+      toast.success(`Stage updated to ${variables.stage}`);
+      // Invalidate candidate and jobs caches
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
+    },
+    onError: (error) => {
+      toast.error('Failed to update stage', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      });
+    },
+  });
+}
+
+/**
+ * Add a job-specific note to a candidate's application
+ */
+export function useAddJobSpecificNote() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      candidateId, 
+      jobId, 
+      noteContent,
+      relatedStage
+    }: { 
+      candidateId: string; 
+      jobId: string; 
+      noteContent: string;
+      relatedStage?: string;
+    }) => {
+      const response = await fetch(`/api/data/leads/${candidateId}/job/${jobId}/note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          content: noteContent,
+          relatedStage 
+        }),
+      });
+      
+      const result = await response.json();
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    onSuccess: () => {
+      toast.success('Note added');
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+    onError: (error) => {
+      toast.error('Failed to add note', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      });
+    },
+  });
+}
+
+/**
+ * Link a candidate to a job (application-centric model)
+ */
+export function useLinkCandidateToJobAppCentric() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      candidateId,
+      jobId, 
+      jobTitle,
+      companyId,
+      companyName,
+      initialStage = 'sourced'
+    }: { 
+      candidateId: string;
+      jobId: string; 
+      jobTitle: string;
+      companyId?: string;
+      companyName?: string;
+      initialStage?: string;
+    }) => {
+      const response = await fetch(`/api/data/leads/${candidateId}/job/link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          jobId,
+          jobTitle,
+          companyId,
+          companyName,
+          initialStage
+        }),
+      });
+      
+      const result = await response.json();
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    onSuccess: () => {
+      toast.success('Job linked to candidate');
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
+    },
+    onError: (error) => {
+      toast.error('Failed to link job', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      });
+    },
+  });
+}
+
+/**
+ * Unlink a candidate from a job (application-centric model)
+ */
+export function useUnlinkCandidateFromJobAppCentric() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      candidateId,
+      jobId
+    }: { 
+      candidateId: string;
+      jobId: string;
+    }) => {
+      const response = await fetch(`/api/data/leads/${candidateId}/job/${jobId}/unlink`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      const result = await response.json();
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    onSuccess: () => {
+      toast.success('Job unlinked from candidate');
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
+    },
+    onError: (error) => {
+      toast.error('Failed to unlink job', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      });
+    },
+  });
+}

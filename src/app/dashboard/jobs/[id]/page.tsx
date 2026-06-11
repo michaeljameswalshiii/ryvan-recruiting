@@ -10,20 +10,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { APPLICATION_STAGES } from "@/lib/schemas/lead";
 
-const STAGES = ["SOURCED", "SCREENING", "INTERVIEW", "OFFER", "HIRED", "REJECTED"] as const;
 const JOB_STATUSES = ["OPEN", "PAUSED", "CLOSED"] as const;
 
-type Stage = (typeof STAGES)[number];
+// Map APPLICATION_STAGES values for job-specific stages
+const STAGES = APPLICATION_STAGES.map(s => s.value);
+
 type JobStatus = (typeof JOB_STATUSES)[number];
 
-function prettyStage(stage?: string) {
-  if (!stage) return "Unknown";
-  return stage
-    .toLowerCase()
-    .split("_")
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join(" ");
+function getStageLabel(stageValue: string) {
+  const stage = APPLICATION_STAGES.find(s => s.value === stageValue);
+  return stage?.label || stageValue;
 }
 
 export default function JobDetailPage() {
@@ -39,7 +37,7 @@ export default function JobDetailPage() {
   const [candidateId, setCandidateId] = useState("");
   const [candidateName, setCandidateName] = useState("");
   const [candidateEmail, setCandidateEmail] = useState("");
-  const [newCandidateStage, setNewCandidateStage] = useState<Stage>("SOURCED");
+  const [newCandidateStage, setNewCandidateStage] = useState("sourced");
   const [candidateNotes, setCandidateNotes] = useState("");
 
   const linkedCandidates = useMemo(() => {
@@ -65,14 +63,14 @@ export default function JobDetailPage() {
         candidateEmail: candidateEmail || undefined,
         stage: newCandidateStage,
         notes: candidateNotes || undefined,
-      },
+      }
     });
 
     setCandidateId("");
     setCandidateName("");
     setCandidateEmail("");
     setCandidateNotes("");
-    setNewCandidateStage("SOURCED");
+    setNewCandidateStage("sourced");
   };
 
   const isMutating =
@@ -124,7 +122,7 @@ export default function JobDetailPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Badge variant="secondary">{prettyStage(job.status)}</Badge>
+            <Badge variant="secondary">{job.status || "OPEN"}</Badge>
             <select
               value={job.status || "OPEN"}
               onChange={(e) => onChangeJobStatus(e.target.value as JobStatus)}
@@ -133,7 +131,7 @@ export default function JobDetailPage() {
             >
               {JOB_STATUSES.map((status) => (
                 <option key={status} value={status}>
-                  {prettyStage(status)}
+                  {status}
                 </option>
               ))}
             </select>
@@ -188,7 +186,7 @@ export default function JobDetailPage() {
                         <div className="flex items-center gap-2">
                           <select
                             className="border rounded-md px-2 py-1 text-sm"
-                            value={lc.stage || "SOURCED"}
+                            value={lc.stage || "sourced"}
                             onChange={(e) =>
                               updateStage.mutate({
                                 jobId,
@@ -200,7 +198,7 @@ export default function JobDetailPage() {
                           >
                             {STAGES.map((stage) => (
                               <option key={stage} value={stage}>
-                                {prettyStage(stage)}
+                                {getStageLabel(stage)}
                               </option>
                             ))}
                           </select>
@@ -240,11 +238,11 @@ export default function JobDetailPage() {
                   <select
                     className="border rounded-md px-3 py-2 text-sm bg-white"
                     value={newCandidateStage}
-                    onChange={(e) => setNewCandidateStage(e.target.value as Stage)}
+                    onChange={(e) => setNewCandidateStage(e.target.value)}
                   >
                     {STAGES.map((stage) => (
                       <option key={stage} value={stage}>
-                        {prettyStage(stage)}
+                        {getStageLabel(stage)}
                       </option>
                     ))}
                   </select>

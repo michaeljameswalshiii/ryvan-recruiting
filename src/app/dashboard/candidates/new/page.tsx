@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { APPLICATION_STAGES } from "@/lib/schemas/lead";
 
 // Source options
 const sourceOptions = [
@@ -20,15 +21,11 @@ const sourceOptions = [
   { value: "other", label: "Other" },
 ];
 
-// Status options
-const statusOptions = [
-  { value: "identification", label: "Identification" },
-  { value: "outreach", label: "Attempted Outreach" },
-  { value: "conversation", label: "Conversation" },
-  { value: "presented", label: "Candidate Presented" },
-  { value: "interview", label: "Interview" },
-  { value: "accept", label: "Accept" },
-];
+// Status options - using APPLICATION_STAGES for consistency
+const statusOptions = APPLICATION_STAGES.map((stage) => ({
+  value: stage.value,
+  label: stage.label,
+}));
 
 export default function NewCandidatePage() {
   const router = useRouter();
@@ -44,7 +41,7 @@ export default function NewCandidatePage() {
     phone: "",
     location: "",
     title: "",
-    status: "identification",
+status: "sourced",
     source: "manual",
     notes: "",
     linkedin_url: "",

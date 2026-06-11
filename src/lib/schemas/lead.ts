@@ -5,8 +5,131 @@ import { z } from 'zod';
  * Validation schema for lead data
  */
 
-// Linked job type for enriched data
+// ============================================================================
+// NEW APPLICATION STAGES - Application-centric model (Phase 1)
+// ============================================================================
+
+/**
+ * Official Application Stages
+ * New stage system where stages are tied to Candidate + Job combinations
+ */
+export const APPLICATION_STAGES = [
+  { value: "sourced",          label: "Sourced",           color: "gray" },
+  { value: "left_message",     label: "Left Message",      color: "blue" },
+  { value: "text",             label: "Text",              color: "blue" },
+  { value: "email",            label: "Email",             color: "blue" },
+  { value: "other",            label: "Other",             color: "gray" },
+  { value: "contacted",        label: "Contacted",         color: "blue" },
+  { value: "pre_screened",    label: "Pre-Screened",      color: "violet" },
+  { value: "submitted",        label: "Submitted",         color: "violet" },
+  { value: "interviewing",      label: "Interviewing",        color: "amber" },
+  { value: "offer_out",        label: "Offer Out",         color: "amber" },
+  { value: "offer_accepted",  label: "Offer Accepted",   color: "green" },
+  { value: "offer_declined",  label: "Offer Declined",    color: "red" },
+  { value: "placed",          label: "Placed",           color: "emerald" },
+  { value: "rejected",        label: "Rejected",        color: "red" },
+  { value: "not_interested",  label: "Not Interested",   color: "gray" },
+] as const;
+
+// Extract just the values for validation
+export const APPLICATION_STAGE_VALUES = APPLICATION_STAGES.map(s => s.value);
+export type ApplicationStage = typeof APPLICATION_STAGE_VALUES[number];
+
+/**
+ * Get stage label by value
+ */
+export function getStageLabel(value: string): string {
+  const stage = APPLICATION_STAGES.find(s => s.value === value);
+  return stage?.label || value;
+}
+
+/**
+ * Get stage color by value
+ */
+export function getStageColor(value: string): string {
+  const stage = APPLICATION_STAGES.find(s => s.value === value);
+  return stage?.color || "gray";
+}
+
+/**
+ * Check if a stage string is a valid application stage
+ */
+export function isValidApplicationStage(stage: string): stage is ApplicationStage {
+  return APPLICATION_STAGE_VALUES.includes(stage as ApplicationStage);
+}
+
+/**
+ * Map legacy job candidate stages to new application stages
+ */
+export function mapLegacyStageToApplicationStage(legacyStage: string): string {
+  const mapping: Record<string, string> = {
+    'Applied': 'sourced',
+    'Screening': 'pre_screened',
+    'Interviewing': 'interviewing',
+    'Offered': 'offer_out',
+    'Placed': 'placed',
+    'Rejected': 'rejected',
+    'Withdrawn': 'not_interested',
+    // Legacy lead statuses
+    'identification': 'sourced',
+    'outreach': 'contacted',
+    'conversation': 'pre_screened',
+    'presented': 'submitted',
+    'interview': 'interviewing',
+    'accept': 'offer_accepted',
+    'new': 'sourced',
+    'converted': 'placed',
+    'qualified': 'pre_screened',
+    'interested': 'contacted',
+    'not_interested': 'not_interested',
+  };
+  
+  return mapping[legacyStage] || 'sourced';
+}
+
+// ============================================================================
+// JOB-SPECIFIC NOTE SCHEMA
+// ============================================================================
+
+/**
+ * Job-specific note attached to a Candidate + Job combination
+ */
+export const jobNoteSchema = z.object({
+  id: z.string().uuid(),
+  content: z.string().max(2000),
+  createdAt: z.string().datetime(),
+  createdBy: z.string(),
+  createdByName: z.string().optional(),
+  relatedStage: z.string().optional(), // The stage when this note was created
+});
+
+export type JobNote = z.infer<typeof jobNoteSchema>;
+
+// ============================================================================
+// NEW LINKED JOB STRUCTURE - For Application-centric model
+// ============================================================================
+
+/**
+ * Linked job type - enhanced with stage and job-specific notes
+ * This is the new structure for application-centric model
+ */
 export const linkedJobSchema = z.object({
+  jobId: z.string(),
+  jobTitle: z.string(),
+  companyId: z.string().optional(),
+  companyName: z.string().optional(),
+  
+  // Stage tracking (moved from Job.candidates[])
+  stage: z.string().default("sourced"),
+  stageUpdatedAt: z.string().datetime().optional(),
+  stageUpdatedBy: z.string().optional(),
+  
+  // Job-specific notes
+  notes: z.array(jobNoteSchema).default([]),
+});
+
+// Legacy linked job type for backward compatibility during migration
+export const linkedJobSchemaLegacy = z.object({
   jobId: z.string(),
   jobTitle: z.string(),
   companyName: z.string().optional(),
@@ -41,7 +164,10 @@ export const leadSchema = z.object({
   notes: z.string().max(2000).optional().or(z.literal('')),
   linkedin_url: z.string().max(200).optional().or(z.literal('')),
   resume_url: z.string().max(500).optional().or(z.literal('')),
+  // Legacy: Array of job IDs (used during migration)
   linkedJobIds: z.array(z.string()).optional(),
+  // NEW: Array of linked jobs with stage and job-specific notes (application-centric model)
+  linkedJobs: z.array(linkedJobSchema).optional(),
   created_at: z.string().optional(),
   modified_at: z.string().optional(),
 });
@@ -71,6 +197,8 @@ export const updateLeadSchema = z.object({
   linkedin_url: z.string().max(200).optional().nullable(),
   resume_url: z.string().max(500).optional().nullable(),
   linkedJobIds: z.array(z.string()).optional().nullable(),
+  // NEW: linkedJobs with stage tracking for application-centric model
+  linkedJobs: z.array(linkedJobSchema).optional().nullable(),
   created_at: z.string().optional(),
   modified_at: z.string().optional(),
 }).passthrough(); // Allow extra fields
