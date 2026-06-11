@@ -346,26 +346,44 @@ const handleRefresh = () => {
                           </Link>
                         </td>
                         
-                        {/* LINKED JOB - FIXED with proper linkedJobs rendering */}
+{/* LINKED JOB - showing all linked jobs */}
                         <td className="p-4">
-                          {candidate.linkedJobs && candidate.linkedJobs.length > 0 ? (
-                            <div className="flex flex-wrap gap-1.5">
-                              {candidate.linkedJobs.slice(0, 2).map((job: any) => (
-                                <Link
-                                  key={job.id}
-                                  href={`/dashboard/jobs/${job.id}`}
-                                  className="inline-flex px-3 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full transition-colors whitespace-nowrap"
-                                >
-                                  {job.title}
-                                </Link>
-                              ))}
-                              {candidate.linkedJobs.length > 2 && (
-                                <span className="text-xs text-muted-foreground self-center">+{candidate.linkedJobs.length - 2} more</span>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 flex flex-wrap gap-1.5">
+                              {candidate.linkedJobs && candidate.linkedJobs.length > 0 ? (
+                                <>
+                                  {candidate.linkedJobs.map((job: any) => (
+                                    <Link
+                                      key={job.id}
+                                      href={`/dashboard/jobs/${job.id}`}
+                                      className="inline-flex px-3 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full transition-colors whitespace-nowrap"
+                                    >
+                                      {job.title}
+                                    </Link>
+                                  ))}
+                                </>
+                              ) : (
+                                <span className="text-muted-foreground text-sm italic">— No job linked —</span>
                               )}
                             </div>
-                          ) : (
-                            <span className="text-muted-foreground text-sm italic">— No job linked —</span>
-                          )}
+                            {/* Link Job Button moved to Linked Job column */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-primary hover:bg-primary/10 flex-shrink-0"
+                              onClick={() => {
+                                setSelectedCandidate({
+                                  id: candidate.id,
+                                  name: candidate.name,
+                                  linkedJobIds: candidate.linkedJobIds || [],
+                                });
+                                setLinkJobModalOpen(true);
+                              }}
+                              title="Link job to candidate"
+                            >
+                              <Link2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </td>
                         
                         {/* STAGE */}
