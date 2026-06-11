@@ -420,38 +420,21 @@ const handleRefresh = () => {
                           {getTimeAgo(candidate.modified_at || candidate.created_at)}
                         </td>
                         
-                        {/* ACTIONS */}
+{/* ACTIONS */}
                         <td className="p-4">
-                          <div className="flex gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 text-primary hover:bg-primary/10"
-                              onClick={() => {
-                                setSelectedCandidate({
-                                  id: candidate.id,
-                                  name: candidate.name,
-                                  linkedJobIds: candidate.linkedJobIds || [],
-                                });
-                                setLinkJobModalOpen(true);
-                              }}
-                            >
-                              <Link2 className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => {
-                                if (confirm(`Delete ${candidate.name}?`)) {
-                                  handleDelete(candidate.id);
-                                }
-                              }}
-                              disabled={deleting}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => {
+                              if (confirm(`Delete ${candidate.name}?`)) {
+                                handleDelete(candidate.id);
+                              }
+                            }}
+                            disabled={deleting}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </td>
                         
                         {/* ID */}
