@@ -7,8 +7,8 @@ import { z } from 'zod';
 
 // Linked job type for enriched data
 export const linkedJobSchema = z.object({
-  id: z.string(),
-  title: z.string(),
+  jobId: z.string(),
+  jobTitle: z.string(),
   companyName: z.string().optional(),
 });
 

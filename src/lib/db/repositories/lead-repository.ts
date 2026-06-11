@@ -77,28 +77,23 @@ export async function getAllLeads(tenantId: string): Promise<Lead[]> {
 export async function getAllLeadsWithLinkedJobs(tenantId: string): Promise<(Lead & { linkedJobs: LinkedJob[] })[]> {
   const leads = await getAllLeads(tenantId);
   
-  // Get all jobs for the tenant to look up by ID
+// Get all jobs for the tenant to look up by ID
   const allJobs = await getAllJobs(tenantId);
   const jobsMap = new Map(allJobs.map(job => [job.id, job]));
-  console.log('[getAllLeadsWithLinkedJobs] Total jobs available:', allJobs.length);
   
   // Enrich leads with linked job data
   const enrichedLeads = leads.map(lead => {
     const linkedJobs: LinkedJob[] = [];
-    
-    console.log('[enrichLead] Lead:', lead.name, 'linkedJobIds:', lead.linkedJobIds);
     
     if (lead.linkedJobIds && lead.linkedJobIds.length > 0) {
       for (const jobId of lead.linkedJobIds) {
         const job = jobsMap.get(jobId);
         if (job) {
           linkedJobs.push({
-            id: job.id,
-            title: job.title,
+            jobId: job.id,
+            jobTitle: job.title,
             companyName: job.companyName,
           });
-        } else {
-          console.log('[enrichLead] Job not found for ID:', jobId);
         }
       }
     }
@@ -109,7 +104,6 @@ export async function getAllLeadsWithLinkedJobs(tenantId: string): Promise<(Lead
     };
   });
   
-  console.log('[getAllLeadsWithLinkedJobs] Returning', enrichedLeads.length, 'enriched leads');
   return enrichedLeads;
 }
 

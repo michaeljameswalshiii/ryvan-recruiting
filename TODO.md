@@ -1,42 +1,27 @@
-# Resume Upload Feature Improvements - TODO
+# TODO: Support Multiple Jobs per Candidate
 
-## Status: COMPLETED
+## Summary
+Update the Candidate data model and UI to properly support multiple jobs per candidate with improved display.
 
-## Steps Completed:
-- [x] Step 1: Install react-dropzone dependency ✅
-- [x] Step 2: Update ResumeUpload component with react-dropzone and Google Docs support ✅
-- [x] Step 3: Update parse-resume API to handle Google Docs URLs ✅
+## Tasks
 
-## Implementation Summary:
+### 1. Update Data Model (lib/schemas/lead.ts)
+- [x] Change linkedJobs items to use `jobId`, `jobTitle`, `companyName`
 
-### 1. ResumeUpload Component (src/components/candidate/ResumeUpload.tsx)
-- Uses `react-dropzone` hook for drag & drop
-- Supports PDF, DOC, DOCX files
-- Max file size: 10MB
-- Visual feedback when dragging (blue border, blue background)
-- Shows selected file with name, size, and remove button
-- Added Google Docs Link input section
-- Extracts document ID from share link and sends to backend
+### 2. Update Lead Repository (lib/db/repositories/lead-repository.ts)
+- [x] Update `getAllLeadsWithLinkedJobs()` to return proper object structure
 
-### 2. Parse-Resume API (src/app/api/parse-resume/route.ts)
-- Added Google Docs URL handling
-- `fetchGoogleDocAsText()` function to fetch and export Google Doc as text
-- `extractGoogleDocId()` function to extract document ID from URL
-- Reuses existing parsing logic for extracting name, email, phone, skills, etc.
-- Returns the Google Docs URL as resumeUrl
+### 3. Update Candidates List Page (app/dashboard/candidates/page.tsx)
+- [x] Show max 2 jobs with "+X more" badge
+- [x] Use Badge component for styling
+- [x] Make badges clickable
 
-### Features Implemented:
-1. ✅ Drag & Drop using react-dropzone
-2. ✅ Support for PDF, DOC, DOCX files
-3. ✅ Max 10MB file size
-4. ✅ Visual feedback when dragging (blue styling)
-5. ✅ Show selected file with name, size, remove button
-6. ✅ Google Docs Link support section
-7. ✅ Parse Google Docs document and extract data
+### 4. Update LinkJobModal (components/candidate/LinkJobModal.tsx)
+- [x] Update to pass full job objects instead of just IDs
 
-## Dependencies Added:
-- react-dropzone ✅
+## Implementation Notes
+- Keep backward compatibility with existing linkedJobIds
+- The data is already stored as linkedJobIds array in DynamoDB
+- Enrichment happens at query time with job data
 
-## Files Modified:
-1. src/components/candidate/ResumeUpload.tsx - Updated with react-dropzone and Google Docs support
-2. src/app/api/parse-resume/route.ts - Added Google Docs URL handling
+## Status: Complete ✓

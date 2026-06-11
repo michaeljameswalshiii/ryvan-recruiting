@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Search, Plus, LayoutList, Kanban, User, RefreshCw, Trash2, MoreVertical, Briefcase, Link2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -81,6 +82,7 @@ type SortDirection = "asc" | "desc";
 
 export default function CandidatesPage() {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [sortField, setSortField] = useState<SortField>("created_at");
@@ -346,27 +348,33 @@ const handleRefresh = () => {
                           </Link>
                         </td>
                         
-{/* LINKED JOB - showing all linked jobs */}
+{/* LINKED JOB - showing up to 2 jobs with +X more badge */}
                         <td className="p-4">
                           <div className="flex items-center gap-2">
-                            <div className="flex-1 flex flex-wrap gap-1.5">
+                            <div className="flex-1 flex flex-wrap gap-1">
                               {candidate.linkedJobs && candidate.linkedJobs.length > 0 ? (
                                 <>
-                                  {candidate.linkedJobs.map((job: any) => (
-                                    <Link
-                                      key={job.id}
-                                      href={`/dashboard/jobs/${job.id}`}
-                                      className="inline-flex px-3 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full transition-colors whitespace-nowrap"
+                                  {candidate.linkedJobs.slice(0, 2).map((job: any) => (
+                                    <Badge 
+                                      key={job.jobId} 
+                                      variant="secondary" 
+                                      className="cursor-pointer hover:bg-blue-100 text-xs"
+                                      onClick={() => router.push(`/dashboard/jobs/${job.jobId}`)}
                                     >
-                                      {job.title}
-                                    </Link>
+                                      {job.jobTitle}
+                                    </Badge>
                                   ))}
+                                  {candidate.linkedJobs.length > 2 && (
+                                    <Badge variant="outline" className="text-xs">
+                                      +{candidate.linkedJobs.length - 2} more
+                                    </Badge>
+                                  )}
                                 </>
                               ) : (
-                                <span className="text-muted-foreground text-sm italic">— No job linked —</span>
+                                <span className="text-muted-foreground text-sm">— No job linked —</span>
                               )}
                             </div>
-                            {/* Link Job Button moved to Linked Job column */}
+                            {/* Link Job Button */}
                             <Button
                               variant="ghost"
                               size="sm"
