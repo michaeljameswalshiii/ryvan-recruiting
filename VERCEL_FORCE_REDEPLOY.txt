@@ -1,2 +1,3 @@
 ﻿Triggering rebuild
 2026-06-12 20:00 UTC - removed stage boxes
+2026-01-17 08:30 UTC - link jobs now populates linkedJobs array
