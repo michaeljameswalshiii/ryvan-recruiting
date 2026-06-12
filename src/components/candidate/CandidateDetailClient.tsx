@@ -24,6 +24,7 @@ interface Note {
   createdBy: string;
 }
 
+// DEPRECATED: status field - use linkedJobs[].stage instead
 interface Candidate {
   id: string;
   tenantId?: string;
@@ -35,7 +36,7 @@ interface Candidate {
   linkedin?: string;
   resumeUrl?: string;
   resumeFileName?: string;
-  status: string; // Now comes from linkedJobs[0].stage (not top-level status)
+  status?: string; // DEPRECATED - kept for backward compat, use linkedJobs[].stage
   stageColor?: string;
   source?: string;
   location?: string;
@@ -139,8 +140,14 @@ const [editAddress, setEditAddress] = useState({
   // Location preferences options
   const locationOptions = ["On-Site", "Hybrid", "Remote"];
 
-// Pipeline stage state
-  const [currentStage, setCurrentStage] = useState(candidate.status || "Identified");
+// Pipeline stage state - DEPRECATED: read from linkedJobs[].stage instead (display only)
+  const [currentStage, setCurrentStage] = useState(() => {
+    // NEW: Get stage from linkedJobs[0].stage
+    if (candidate.linkedJobs && candidate.linkedJobs.length > 0) {
+      return candidate.linkedJobs[0].stage || "sourced";
+    }
+    return "sourced"; // Default to sourced
+  });
   const [updatingStage, setUpdatingStage] = useState(false);
 
 // Activity/Notes state for new design
@@ -229,11 +236,11 @@ const [editAddress, setEditAddress] = useState({
 const response = await fetch(`/api/candidate/${candidate.id}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+body: JSON.stringify({
           noteText: newNote,
           noteType: noteType,
-          // Include current pipeline stage for context
-          stage: candidate.status,
+          // Include current stage from linkedJobs for context (not deprecated status)
+          stage: candidate.linkedJobs?.[0]?.stage || "sourced",
         }),
       });
       
