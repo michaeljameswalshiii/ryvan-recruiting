@@ -1,4 +1,4 @@
-import CompanyTimeline from '@/components/company-timeline';
+﻿import CompanyTimeline from '@/components/company-timeline';
 import { BackToDashboard } from '@/components/ui/BackToDashboard';
 import Link from 'next/link';
 

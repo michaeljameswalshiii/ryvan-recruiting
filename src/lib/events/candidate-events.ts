@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Candidate Events Service
  * Records and retrieves candidate events (emails, notes, status changes) from DynamoDB
  * 

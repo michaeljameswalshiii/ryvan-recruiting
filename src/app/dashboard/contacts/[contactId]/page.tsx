@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+﻿import { notFound } from "next/navigation";
 import { ContactDetailClient } from "@/components/contact/ContactDetailClient";
 import { getClientById } from "@/lib/db/repositories/client-repository";
 import { getSessionTenantId } from "@/lib/server-auth";

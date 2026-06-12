@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Bedrock Health Check Endpoint
  * 
  * Provides diagnostic information for debugging Bedrock API issues.

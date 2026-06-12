@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @deprecated DEPRECATED AUTH MODULE
  * 
  * ⚠️ WARNING: This module is deprecated and insecure!

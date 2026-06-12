@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AI Tools - Shared Types
  * 
  * TypeScript interfaces for tool system.

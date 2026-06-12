@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Global Error Boundary
  * Catches React errors and provides retry functionality
  * 

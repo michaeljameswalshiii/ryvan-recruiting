@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Email Connection Disconnect API
  * Disconnect an email provider
  * 

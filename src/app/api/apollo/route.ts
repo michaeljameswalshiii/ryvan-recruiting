@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { logApolloUsage, logBedrockUsage } from "@/lib/aws/athena-bedrock";
 import { getSessionTenantId, getSessionUserId, getSessionUserEmail } from "@/lib/server-auth";
 

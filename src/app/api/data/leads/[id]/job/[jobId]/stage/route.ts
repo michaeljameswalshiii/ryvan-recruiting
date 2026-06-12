@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Application-Centric Stage Update API
  * Updates candidate stage for a specific job using linkedJobs[]
  * 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Jobs API Routes
  * GET /api/data/jobs - Get all jobs
  * POST /api/data/jobs - Create a new job

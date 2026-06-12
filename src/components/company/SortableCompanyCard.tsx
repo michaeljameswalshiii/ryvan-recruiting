@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Sortable Company Card Component
  * Drag-and-drop enabled card for Kanban view
  * Includes Edit and Delete actions

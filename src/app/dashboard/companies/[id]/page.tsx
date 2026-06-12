@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Company Detail Page
  * Shows company info with tabs: Overview, History, Jobs, Contacts, Notes
  */

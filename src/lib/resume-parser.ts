@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Resume Parser - Server-side functions
  * Use /api/parse-resume for client-side PDF parsing
  */

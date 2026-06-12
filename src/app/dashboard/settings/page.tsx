@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Dashboard Settings Page
  * User settings and preferences including email connections
  * 

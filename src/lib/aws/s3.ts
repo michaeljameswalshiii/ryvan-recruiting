@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AWS S3 Utility
  * Server-side S3 operations for file uploads
  */

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Candidate Detail Page
  * Fetches candidate data including linkedJobs with stages
  * 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Bedrock Client Wrapper (LEGACY - DEPRECATED)
  * 
  * ⚠️ WARNING: This file is deprecated!

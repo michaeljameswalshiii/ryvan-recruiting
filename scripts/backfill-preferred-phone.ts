@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Backfill Script: Populate preferredPhone/preferredPhoneType for all contacts
  * 
  * This script scans all clients in DynamoDB and updates contacts that don't have

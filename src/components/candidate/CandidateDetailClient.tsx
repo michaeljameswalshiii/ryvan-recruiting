@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useRef, ChangeEvent } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -1010,12 +1010,9 @@ return (
                 </p>
               )}
             </div>
-</div>
-  );
-}
-
-// Default export for page import
-export default CandidateDetailClient;
+          </div>
+        );
+      })
     ) : (
       <div className="p-8 text-center text-muted-foreground">
         No activity yet
@@ -1120,6 +1117,7 @@ export default CandidateDetailClient;
 function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string; candidateName?: string }) {
   // Use app-centric hook to get linked jobs from candidate's linkedJobs[]
   const { data: linkedJobsData, isLoading, isError, refetch } = useLinkedJobsForCandidate(candidateId);
+  const jobs = linkedJobsData || [];
   const updateStage = useUpdateCandidateStageInJobAppCentric();
   const linkCandidate = useLinkCandidateToJobAppCentric();
   const unlinkCandidate = useUnlinkCandidateFromJobAppCentric();
@@ -1911,14 +1909,12 @@ console.log('[ResumeUpload] Step 2: Uploading to S3, candidateId:', candidateId)
             id="resume-upload"
           />
           <label htmlFor="resume-upload">
-            <span className=" cursor-pointer">
-              <Button variant="outline" size="sm" asChild component="span">
-                <span>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Upload New
-                </span>
-              </Button>
-            </span>
+            <Button variant="outline" size="sm" asChild>
+              <span className="cursor-pointer">
+                <Plus className="h-4 w-4 mr-2" />
+                Upload New
+              </span>
+            </Button>
           </label>
           
           {resumeUrl && (
@@ -2001,7 +1997,7 @@ console.log('[ResumeUpload] Step 2: Uploading to S3, candidateId:', candidateId)
                 id="resume-upload-empty"
               />
               <label htmlFor="resume-upload-empty">
-                <Button variant="outline" asChild component="span">
+                <Button variant="outline" asChild>
                   <span className="cursor-pointer">
                     <Plus className="h-4 w-4 mr-2" />
                     Upload Resume

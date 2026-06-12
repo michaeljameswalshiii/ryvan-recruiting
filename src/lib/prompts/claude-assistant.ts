@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Claude Assistant System Prompt
  * 
  * Standalone research & optimization agent (Claude/Apollo Hybrid style)

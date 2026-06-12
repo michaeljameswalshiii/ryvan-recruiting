@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Job Candidate Stage API Route
  * PUT /api/jobs/[id]/stage - Update candidate stage in a job
  * 

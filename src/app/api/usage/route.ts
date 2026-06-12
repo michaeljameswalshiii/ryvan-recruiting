@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Usage Logging API Route
  * Called from client to log AI usage after each call
  * 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Base System Prompt
  * 
  * Core instructions for the AI assistant with MCP-style integration.

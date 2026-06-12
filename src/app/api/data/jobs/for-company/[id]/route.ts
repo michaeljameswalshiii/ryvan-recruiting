@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Jobs For Company API Route
  * GET /api/data/jobs/for-company/[id] - Get all open jobs for a company
  */

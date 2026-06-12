@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Send Email API
  * Send email via user's connected email account
  * 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Simple Caching Layer
  * 
  * Provides in-memory caching for development and small-scale production.

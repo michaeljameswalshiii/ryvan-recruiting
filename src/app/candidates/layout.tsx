@@ -1,4 +1,4 @@
-import Sidebar from "@/components/Sidebar";
+﻿import Sidebar from "@/components/Sidebar";
 
 // Force dynamic rendering to avoid static prerender issues with useTheme
 export const dynamic = "force-dynamic";

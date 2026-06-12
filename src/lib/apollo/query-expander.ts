@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 
 // Apollo search parameters we want to support
 const ExpandedQuerySchema = z.object({

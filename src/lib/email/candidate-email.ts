@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Candidate Email Service
  * Easy to use function for sending emails to candidates
  * 

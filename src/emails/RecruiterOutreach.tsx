@@ -1,4 +1,4 @@
-import { Html, Head, Body, Container, Text, Button } from '@react-email/components';
+﻿import { Html, Head, Body, Container, Text, Button } from '@react-email/components';
 
 interface RecruiterOutreachProps {
   name: string;

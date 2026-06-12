@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Internal Data Tool
  * 
  * Access tenant's own data (leads, clients, pipeline).

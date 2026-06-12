@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Bell, Search, User } from "lucide-react";
 

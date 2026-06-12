@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Client API Wrapper
  * 
  * This provides a client-safe API for dashboard pages.

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * TanStack Query Hooks for Candidate Detail
  * Provides reactive data fetching for individual candidates
  * 

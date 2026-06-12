@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Centralized Error Handler
  * Provides consistent, user-friendly error messages
  * Never leaks technical details to users

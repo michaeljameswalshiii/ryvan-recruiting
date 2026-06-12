@@ -1,4 +1,4 @@
-/**
+﻿/**
  * TanStack Query Hooks for Lead Data
  * Provides reactive data fetching with caching, loading states, and error handling
  * Includes toast notifications for user feedback

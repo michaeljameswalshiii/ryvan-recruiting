@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Send Email Service
  * Send emails via user's connected Gmail or Outlook account
  * 

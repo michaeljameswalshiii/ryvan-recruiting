@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Bedrock System Prompt Generator
  * 
  * Re-exports from modular prompt files.

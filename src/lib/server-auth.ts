@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Server-Side Authentication
  * 
  * Session management utilities for httpOnly cookies.
