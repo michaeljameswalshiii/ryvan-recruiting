@@ -313,10 +313,11 @@ const handleRefresh = () => {
             <CardContent className="p-0">
               <table className="w-full table-fixed">
 <thead>
-                  <tr className="border-b bg-muted/50">
+<tr className="border-b bg-muted/50">
                     <th className="text-left p-4 font-medium w-12"></th>
                     <th className="text-left p-4 font-medium">CANDIDATE</th>
-                    <th className="text-left p-4 font-medium w-80">LINKED JOB</th>
+                    <th className="text-left p-4 font-medium w-56">LINKED JOB</th>
+                    <th className="text-left p-4 font-medium w-48">STAGE</th>
                     <th className="text-left p-4 font-medium w-36">
                       <button 
                         onClick={() => handleSort("created_at")}
@@ -415,6 +416,27 @@ const handleRefresh = () => {
                               <Link2 className="h-4 w-4" />
                             </Button>
                           </div>
+</td>
+                        
+                        {/* STAGE - showing up to 2 stages from linkedJobs */}
+                        <td className="p-4">
+                          {candidate.linkedJobs && candidate.linkedJobs.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {candidate.linkedJobs.slice(0, 2).map((job: any) => {
+                                const stageInfo = APPLICATION_STAGES.find(s => s.value === job.stage);
+                                return (
+                                  <Badge key={job.jobId} variant="secondary" className="text-xs">
+                                    {stageInfo?.label || job.stage}
+                                  </Badge>
+                                );
+                              })}
+                              {candidate.linkedJobs.length > 2 && (
+                                <Badge variant="outline" className="text-xs">+{candidate.linkedJobs.length - 2}</Badge>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">— No stage —</span>
+                          )}
                         </td>
                         
                         {/* ADDED */}
