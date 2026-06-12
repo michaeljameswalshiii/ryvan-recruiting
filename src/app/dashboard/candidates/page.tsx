@@ -249,29 +249,28 @@ const handleRefresh = () => {
           </div>
         </div>
 
-{/* Pipeline Overview Cards (always visible above content) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-          {pipelineStages.map((stage) => (
-            <Card 
-              key={stage.id} 
-              className={`cursor-pointer transition-all hover:shadow-md ${
-                viewMode === "pipeline" ? "ring-2 ring-primary" : ""
-              }`}
-              onClick={() => setViewMode("pipeline")}
-            >
-              <CardContent className="py-3 px-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${stage.color}`} />
-                    <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
-                      {stage.label}
-                    </span>
-                  </div>
-                  <span className="text-xl font-bold">{pipelineCounts[stage.id as keyof typeof pipelineCounts]}</span>
+{/* Pipeline Overview Cards - showing count of candidates with each application stage */}
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-13 gap-3 mb-6">
+          {APPLICATION_STAGES.map((stage) => {
+            const count = filteredCandidates.filter(c => 
+              c.linkedJobs?.some((job: any) => job.stage === stage.value)
+            ).length;
+
+            return (
+              <div 
+                key={stage.value} 
+                className={`bg-card border rounded-xl p-3 text-center hover:bg-accent transition-colors cursor-pointer ${
+                  viewMode === "pipeline" ? "ring-2 ring-primary" : ""
+                }`}
+                onClick={() => setViewMode("pipeline")}
+              >
+                <div className={`text-2xl font-semibold ${getStageColor(stage.value)}`}>
+                  {count}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+                <div className="text-sm text-muted-foreground mt-1">{stage.label}</div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Search Bar */}
@@ -295,7 +294,6 @@ const handleRefresh = () => {
                     <th className="text-left p-4 font-medium w-12"></th>
                     <th className="text-left p-4 font-medium">CANDIDATE</th>
                     <th className="text-left p-4 font-medium w-80">LINKED JOB</th>
-                    <th className="text-left p-4 font-medium w-36">STAGE</th>
                     <th className="text-left p-4 font-medium w-36">
                       <button 
                         onClick={() => handleSort("created_at")}
@@ -364,15 +362,6 @@ const handleRefresh = () => {
                                       >
                                         {job.jobTitle}
                                       </Badge>
-                                      {/* Show job-specific stage if available */}
-                                      {job.stage && (
-                                        <span 
-                                          className={`text-xs px-1.5 py-0.5 rounded-full ${getStageColor(job.stage)}`}
-                                          title={`Stage: ${getStageLabel(job.stage)}`}
-                                        >
-                                          {getStageLabel(job.stage)}
-                                        </span>
-                                      )}
                                     </div>
                                   ))}
                                   {candidate.linkedJobs.length > 2 && (
@@ -403,34 +392,6 @@ const handleRefresh = () => {
                               <Link2 className="h-4 w-4" />
                             </Button>
                           </div>
-                        </td>
-                        
-{/* STAGE Column - showing job-specific stages from linkedJobs */}
-                        <td className="p-4">
-                          {candidate.linkedJobs && candidate.linkedJobs.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {candidate.linkedJobs.slice(0, 2).map((app: any) => {
-                                const stageInfo = APPLICATION_STAGES.find(s => s.value === app.stage);
-                                return (
-                                  <Badge 
-                                    key={app.jobId}
-                                    variant="secondary"
-                                    className="text-xs capitalize"
-                                    style={{ backgroundColor: stageInfo?.color ? `${stageInfo.color}20` : undefined }}
-                                  >
-                                    {stageInfo?.label || app.stage}
-                                  </Badge>
-                                );
-                              })}
-                              {candidate.linkedJobs.length > 2 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{candidate.linkedJobs.length - 2} more
-                                </Badge>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">— No stage —</span>
-                          )}
                         </td>
                         
                         {/* ADDED */}
