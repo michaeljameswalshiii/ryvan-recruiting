@@ -443,7 +443,7 @@ toast.success('Candidate updated successfully');
   };
 
   // Handle delete resume
-  const handleDeleteResume = async () => {
+const handleDeleteResume = async () => {
     if (!confirm("Are you sure you want to delete this resume?")) return;
     
     try {
@@ -470,7 +470,7 @@ toast.success('Candidate updated successfully');
     }
   };
 
-return (
+  return (
     <div className="min-h-screen bg-background text-foreground">
 {/* Header */}
       <div className="bg-card border-b sticky top-0 z-10">
@@ -1010,12 +1010,9 @@ return (
                 </p>
               )}
             </div>
-</div>
-  );
-}
-
-// Default export for page import
-export default CandidateDetailClient;
+          </div>
+        );
+      })
     ) : (
       <div className="p-8 text-center text-muted-foreground">
         No activity yet
@@ -1120,6 +1117,7 @@ export default CandidateDetailClient;
 function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string; candidateName?: string }) {
   // Use app-centric hook to get linked jobs from candidate's linkedJobs[]
   const { data: linkedJobsData, isLoading, isError, refetch } = useLinkedJobsForCandidate(candidateId);
+  const jobs = linkedJobsData || [];
   const updateStage = useUpdateCandidateStageInJobAppCentric();
   const linkCandidate = useLinkCandidateToJobAppCentric();
   const unlinkCandidate = useUnlinkCandidateFromJobAppCentric();
@@ -1555,7 +1553,7 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
     }
   };
 
-const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
   };
@@ -1604,7 +1602,7 @@ const handleDragOver = (e: React.DragEvent) => {
     Withdrawn: "bg-gray-100 border-gray-200",
   };
 
-if (isLoading) {
+  if (isLoading) {
     return (
       <div className="bg-card border border-border p-6 rounded-xl">
         <div className="flex items-center gap-2">
@@ -1626,7 +1624,7 @@ if (isLoading) {
     );
   }
 
-if (!jobs || jobs.length === 0) {
+  if (!jobs || jobs.length === 0) {
     return (
       <div className="bg-card border border-border p-6 rounded-xl text-center py-12">
         <Briefcase className="h-12 w-12 mx-auto mb-4 text-gray-400" />
