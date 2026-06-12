@@ -152,7 +152,7 @@ export default function CandidatesPage() {
       .slice(0, 20);
   }, [filteredCandidates, sortField, sortDirection]);
 
-// Group candidates by pipeline stage using APPLICATION_STAGES
+// Group candidates by pipeline stage using linkedJobs[].stage
   const pipelineGroups = useMemo(() => {
     const groups: Record<string, any[]> = {};
     
@@ -162,12 +162,22 @@ export default function CandidatesPage() {
     });
     
     filteredCandidates.forEach((lead: any) => {
-      // Map legacy status to new APPLICATION_STAGES
-      const mappedStage = mapStatusToPipeline(lead.status);
-      if (groups[mappedStage]) {
-        groups[mappedStage].push(lead);
+      // READ STAGE FROM linkedJobs array
+      if (lead.linkedJobs && lead.linkedJobs.length > 0) {
+        // Group by ALL linked job stages (add to multiple groups if needed)
+        lead.linkedJobs.forEach((job: any) => {
+          const jobStage = job.stage || "sourced";
+          if (groups[jobStage]) {
+            // Avoid duplicates if same candidate in multiple jobs at same stage
+            if (!groups[jobStage].some((c: any) => c.id === lead.id)) {
+              groups[jobStage].push(lead);
+            }
+          } else {
+            groups['sourced'].push(lead);
+          }
+        });
       } else {
-        // Default to 'sourced' for unknown stages
+        // Default to 'sourced' for unlinked candidates
         groups['sourced'].push(lead);
       }
     });
