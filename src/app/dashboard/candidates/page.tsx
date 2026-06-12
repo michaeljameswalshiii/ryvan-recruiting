@@ -271,11 +271,11 @@ const handleRefresh = () => {
           </div>
         </div>
 
-{/* Pipeline Overview Cards - showing count of candidates with each application stage - CLICKABLE FILTERS */}
+{/* Top Stage Counters - FIXED to use linkedJobs[].stage */}
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-13 gap-3 mb-6">
           {APPLICATION_STAGES.map((stage) => {
-            const count = leads.filter(c => 
-              c.linkedJobs?.some((job: any) => job.stage === stage.value)
+            const count = leads.filter((candidate: any) =>
+              candidate.linkedJobs?.some((job: any) => job.stage === stage.value)
             ).length;
             
             const isActive = activeFilter === stage.value;
