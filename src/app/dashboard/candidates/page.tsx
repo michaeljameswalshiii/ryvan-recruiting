@@ -405,20 +405,32 @@ const handleRefresh = () => {
                           </div>
                         </td>
                         
-                        {/* STAGE */}
+{/* STAGE Column - showing job-specific stages from linkedJobs */}
                         <td className="p-4">
-                          <Badge
-                            variant={
-                              candidate.status === "accept" || candidate.status === "accepted"
-                                ? "default"
-                                : candidate.status === "interview"
-                                ? "secondary"
-                                : "outline"
-                            }
-                            className="text-xs"
-                          >
-                            {candidate.status || "New"}
-                          </Badge>
+                          {candidate.linkedJobs && candidate.linkedJobs.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {candidate.linkedJobs.slice(0, 2).map((app: any) => {
+                                const stageInfo = APPLICATION_STAGES.find(s => s.value === app.stage);
+                                return (
+                                  <Badge 
+                                    key={app.jobId}
+                                    variant="secondary"
+                                    className="text-xs capitalize"
+                                    style={{ backgroundColor: stageInfo?.color ? `${stageInfo.color}20` : undefined }}
+                                  >
+                                    {stageInfo?.label || app.stage}
+                                  </Badge>
+                                );
+                              })}
+                              {candidate.linkedJobs.length > 2 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{candidate.linkedJobs.length - 2} more
+                                </Badge>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">— No stage —</span>
+                          )}
                         </td>
                         
                         {/* ADDED */}
