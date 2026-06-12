@@ -90,6 +90,7 @@ export default function CandidatesPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>("created_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<string | null>(null);
@@ -114,20 +115,31 @@ export default function CandidatesPage() {
 
   const { data: leads = [], isLoading, error } = useLeads();
 
-  // Filter candidates based on search query
+// Filter candidates based on search query and active filter
   const filteredCandidates = useMemo(() => {
-    return leads.filter((lead: any) => {
-      if (!searchQuery) return true;
+    let candidates = leads;
+    
+    // Apply stage filter if active
+    if (activeFilter) {
+      candidates = candidates.filter((candidate: any) =>
+        candidate.linkedJobs?.some((job: any) => job.stage === activeFilter)
+      );
+    }
+    
+    // Apply search filter
+    if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      return (
+      candidates = candidates.filter((lead: any) =>
         lead.name?.toLowerCase().includes(query) ||
         lead.title?.toLowerCase().includes(query) ||
         lead.location?.toLowerCase().includes(query) ||
         lead.email?.toLowerCase().includes(query) ||
         lead.source?.toLowerCase().includes(query)
       );
-    });
-  }, [leads, searchQuery]);
+    }
+    
+    return candidates;
+  }, [leads, searchQuery, activeFilter]);
 
 // Get candidates sorted by selected field
   const recentCandidates = useMemo(() => {
@@ -249,20 +261,22 @@ const handleRefresh = () => {
           </div>
         </div>
 
-{/* Pipeline Overview Cards - showing count of candidates with each application stage */}
+{/* Pipeline Overview Cards - showing count of candidates with each application stage - CLICKABLE FILTERS */}
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-13 gap-3 mb-6">
           {APPLICATION_STAGES.map((stage) => {
-            const count = filteredCandidates.filter(c => 
+            const count = leads.filter(c => 
               c.linkedJobs?.some((job: any) => job.stage === stage.value)
             ).length;
+            
+            const isActive = activeFilter === stage.value;
 
             return (
               <div 
                 key={stage.value} 
-                className={`bg-card border rounded-xl p-3 text-center hover:bg-accent transition-colors cursor-pointer ${
-                  viewMode === "pipeline" ? "ring-2 ring-primary" : ""
+                onClick={() => setActiveFilter(isActive ? null : stage.value)}
+                className={`bg-card border rounded-xl p-3 text-center cursor-pointer transition-all hover:bg-accent ${
+                  isActive ? "ring-2 ring-blue-500 bg-blue-50" : "hover:bg-accent"
                 }`}
-                onClick={() => setViewMode("pipeline")}
               >
                 <div className={`text-2xl font-semibold ${getStageColor(stage.value)}`}>
                   {count}
@@ -272,6 +286,15 @@ const handleRefresh = () => {
             );
           })}
         </div>
+        
+        {/* Clear Filter Button */}
+        {activeFilter && (
+          <div className="mb-4">
+            <Button variant="outline" onClick={() => setActiveFilter(null)}>
+              Clear Filter ({activeFilter})
+            </Button>
+          </div>
+        )}
 
         {/* Search Bar */}
         <div className="relative max-w-md">
