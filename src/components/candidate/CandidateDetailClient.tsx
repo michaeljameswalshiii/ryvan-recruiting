@@ -1127,7 +1127,7 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
   const { data: allJobs } = useJobs();
   
   const [showLinkDialog, setShowLinkDialog] = useState(false);
-  const [selectedJobId, setSelectedJobId] = useState("");
+  const [selectedJob, setSelectedJob] = useState<any | null>(null);
   const [showUnlinkDialog, setShowUnlinkDialog] = useState(false);
   const [jobToUnlink, setJobToUnlink] = useState<any>(null);
   
@@ -1240,24 +1240,29 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
   ) || [];
 
   const handleLinkJob = async () => {
-    if (!selectedJobId) return;
-    
+    if (!selectedJob?.id || !selectedJob?.title) {
+      toast.error("Job ID and Title are required");
+      return;
+    }
+
     try {
       await linkCandidate.mutateAsync({
-        jobId: selectedJobId,
+        jobId: selectedJob.id,
         candidateData: {
           candidateId,
           candidateName: candidateName || "Unknown",
           stage: "Applied",
+          jobTitle: selectedJob.title,
+          companyId: selectedJob.companyId || undefined,
         }
       });
-      toast.success('Job linked successfully');
+      toast.success("Job linked successfully");
       setShowLinkDialog(false);
-      setSelectedJobId("");
+      setSelectedJob(null);
       refetch();
     } catch (err: any) {
-      console.error('Link job error:', err);
-      toast.error(err.message || 'Failed to link job');
+      console.error("Link job error:", err);
+      toast.error(err.message || "Failed to link job");
     }
   };
 
@@ -1363,8 +1368,11 @@ return (
             <div className="mb-4">
               <label className="text-sm font-medium text-muted-foreground mb-2 block">Select Job</label>
               <select
-                value={selectedJobId}
-                onChange={(e) => setSelectedJobId(e.target.value)}
+                value={selectedJob?.id || ""}
+                onChange={(e) => {
+                  const selected = availableJobs.find((job: any) => job.id === e.target.value) || null;
+                  setSelectedJob(selected);
+                }}
                 className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background text-foreground"
               >
                 <option value="">Choose a job...</option>
@@ -1381,14 +1389,14 @@ return (
                 variant="outline" 
                 onClick={() => {
                   setShowLinkDialog(false);
-                  setSelectedJobId("");
+                  setSelectedJob(null);
                 }}
               >
                 Cancel
               </Button>
               <Button 
                 onClick={handleLinkJob}
-                disabled={!selectedJobId || linkCandidate.isPending}
+                disabled={!selectedJob?.id || linkCandidate.isPending}
               >
                 {linkCandidate.isPending ? (
                   <>
