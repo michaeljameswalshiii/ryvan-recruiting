@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect, useRef, ChangeEvent } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -539,7 +539,7 @@ return (
 {/* CONTACT INFORMATION - THEME FRIENDLY */}
               <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
                 <h2 className="text-xl font-semibold mb-6 flex items-center gap-3">
-                  ≡ƒæñ Contact Information
+                  👤 Contact Information
                 </h2>
                 
 {isEditing ? (
@@ -745,17 +745,17 @@ return (
                         href={`mailto:${candidate.email}`}
                         className="text-blue-600 hover:underline"
                       >
-                        {candidate.email || "ΓÇö"}
+                        {candidate.email || "—"}
                       </a>
                     </div>
                     {/* Phone Display */}
                     <div>
-                      <span className="text-gray-500">Phone:</span> {candidate.phone || "ΓÇö"}
+                      <span className="text-gray-500">Phone:</span> {candidate.phone || "—"}
                     </div>
                     {/* Salary Requirements Display */}
                     <div>
                       <span className="text-gray-500">Salary:</span>{" "}
-                      <span className="font-medium">{(candidate as any).salaryRequirements || "ΓÇö"}</span>
+                      <span className="font-medium">{(candidate as any).salaryRequirements || "—"}</span>
                     </div>
                     {/* Job Titles Display */}
                     <div className="col-span-1 sm:col-span-2">
@@ -771,16 +771,16 @@ return (
                             </span>
                           ))}
                         </div>
-                      ) : "ΓÇö"}
+                      ) : "—"}
                     </div>
                     {/* Location Display */}
                     <div>
-                      <span className="text-gray-500">Location:</span> {candidate.location || "ΓÇö"}
+                      <span className="text-gray-500">Location:</span> {candidate.location || "—"}
                     </div>
                     {/* Full Address Display */}
                     <div>
                       <span className="text-gray-500">Address:</span>{" "}
-                      <span className="text-sm">{(candidate as any).fullAddress || "ΓÇö"}</span>
+                      <span className="text-sm">{(candidate as any).fullAddress || "—"}</span>
                     </div>
                     {/* LinkedIn Display */}
                     <div>
@@ -793,11 +793,11 @@ return (
                         >
                           View Profile
                         </a>
-                      ) : "ΓÇö"}
+                      ) : "—"}
                     </div>
                     {/* Source Display */}
                     <div>
-                      <span className="text-gray-500">Source:</span> {candidate.source || "ΓÇö"}
+                      <span className="text-gray-500">Source:</span> {candidate.source || "—"}
                     </div>
                     {/* Added Display */}
                     <div>
@@ -838,7 +838,7 @@ return (
                             <div key={idx} className="text-sm border-l-2 border-blue-300 pl-3">
                               <p className="font-medium">{exp.title || exp.company}</p>
                               <p className="text-xs text-gray-500">
-                                {exp.company} {exp.dates ? `ΓÇó ${exp.dates}` : ''}
+                                {exp.company} {exp.dates ? `• ${exp.dates}` : ''}
                               </p>
                               {exp.description && (
                                 <p className="text-xs text-gray-600 mt-1">{exp.description}</p>
@@ -858,7 +858,7 @@ return (
                             <div key={idx} className="text-sm">
                               <p className="font-medium">{edu.degree || edu.school}</p>
                               <p className="text-xs text-gray-500">
-                                {edu.school} {edu.dates ? `ΓÇó ${edu.dates}` : ''}
+                                {edu.school} {edu.dates ? `• ${edu.dates}` : ''}
                               </p>
                             </div>
                           ))}
@@ -984,13 +984,13 @@ return (
         return (
           <div key={note.id || index} className="flex gap-3 border-l-2 border-border pl-4">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${eventColor}`}>
-              {noteTypeValue === 'phone_call' ? '≡ƒô₧' : 
-               noteTypeValue === 'email_sent' || noteTypeValue === 'EMAIL_SENT' ? '≡ƒôº' : 
-               noteTypeValue === 'meeting' || noteTypeValue === 'INTERVIEW_SCHEDULED' ? '≡ƒôà' :
-               noteTypeValue === 'RESUME_UPLOADED' ? '≡ƒôä' :
-               noteTypeValue === 'STATUS_CHANGED' || noteTypeValue === 'STAGE_CHANGED' ? '≡ƒöä' :
-               noteTypeValue === 'CANDIDATE_CREATED' ? 'Γ£¿' :
-               noteTypeValue === 'CANDIDATE_VIEWED' ? '≡ƒæü' : '≡ƒô¥'}
+              {noteTypeValue === 'phone_call' ? '📞' : 
+               noteTypeValue === 'email_sent' || noteTypeValue === 'EMAIL_SENT' ? '📧' : 
+               noteTypeValue === 'meeting' || noteTypeValue === 'INTERVIEW_SCHEDULED' ? '📅' :
+               noteTypeValue === 'RESUME_UPLOADED' ? '📄' :
+               noteTypeValue === 'STATUS_CHANGED' || noteTypeValue === 'STAGE_CHANGED' ? '🔄' :
+               noteTypeValue === 'CANDIDATE_CREATED' ? '✨' :
+               noteTypeValue === 'CANDIDATE_VIEWED' ? '👁' : '📝'}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
