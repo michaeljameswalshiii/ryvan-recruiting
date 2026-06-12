@@ -1010,9 +1010,12 @@ return (
                 </p>
               )}
             </div>
-          </div>
-        );
-      })
+</div>
+  );
+}
+
+// Default export for page import
+export default CandidateDetailClient;
     ) : (
       <div className="p-8 text-center text-muted-foreground">
         No activity yet
