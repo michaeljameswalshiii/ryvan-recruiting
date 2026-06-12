@@ -2,7 +2,7 @@
   "name": "turnkey-optimization",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
+"scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -12,7 +12,9 @@
     "migrate:leads-to-jobs": "tsx scripts/migrate-leads-to-jobs.ts",
     "migrate:leads-to-jobs:dry": "tsx scripts/migrate-leads-to-jobs.ts --dry-run",
     "migrate:leads-to-jobs:verbose": "tsx scripts/migrate-leads-to-jobs.ts --verbose",
-    "migrate:leads-to-jobs:tsnode": "ts-node scripts/migrate-leads-to-jobs.ts"
+    "migrate:leads-to-jobs:tsnode": "ts-node scripts/migrate-leads-to-jobs.ts",
+    "migrate:stages": "node scripts/migrate-stages.mjs",
+    "migrate:stages:dry": "node scripts/migrate-stages.mjs --dry-run"
   },
   "dependencies": {
     "@apollo/client": "^3.11.8",
