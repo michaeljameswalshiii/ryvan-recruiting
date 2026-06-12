@@ -35,7 +35,8 @@ interface Candidate {
   linkedin?: string;
   resumeUrl?: string;
   resumeFileName?: string;
-  status: string;
+  status: string; // Now comes from linkedJobs[0].stage (not top-level status)
+  stageColor?: string;
   source?: string;
   location?: string;
   fullAddress?: string;
@@ -48,6 +49,18 @@ interface Candidate {
   notes?: string;
   createdAt: string;
   avatarInitials?: string;
+  // NEW: linkedJobs with stage per job
+  linkedJobs?: Array<{
+    jobId: string;
+    jobTitle?: string;
+    companyId?: string;
+    companyName?: string;
+    stage: string;
+    stageUpdatedAt?: string;
+    stageUpdatedBy?: string;
+    notes?: any[];
+  }>;
+  linkedJobIds?: string[]; // Legacy for backward compat
 }
 
 interface CandidateDetailClientProps {

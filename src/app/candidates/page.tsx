@@ -58,31 +58,75 @@ function getTimeAgo(dateStr: string | undefined): string {
   }
 }
 
-// Map lead status to pipeline stage (maps legacy statuses to 7-stage system)
-function mapStatusToPipeline(status: string | undefined): string {
-  if (!status) return "identification";
-  const s = status.toLowerCase();
+// ============================================================================
+// NEW: Application-centric model - read stage from linkedJobs
+// ============================================================================
+
+/**
+ * Get the primary stage from linkedJobs for display
+ * Priority: 1) First linked job's stage, 2) Fallback to legacy status
+ */
+function getPrimaryStage(lead: any): string {
+  // NEW: Read from linkedJobs array (application-centric model)
+  if (lead.linkedJobs && lead.linkedJobs.length > 0) {
+    const firstJob = lead.linkedJobs[0];
+    if (firstJob.stage) {
+      return firstJob.stage;
+    }
+  }
   
-  // Rejected maps to rejected stage
+  // Fallback to legacy status for backward compatibility
+  if (!lead.status) return "identification";
+  const s = lead.status.toLowerCase();
+  
   if (["rejected", "not_interested"].includes(s)) return "rejected";
-  
-  // Accept/accepted maps to accept stage
   if (["accept", "accepted", "hired"].includes(s)) return "accept";
-  
-  // Interview maps directly
   if (["interview"].includes(s)) return "interview";
-  
-  // Presented maps directly
   if (["presented"].includes(s)) return "presented";
-  
-  // Conversation maps directly
   if (["conversation", "qualified", "screening", "interested"].includes(s)) return "conversation";
-  
-  // Outreach maps directly
   if (["outreach", "contacted"].includes(s)) return "outreach";
   
-  // Identification (default for new leads or legacy statuses)
   return "identification";
+}
+
+/**
+ * Get display label for stage
+ */
+function getStageLabel(stage: string): string {
+  const labels: Record<string, string> = {
+    identification: "New",
+    outreach: "Outreach",
+    conversation: "Conversation",
+    presented: "Presented",
+    interview: "Interview",
+    accept: "Accept",
+    rejected: "Rejected",
+    // NEW: Application stages
+    sourced: "Sourced",
+    contacted: "Contacted",
+    pre_screened: "Pre-Screened",
+    submitted: "Submitted",
+    interviewing: "Interviewing",
+    offer_out: "Offer Out",
+    offer_accepted: "Offer Accepted",
+    offer_declined: "Offer Declined",
+    placed: "Placed",
+    not_interested: "Not Interested",
+  };
+  
+  return labels[stage] || stage;
+}
+
+/**
+ * Get stage color class for badge
+ */
+function getStageVariant(stage: string): "default" | "secondary" | "outline" {
+  const acceptStages = ["accept", "accepted", "offer_accepted", "placed"];
+  const interviewStages = ["interview", "interviewing", "offer_out"];
+  
+  if (acceptStages.includes(stage)) return "default";
+  if (interviewStages.includes(stage)) return "secondary";
+  return "outline";
 }
 
 export default function CandidatesPage() {
@@ -118,7 +162,7 @@ export default function CandidatesPage() {
       .slice(0, 20);
   }, [filteredCandidates]);
 
-  // Group candidates by pipeline stage
+// Group candidates by pipeline stage - NEW: use linkedJobs stage
   const pipelineGroups = useMemo(() => {
     const groups: Record<string, any[]> = {
       identification: [],
@@ -131,7 +175,8 @@ export default function CandidatesPage() {
     };
     
     filteredCandidates.forEach((lead: any) => {
-      const stage = mapStatusToPipeline(lead.status);
+      // NEW: Read stage from linkedJobs first
+      const stage = getPrimaryStage(lead);
       if (groups[stage]) {
         groups[stage].push(lead);
       }
@@ -298,9 +343,11 @@ export default function CandidatesPage() {
                       </div>
                     </div>
                     
-                    {/* Linked Job */}
+{/* Linked Job - NEW: Read from linkedJobs */}
                     <div className="hidden md:block text-sm text-muted-foreground truncate">
-                      {candidate.linked_job || "-"}
+                      {candidate.linkedJobs && candidate.linkedJobs.length > 0 
+                        ? candidate.linkedJobs[0].jobTitle 
+                        : "-"}
                     </div>
                     
                     {/* Source */}
@@ -310,19 +357,13 @@ export default function CandidatesPage() {
                       </Badge>
                     </div>
                     
-                    {/* Stage */}
+{/* Stage - NEW: Read from linkedJobs */}
                     <div className="hidden sm:block">
                       <Badge
-                        variant={
-                          candidate.status === "accept" || candidate.status === "accepted"
-                            ? "default"
-                            : candidate.status === "interview"
-                            ? "secondary"
-                            : "outline"
-                        }
+                        variant={getStageVariant(getPrimaryStage(candidate))}
                         className="text-xs"
                       >
-                        {candidate.status || "New"}
+                        {getStageLabel(getPrimaryStage(candidate))}
                       </Badge>
                     </div>
                     

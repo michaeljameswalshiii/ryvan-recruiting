@@ -1,98 +1,104 @@
-"use client";
+/**
+ * Candidate Detail Page
+ * Fetches candidate data including linkedJobs with stages
+ * 
+ * @serverOnly
+ */
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Mail, Phone, MapPin, Calendar } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { redirect } from "next/navigation";
+import { getSessionTenantId } from "@/lib/server-auth";
+import { getLeadById } from "@/lib/db/repositories/lead-repository";
+import { getStageLabel, getStageColor } from "@/lib/schemas/lead";
+import CandidateDetailClient from "@/components/candidate/CandidateDetailClient";
 
-export default function CandidateDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const candidateId = params.id as string;
+interface PageProps {
+  params: Promise<{ id: string }>;
+}
 
-  const [candidate, setCandidate] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+/**
+ * Get stage label from linkedJobs for display
+ * Priority: first linked job's stage, fallback to legacy status
+ */
+function getPrimaryStageDisplay(lead: any): { label: string; color: string } {
+  // NEW: Read from linkedJobs array
+  if (lead.linkedJobs && lead.linkedJobs.length > 0) {
+    const firstJob = lead.linkedJobs[0];
+    if (firstJob.stage) {
+      return {
+        label: getStageLabel(firstJob.stage),
+        color: getStageColor(firstJob.stage),
+      };
+    }
+  }
+  
+  // Fallback to legacy status
+  return {
+    label: lead.status || "New",
+    color: "gray",
+  };
+}
 
-  useEffect(() => {
-    // Replace this with your actual data fetching logic
-    // For now using placeholder
-    setCandidate({
-      id: candidateId,
-      name: "Sample Candidate",
-      title: "Software Engineer",
-      email: "candidate@example.com",
-      phone: "(555) 123-4567",
-      location: "New York, NY",
-      status: "conversation",
-      created_at: "2026-05-20",
-    });
-    setLoading(false);
-  }, [candidateId]);
+/**
+ * Server Component - Fetches candidate data and renders client component
+ */
+export default async function CandidateDetailPage({ params }: PageProps) {
+  const { id } = await params;
+  
+  // Get tenant for auth
+  const tenantId = await getSessionTenantId();
+  
+  if (!tenantId) {
+    redirect("/login");
+  }
 
-  if (loading) return <div className="p-8">Loading candidate...</div>;
-
-  return (
-    <div className="p-8 overflow-auto h-full">
-      <div className="max-w-5xl mx-auto">
-        {/* Back Button */}
-        <Button variant="ghost" onClick={() => router.back()} className="mb-6">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Candidates
-        </Button>
-
-        <div className="flex justify-between items-start mb-8">
-          <div>
-            <h1 className="text-4xl font-bold">{candidate.name}</h1>
-            <p className="text-xl text-muted-foreground">{candidate.title}</p>
-          </div>
-          <Badge variant="outline" className="text-lg px-4 py-2">
-            {candidate.status}
-          </Badge>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Info */}
-          <div className="lg:col-span-2 space-y-8">
-            <Card>
-              <CardHeader>
-                <CardTitle>Contact Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <Mail className="text-muted-foreground" />
-                  <a href={`mailto:${candidate.email}`} className="hover:underline">
-                    {candidate.email}
-                  </a>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Phone className="text-muted-foreground" />
-                  <span>{candidate.phone}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <MapPin className="text-muted-foreground" />
-                  <span>{candidate.location}</span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Sidebar Info */}
-          <div>
-            <Card>
-              <CardHeader>
-                <CardTitle>Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Added</p>
-                  <p>{candidate.created_at}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+  // Get lead from repository - includes linkedJobs with stages
+  const lead = await getLeadById(tenantId, id);
+  
+  if (!lead) {
+    return (
+      <div className="p-8">
+        <h1 className="text-2xl font-bold">Candidate Not Found</h1>
+        <p className="text-muted-foreground mt-2">
+          The candidate you're looking for doesn't exist or has been deleted.
+        </p>
       </div>
-    </div>
-  );
+    );
+  }
+
+  // Get primary stage for header display
+  const stageDisplay = getPrimaryStageDisplay(lead);
+
+  // Transform lead data for client component
+  const candidateData = {
+    id: lead.id,
+    tenantId: lead.tenant_id,
+    name: lead.name,
+    email: lead.email || "",
+    phone: lead.phone || "",
+    title: lead.title || "",
+    company: (lead as any).company,
+    location: lead.location || "",
+    fullAddress: (lead as any).full_address,
+    salaryRequirements: (lead as any).salary_requirements,
+    linkedin: lead.linkedin_url || "",
+    resumeUrl: lead.resume_url || "",
+    resumeFileName: (lead as any).resume_file_name,
+    source: lead.source || "",
+    status: stageDisplay.label, // Use linkedJobs stage for display
+    stageColor: stageDisplay.color,
+    summary: (lead as any).summary,
+    skills: (lead as any).skills || [],
+    experience: (lead as any).experience || [],
+    education: (lead as any).education || [],
+    certifications: (lead as any).certifications || [],
+    notes: lead.notes || "",
+    createdAt: lead.created_at || new Date().toISOString(),
+    modifiedAt: lead.modified_at,
+    // NEW: Include linkedJobs for application-centric model
+    linkedJobs: lead.linkedJobs || [],
+    // Legacy: also include linkedJobIds for backward compatibility
+    linkedJobIds: lead.linkedJobIds || [],
+  };
+
+  return <CandidateDetailClient candidate={candidateData} />;
 }
