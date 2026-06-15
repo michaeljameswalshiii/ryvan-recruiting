@@ -585,17 +585,23 @@ export async function linkCandidateToJobForApplication(
 
   const now = new Date().toISOString();
   
-  // Add new job entry
-  const newLinkedJob = {
+  // Add new job entry (avoid undefined properties for DynamoDB map/list values)
+  const newLinkedJob: any = {
     jobId,
     jobTitle,
-    companyId,
-    companyName,
     stage: initialStage,
     stageUpdatedAt: now,
     stageUpdatedBy: '',
     notes: [],
   };
+
+  if (companyId !== undefined) {
+    newLinkedJob.companyId = companyId;
+  }
+
+  if (companyName !== undefined) {
+    newLinkedJob.companyName = companyName;
+  }
 
   // Also maintain legacy linkedJobIds for backward compatibility
   const currentLinkedJobIds = lead.linkedJobIds || [];

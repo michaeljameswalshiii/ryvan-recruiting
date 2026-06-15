@@ -271,31 +271,7 @@ const handleRefresh = () => {
           </div>
         </div>
 
-{/* Top Stage Counters - FIXED to use linkedJobs[].stage */}
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-13 gap-3 mb-6">
-          {APPLICATION_STAGES.map((stage) => {
-            const count = leads.filter((candidate: any) =>
-              candidate.linkedJobs?.some((job: any) => job.stage === stage.value)
-            ).length;
-            
-            const isActive = activeFilter === stage.value;
 
-            return (
-              <div 
-                key={stage.value} 
-                onClick={() => setActiveFilter(isActive ? null : stage.value)}
-                className={`bg-card border rounded-xl p-3 text-center cursor-pointer transition-all hover:bg-accent ${
-                  isActive ? "ring-2 ring-blue-500 bg-blue-50" : "hover:bg-accent"
-                }`}
-              >
-                <div className={`text-2xl font-semibold ${getStageColor(stage.value)}`}>
-                  {count}
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">{stage.label}</div>
-              </div>
-            );
-          })}
-        </div>
         
         {/* Clear Filter Button */}
         {activeFilter && (

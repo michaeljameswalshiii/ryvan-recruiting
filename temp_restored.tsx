@@ -1,24 +1,16 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useRef, ChangeEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import EventTimeline from "@/components/EventTimeline";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { ResumeUpload } from "@/components/candidate/ResumeUpload";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download, Plus, Upload, Trash2 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useUnlinkCandidateFromJob, useJobs, useUpdateCandidateStageInJobAppCentric, useAddJobSpecificNote, useLinkedJobsForCandidate, useLinkCandidateToJobAppCentric, useUnlinkCandidateFromJobAppCentric } from "@/lib/hooks/query-job";
 import { APPLICATION_STAGES, getStageLabel, getStageColor } from "@/lib/schemas/lead";
@@ -101,14 +93,7 @@ const ACTIVITY_TYPES = [
   { value: "other", label: "Other", color: "bg-gray-100 text-gray-800" },
 ];
 
-// ===== FIX: Add default export while keeping named export for backward compat ===== 
 export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
-  return <CandidateDetailClientInner candidate={candidate} />;
-}
-export default CandidateDetailClient;
-
-function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
-// ===== END FIX =====
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [currentResumeUrl, setCurrentResumeUrl] = useState(candidate.resumeUrl || "");
   const [isEditing, setIsEditing] = useState(false);
@@ -147,16 +132,10 @@ const [editAddress, setEditAddress] = useState({
     zip: "",
     country: "",
   });
-// Location preference state (multi-select)
+  // Location preference state (multi-select)
   const [locationPreference, setLocationPreference] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
-
-// Linked Jobs modal state
-  const [showLinkModal, setShowLinkModal] = useState(false);
-
-  // Query client for cache management
-  const queryClient = useQueryClient();
 
   // Location preferences options
   const locationOptions = ["On-Site", "Hybrid", "Remote"];
@@ -463,7 +442,7 @@ toast.success('Candidate updated successfully');
     handleAdvanceStage("Rejected");
   };
 
-// Handle delete resume
+  // Handle delete resume
   const handleDeleteResume = async () => {
     if (!confirm("Are you sure you want to delete this resume?")) return;
     
@@ -491,69 +470,7 @@ toast.success('Candidate updated successfully');
     }
   };
 
-  // Unlink Job handler for Linked Jobs section
-  const handleUnlinkJob = async (jobId: string) => {
-    if (!confirm("Unlink this job from the candidate?")) return;
-
-    try {
-      const response = await fetch(`/api/data/leads/${candidate.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          linkedJobs: candidate.linkedJobs?.filter((j: any) => (j.jobId || j.id) !== jobId) || []
-        })
-      });
-
-      if (response.ok) {
-        toast.success("Job unlinked successfully");
-        // Strong refresh
-        queryClient.invalidateQueries({ queryKey: ['candidate', candidate.id] });
-        queryClient.invalidateQueries({ queryKey: ['leads'] });
-        // Refresh the page
-        window.location.reload();
-      } else {
-        toast.error("Failed to unlink job");
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to unlink job");
-    }
-  };
-
-  // Stage Change handler for Linked Jobs section
-  const handleStageChange = async (jobId: string, newStage: string) => {
-    try {
-      const updatedJobs = candidate.linkedJobs?.map((job: any) => {
-        if ((job.jobId || job.id) === jobId) {
-          return {
-            ...job,
-            stage: newStage,
-            stageUpdatedAt: new Date().toISOString(),
-            stageUpdatedBy: "user"
-          };
-        }
-        return job;
-      }) || [];
-
-      const response = await fetch(`/api/data/leads/${candidate.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ linkedJobs: updatedJobs })
-      });
-
-      if (response.ok) {
-        toast.success("Stage updated");
-        queryClient.invalidateQueries({ queryKey: ['candidate', candidate.id] });
-        // Refresh the page
-        window.location.reload();
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to update stage");
-    }
-  };
-
-  return (
+return (
     <div className="min-h-screen bg-background text-foreground">
 {/* Header */}
       <div className="bg-card border-b sticky top-0 z-10">
@@ -622,7 +539,7 @@ toast.success('Candidate updated successfully');
 {/* CONTACT INFORMATION - THEME FRIENDLY */}
               <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
                 <h2 className="text-xl font-semibold mb-6 flex items-center gap-3">
-                  👤 Contact Information
+                  ≡ƒæñ Contact Information
                 </h2>
                 
 {isEditing ? (
@@ -828,17 +745,17 @@ toast.success('Candidate updated successfully');
                         href={`mailto:${candidate.email}`}
                         className="text-blue-600 hover:underline"
                       >
-                        {candidate.email || "—"}
+                        {candidate.email || "ΓÇö"}
                       </a>
                     </div>
                     {/* Phone Display */}
                     <div>
-                      <span className="text-gray-500">Phone:</span> {candidate.phone || "—"}
+                      <span className="text-gray-500">Phone:</span> {candidate.phone || "ΓÇö"}
                     </div>
                     {/* Salary Requirements Display */}
                     <div>
                       <span className="text-gray-500">Salary:</span>{" "}
-                      <span className="font-medium">{(candidate as any).salaryRequirements || "—"}</span>
+                      <span className="font-medium">{(candidate as any).salaryRequirements || "ΓÇö"}</span>
                     </div>
                     {/* Job Titles Display */}
                     <div className="col-span-1 sm:col-span-2">
@@ -854,16 +771,16 @@ toast.success('Candidate updated successfully');
                             </span>
                           ))}
                         </div>
-                      ) : "—"}
+                      ) : "ΓÇö"}
                     </div>
                     {/* Location Display */}
                     <div>
-                      <span className="text-gray-500">Location:</span> {candidate.location || "—"}
+                      <span className="text-gray-500">Location:</span> {candidate.location || "ΓÇö"}
                     </div>
                     {/* Full Address Display */}
                     <div>
                       <span className="text-gray-500">Address:</span>{" "}
-                      <span className="text-sm">{(candidate as any).fullAddress || "—"}</span>
+                      <span className="text-sm">{(candidate as any).fullAddress || "ΓÇö"}</span>
                     </div>
                     {/* LinkedIn Display */}
                     <div>
@@ -876,11 +793,11 @@ toast.success('Candidate updated successfully');
                         >
                           View Profile
                         </a>
-                      ) : "—"}
+                      ) : "ΓÇö"}
                     </div>
                     {/* Source Display */}
                     <div>
-                      <span className="text-gray-500">Source:</span> {candidate.source || "—"}
+                      <span className="text-gray-500">Source:</span> {candidate.source || "ΓÇö"}
                     </div>
                     {/* Added Display */}
                     <div>
@@ -921,7 +838,7 @@ toast.success('Candidate updated successfully');
                             <div key={idx} className="text-sm border-l-2 border-blue-300 pl-3">
                               <p className="font-medium">{exp.title || exp.company}</p>
                               <p className="text-xs text-gray-500">
-                                {exp.company} {exp.dates ? `• ${exp.dates}` : ''}
+                                {exp.company} {exp.dates ? `ΓÇó ${exp.dates}` : ''}
                               </p>
                               {exp.description && (
                                 <p className="text-xs text-gray-600 mt-1">{exp.description}</p>
@@ -941,7 +858,7 @@ toast.success('Candidate updated successfully');
                             <div key={idx} className="text-sm">
                               <p className="font-medium">{edu.degree || edu.school}</p>
                               <p className="text-xs text-gray-500">
-                                {edu.school} {edu.dates ? `• ${edu.dates}` : ''}
+                                {edu.school} {edu.dates ? `ΓÇó ${edu.dates}` : ''}
                               </p>
                             </div>
                           ))}
@@ -1067,13 +984,13 @@ toast.success('Candidate updated successfully');
         return (
           <div key={note.id || index} className="flex gap-3 border-l-2 border-border pl-4">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${eventColor}`}>
-              {noteTypeValue === 'phone_call' ? '📞' : 
-               noteTypeValue === 'email_sent' || noteTypeValue === 'EMAIL_SENT' ? '📧' : 
-               noteTypeValue === 'meeting' || noteTypeValue === 'INTERVIEW_SCHEDULED' ? '📅' :
-               noteTypeValue === 'RESUME_UPLOADED' ? '📄' :
-               noteTypeValue === 'STATUS_CHANGED' || noteTypeValue === 'STAGE_CHANGED' ? '🔄' :
-               noteTypeValue === 'CANDIDATE_CREATED' ? '✨' :
-               noteTypeValue === 'CANDIDATE_VIEWED' ? '👁' : '📝'}
+              {noteTypeValue === 'phone_call' ? '≡ƒô₧' : 
+               noteTypeValue === 'email_sent' || noteTypeValue === 'EMAIL_SENT' ? '≡ƒôº' : 
+               noteTypeValue === 'meeting' || noteTypeValue === 'INTERVIEW_SCHEDULED' ? '≡ƒôà' :
+               noteTypeValue === 'RESUME_UPLOADED' ? '≡ƒôä' :
+               noteTypeValue === 'STATUS_CHANGED' || noteTypeValue === 'STAGE_CHANGED' ? '≡ƒöä' :
+               noteTypeValue === 'CANDIDATE_CREATED' ? 'Γ£¿' :
+               noteTypeValue === 'CANDIDATE_VIEWED' ? '≡ƒæü' : '≡ƒô¥'}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -1093,9 +1010,12 @@ toast.success('Candidate updated successfully');
                 </p>
               )}
             </div>
-          </div>
-        );
-      })
+</div>
+  );
+}
+
+// Default export for page import
+export default CandidateDetailClient;
     ) : (
       <div className="p-8 text-center text-muted-foreground">
         No activity yet
@@ -1200,7 +1120,6 @@ toast.success('Candidate updated successfully');
 function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string; candidateName?: string }) {
   // Use app-centric hook to get linked jobs from candidate's linkedJobs[]
   const { data: linkedJobsData, isLoading, isError, refetch } = useLinkedJobsForCandidate(candidateId);
-  const jobs = linkedJobsData || [];
   const updateStage = useUpdateCandidateStageInJobAppCentric();
   const linkCandidate = useLinkCandidateToJobAppCentric();
   const unlinkCandidate = useUnlinkCandidateFromJobAppCentric();
@@ -1208,7 +1127,7 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
   const { data: allJobs } = useJobs();
   
   const [showLinkDialog, setShowLinkDialog] = useState(false);
-  const [selectedJob, setSelectedJob] = useState<any | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState("");
   const [showUnlinkDialog, setShowUnlinkDialog] = useState(false);
   const [jobToUnlink, setJobToUnlink] = useState<any>(null);
   
@@ -1228,15 +1147,15 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
     return stage?.label || stageValue;
   };
 
-// Handle stage change with auto-prompt - Use jobId from linked job record
+  // Handle stage change with auto-prompt
   const handleStageChange = async (job: any, newStage: string) => {
     const currentStage = getCurrentStage(job);
     if (newStage === currentStage) return;
     
-    // Store the pending stage change and show prompt - Use jobId from linked job record
+    // Store the pending stage change and show prompt
     setPendingStageChange({
-      jobId: job.jobId || job.id, // Use jobId from linkedJob record
-      jobTitle: job.jobTitle || job.title || "Untitled Job",
+      jobId: job.id,
+      jobTitle: job.title || "Untitled Job",
       oldStage: currentStage,
       newStage: newStage
     });
@@ -1262,7 +1181,7 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
         await addNote.mutateAsync({
           jobId: pendingStageChange.jobId,
           candidateId,
-          noteContent: stageNote.trim(),
+          content: stageNote.trim(),
           relatedStage: pendingStageChange.newStage,
         });
       }
@@ -1320,43 +1239,34 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
     !job.candidates?.some((lc: any) => lc.candidateId === candidateId)
   ) || [];
 
-// ===== CHANGES =====
-  // Updated handleLinkJob using candidateData structure (fixes jobId and jobTitle required error)
   const handleLinkJob = async () => {
-    if (!selectedJob?.id || !selectedJob?.title) {
-      toast.error("Please select a valid job");
-      return;
-    }
-
+    if (!selectedJobId) return;
+    
     try {
-      // Use the modern app-centric link with candidateData structure (preferred)
       await linkCandidate.mutateAsync({
-        candidateId,
-        jobId: selectedJob.id,
-        jobTitle: selectedJob.title,
-        companyId: selectedJob.companyId,
-        companyName: selectedJob.companyName,
-        initialStage: "sourced",
+        jobId: selectedJobId,
+        candidateData: {
+          candidateId,
+          candidateName: candidateName || "Unknown",
+          stage: "Applied",
+        }
       });
-
-      toast.success("Job linked successfully!");
+      toast.success('Job linked successfully');
       setShowLinkDialog(false);
-      setSelectedJob(null);
-      // Refresh everything
+      setSelectedJobId("");
       refetch();
     } catch (err: any) {
-      console.error("Link job error:", err);
-      toast.error(err.message || "Failed to link job");
+      console.error('Link job error:', err);
+      toast.error(err.message || 'Failed to link job');
     }
   };
-  // ===== END CHANGES =====
 
   const handleUnlinkJob = async () => {
     if (!jobToUnlink) return;
     
     try {
       await unlinkCandidate.mutateAsync({
-        jobId: jobToUnlink.jobId || jobToUnlink.id,
+        jobId: jobToUnlink.id,
         candidateId,
       });
       toast.success('Job unlinked successfully');
@@ -1403,15 +1313,10 @@ return (
           {jobs.map((job: any) => {
             const currentStage = getCurrentStage(job);
 
-return (
-<div key={job.jobId || job.id} className="bg-background border border-border rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+            return (
+<div key={job.id} className="bg-background border border-border rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="font-medium text-sm text-foreground">
-                    {job.jobTitle ||
-                      allJobs?.find((j: any) => j.id === (job.jobId || job.id))?.title ||
-                      job.title ||
-                      "Untitled Job"}
-                  </p>
+                  <p className="font-medium text-sm text-foreground">{job.title || "Untitled Job"}</p>
                   <p className="text-xs text-muted-foreground">{job.companyName || "Company"}</p>
                 </div>
 
@@ -1430,7 +1335,7 @@ return (
                   </select>
 
                   <Button variant="outline" size="sm" asChild>
-                    <a href={`/dashboard/jobs/${job.jobId || job.id}`}>View Job</a>
+                    <a href={`/dashboard/jobs/${job.id}`}>View Job</a>
                   </Button>
                   
                   <Button 
@@ -1458,11 +1363,8 @@ return (
             <div className="mb-4">
               <label className="text-sm font-medium text-muted-foreground mb-2 block">Select Job</label>
               <select
-                value={selectedJob?.id || ""}
-                onChange={(e) => {
-                  const selected = availableJobs.find((job: any) => job.id === e.target.value) || null;
-                  setSelectedJob(selected);
-                }}
+                value={selectedJobId}
+                onChange={(e) => setSelectedJobId(e.target.value)}
                 className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background text-foreground"
               >
                 <option value="">Choose a job...</option>
@@ -1479,14 +1381,14 @@ return (
                 variant="outline" 
                 onClick={() => {
                   setShowLinkDialog(false);
-                  setSelectedJob(null);
+                  setSelectedJobId("");
                 }}
               >
                 Cancel
               </Button>
-<Button 
-                onClick={() => handleLinkJob()}
-                disabled={!selectedJob?.id || linkCandidate.isPending}
+              <Button 
+                onClick={handleLinkJob}
+                disabled={!selectedJobId || linkCandidate.isPending}
               >
                 {linkCandidate.isPending ? (
                   <>
@@ -1507,7 +1409,7 @@ return (
           <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md">
             <h3 className="font-semibold text-lg mb-4 text-foreground">Unlink Job</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Are you sure you want to unlink <span className="font-medium text-foreground">{jobToUnlink.jobTitle || jobToUnlink.title}</span> from this candidate? This will remove the candidate from this job's pipeline.
+              Are you sure you want to unlink <span className="font-medium text-foreground">{jobToUnlink.title}</span> from this candidate? This will remove the candidate from this job's pipeline.
             </p>
             <div className="flex gap-2 justify-end">
               <Button 
@@ -1592,9 +1494,9 @@ return (
 
 // Full Linked Jobs Tab
 function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; candidateName: string }) {
-  const { data: jobs, isLoading, isError, refetch } = useLinkedJobsForCandidate(candidateId);
-  const updateStage = useUpdateCandidateStageInJobAppCentric();
-  const unlinkCandidate = useUnlinkCandidateFromJobAppCentric();
+  const { data: jobs, isLoading, isError, refetch } = useJobsForCandidate(candidateId);
+  const updateStage = useUpdateCandidateStageInJob();
+  const unlinkCandidate = useUnlinkCandidateFromJob();
   
   const [showUnlinkDialog, setShowUnlinkDialog] = useState(false);
   const [jobToUnlink, setJobToUnlink] = useState<any>(null);
@@ -1612,7 +1514,8 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
 
   if (jobs) {
     jobs.forEach((job: any) => {
-      const stage = job?.stage || "Applied";
+      const linked = (job.candidates || []).find((lc: any) => lc.candidateId === candidateId);
+      const stage = linked?.stage || "Applied";
       if (jobsByStage[stage]) {
         jobsByStage[stage].push({ ...job, linkedStage: stage });
       }
@@ -1644,7 +1547,7 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
     }
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
   };
@@ -1655,7 +1558,7 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
     
     try {
       await unlinkCandidate.mutateAsync({
-        jobId: jobToUnlink.jobId || jobToUnlink.id,
+        jobId: jobToUnlink.id,
         candidateId,
       });
       toast.success('Job unlinked successfully');
@@ -1693,7 +1596,7 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
     Withdrawn: "bg-gray-100 border-gray-200",
   };
 
-  if (isLoading) {
+if (isLoading) {
     return (
       <div className="bg-card border border-border p-6 rounded-xl">
         <div className="flex items-center gap-2">
@@ -1715,7 +1618,7 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
     );
   }
 
-  if (!jobs || jobs.length === 0) {
+if (!jobs || jobs.length === 0) {
     return (
       <div className="bg-card border border-border p-6 rounded-xl text-center py-12">
         <Briefcase className="h-12 w-12 mx-auto mb-4 text-gray-400" />
@@ -1758,16 +1661,16 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
 <div className="space-y-2">
               {stageJobs.map((job: any) => (
                 <div
-                  key={job.jobId || job.id}
+                  key={job.id}
                   draggable
-                  onDragStart={(e) => handleDragStart(e, job.jobId || job.id)}
+                  onDragStart={(e) => handleDragStart(e, job.id)}
                   className="bg-white p-3 rounded-lg border shadow-sm cursor-move hover:shadow-md transition-shadow"
                 >
-                  <p className="font-medium text-sm">{job.jobTitle || job.title || "Untitled Job"}</p>
+                  <p className="font-medium text-sm">{job.title}</p>
                   <p className="text-xs text-gray-500">{job.companyName}</p>
                   <div className="flex items-center gap-2 mt-2">
                     <Button variant="ghost" size="sm" className="h-6 text-xs" asChild>
-                      <a href={`/dashboard/jobs/${job.jobId || job.id}`}>View Job</a>
+                      <a href={`/dashboard/jobs/${job.id}`}>View Job</a>
                     </Button>
                     <Button 
                       variant="ghost" 
@@ -1794,7 +1697,7 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
           <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md">
             <h3 className="font-semibold text-lg mb-4 text-foreground">Unlink Job</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Are you sure you want to unlink <span className="font-medium text-foreground">{jobToUnlink.jobTitle || jobToUnlink.title}</span> from this candidate? This will remove the candidate from this job's pipeline.
+              Are you sure you want to unlink <span className="font-medium text-foreground">{jobToUnlink.title}</span> from this candidate? This will remove the candidate from this job's pipeline.
             </p>
             <div className="flex gap-2 justify-end">
               <Button 
@@ -2009,7 +1912,7 @@ console.log('[ResumeUpload] Step 2: Uploading to S3, candidateId:', candidateId)
           />
           <label htmlFor="resume-upload">
             <span className=" cursor-pointer">
-              <Button variant="outline" size="sm" asChild>
+              <Button variant="outline" size="sm" asChild component="span">
                 <span>
                   <Plus className="h-4 w-4 mr-2" />
                   Upload New
@@ -2098,7 +2001,7 @@ console.log('[ResumeUpload] Step 2: Uploading to S3, candidateId:', candidateId)
                 id="resume-upload-empty"
               />
               <label htmlFor="resume-upload-empty">
-                <Button variant="outline" asChild>
+                <Button variant="outline" asChild component="span">
                   <span className="cursor-pointer">
                     <Plus className="h-4 w-4 mr-2" />
                     Upload Resume
