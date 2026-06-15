@@ -5,12 +5,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import EventTimeline from "@/components/EventTimeline";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { ResumeUpload } from "@/components/candidate/ResumeUpload";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download, Plus, Upload, Trash2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useUnlinkCandidateFromJob, useJobs, useUpdateCandidateStageInJobAppCentric, useAddJobSpecificNote, useLinkedJobsForCandidate, useLinkCandidateToJobAppCentric, useUnlinkCandidateFromJobAppCentric } from "@/lib/hooks/query-job";
 import { APPLICATION_STAGES, getStageLabel, getStageColor } from "@/lib/schemas/lead";
@@ -139,10 +147,16 @@ const [editAddress, setEditAddress] = useState({
     zip: "",
     country: "",
   });
-  // Location preference state (multi-select)
+// Location preference state (multi-select)
   const [locationPreference, setLocationPreference] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+
+// Linked Jobs modal state
+  const [showLinkModal, setShowLinkModal] = useState(false);
+
+  // Query client for cache management
+  const queryClient = useQueryClient();
 
   // Location preferences options
   const locationOptions = ["On-Site", "Hybrid", "Remote"];
@@ -449,8 +463,8 @@ toast.success('Candidate updated successfully');
     handleAdvanceStage("Rejected");
   };
 
-  // Handle delete resume
-const handleDeleteResume = async () => {
+// Handle delete resume
+  const handleDeleteResume = async () => {
     if (!confirm("Are you sure you want to delete this resume?")) return;
     
     try {
@@ -474,6 +488,68 @@ const handleDeleteResume = async () => {
     } catch (err: any) {
       console.error('Error deleting resume:', err);
       toast.error(err.message || 'Failed to delete resume');
+    }
+  };
+
+  // Unlink Job handler for Linked Jobs section
+  const handleUnlinkJob = async (jobId: string) => {
+    if (!confirm("Unlink this job from the candidate?")) return;
+
+    try {
+      const response = await fetch(`/api/data/leads/${candidate.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          linkedJobs: candidate.linkedJobs?.filter((j: any) => (j.jobId || j.id) !== jobId) || []
+        })
+      });
+
+      if (response.ok) {
+        toast.success("Job unlinked successfully");
+        // Strong refresh
+        queryClient.invalidateQueries({ queryKey: ['candidate', candidate.id] });
+        queryClient.invalidateQueries({ queryKey: ['leads'] });
+        // Refresh the page
+        window.location.reload();
+      } else {
+        toast.error("Failed to unlink job");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to unlink job");
+    }
+  };
+
+  // Stage Change handler for Linked Jobs section
+  const handleStageChange = async (jobId: string, newStage: string) => {
+    try {
+      const updatedJobs = candidate.linkedJobs?.map((job: any) => {
+        if ((job.jobId || job.id) === jobId) {
+          return {
+            ...job,
+            stage: newStage,
+            stageUpdatedAt: new Date().toISOString(),
+            stageUpdatedBy: "user"
+          };
+        }
+        return job;
+      }) || [];
+
+      const response = await fetch(`/api/data/leads/${candidate.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linkedJobs: updatedJobs })
+      });
+
+      if (response.ok) {
+        toast.success("Stage updated");
+        queryClient.invalidateQueries({ queryKey: ['candidate', candidate.id] });
+        // Refresh the page
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to update stage");
     }
   };
 
