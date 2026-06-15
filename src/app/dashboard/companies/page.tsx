@@ -164,7 +164,7 @@ return (
         <Card>
           <CardContent className="p-0">
             <table className="w-full">
-              <thead>
+<thead>
                 <tr className="border-b">
 <th className="text-left p-4">COMPANY</th>
                   <th className="text-left p-4">INDUSTRY</th>
@@ -173,6 +173,7 @@ return (
                   <th className="text-left p-4">OPEN ROLES</th>
                   <th className="text-left p-4">STATUS</th>
                   <th className="text-left p-4">ID</th>
+                  <th className="text-left p-4">ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
@@ -192,6 +193,20 @@ return (
                     </td>
                     <td className="p-4">
                       <IdBadge id={company.id} />
+                    </td>
+                    <td className="p-4">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (confirm(`Are you sure you want to delete "${company.name}"?`)) {
+                            handleDeleteCompany(company.id);
+                          }
+                        }}
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        Delete
+                      </Button>
                     </td>
                   </tr>
                 ))}
