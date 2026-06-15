@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Company Events API Route
  * GET /api/companies/[id]/events
  * 

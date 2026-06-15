@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Send Bulk Email API Route
  * Handles batch sending emails using Resend API
  * 

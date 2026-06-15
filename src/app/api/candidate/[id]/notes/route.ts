@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Candidate Notes API Route
  * POST /api/candidate/[id]/notes
  * 

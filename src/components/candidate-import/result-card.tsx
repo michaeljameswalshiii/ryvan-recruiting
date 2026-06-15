@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AI Search Result Card with Import Button
  * Example card component showing how to use the SaveCandidateButton
  * 

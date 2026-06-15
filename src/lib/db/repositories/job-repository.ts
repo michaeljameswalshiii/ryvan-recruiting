@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Job Repository
  * Server-only data access layer for Jobs
  * Jobs link Companies to Candidates with tracking of candidate stages

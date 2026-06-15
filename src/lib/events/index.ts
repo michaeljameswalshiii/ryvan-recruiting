@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Events Index Barrel File
  * 
  * Central export point for all event-related modules

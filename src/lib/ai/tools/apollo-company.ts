@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Apollo Company Search Tool
  * 
  * Search for companies using Apollo.io API for business development.

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Auth Logout API Route
  * Clears session cookie and signs out from Cognito
  * 

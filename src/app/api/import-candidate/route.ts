@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Candidate Import API
  * Exposes the importResultAsCandidate function to client-side components
  * 

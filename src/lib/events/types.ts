@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Shared Event Types
  * 
  * @serverOnly

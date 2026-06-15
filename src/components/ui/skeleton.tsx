@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Skeleton Component
  * Loading placeholder for data-heavy components
  */

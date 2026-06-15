@@ -1,4 +1,4 @@
-// Using Tavily API as search backend
+﻿// Using Tavily API as search backend
 // Get your free API key at https://tavily.com/
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY || "";
 const TINYFISH_API_URL = "https://api.tavily.com/search";

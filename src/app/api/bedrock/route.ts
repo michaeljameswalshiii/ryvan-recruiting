@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Bedrock AI API Route
  * Upgraded with Claude Sonnet 4.6 + Native MCP Tool Calling
  * 

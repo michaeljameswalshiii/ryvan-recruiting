@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Profile Schema
  * Zod schema for user profile data validation
  */

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tool Registry
  * 
  * Aggregates all AI tools and provides unified execution interface.

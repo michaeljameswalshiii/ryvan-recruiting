@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Apollo Search Tool
  * 
  * Clean implementation with proper tenant isolation.

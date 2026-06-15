@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @deprecated AWS SDK Client Wrapper
  * 
  * ⚠️ SECURITY WARNING: This file is marked "use client" which exposes AWS SDK to the browser.

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Company Events Service
  * Records and retrieves company events from DynamoDB
  * 

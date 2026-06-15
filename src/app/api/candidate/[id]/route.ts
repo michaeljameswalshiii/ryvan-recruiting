@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Single Candidate API Route
  * GET /api/candidate/[id]
  * 

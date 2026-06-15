@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+﻿import { NextRequest } from "next/server";
 import { logApolloUsage } from "@/lib/aws/athena-bedrock";
 
 // Apollo pricing per result

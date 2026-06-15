@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Resend Email Service
  * Server-side email sending using Resend API
  * 

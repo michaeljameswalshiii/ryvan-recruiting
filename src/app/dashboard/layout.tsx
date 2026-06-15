@@ -1,4 +1,4 @@
-import { DashboardNav } from "@/components/dashboard/nav";
+﻿import { DashboardNav } from "@/components/dashboard/nav";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { getSession } from "@/lib/server-auth";
 import { redirect } from "next/navigation";

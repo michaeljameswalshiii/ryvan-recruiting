@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Reporting Dashboard Charts
  * 
  * 7 Recharts components for the reporting dashboard:

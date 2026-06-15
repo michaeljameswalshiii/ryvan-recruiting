@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Job API Routes - Individual Job
  * GET /api/data/jobs/[id] - Get a job by ID
  * PUT /api/data/jobs/[id] - Update a job

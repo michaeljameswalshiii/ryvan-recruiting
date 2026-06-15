@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Application-Centric Link Job API
  * Links a candidate to a job using the new linkedJobs[] structure
  * 
