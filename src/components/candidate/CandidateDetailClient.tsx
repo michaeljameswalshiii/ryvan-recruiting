@@ -93,7 +93,9 @@ const ACTIVITY_TYPES = [
   { value: "other", label: "Other", color: "bg-gray-100 text-gray-800" },
 ];
 
-export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
+// ===== FIX: Add default export to fix build error ===== 
+export default function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
+// ===== END FIX =====
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [currentResumeUrl, setCurrentResumeUrl] = useState(candidate.resumeUrl || "");
   const [isEditing, setIsEditing] = useState(false);
@@ -1179,7 +1181,7 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
         await addNote.mutateAsync({
           jobId: pendingStageChange.jobId,
           candidateId,
-          content: stageNote.trim(),
+          noteContent: stageNote.trim(),
           relatedStage: pendingStageChange.newStage,
         });
       }
@@ -1237,32 +1239,37 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
     !job.candidates?.some((lc: any) => lc.candidateId === candidateId)
   ) || [];
 
+// ===== CHANGES ===== 
+  // Updated handleLinkJob using selectedJob state and direct parameters
   const handleLinkJob = async () => {
+    // Use selectedJob from component state (not passed as parameter)
     if (!selectedJob?.id || !selectedJob?.title) {
-      toast.error("Job ID and Title are required");
+      toast.error("Please select a valid job");
       return;
     }
 
     try {
+      // Use the modern app-centric link - pass parameters DIRECTLY (not nested)
       await linkCandidate.mutateAsync({
+        candidateId: candidateId,
         jobId: selectedJob.id,
-        candidateData: {
-          candidateId,
-          candidateName: candidateName || "Unknown",
-          stage: "Applied",
-          jobTitle: selectedJob.title,
-          companyId: selectedJob.companyId || undefined,
-        }
+        jobTitle: selectedJob.title,
+        companyId: selectedJob.companyId,
+        companyName: selectedJob.companyName,
+        initialStage: "sourced"
       });
-      toast.success("Job linked successfully");
+
+      toast.success("Job linked successfully!");
       setShowLinkDialog(false);
       setSelectedJob(null);
+      // Refresh everything
       refetch();
     } catch (err: any) {
       console.error("Link job error:", err);
       toast.error(err.message || "Failed to link job");
     }
   };
+  // ===== END CHANGES =====
 
   const handleUnlinkJob = async () => {
     if (!jobToUnlink) return;
@@ -1392,8 +1399,8 @@ return (
               >
                 Cancel
               </Button>
-              <Button 
-                onClick={handleLinkJob}
+<Button 
+                onClick={() => handleLinkJob()}
                 disabled={!selectedJob?.id || linkCandidate.isPending}
               >
                 {linkCandidate.isPending ? (
