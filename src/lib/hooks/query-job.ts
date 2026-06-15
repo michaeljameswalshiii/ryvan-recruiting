@@ -403,6 +403,8 @@ export function useUpdateCandidateStageInJobAppCentric() {
     onSuccess: (_, variables) => {
       toast.success(`Stage updated to ${variables.stage}`);
       // Invalidate candidate and jobs caches
+      queryClient.invalidateQueries({ queryKey: ['linkedJobsForCandidate', variables.candidateId] });
+      queryClient.invalidateQueries({ queryKey: ['lead', variables.candidateId] });
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
     },
@@ -499,8 +501,10 @@ export function useLinkCandidateToJobAppCentric() {
       }
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       toast.success('Job linked to candidate');
+      queryClient.invalidateQueries({ queryKey: ['linkedJobsForCandidate', variables.candidateId] });
+      queryClient.invalidateQueries({ queryKey: ['lead', variables.candidateId] });
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
     },
@@ -537,8 +541,10 @@ export function useUnlinkCandidateFromJobAppCentric() {
       }
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       toast.success('Job unlinked from candidate');
+      queryClient.invalidateQueries({ queryKey: ['linkedJobsForCandidate', variables.candidateId] });
+      queryClient.invalidateQueries({ queryKey: ['lead', variables.candidateId] });
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
     },

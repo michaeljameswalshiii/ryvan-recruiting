@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { Loader2, X, Search, Briefcase, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,8 +75,6 @@ export function LinkJobModal({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // Legacy for backward compatibility
-          linkedJobIds: selectedJobIds,
           // NEW: Build proper linkedJobs entries
           linkedJobs: selectedJobs.map((job: any) => ({
             jobId: job.id,
@@ -102,6 +99,7 @@ export function LinkJobModal({
       queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
       queryClient.invalidateQueries({ queryKey: leadKeys.details() });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["linkedJobsForCandidate", candidateId] });
 
       toast.success(
         selectedJobIds.length > 0

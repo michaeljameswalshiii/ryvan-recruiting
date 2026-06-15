@@ -1152,15 +1152,15 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
     return stage?.label || stageValue;
   };
 
-  // Handle stage change with auto-prompt
+// Handle stage change with auto-prompt - Use jobId from linked job record
   const handleStageChange = async (job: any, newStage: string) => {
     const currentStage = getCurrentStage(job);
     if (newStage === currentStage) return;
     
-    // Store the pending stage change and show prompt
+    // Store the pending stage change and show prompt - Use jobId from linked job record
     setPendingStageChange({
-      jobId: job.id,
-      jobTitle: job.title || "Untitled Job",
+      jobId: job.jobId || job.id, // Use jobId from linkedJob record
+      jobTitle: job.jobTitle || job.title || "Untitled Job",
       oldStage: currentStage,
       newStage: newStage
     });
@@ -1244,24 +1244,23 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
     !job.candidates?.some((lc: any) => lc.candidateId === candidateId)
   ) || [];
 
-// ===== CHANGES ===== 
-  // Updated handleLinkJob using selectedJob state and direct parameters
+// ===== CHANGES =====
+  // Updated handleLinkJob using candidateData structure (fixes jobId and jobTitle required error)
   const handleLinkJob = async () => {
-    // Use selectedJob from component state (not passed as parameter)
     if (!selectedJob?.id || !selectedJob?.title) {
       toast.error("Please select a valid job");
       return;
     }
 
     try {
-      // Use the modern app-centric link - pass parameters DIRECTLY (not nested)
+      // Use the modern app-centric link with candidateData structure (preferred)
       await linkCandidate.mutateAsync({
-        candidateId: candidateId,
+        candidateId,
         jobId: selectedJob.id,
         jobTitle: selectedJob.title,
         companyId: selectedJob.companyId,
         companyName: selectedJob.companyName,
-        initialStage: "sourced"
+        initialStage: "sourced",
       });
 
       toast.success("Job linked successfully!");
@@ -1281,7 +1280,7 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
     
     try {
       await unlinkCandidate.mutateAsync({
-        jobId: jobToUnlink.id,
+        jobId: jobToUnlink.jobId || jobToUnlink.id,
         candidateId,
       });
       toast.success('Job unlinked successfully');
@@ -1328,10 +1327,15 @@ return (
           {jobs.map((job: any) => {
             const currentStage = getCurrentStage(job);
 
-            return (
-<div key={job.id} className="bg-background border border-border rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+return (
+<div key={job.jobId || job.id} className="bg-background border border-border rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="font-medium text-sm text-foreground">{job.title || "Untitled Job"}</p>
+                  <p className="font-medium text-sm text-foreground">
+                    {job.jobTitle ||
+                      allJobs?.find((j: any) => j.id === (job.jobId || job.id))?.title ||
+                      job.title ||
+                      "Untitled Job"}
+                  </p>
                   <p className="text-xs text-muted-foreground">{job.companyName || "Company"}</p>
                 </div>
 
@@ -1350,7 +1354,7 @@ return (
                   </select>
 
                   <Button variant="outline" size="sm" asChild>
-                    <a href={`/dashboard/jobs/${job.id}`}>View Job</a>
+                    <a href={`/dashboard/jobs/${job.jobId || job.id}`}>View Job</a>
                   </Button>
                   
                   <Button 
@@ -1427,7 +1431,7 @@ return (
           <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md">
             <h3 className="font-semibold text-lg mb-4 text-foreground">Unlink Job</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Are you sure you want to unlink <span className="font-medium text-foreground">{jobToUnlink.title}</span> from this candidate? This will remove the candidate from this job's pipeline.
+              Are you sure you want to unlink <span className="font-medium text-foreground">{jobToUnlink.jobTitle || jobToUnlink.title}</span> from this candidate? This will remove the candidate from this job's pipeline.
             </p>
             <div className="flex gap-2 justify-end">
               <Button 
@@ -1512,9 +1516,9 @@ return (
 
 // Full Linked Jobs Tab
 function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; candidateName: string }) {
-  const { data: jobs, isLoading, isError, refetch } = useJobsForCandidate(candidateId);
-  const updateStage = useUpdateCandidateStageInJob();
-  const unlinkCandidate = useUnlinkCandidateFromJob();
+  const { data: jobs, isLoading, isError, refetch } = useLinkedJobsForCandidate(candidateId);
+  const updateStage = useUpdateCandidateStageInJobAppCentric();
+  const unlinkCandidate = useUnlinkCandidateFromJobAppCentric();
   
   const [showUnlinkDialog, setShowUnlinkDialog] = useState(false);
   const [jobToUnlink, setJobToUnlink] = useState<any>(null);
@@ -1532,8 +1536,7 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
 
   if (jobs) {
     jobs.forEach((job: any) => {
-      const linked = (job.candidates || []).find((lc: any) => lc.candidateId === candidateId);
-      const stage = linked?.stage || "Applied";
+      const stage = job?.stage || "Applied";
       if (jobsByStage[stage]) {
         jobsByStage[stage].push({ ...job, linkedStage: stage });
       }
@@ -1576,7 +1579,7 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
     
     try {
       await unlinkCandidate.mutateAsync({
-        jobId: jobToUnlink.id,
+        jobId: jobToUnlink.jobId || jobToUnlink.id,
         candidateId,
       });
       toast.success('Job unlinked successfully');
@@ -1679,16 +1682,16 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
 <div className="space-y-2">
               {stageJobs.map((job: any) => (
                 <div
-                  key={job.id}
+                  key={job.jobId || job.id}
                   draggable
-                  onDragStart={(e) => handleDragStart(e, job.id)}
+                  onDragStart={(e) => handleDragStart(e, job.jobId || job.id)}
                   className="bg-white p-3 rounded-lg border shadow-sm cursor-move hover:shadow-md transition-shadow"
                 >
-                  <p className="font-medium text-sm">{job.title}</p>
+                  <p className="font-medium text-sm">{job.jobTitle || job.title || "Untitled Job"}</p>
                   <p className="text-xs text-gray-500">{job.companyName}</p>
                   <div className="flex items-center gap-2 mt-2">
                     <Button variant="ghost" size="sm" className="h-6 text-xs" asChild>
-                      <a href={`/dashboard/jobs/${job.id}`}>View Job</a>
+                      <a href={`/dashboard/jobs/${job.jobId || job.id}`}>View Job</a>
                     </Button>
                     <Button 
                       variant="ghost" 
@@ -1715,7 +1718,7 @@ function LinkedJobsTab({ candidateId, candidateName }: { candidateId: string; ca
           <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md">
             <h3 className="font-semibold text-lg mb-4 text-foreground">Unlink Job</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Are you sure you want to unlink <span className="font-medium text-foreground">{jobToUnlink.title}</span> from this candidate? This will remove the candidate from this job's pipeline.
+              Are you sure you want to unlink <span className="font-medium text-foreground">{jobToUnlink.jobTitle || jobToUnlink.title}</span> from this candidate? This will remove the candidate from this job's pipeline.
             </p>
             <div className="flex gap-2 justify-end">
               <Button 
@@ -1930,7 +1933,7 @@ console.log('[ResumeUpload] Step 2: Uploading to S3, candidateId:', candidateId)
           />
           <label htmlFor="resume-upload">
             <span className=" cursor-pointer">
-              <Button variant="outline" size="sm" asChild component="span">
+              <Button variant="outline" size="sm" asChild>
                 <span>
                   <Plus className="h-4 w-4 mr-2" />
                   Upload New
@@ -2019,7 +2022,7 @@ console.log('[ResumeUpload] Step 2: Uploading to S3, candidateId:', candidateId)
                 id="resume-upload-empty"
               />
               <label htmlFor="resume-upload-empty">
-                <Button variant="outline" asChild component="span">
+                <Button variant="outline" asChild>
                   <span className="cursor-pointer">
                     <Plus className="h-4 w-4 mr-2" />
                     Upload Resume
