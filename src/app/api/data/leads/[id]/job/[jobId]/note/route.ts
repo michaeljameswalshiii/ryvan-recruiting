@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Application-Centric Job-Specific Note API
  * Adds a note to a candidate's application for a specific job
  * 

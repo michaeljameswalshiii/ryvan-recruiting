@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Save as Candidate Button
  * Button component to import AI search results as candidates
  * 

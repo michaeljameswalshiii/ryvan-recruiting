@@ -1,4 +1,4 @@
-/**
+﻿/**
  * User Email Connection Schema
  * Zod schema for email OAuth connections (Gmail/Outlook)
  */

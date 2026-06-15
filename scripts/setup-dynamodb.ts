@@ -1,4 +1,4 @@
- * Setup DynamoDB Tables for Turnkey Optimization
+﻿ * Setup DynamoDB Tables for Turnkey Optimization
  * Run with: npx tsx scripts/setup-dynamodb.ts
  */
 

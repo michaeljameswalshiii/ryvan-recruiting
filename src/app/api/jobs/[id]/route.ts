@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Job Detail API Route
  * /api/jobs/[id]
  * GET - Get a single job

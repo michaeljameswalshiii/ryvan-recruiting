@@ -1,8 +1,8 @@
-import type { NextConfig } from "next";
+﻿import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Setting output to standalone helps with deployment detection
-  output: "standalone",
+  // No output setting - use default (standalone-like behavior without explicit config)
+  // This fixes the static export build errors
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",

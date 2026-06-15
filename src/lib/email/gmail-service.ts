@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Gmail SMTP Email Service
  * Uses nodemailer with Gmail SMTP for sending emails
  * 

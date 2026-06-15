@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Security Middleware
  * 
  * Protects all /dashboard routes.

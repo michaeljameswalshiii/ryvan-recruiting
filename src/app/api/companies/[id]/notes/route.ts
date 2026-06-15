@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Company Notes API Route
  * POST /api/companies/[id]/notes
  * 

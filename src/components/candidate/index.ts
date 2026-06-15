@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Candidate Components Index
  */
 

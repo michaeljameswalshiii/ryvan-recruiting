@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Candidate Events API Route
  * GET /api/candidate/[id]/events - Get events for a candidate
  * POST /api/candidate/[id]/events - Record an event for a candidate

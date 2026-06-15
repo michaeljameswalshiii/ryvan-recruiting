@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Auth Register API Route
  * Server-side registration using httpOnly cookies
  * 

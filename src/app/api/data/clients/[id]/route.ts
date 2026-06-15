@@ -1,4 +1,4 @@
-/**
+﻿/**
  * CLIENT [id] API Route
  * Server-only API for single client/company operations
  * 

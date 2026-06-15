@@ -93,8 +93,13 @@ const ACTIVITY_TYPES = [
   { value: "other", label: "Other", color: "bg-gray-100 text-gray-800" },
 ];
 
-// ===== FIX: Add default export to fix build error ===== 
-export default function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
+// ===== FIX: Add default export while keeping named export for backward compat ===== 
+export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
+  return <CandidateDetailClientInner candidate={candidate} />;
+}
+export default CandidateDetailClient;
+
+function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
 // ===== END FIX =====
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [currentResumeUrl, setCurrentResumeUrl] = useState(candidate.resumeUrl || "");

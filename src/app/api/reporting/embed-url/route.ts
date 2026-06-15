@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Reporting Embed URL API
  * 
  * Generates secure embed URLs for QuickSight dashboards.

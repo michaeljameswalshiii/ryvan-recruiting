@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Reporting Dashboard Page
  * 
  * Professional analytics dashboard with Recharts.

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Email Log Repository
  * Server-only data access layer for email tracking/logs
  * 

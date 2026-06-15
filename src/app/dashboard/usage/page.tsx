@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Bedrock Usage Dashboard
  * Shows AI usage stats, tokens, cost, and recent activity
  * 

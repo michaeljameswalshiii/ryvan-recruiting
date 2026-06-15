@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Auth Session API Route
  * Check if user is authenticated
  * 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tool Usage Prompt
  * 
  * Instructions for using tools (Apollo, Tavily, internal data).

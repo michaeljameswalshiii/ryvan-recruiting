@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Jobs API Route
  * GET /api/jobs - List all jobs for tenant
  * POST /api/jobs - Create a new job

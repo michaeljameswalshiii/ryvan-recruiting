@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Jobs For Candidate API Route
  * GET /api/data/jobs/for-candidate/[id] - Get all jobs linked to a candidate
  */

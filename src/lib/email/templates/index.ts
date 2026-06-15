@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Email Templates Index
  * Export all email templates
  */

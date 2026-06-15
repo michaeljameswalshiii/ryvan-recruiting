@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Auth Client API
  * 
  * Client-safe auth functions that call server-side API.

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * TanStack Query Hooks for Client Data
  * Provides reactive data fetching with caching, loading states, and error handling
  * Includes toast notifications for user feedback

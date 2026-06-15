@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Email Candidate API Route
  * Example endpoint for sending emails to candidates
  * 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Email Connections API
  * Get user's email connections
  * 
