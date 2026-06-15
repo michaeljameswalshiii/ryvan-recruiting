@@ -1,18 +1,27 @@
-# Candidate Job Linking Consistency - TODO
+# Plan: Replace Linked Jobs Section in CandidateDetailClient.tsx
 
-- [x] Analyze task and read relevant files
-- [x] Create approved minimal-diff plan
-- [ ] Update `src/components/candidate/CandidateDetailClient.tsx`
-  - [ ] Fix app-centric link payload shape
-  - [ ] Fix unlink id/title mapping for linkedJobs shape
-  - [ ] Normalize job title display fallback
-  - [ ] Switch Linked Jobs tab to linkedJobs[] + app-centric mutations
-- [ ] Update `src/lib/hooks/query-job.ts`
-  - [ ] Strengthen candidate-scoped query invalidation for app-centric mutations
-- [ ] Update `src/components/candidate/LinkJobModal.tsx`
-  - [ ] Remove legacy `linkedJobIds` write and use linkedJobs[] only
-  - [ ] Add candidate-scoped invalidation key
-- [ ] Run type check/build
-- [ ] Prepare exact code diffs summary
-- [ ] Git workflow: branch, commit, push, PR to master
-- [ ] Deploy to prod
+## Information Gathered
+- File: `src/components/candidate/CandidateDetailClient.tsx`
+- Current Linked Jobs is in Overview tab via `<LinkedJobsSection />` component (a separate function at bottom of file)
+- The Overview tab contains the Linked Jobs section inline after Contact Information
+- The file already has:
+  - Imports for Briefcase, Plus, Trash2 icons
+  - `queryClient` from useQueryClient
+  - `handleUnlinkJob` and `handleStageChange` functions exist but need updates
+  - `showLinkModal` state already exists
+  - Need to import/link `LinkJobModal`
+
+## Plan
+1. **Import LinkJobModal** - Add import for LinkJobModal component
+2. **Update handleUnlinkJob** - Update to match new specification with linkedJobIds sync
+3. **Update handleStageChange** - Ensure it matches spec (with stageUpdatedAt, stageUpdatedBy)
+4. **Replace Linked Jobs Section in Overview** - Replace the `<LinkedJobsSection>` component with new inline JSX
+5. **Add LinkJobModal at bottom** - Ensure modal exists in the return statement
+6. **Run build** - Test with `npm run build`
+
+## Files to Edit
+- `src/components/candidate/CandidateDetailClient.tsx` (single file)
+
+## Follow-up Steps
+1. Run `npm run build` to check for errors
+2. Test the unlink functionality

@@ -21,7 +21,7 @@ import { SendEmailModal } from "@/components/email/send-email-modal";
 import { ArrowLeft, Mail, Edit, User, FileText, Save, X, Briefcase, Loader2, StickyNote, Send, ExternalLink, Download, Plus, Upload, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useUnlinkCandidateFromJob, useJobs, useUpdateCandidateStageInJobAppCentric, useAddJobSpecificNote, useLinkedJobsForCandidate, useLinkCandidateToJobAppCentric, useUnlinkCandidateFromJobAppCentric } from "@/lib/hooks/query-job";
+import { useJobsForCandidate, useUpdateCandidateStageInJob, useLinkCandidateToJob, useUnlinkCandidateFromJob, useJobs, useUpdateCandidateStageInJobAppCentric, useAddJobSpecificNote, useLinkedJobsForCandidate, useLinkCandidateToJobAppCentric, useUnlinkCandidateFromJobAppCentric, jobKeys } from "@/lib/hooks/query-job";
 import { APPLICATION_STAGES, getStageLabel, getStageColor } from "@/lib/schemas/lead";
 
 interface Note {
@@ -506,16 +506,29 @@ toast.success('Candidate updated successfully');
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           linkedJobs: updatedLinkedJobs,
-          linkedJobIds: updatedLinkedJobs.map((j: any) => j.jobId || j.id) // keep legacy in sync
+          linkedJobIds: updatedLinkedJobs.map((j: any) => j.jobId || j.id)
         })
       });
 
       if (response.ok) {
         toast.success("Job unlinked successfully");
-        
-        // Strong refresh
-        queryClient.invalidateQueries({ queryKey: ['candidate', candidate.id] });
-        queryClient.invalidateQueries({ queryKey: ['leads'] });
+
+        // === THIS IS THE KEY PART ===
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['candidate', candidate.id] }),
+          queryClient.invalidateQueries({ queryKey: ['leads'] }),
+          queryClient.invalidateQueries({ queryKey: ['linkedJobsForCandidate', candidate.id] }),
+          queryClient.invalidateQueries({ queryKey: jobKeys.lists() }),
+        ]);
+
+        // Force refetch the current candidate
+        await queryClient.refetchQueries({ queryKey: ['candidate', candidate.id] });
+
+        // Optional: Small delay + force re-render
+        setTimeout(() => {
+          queryClient.refetchQueries({ queryKey: ['candidate', candidate.id] });
+        }, 300);
+
         // Refresh the page
         window.location.reload();
       } else {
