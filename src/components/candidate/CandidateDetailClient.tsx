@@ -1378,18 +1378,29 @@ function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string
   };
   // ===== END CHANGES =====
 
-  const handleUnlinkJob = async () => {
+const handleUnlinkJob = async () => {
     if (!jobToUnlink) return;
-    
+
     try {
       await unlinkCandidate.mutateAsync({
         jobId: jobToUnlink.jobId || jobToUnlink.id,
         candidateId,
       });
+
       toast.success('Job unlinked successfully');
+
       setShowUnlinkDialog(false);
       setJobToUnlink(null);
-      refetch();
+
+      // === VERY STRONG REFRESH ===
+      await Promise.all([
+        refetch(), 
+        queryClient.invalidateQueries({ queryKey: ['candidate', candidateId], exact: true }),
+        queryClient.invalidateQueries({ queryKey: ['leads'] }),
+        queryClient.refetchQueries({ queryKey: ['candidate', candidateId] }),
+        queryClient.refetchQueries({ queryKey: ['linked-jobs', candidateId] }),
+      ]);
+
     } catch (err: any) {
       console.error('Unlink job error:', err);
       toast.error(err.message || 'Failed to unlink job');
