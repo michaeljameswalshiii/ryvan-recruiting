@@ -2,6 +2,9 @@
 
 import Link from 'next/link';
 import { IdBadge } from '@/components/ui/id-badge';
+import { Button } from '@/components/ui/button';
+import { Trash2 } from 'lucide-react';
+import { useDeleteJob } from '@/lib/hooks/query-job';
 
 interface Job {
   id: string;
@@ -19,6 +22,13 @@ interface JobListViewProps {
 }
 
 export function JobListView({ jobs }: JobListViewProps) {
+  const deleteJob = useDeleteJob();
+
+  const handleDelete = (jobId: string, jobTitle: string) => {
+    if (!confirm(`Delete job "${jobTitle}"? This cannot be undone.`)) return;
+    deleteJob.mutate(jobId);
+  };
+
   if (!jobs || jobs.length === 0) {
     return (
       <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground">
@@ -31,7 +41,7 @@ export function JobListView({ jobs }: JobListViewProps) {
     <div className="bg-card border border-border rounded-2xl overflow-hidden">
       <table className="w-full">
         <thead>
-          <tr className="border-b border-border">
+<tr className="border-b border-border">
             <th className="text-left p-4">Job Title</th>
             <th className="text-left p-4">Company</th>
             <th className="text-left p-4">Type</th>
@@ -39,6 +49,7 @@ export function JobListView({ jobs }: JobListViewProps) {
             <th className="text-left p-4">Date Added</th>
             <th className="text-left p-4">Status</th>
             <th className="text-left p-4">ID</th>
+            <th className="text-left p-4 w-20">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -81,8 +92,19 @@ export function JobListView({ jobs }: JobListViewProps) {
                   {job.status}
                 </span>
               </td>
-              <td className="p-4">
+<td className="p-4">
                 <IdBadge id={job.id} />
+              </td>
+              <td className="p-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleDelete(job.id, job.title)}
+                  disabled={deleteJob.isPending}
+                  className="text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </td>
             </tr>
           ))}
