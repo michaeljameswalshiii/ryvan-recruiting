@@ -1,3 +1,4 @@
 ﻿Triggering rebuild
+2026-06-18 00:00 UTC - Delete Company button fully wired up in Kanban view
 2026-06-13 00:30 UTC - added Delete button to list view for companies
 2026-01-17 08:30 UTC - link jobs now populates linkedJobs array
