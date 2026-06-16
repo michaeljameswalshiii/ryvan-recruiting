@@ -1,33 +1,20 @@
 ﻿'use client';
 
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import Link from 'next/link';
 import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
 
 interface ContactDetailClientProps {
-  contactId: string;
+  contact: any;
 }
 
-export default function ContactDetailClient({ contactId }: ContactDetailClientProps) {
+export default function ContactDetailClient({ contact }: ContactDetailClientProps) {
   const queryClient = useQueryClient();
 
   const [noteType, setNoteType] = useState('');
   const [noteContent, setNoteContent] = useState('');
-
-  // Fetch contact data
-  const { data: contact, isLoading } = useQuery({
-    queryKey: ['contact', contactId],
-    queryFn: async () => {
-      const res = await fetch(`/api/data/contacts/${contactId}`);
-      if (!res.ok) throw new Error('Failed to load contact');
-      return res.json();
-    },
-  });
-
-  const contactNotes = contact?.notes || [];
 
   const handleLogActivity = async () => {
     if (!noteType || !noteContent.trim()) {
@@ -36,7 +23,7 @@ export default function ContactDetailClient({ contactId }: ContactDetailClientPr
     }
 
     try {
-      const response = await fetch(`/api/data/contacts/${contactId}/notes`, {
+      const response = await fetch(`/api/data/contacts/${contact.id}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -50,7 +37,7 @@ export default function ContactDetailClient({ contactId }: ContactDetailClientPr
         toast.success("Activity logged successfully");
         setNoteContent("");
         setNoteType("");
-        queryClient.invalidateQueries({ queryKey: ['contact', contactId] });
+        queryClient.invalidateQueries({ queryKey: ['contact', contact.id] });
       } else {
         toast.error("Failed to log activity");
       }
@@ -60,19 +47,16 @@ export default function ContactDetailClient({ contactId }: ContactDetailClientPr
     }
   };
 
-  if (isLoading) return <div className="p-8 text-center">Loading contact...</div>;
-  if (!contact) return <div className="p-8 text-center">Contact not found</div>;
-
-  const initials = contact.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || 'NA';
+  const initials = contact.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || '??';
 
   return (
     <div className="max-w-7xl mx-auto p-6">
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
         <div className="flex items-center gap-4">
-          <Link href="/dashboard/contacts" className="text-gray-500 hover:text-gray-700 p-2 -ml-2">
+          <button onClick={() => window.history.back()} className="text-gray-500 hover:text-gray-700 p-2 -ml-2">
             <ArrowLeft className="h-6 w-6" />
-          </Link>
+          </button>
 
           <div className="w-16 h-16 rounded-full bg-green-600 flex items-center justify-center text-3xl font-bold text-white">
             {initials}
@@ -81,45 +65,28 @@ export default function ContactDetailClient({ contactId }: ContactDetailClientPr
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-semibold">{contact.name}</h1>
-              {contact.isPrimary && (
-                <span className="px-3 py-1 text-sm bg-yellow-100 text-yellow-700 rounded-full font-medium flex items-center gap-1">
-                  ⭐ Primary
-                </span>
-              )}
+              {contact.isPrimary && <span className="px-3 py-1 text-sm bg-yellow-100 text-yellow-700 rounded-full">⭐ Primary</span>}
             </div>
             <p className="text-gray-600 text-lg">{contact.title}</p>
-            <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-              {contact.companyName && <span>{contact.companyName}</span>}
-            </div>
+            {contact.companyName && <p className="text-sm text-gray-500">{contact.companyName}</p>}
           </div>
         </div>
 
         <div className="flex gap-3">
-          <Button variant="outline" className="flex items-center gap-2">
-            <Phone className="h-4 w-4" /> Call
-          </Button>
-          <Button variant="outline" className="flex items-center gap-2">
-            <Edit className="h-4 w-4" /> Edit
-          </Button>
-          <Button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700">
-            <Mail className="h-4 w-4" /> Send Email
-          </Button>
+          <Button variant="outline"><Phone className="h-4 w-4 mr-2" /> Call</Button>
+          <Button variant="outline"><Edit className="h-4 w-4 mr-2" /> Edit</Button>
+          <Button><Mail className="h-4 w-4 mr-2" /> Send Email</Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left - Activity & Notes */}
+        {/* Left Column - Activity */}
         <div className="lg:col-span-8">
           <div className="bg-white border rounded-2xl p-6">
             <h3 className="text-lg font-semibold mb-4">ACTIVITY & NOTES</h3>
 
-            {/* Log Form */}
             <div className="flex gap-3 mb-6">
-              <select
-                value={noteType}
-                onChange={(e) => setNoteType(e.target.value)}
-                className="border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
+              <select value={noteType} onChange={(e) => setNoteType(e.target.value)} className="border rounded-lg px-4 py-2.5">
                 <option value="">Select Type</option>
                 <option value="Phone Call">Phone Call</option>
                 <option value="BD Call">BD Call</option>
@@ -134,38 +101,31 @@ export default function ContactDetailClient({ contactId }: ContactDetailClientPr
                 value={noteContent}
                 onChange={(e) => setNoteContent(e.target.value)}
                 placeholder="Add detail..."
-                className="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 border rounded-lg px-4 py-2.5"
               />
 
-              <Button 
-                onClick={handleLogActivity} 
-                disabled={!noteType || !noteContent.trim()}
-              >
+              <Button onClick={handleLogActivity} disabled={!noteType || !noteContent.trim()}>
                 Log
               </Button>
             </div>
 
             {/* Timeline */}
             <div className="space-y-6 max-h-[600px] overflow-y-auto">
-              {contactNotes && contactNotes.length > 0 ? (
-                contactNotes
+              {contact.notes?.length > 0 ? (
+                contact.notes
                   .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                   .map((note: any, i: number) => (
                     <div key={i} className="border-l-2 border-gray-200 pl-4 py-1">
-                      <div className="flex justify-between text-sm">
+                      <div className="flex justify-between">
                         <span className="font-medium">{note.type}</span>
-                        <span className="text-gray-500">
-                          {new Date(note.createdAt).toLocaleDateString()}
-                        </span>
+                        <span className="text-sm text-gray-500">{new Date(note.createdAt).toLocaleDateString()}</span>
                       </div>
                       <p className="text-gray-600 mt-1">{note.content}</p>
                     </div>
                   ))
               ) : (
                 <div className="text-center py-16 text-gray-400">
-                  <div className="text-4xl mb-3">📅</div>
-                  <p>No activity yet</p>
-                  <p className="text-sm">Use the log form above to add the first note.</p>
+                  No activity yet. Use the form above.
                 </div>
               )}
             </div>

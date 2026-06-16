@@ -56,5 +56,5 @@ export default async function ContactDetailPage({ params, searchParams }: Props)
     companyId,
   };
 
-return <ContactDetailClient contactId={contact.id} />;
+return <ContactDetailClient contact={contactData} />;
 }
