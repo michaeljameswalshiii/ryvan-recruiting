@@ -141,9 +141,9 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
               </Button>
             </div>
 
-            {/* Timeline */}
+{/* Timeline */}
             <div className="space-y-6 max-h-[600px] overflow-y-auto">
-              {contact.notes && contact.notes.length > 0 ? (
+              {Array.isArray(contact.notes) && contact.notes.length > 0 ? (
                 contact.notes
                   .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                   .map((note: any, i: number) => (
