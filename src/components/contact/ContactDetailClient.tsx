@@ -1,7 +1,6 @@
 ﻿'use client';
 
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
@@ -10,13 +9,12 @@ interface ContactDetailClientProps {
   contact: any;
 }
 
-export default function ContactDetailClient({ contact }: ContactDetailClientProps) {
-  const queryClient = useQueryClient();
-
+export default function ContactDetailClient({ contact: initialContact }: ContactDetailClientProps) {
+  const [contact, setContact] = useState(initialContact);
   const [noteType, setNoteType] = useState('');
   const [noteContent, setNoteContent] = useState('');
 
-const handleLogActivity = async () => {
+  const handleLogActivity = async () => {
     if (!noteType || !noteContent.trim()) {
       toast.error("Please select a type and enter a note");
       return;
@@ -34,27 +32,27 @@ const handleLogActivity = async () => {
       });
 
       if (response.ok) {
+        const newNote = {
+          id: `note_${Date.now()}`,
+          type: noteType,
+          content: noteContent,
+          createdAt: new Date().toISOString(),
+          createdBy: "current-user",
+        };
+
+        // Update local state immediately
+        setContact((prev: any) => ({
+          ...prev,
+          notes: [...(prev.notes || []), newNote]
+        }));
+
         toast.success("Activity logged successfully");
-        
-        // Clear form
         setNoteContent("");
         setNoteType("");
-
-// Strong refresh attempts
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['contact', contact.id] }),
-        queryClient.refetchQueries({ queryKey: ['contact', contact.id] }),
-      ]);
-
-      // Final safety net (temporary)
-      setTimeout(() => {
-        window.location.reload();
-      }, 700);
-
       } else {
         toast.error("Failed to log activity");
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       toast.error("Failed to log activity");
     }
