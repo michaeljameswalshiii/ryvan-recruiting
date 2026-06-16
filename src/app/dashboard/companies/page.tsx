@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { IdBadge } from "@/components/ui/id-badge";
-import { useClients, useUpdateClientStatus } from "@/lib/hooks/query-client";
+import { useClients, useUpdateClientStatus, useDeleteClient } from "@/lib/hooks/query-client";
+import { SortableCompanyCard } from "@/components/company";
 import { toast } from "sonner";
 
 const companyStages = [
@@ -23,8 +24,26 @@ export default function CompaniesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "pipeline">("list");
 
-  const { data: companies = [], isLoading } = useClients();
+const { data: companies = [], isLoading } = useClients();
   const updateStatus = useUpdateClientStatus();
+  const deleteClient = useDeleteClient();
+
+// ===== CHANGES ===== Handle delete company
+  // ===== CHANGES =====
+  const handleDeleteCompany = async (companyId: string) => {
+    try {
+      await deleteClient.mutateAsync(companyId);
+    } catch (err) {
+      toast.error("Failed to delete company");
+    }
+  };
+
+  // ===== CHANGES ===== Handle edit company (stub for now)
+  // ===== CHANGES =====
+  const handleEditCompany = (company: any) => {
+    // TODO: Wire up edit modal if needed
+    console.log("Edit company:", company.id);
+  };
 
   const filteredCompanies = useMemo(() => {
     return companies.filter((c: any) =>
@@ -145,7 +164,7 @@ return (
         <Card>
           <CardContent className="p-0">
             <table className="w-full">
-              <thead>
+<thead>
                 <tr className="border-b">
 <th className="text-left p-4">COMPANY</th>
                   <th className="text-left p-4">INDUSTRY</th>
@@ -154,6 +173,7 @@ return (
                   <th className="text-left p-4">OPEN ROLES</th>
                   <th className="text-left p-4">STATUS</th>
                   <th className="text-left p-4">ID</th>
+                  <th className="text-left p-4">ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
@@ -173,6 +193,20 @@ return (
                     </td>
                     <td className="p-4">
                       <IdBadge id={company.id} />
+                    </td>
+                    <td className="p-4">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (confirm(`Are you sure you want to delete "${company.name}"?`)) {
+                            handleDeleteCompany(company.id);
+                          }
+                        }}
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        Delete
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -195,17 +229,15 @@ return (
                 <Badge>{pipelineGroups[stage.id].length}</Badge>
               </div>
 
-              <div className="min-h-[600px] border border-dashed border-muted-foreground/30 rounded-b-lg p-3 space-y-3">
+<div className="min-h-[600px] border border-dashed border-muted-foreground/30 rounded-b-lg p-3 space-y-3">
+                {/* ===== CHANGES ===== Use SortableCompanyCard with delete handler */}
                 {pipelineGroups[stage.id].map((company: any) => (
-<Link key={company.id} href={`/dashboard/companies/${company.id}`} className="block bg-card border rounded-lg p-4 hover:shadow-md transition-all">
-                    <div className="flex items-start gap-3">
-                      <Building2 className="mt-1 text-muted-foreground" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{company.name}</p>
-                        <p className="text-sm text-muted-foreground">{company.location || "No location"}</p>
-                      </div>
-                    </div>
-                  </Link>
+                  <SortableCompanyCard
+                    key={company.id}
+                    company={company}
+                    onEdit={handleEditCompany}
+                    onDelete={handleDeleteCompany}
+                  />
                 ))}
                 {pipelineGroups[stage.id].length === 0 && (
                   <div className="h-full flex items-center justify-center text-muted-foreground text-sm py-12">

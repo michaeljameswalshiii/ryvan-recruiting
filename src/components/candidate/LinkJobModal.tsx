@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { Loader2, X, Search, Briefcase, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,7 +66,7 @@ export function LinkJobModal({
     selectedJobIds.includes(job.id)
   );
 
-  // Handle save
+// Handle save - use the modern linkedJobs model
   const handleSave = async () => {
     setIsSaving(true);
 
@@ -76,7 +75,17 @@ export function LinkJobModal({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          linkedJobIds: selectedJobIds,
+          // NEW: Build proper linkedJobs entries
+          linkedJobs: selectedJobs.map((job: any) => ({
+            jobId: job.id,
+            jobTitle: job.title,
+            companyId: job.companyId,
+            companyName: job.companyName,
+            stage: "sourced",           // default starting stage
+            stageUpdatedAt: new Date().toISOString(),
+            stageUpdatedBy: "", 
+            notes: [],
+          })),
         }),
       });
 
@@ -86,18 +95,15 @@ export function LinkJobModal({
         throw new Error(result.error || "Failed to update linked jobs");
       }
 
-// Invalidate ALL lead queries to ensure fresh data
+      // Strong refresh
       queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
       queryClient.invalidateQueries({ queryKey: leadKeys.details() });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      
-      // Force refetch of leads
-      await queryClient.refetchQueries({ queryKey: leadKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: ["linkedJobsForCandidate", candidateId] });
 
       toast.success(
         selectedJobIds.length > 0
-          ? `Linked to ${selectedJobIds.length} job(s)`
+          ? `Successfully linked ${selectedJobIds.length} job(s)`
           : "Jobs unlinked successfully"
       );
 

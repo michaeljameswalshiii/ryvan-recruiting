@@ -1,23 +1,25 @@
-﻿// scripts/migrate-stages.ts
+// scripts/migrate-stages.mjs
 import { DynamoDB } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const docClient = DynamoDBDocument.from(new DynamoDB({ region: 'us-east-1' }));
-
 const TABLE_NAME = 'turnkey-leads';
 
-async function migrateStages() {
-  console.log("Starting stage migration...");
+async function migrateStages(dryRun = false) {
+  console.log(`Starting stage migration... ${dryRun ? '(DRY RUN)' : ''}`);
 
-let lastEvaluatedKey: Record<string, any> | undefined = undefined;
+  let lastEvaluatedKey = undefined;
   let processed = 0;
   let updated = 0;
 
   do {
-const result: any = await docClient.scan({
-        TableName: TABLE_NAME,
+    const result = await docClient.scan({
+      TableName: TABLE_NAME,
       ExclusiveStartKey: lastEvaluatedKey,
-      Limit: 50,
+      Limit: 25, // Smaller batches = safer
     });
 
     for (const candidate of result.Items || []) {
@@ -29,7 +31,7 @@ const result: any = await docClient.scan({
 
       let needsUpdate = false;
 
-      const updatedLinkedJobs = candidate.linkedJobs.map((job: any) => {
+      const updatedLinkedJobs = candidate.linkedJobs.map((job) => {
         // If job already has a proper stage → skip
         if (job.stage && typeof job.stage === 'string') {
           return job;
@@ -49,16 +51,20 @@ const result: any = await docClient.scan({
       });
 
       if (needsUpdate) {
-        await docClient.put({
-          TableName: TABLE_NAME,
-          Item: {
-            ...candidate,
-            linkedJobs: updatedLinkedJobs,
-            stage: undefined // Remove old top-level stage
-          }
-        });
-        updated++;
-        console.log(`Updated candidate ${candidate.id}`);
+        if (!dryRun) {
+          await docClient.put({
+            TableName: TABLE_NAME,
+            Item: {
+              ...candidate,
+              linkedJobs: updatedLinkedJobs,
+              stage: undefined // Remove old top-level stage
+            }
+          });
+          updated++;
+          console.log(`Updated: ${candidate.id}`);
+        } else {
+          console.log(`Would update: ${candidate.id}`);
+        }
       }
     }
 
@@ -69,8 +75,8 @@ const result: any = await docClient.scan({
 }
 
 // Simple mapping from old stages to new ones
-function mapOldStageToNew(oldStage: string): string {
-  const mapping: Record<string, string> = {
+function mapOldStageToNew(oldStage) {
+  const mapping = {
     "identification": "sourced",
     "attempted_outreach": "left_message",
     "conversation": "contacted",
@@ -96,4 +102,6 @@ function mapOldStageToNew(oldStage: string): string {
   return mapping[oldStage?.toLowerCase()] || "sourced";
 }
 
-migrateStages().catch(console.error);
+// Run it
+const isDryRun = process.argv.includes('--dry-run');
+migrateStages(isDryRun).catch(console.error);
