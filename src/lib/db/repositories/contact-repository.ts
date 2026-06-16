@@ -306,26 +306,27 @@ export async function setPrimaryContact(
 }
 
 /**
- * Add a note/activity to a contact - FINAL RELIABLE VERSION
+ * Add a note/activity to a contact - FIXED VERSION
  */
 import { getAllClients, updateClient } from './client-repository';
-import { getSessionTenantId } from '@/lib/server-auth';
 
 export async function addNoteToContact(contactId: string, note: any) {
   try {
+    // Get tenantId from session (this is the missing piece)
+    const { getSessionTenantId } = await import('@/lib/server-auth');
     const tenantId = await getSessionTenantId();
+
     if (!tenantId) {
-      throw new Error('No session - tenant ID not found');
+      throw new Error('No tenant ID found in session');
     }
 
-    const allClients = await getAllClients(tenantId);
+    const allClients = await getAllClients(tenantId);   // ← Now passing tenantId
 
     for (const client of allClients) {
-      const contacts = client.contacts || [];
-      const contactIndex = contacts.findIndex((c: any) => c.id === contactId);
+      const contactIndex = client.contacts?.findIndex((c: any) => c.id === contactId);
       
       if (contactIndex !== -1) {
-        const contact = contacts[contactIndex];
+        const contact = client.contacts[contactIndex];
         const notes = contact.notes || [];
 
         notes.push({
@@ -336,14 +337,14 @@ export async function addNoteToContact(contactId: string, note: any) {
           createdBy: note.createdBy || "current-user",
         });
 
-        contacts[contactIndex] = { 
+        client.contacts[contactIndex] = { 
           ...contact, 
           notes, 
           updatedAt: new Date().toISOString() 
         };
 
-        await updateClient(tenantId, client.id, { 
-          contacts: contacts,
+        await updateClient(tenantId, client.id, {   // ← Pass tenantId here too
+          contacts: client.contacts,
           updatedAt: new Date().toISOString() 
         });
 
@@ -354,7 +355,7 @@ export async function addNoteToContact(contactId: string, note: any) {
 
     throw new Error(`Contact ${contactId} not found`);
   } catch (error: any) {
-    console.error('❌ addNoteToContact failed:', error.message);
+    console.error('❌ addNoteToContact failed:', error.message || error);
     throw error;
   }
 }
