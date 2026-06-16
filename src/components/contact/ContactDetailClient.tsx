@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -15,28 +15,21 @@ interface ContactData {
   title?: string;
   isPrimary?: boolean;
   notes?: any[];
-  createdAt?: string;
-  updatedAt?: string;
   companyId: string;
   companyName: string;
-  linkedin?: string;
-  location?: string;
-  source?: string;
 }
 
 interface ContactDetailClientProps {
   contact: ContactData;
 }
 
-export function ContactDetailClient({ contact }: ContactDetailClientProps) {
+export default function ContactDetailClient({ contact }: ContactDetailClientProps) {
   const queryClient = useQueryClient();
 
   const [noteType, setNoteType] = useState('');
   const [noteContent, setNoteContent] = useState('');
 
-  // Note: We use the contact prop passed from server component
-  // The notes are already loaded on the contact object
-  const contactNotes = contact.notes || [];
+  const contactNotes = contact?.notes || [];
 
   const handleLogActivity = async () => {
     if (!noteType || !noteContent.trim()) {
@@ -59,8 +52,7 @@ export function ContactDetailClient({ contact }: ContactDetailClientProps) {
         toast.success("Activity logged successfully");
         setNoteContent("");
         setNoteType("");
-        // Refresh by reloading the page
-        window.location.reload();
+        queryClient.invalidateQueries({ queryKey: ['contact', contact.id] });
       } else {
         toast.error("Failed to log activity");
       }
