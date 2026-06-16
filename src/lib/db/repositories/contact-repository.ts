@@ -306,7 +306,7 @@ export async function setPrimaryContact(
 }
 
 /**
- * Add a note to a contact - Simple & Reliable version
+ * Add note to contact - Simple and Reliable
  */
 import { getAllClients, updateClient } from './client-repository';
 
@@ -316,7 +316,7 @@ export async function addNoteToContact(contactId: string, note: any) {
 
     for (const client of allClients) {
       const contactIndex = client.contacts?.findIndex((c: any) => c.id === contactId);
-
+      
       if (contactIndex !== -1) {
         const contact = client.contacts[contactIndex];
         const notes = contact.notes || [];
@@ -329,14 +329,19 @@ export async function addNoteToContact(contactId: string, note: any) {
           createdBy: note.createdBy || "current-user",
         });
 
-        client.contacts[contactIndex] = { ...contact, notes, updatedAt: new Date().toISOString() };
+        // Update the contact
+        client.contacts[contactIndex] = {
+          ...contact,
+          notes,
+          updatedAt: new Date().toISOString()
+        };
 
         await updateClient(client.id, {
           contacts: client.contacts,
-          updatedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         });
 
-        console.log(`✅ Note added to contact ${contactId}`);
+        console.log(`✅ Successfully added note to contact ${contactId}`);
         return { success: true };
       }
     }
