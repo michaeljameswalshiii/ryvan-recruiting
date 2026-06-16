@@ -49,11 +49,25 @@ export default async function ContactDetailPage({ params, searchParams }: Props)
     notFound();
   }
 
-  // Prepare data for client component
+// Map contact to compatible format for client component
   const contactData = {
-    ...contact,
-    companyName,
-    companyId,
+    id: contact.id || "",
+    name: contact.name || "",
+    email: contact.email || "",
+    phone: contact.phone || "",
+    phones: contact.phones || [],
+    title: contact.title || "",
+    isPrimary: contact.isPrimary || false,
+    notes: contact.notes || [],           // ← Must be array, not string
+    createdAt: contact.createdAt || "",
+    updatedAt: contact.updatedAt || "",
+    // Company info
+    companyId: companyId,
+    companyName: companyName || "",
+    // Additional fields
+    linkedin: (contact as any).linkedin || "",
+    location: (contact as any).location || "",
+    source: (contact as any).source || "",
   };
 
 return <ContactDetailClient contact={contactData} />;
