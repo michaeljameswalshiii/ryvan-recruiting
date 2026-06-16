@@ -40,11 +40,16 @@ const handleLogActivity = async () => {
         setNoteContent("");
         setNoteType("");
 
-// Strong refresh
+// Strong refresh attempts
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['contact', contact.id] }),
         queryClient.refetchQueries({ queryKey: ['contact', contact.id] }),
       ]);
+
+      // Final safety net (temporary)
+      setTimeout(() => {
+        window.location.reload();
+      }, 700);
 
       } else {
         toast.error("Failed to log activity");
