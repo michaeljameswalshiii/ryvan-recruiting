@@ -28,3 +28,4 @@ redeploy 06/16/2026 16:46:48
 redeploy 06/16/2026 16:57:31
 vercel deploy 06/16/2026 16:59:09
 VERCEL_DEPLOY_FORCE_TRIGGER
+redeploy 01/20/2026 10:45:00 - fix: ensure contact.notes is always an array
