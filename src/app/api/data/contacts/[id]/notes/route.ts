@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { contactRepository } from '@/lib/db/repositories/contact-repository';
+import { addNoteToContact } from '@/lib/db/repositories/contact-repository';
 
 export async function POST(
   request: NextRequest,
@@ -21,13 +21,11 @@ export async function POST(
       createdBy,
     };
 
-    // Add note to contact
-    const updatedContact = await contactRepository.addNoteToContact(contactId, newNote);
+    await addNoteToContact(contactId, newNote);
 
     return NextResponse.json({ 
       success: true, 
-      note: newNote,
-      contact: updatedContact 
+      note: newNote 
     });
 
   } catch (error: any) {
