@@ -306,54 +306,66 @@ export async function setPrimaryContact(
 }
 
 /**
- * Add a note/activity to a contact
+ * Add a note/activity to a contact - must import getAllClients from client-repository
  */
+import { getAllClients } from './client-repository';
+
 export async function addNoteToContact(
   contactId: string,
   note: { id: string; type: string; content: string; createdAt: string; createdBy: string }
-): Promise<Contact | null> {
-  // Get contact to update - we need tenantId from the contact
-  const contact = await getItem<Contact>(clientsTable, {
-    tenant_id: '', // Will be set from the contact itself
-    SK: `CONTACT#${contactId}`,
-  });
-  
-  if (!contact) {
-    return null;
-  }
+): Promise<any> {
+  try {
+    // First, find the contact to get tenant_id and companyId
+    // We need to scan or use a better query since we only have contactId
+    const allClients = await getAllClients();
 
-  const tenantId = contact.tenant_id || '';
-  const companyId = contact.companyId;
+    let foundContact = null;
+    let tenantId = '';
+    let companyId = '';
 
-  // Get current notes array or create new one
-  const currentNotes = (contact as any).notesArray || [];
-  
-  // Add new note
-  const updatedNotes = [...currentNotes, note];
-
-  // Update the contact with the new notes array
-  await updateItem<Contact>(
-    clientsTable,
-    { tenant_id: tenantId, SK: `CONTACT#${contactId}` },
-    'SET #notesArray = :notesArray, #updatedAt = :updatedAt',
-    {
-      ':notesArray': updatedNotes,
-      ':updatedAt': new Date().toISOString(),
-    },
-    {
-      '#notesArray': 'notesArray',
-      '#updatedAt': 'updatedAt',
+    for (const client of allClients) {
+      const contact = client.contacts?.find((c: any) => c.id === contactId);
+      if (contact) {
+        foundContact = contact;
+        tenantId = client.tenant_id || client.tenantId;
+        companyId = client.id;
+        break;
+      }
     }
-  );
 
-  // Invalidate cache
-  await invalidateTenantCache(tenantId);
+    if (!foundContact) {
+      throw new Error(`Contact ${contactId} not found`);
+    }
 
-  // Return updated contact
-  return getItem<Contact>(clientsTable, {
-    tenant_id: tenantId,
-    SK: `CONTACT#${contactId}`,
-  });
+    const currentNotes = (foundContact as any).notesArray || (foundContact.notes || []);
+
+    const updatedNotes = [...currentNotes, note];
+
+    // Update using the correct keys
+    await updateItem(
+      clientsTable,
+      { 
+        tenant_id: tenantId, 
+        SK: `CONTACT#${contactId}` 
+      },
+      'SET #notesArray = :notesArray, #updatedAt = :updatedAt',
+      {
+        ':notesArray': updatedNotes,
+        ':updatedAt': new Date().toISOString(),
+      },
+      {
+        '#notesArray': 'notesArray',
+        '#updatedAt': 'updatedAt',
+      }
+    );
+
+    await invalidateTenantCache(tenantId);
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error in addNoteToContact:', error);
+    throw error;
+  }
 }
 
 // ============================================================================
