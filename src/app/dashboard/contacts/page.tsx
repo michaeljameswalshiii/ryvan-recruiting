@@ -364,17 +364,24 @@ export default function ContactsPage() {
               ) : (
                 filteredContacts.map((contact) => (
                   <tr key={contact.id} className="hover:bg-muted/50 transition-colors">
-                    {/* CONTACT */}
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <Avatar fallback={contact.name} size="sm" className="h-9 w-9" />
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">{contact.name}</p>
+{/* CONTACT */}
+<td className="p-4">
+                      <Link 
+                        href={`/dashboard/contacts/${contact.id}`}
+                        className="group flex items-center gap-3 hover:underline"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-sm font-semibold text-blue-700">
+                          {contact.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground group-hover:text-blue-600 transition-colors">
+                            {contact.name}
+                          </p>
                           {contact.isPrimary && (
-                            <Badge variant="default" className="text-xs mt-1">Primary</Badge>
+                            <span className="inline-block px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded font-medium">Primary</span>
                           )}
                         </div>
-                      </div>
+                      </Link>
                     </td>
                     
                     {/* TITLE */}
