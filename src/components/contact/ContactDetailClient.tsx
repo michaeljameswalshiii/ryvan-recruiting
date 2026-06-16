@@ -23,13 +23,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { useJobsForCompany } from "@/lib/hooks/query-job";
 import { useLeads } from "@/lib/hooks/query-lead";
@@ -328,22 +321,19 @@ export function ContactDetailClient({ contact }: ContactDetailClientProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="rounded-lg border bg-muted/20 p-3">
+<div className="rounded-lg border bg-muted/20 p-3">
                 <div className="flex flex-col gap-2 md:flex-row">
-                  <div className="md:w-[220px]">
-                    <Select value={newNoteType} onValueChange={setNewNoteType}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {noteTypes.map((type) => (
-                          <SelectItem key={type.value} value={type.value}>
-                            {type.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <select
+                    value={newNoteType}
+                    onChange={(e) => setNewNoteType(e.target.value)}
+                    className="border rounded-lg px-3 py-2 md:w-[220px]"
+                  >
+                    {noteTypes.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
 
                   <Input
                     value={newNoteText}

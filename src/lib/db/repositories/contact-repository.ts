@@ -305,6 +305,57 @@ export async function setPrimaryContact(
   return updateContact(tenantId, companyId, contactId, { isPrimary: true });
 }
 
+/**
+ * Add a note/activity to a contact
+ */
+export async function addNoteToContact(
+  contactId: string,
+  note: { id: string; type: string; content: string; createdAt: string; createdBy: string }
+): Promise<Contact | null> {
+  // Get contact to update - we need tenantId from the contact
+  const contact = await getItem<Contact>(clientsTable, {
+    tenant_id: '', // Will be set from the contact itself
+    SK: `CONTACT#${contactId}`,
+  });
+  
+  if (!contact) {
+    return null;
+  }
+
+  const tenantId = contact.tenant_id || '';
+  const companyId = contact.companyId;
+
+  // Get current notes array or create new one
+  const currentNotes = (contact as any).notesArray || [];
+  
+  // Add new note
+  const updatedNotes = [...currentNotes, note];
+
+  // Update the contact with the new notes array
+  await updateItem<Contact>(
+    clientsTable,
+    { tenant_id: tenantId, SK: `CONTACT#${contactId}` },
+    'SET #notesArray = :notesArray, #updatedAt = :updatedAt',
+    {
+      ':notesArray': updatedNotes,
+      ':updatedAt': new Date().toISOString(),
+    },
+    {
+      '#notesArray': 'notesArray',
+      '#updatedAt': 'updatedAt',
+    }
+  );
+
+  // Invalidate cache
+  await invalidateTenantCache(tenantId);
+
+  // Return updated contact
+  return getItem<Contact>(clientsTable, {
+    tenant_id: tenantId,
+    SK: `CONTACT#${contactId}`,
+  });
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
