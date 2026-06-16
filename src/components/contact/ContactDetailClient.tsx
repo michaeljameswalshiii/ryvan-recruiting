@@ -40,11 +40,12 @@ const handleLogActivity = async () => {
         setNoteContent("");
         setNoteType("");
 
-        // === STRONG REFRESH ===
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['contact', contact.id] }),
-          queryClient.refetchQueries({ queryKey: ['contact', contact.id] }),
-        ]);
+// === STRONG REFRESH ===
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['contact', contact.id], exact: true }),
+        queryClient.refetchQueries({ queryKey: ['contact', contact.id] }),
+        queryClient.invalidateQueries({ queryKey: ['contacts'] }),
+      ]);
 
         // Optional: force page reload if needed
         // window.location.reload();
