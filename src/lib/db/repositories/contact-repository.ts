@@ -306,18 +306,26 @@ export async function setPrimaryContact(
 }
 
 /**
- * Add a note/activity to a contact - SIMPLE & RELIABLE
+ * Add a note/activity to a contact - FINAL RELIABLE VERSION
  */
 import { getAllClients, updateClient } from './client-repository';
+import { getSessionTenantId } from '@/lib/server-auth';
 
 export async function addNoteToContact(contactId: string, note: any) {
   try {
-    const allClients = await getAllClients();
+    const tenantId = await getSessionTenantId();
+    if (!tenantId) {
+      throw new Error('No session - tenant ID not found');
+    }
+
+    const allClients = await getAllClients(tenantId);
 
     for (const client of allClients) {
-      const contactIndex = client.contacts?.findIndex((c: any) => c.id === contactId);
+      const contacts = client.contacts || [];
+      const contactIndex = contacts.findIndex((c: any) => c.id === contactId);
+      
       if (contactIndex !== -1) {
-        const contact = client.contacts[contactIndex];
+        const contact = contacts[contactIndex];
         const notes = contact.notes || [];
 
         notes.push({
@@ -328,24 +336,25 @@ export async function addNoteToContact(contactId: string, note: any) {
           createdBy: note.createdBy || "current-user",
         });
 
-        client.contacts[contactIndex] = { 
+        contacts[contactIndex] = { 
           ...contact, 
           notes, 
           updatedAt: new Date().toISOString() 
         };
 
-        await updateClient(client.id, { 
-          contacts: client.contacts,
+        await updateClient(tenantId, client.id, { 
+          contacts: contacts,
           updatedAt: new Date().toISOString() 
         });
 
+        console.log(`✅ Note added to contact ${contactId}`);
         return { success: true };
       }
     }
 
     throw new Error(`Contact ${contactId} not found`);
   } catch (error: any) {
-    console.error('addNoteToContact failed:', error);
+    console.error('❌ addNoteToContact failed:', error.message);
     throw error;
   }
 }
