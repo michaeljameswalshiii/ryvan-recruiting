@@ -492,86 +492,57 @@ toast.success('Candidate updated successfully');
     }
   };
 
-// Unlink Job handler for Linked Jobs section
-  const handleUnlinkJob = async (jobId: string) => {
-    if (!confirm("Unlink this job from the candidate?")) return;
+// Update stage
+const handleStageChange = async (jobId: string, newStage: string) => {
+  try {
+    const updatedJobs = (candidate.linkedJobs || []).map((job: any) => 
+      (job.jobId || job.id) === jobId 
+        ? { ...job, stage: newStage, stageUpdatedAt: new Date().toISOString() }
+        : job
+    );
 
-    try {
-      const updatedLinkedJobs = candidate.linkedJobs?.filter((job: any) => 
-        (job.jobId || job.id) !== jobId
-      ) || [];
+    const res = await fetch(`/api/data/leads/${candidate.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linkedJobs: updatedJobs })
+    });
 
-      const response = await fetch(`/api/data/leads/${candidate.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          linkedJobs: updatedLinkedJobs,
-          linkedJobIds: updatedLinkedJobs.map((j: any) => j.jobId || j.id)
-        })
-      });
-
-      if (response.ok) {
-        toast.success("Job unlinked successfully");
-
-        // === THIS IS THE KEY PART ===
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['candidate', candidate.id] }),
-          queryClient.invalidateQueries({ queryKey: ['leads'] }),
-          queryClient.invalidateQueries({ queryKey: ['linkedJobsForCandidate', candidate.id] }),
-          queryClient.invalidateQueries({ queryKey: jobKeys.lists() }),
-        ]);
-
-        // Force refetch the current candidate
-        await queryClient.refetchQueries({ queryKey: ['candidate', candidate.id] });
-
-        // Optional: Small delay + force re-render
-        setTimeout(() => {
-          queryClient.refetchQueries({ queryKey: ['candidate', candidate.id] });
-        }, 300);
-
-        // Refresh the page
-        window.location.reload();
-      } else {
-        toast.error("Failed to unlink job");
-      }
-    } catch (err: any) {
-      console.error("Unlink error:", err);
-      toast.error("Failed to unlink job");
+    if (res.ok) {
+      toast.success('Stage updated');
+      queryClient.invalidateQueries({ queryKey: ['candidate', candidate.id] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
     }
-  };
+  } catch (err) {
+    toast.error('Failed to update stage');
+  }
+};
 
-  // Stage Change handler for Linked Jobs section
-  const handleStageChange = async (jobId: string, newStage: string) => {
-    try {
-      const updatedJobs = candidate.linkedJobs?.map((job: any) => {
-        if ((job.jobId || job.id) === jobId) {
-          return {
-            ...job,
-            stage: newStage,
-            stageUpdatedAt: new Date().toISOString(),
-            stageUpdatedBy: "user"
-          };
-        }
-        return job;
-      }) || [];
+// Unlink job
+const handleUnlinkJob = async (jobId: string) => {
+  if (!confirm(`Unlink this job?`)) return;
 
-      const response = await fetch(`/api/data/leads/${candidate.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ linkedJobs: updatedJobs })
-      });
+  try {
+    const updatedJobs = (candidate.linkedJobs || []).filter((job: any) => 
+      (job.jobId || job.id) !== jobId
+    );
 
-      if (response.ok) {
-        toast.success("Stage updated");
-        queryClient.invalidateQueries({ queryKey: ['candidate', candidate.id] });
-        // Refresh the page
-        window.location.reload();
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to update stage");
+    const res = await fetch(`/api/data/leads/${candidate.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linkedJobs: updatedJobs })
+    });
+
+    if (res.ok) {
+      toast.success('Job unlinked');
+      queryClient.invalidateQueries({ queryKey: ['candidate', candidate.id] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    } else {
+      toast.error('Failed to unlink');
     }
-  };
+  } catch (err) {
+    toast.error('Failed to unlink job');
+  }
+};
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -989,8 +960,75 @@ toast.success('Candidate updated successfully');
                 )}
               </div>
 
-{/* Linked Jobs Section */}
-              <LinkedJobsSection candidateId={candidate.id} candidateName={candidate.name} />
+{/* ==================== CLEAN LINKED JOBS SECTION (Overview Tab) ==================== */}
+<div className="mt-8 border-t pt-8">
+  <div className="flex items-center justify-between mb-4">
+    <h3 className="text-lg font-semibold flex items-center gap-2">
+      <Briefcase className="h-5 w-5" /> Linked Jobs
+    </h3>
+    <Button onClick={() => setShowLinkModal(true)} size="sm">
+      <Plus className="h-4 w-4 mr-2" />
+      Link Job
+    </Button>
+  </div>
+
+  {candidate.linkedJobs && candidate.linkedJobs.length > 0 ? (
+    <div className="space-y-4">
+      {candidate.linkedJobs.map((job: any, index: number) => {
+        const jobId = job.jobId || job.id;
+        const jobTitle = job.jobTitle || job.title || candidate.title || "Untitled Job";
+
+        return (
+          <div key={index} className="border rounded-2xl p-6 bg-card flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex-1">
+              <p className="font-semibold text-lg">{jobTitle}</p>
+              <p className="text-sm text-muted-foreground">
+                {job.companyName || job.company || "No Company"}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <Select 
+                value={job.stage || "sourced"} 
+                onValueChange={(stage) => handleStageChange(jobId, stage)}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {APPLICATION_STAGES.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => window.open(`/dashboard/jobs/${jobId}`, '_blank')}
+              >
+                View Job
+              </Button>
+
+              <Button 
+                variant="destructive" 
+                size="sm"
+                onClick={() => handleUnlinkJob(jobId)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  ) : (
+    <div className="text-center py-12 border border-dashed rounded-2xl">
+      <Briefcase className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+      <p className="text-muted-foreground">No jobs linked yet</p>
+    </div>
+  )}
+</div>
 
 {/* Resume Section - Quick View - REMOVED per user request */}
 
@@ -1216,7 +1254,7 @@ toast.success('Candidate updated successfully');
 
       {/* Link Job Modal */}
       <LinkJobModal
-        isOpen={showLinkModal}
+        open={showLinkModal}
         onOpenChange={setShowLinkModal}
         candidateId={candidate.id}
       />
@@ -1225,6 +1263,7 @@ toast.success('Candidate updated successfully');
 }
 
 function LinkedJobsSection({ candidateId, candidateName }: { candidateId: string; candidateName?: string }) {
+  const queryClient = useQueryClient();
   // Use app-centric hook to get linked jobs from candidate's linkedJobs[]
   const { data: linkedJobsData, isLoading, isError, refetch } = useLinkedJobsForCandidate(candidateId);
   const jobs = linkedJobsData || [];
