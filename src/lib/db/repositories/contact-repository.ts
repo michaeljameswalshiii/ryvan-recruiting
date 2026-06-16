@@ -312,7 +312,6 @@ import { getAllClients, updateClient } from './client-repository';
 
 export async function addNoteToContact(contactId: string, note: any) {
   try {
-    // Find which company this contact belongs to
     const allClients = await getAllClients();
 
     for (const client of allClients) {
@@ -323,13 +322,14 @@ export async function addNoteToContact(contactId: string, note: any) {
         const notes = contact.notes || [];
 
         notes.push({
-          ...note,
           id: `note_${Date.now()}`,
+          type: note.type,
+          content: note.content,
           createdAt: new Date().toISOString(),
+          createdBy: note.createdBy || "current-user",
         });
 
-        // Update the contact in the company
-        client.contacts[contactIndex] = { ...contact, notes };
+        client.contacts[contactIndex] = { ...contact, notes, updatedAt: new Date().toISOString() };
 
         await updateClient(client.id, {
           contacts: client.contacts,
