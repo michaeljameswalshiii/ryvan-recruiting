@@ -39,3 +39,6 @@ export * from './job-repository';
 
 // Pipeline repository - re-export all
 export * from './pipeline-repository';
+
+// Contact repository - re-export all
+export * from './contact-repository';
