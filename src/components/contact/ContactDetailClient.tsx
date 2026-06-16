@@ -1,33 +1,31 @@
 ﻿'use client';
 
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
 
-interface ContactData {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  title?: string;
-  isPrimary?: boolean;
-  notes?: any[];
-  companyId: string;
-  companyName: string;
-}
-
 interface ContactDetailClientProps {
-  contact: ContactData;
+  contactId: string;
 }
 
-export default function ContactDetailClient({ contact }: ContactDetailClientProps) {
+export default function ContactDetailClient({ contactId }: ContactDetailClientProps) {
   const queryClient = useQueryClient();
 
   const [noteType, setNoteType] = useState('');
   const [noteContent, setNoteContent] = useState('');
+
+  // Fetch contact data
+  const { data: contact, isLoading } = useQuery({
+    queryKey: ['contact', contactId],
+    queryFn: async () => {
+      const res = await fetch(`/api/data/contacts/${contactId}`);
+      if (!res.ok) throw new Error('Failed to load contact');
+      return res.json();
+    },
+  });
 
   const contactNotes = contact?.notes || [];
 
@@ -38,7 +36,7 @@ export default function ContactDetailClient({ contact }: ContactDetailClientProp
     }
 
     try {
-      const response = await fetch(`/api/data/contacts/${contact.id}/notes`, {
+      const response = await fetch(`/api/data/contacts/${contactId}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -52,7 +50,7 @@ export default function ContactDetailClient({ contact }: ContactDetailClientProp
         toast.success("Activity logged successfully");
         setNoteContent("");
         setNoteType("");
-        queryClient.invalidateQueries({ queryKey: ['contact', contact.id] });
+        queryClient.invalidateQueries({ queryKey: ['contact', contactId] });
       } else {
         toast.error("Failed to log activity");
       }
@@ -62,7 +60,8 @@ export default function ContactDetailClient({ contact }: ContactDetailClientProp
     }
   };
 
-  if (!contact) return <div className="p-8 text-center">Loading contact...</div>;
+  if (isLoading) return <div className="p-8 text-center">Loading contact...</div>;
+  if (!contact) return <div className="p-8 text-center">Contact not found</div>;
 
   const initials = contact.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || 'NA';
 
