@@ -52,7 +52,7 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
       } else {
         toast.error("Failed to log activity");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       toast.error("Failed to log activity");
     }
@@ -65,7 +65,10 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
         <div className="flex items-center gap-4">
-          <button onClick={() => window.history.back()} className="text-gray-500 hover:text-gray-700 p-2 -ml-2">
+          <button 
+            onClick={() => window.history.back()} 
+            className="text-gray-500 hover:text-gray-700 p-2 -ml-2"
+          >
             <ArrowLeft className="h-6 w-6" />
           </button>
 
@@ -76,7 +79,9 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-semibold">{contact.name}</h1>
-              {contact.isPrimary && <span className="px-3 py-1 text-sm bg-yellow-100 text-yellow-700 rounded-full">⭐ Primary</span>}
+              {contact.isPrimary && (
+                <span className="px-3 py-1 text-sm bg-yellow-100 text-yellow-700 rounded-full font-medium">⭐ Primary</span>
+              )}
             </div>
             <p className="text-gray-600 text-lg">{contact.title}</p>
             {contact.companyName && <p className="text-sm text-gray-500">{contact.companyName}</p>}
@@ -84,20 +89,31 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
         </div>
 
         <div className="flex gap-3">
-          <Button variant="outline"><Phone className="h-4 w-4 mr-2" /> Call</Button>
-          <Button variant="outline"><Edit className="h-4 w-4 mr-2" /> Edit</Button>
-          <Button><Mail className="h-4 w-4 mr-2" /> Send Email</Button>
+          <Button variant="outline" className="flex items-center gap-2">
+            <Phone className="h-4 w-4" /> Call
+          </Button>
+          <Button variant="outline" className="flex items-center gap-2">
+            <Edit className="h-4 w-4" /> Edit
+          </Button>
+          <Button className="flex items-center gap-2">
+            <Mail className="h-4 w-4" /> Send Email
+          </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column - Activity */}
+        {/* Left - Activity & Notes */}
         <div className="lg:col-span-8">
           <div className="bg-white border rounded-2xl p-6">
             <h3 className="text-lg font-semibold mb-4">ACTIVITY & NOTES</h3>
 
+            {/* Log Form */}
             <div className="flex gap-3 mb-6">
-              <select value={noteType} onChange={(e) => setNoteType(e.target.value)} className="border rounded-lg px-4 py-2.5">
+              <select
+                value={noteType}
+                onChange={(e) => setNoteType(e.target.value)}
+                className="border rounded-lg px-4 py-2.5"
+              >
                 <option value="">Select Type</option>
                 <option value="Phone Call">Phone Call</option>
                 <option value="BD Call">BD Call</option>
@@ -122,21 +138,21 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
 
             {/* Timeline */}
             <div className="space-y-6 max-h-[600px] overflow-y-auto">
-              {contact.notes?.length > 0 ? (
+              {contact.notes && contact.notes.length > 0 ? (
                 contact.notes
                   .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                   .map((note: any, i: number) => (
                     <div key={i} className="border-l-2 border-gray-200 pl-4 py-1">
-                      <div className="flex justify-between">
+                      <div className="flex justify-between text-sm">
                         <span className="font-medium">{note.type}</span>
-                        <span className="text-sm text-gray-500">{new Date(note.createdAt).toLocaleDateString()}</span>
+                        <span className="text-gray-500">{new Date(note.createdAt).toLocaleDateString()}</span>
                       </div>
                       <p className="text-gray-600 mt-1">{note.content}</p>
                     </div>
                   ))
               ) : (
                 <div className="text-center py-16 text-gray-400">
-                  No activity yet. Use the form above.
+                  No activity yet. Use the form above to add the first note.
                 </div>
               )}
             </div>
@@ -145,18 +161,14 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
 
         {/* Right Sidebar */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Open Jobs */}
           <div className="bg-white border rounded-2xl p-6">
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between mb-4">
               <h3 className="font-semibold">Open Jobs</h3>
-              <Button size="sm" variant="outline">
-                <Plus className="h-4 w-4 mr-1" /> Add Job
-              </Button>
+              <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" /> Add Job</Button>
             </div>
             <p className="text-gray-500 text-sm">No open jobs for this company.</p>
           </div>
 
-          {/* Quick Stats */}
           <div className="bg-white border rounded-2xl p-6">
             <h3 className="font-semibold mb-4">Quick Stats</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -171,7 +183,6 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
             </div>
           </div>
 
-          {/* AI Client Tools */}
           <div className="bg-white border rounded-2xl p-6">
             <h3 className="font-semibold mb-4">AI Client Tools</h3>
             <div className="space-y-3">
