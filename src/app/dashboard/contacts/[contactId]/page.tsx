@@ -1,29 +1,60 @@
-﻿import ContactDetailClient from '@/components/contact/ContactDetailClient';
-import { contactRepository } from '@/lib/db/repositories/contact-repository';
+﻿import { notFound } from "next/navigation";
+import ContactDetailClient from "@/components/contact/ContactDetailClient";
+import { getClientById, getAllClients } from "@/lib/db/repositories/client-repository";
+import { getSessionTenantId } from "@/lib/server-auth";
 
 interface Props {
   params: Promise<{ contactId: string }>;
+  searchParams: { companyId?: string };
 }
 
-export default async function ContactDetailPage({ params }: Props) {
+export default async function ContactDetailPage({ params, searchParams }: Props) {
   const { contactId } = await params;
+  const tenantId = await getSessionTenantId();
+  
+  if (!tenantId) notFound();
 
-  let contact = null;
+  let contact: any = null;
+  let companyName = "";
+  let companyId = searchParams.companyId || "";
 
-  try {
-    contact = await contactRepository.getContact(contactId);
-  } catch (error) {
-    console.error('Error fetching contact:', error);
+  // Try direct lookup via companyId if provided
+  if (companyId) {
+    const client = await getClientById(tenantId, companyId);
+    if (client?.contacts) {
+      contact = client.contacts.find((c: any) => c.id === contactId);
+      companyName = client.name || "";
+    }
+  }
+
+  // Fallback: Search across all companies
+  if (!contact) {
+    const clients = await getAllClients(tenantId);
+    
+    for (const client of clients) {
+      if (client.contacts && client.contacts.length > 0) {
+        const found = client.contacts.find((c: any) => c.id === contactId);
+        if (found) {
+          contact = found;
+          companyName = client.name || "";
+          companyId = client.id;
+          break;
+        }
+      }
+    }
   }
 
   if (!contact) {
-    return (
-      <div className="p-8 text-center">
-        <h1 className="text-2xl font-semibold">Contact Not Found</h1>
-        <p className="text-gray-500 mt-2">The contact you are looking for does not exist.</p>
-      </div>
-    );
+    console.error(`Contact not found: ${contactId}`);
+    notFound();
   }
 
-  return <ContactDetailClient contact={contact} />;
+  // Prepare data for client component
+  const contactData = {
+    ...contact,
+    companyName,
+    companyId,
+  };
+
+  return <ContactDetailClient contact={contactData} />;
 }
