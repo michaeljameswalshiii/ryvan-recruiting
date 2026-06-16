@@ -16,7 +16,7 @@ export default function ContactDetailClient({ contact }: ContactDetailClientProp
   const [noteType, setNoteType] = useState('');
   const [noteContent, setNoteContent] = useState('');
 
-  const handleLogActivity = async () => {
+const handleLogActivity = async () => {
     if (!noteType || !noteContent.trim()) {
       toast.error("Please select a type and enter a note");
       return;
@@ -35,9 +35,20 @@ export default function ContactDetailClient({ contact }: ContactDetailClientProp
 
       if (response.ok) {
         toast.success("Activity logged successfully");
+        
+        // Clear form
         setNoteContent("");
         setNoteType("");
-        queryClient.invalidateQueries({ queryKey: ['contact', contact.id] });
+
+        // === STRONG REFRESH ===
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['contact', contact.id] }),
+          queryClient.refetchQueries({ queryKey: ['contact', contact.id] }),
+        ]);
+
+        // Optional: force page reload if needed
+        // window.location.reload();
+
       } else {
         toast.error("Failed to log activity");
       }
