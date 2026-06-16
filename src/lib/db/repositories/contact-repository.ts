@@ -316,7 +316,6 @@ export async function addNoteToContact(contactId: string, note: any) {
 
     for (const client of allClients) {
       const contactIndex = client.contacts?.findIndex((c: any) => c.id === contactId);
-
       if (contactIndex !== -1) {
         const contact = client.contacts[contactIndex];
         const notes = contact.notes || [];
@@ -329,26 +328,24 @@ export async function addNoteToContact(contactId: string, note: any) {
           createdBy: note.createdBy || "current-user",
         });
 
-        // Update the contact inside the company
-        client.contacts[contactIndex] = {
-          ...contact,
-          notes,
-          updatedAt: new Date().toISOString()
+        client.contacts[contactIndex] = { 
+          ...contact, 
+          notes, 
+          updatedAt: new Date().toISOString() 
         };
 
-        await updateClient(client.id, {
+        await updateClient(client.id, { 
           contacts: client.contacts,
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString() 
         });
 
-        console.log(`✅ Note added to contact ${contactId}`);
         return { success: true };
       }
     }
 
     throw new Error(`Contact ${contactId} not found`);
   } catch (error: any) {
-    console.error('❌ addNoteToContact failed:', error);
+    console.error('addNoteToContact failed:', error);
     throw error;
   }
 }
