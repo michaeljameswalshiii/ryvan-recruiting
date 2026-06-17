@@ -34,22 +34,23 @@ export const leadKeys = {
 export function useLeads() {
   return useQuery({
     queryKey: leadKeys.lists(),
-    queryFn: async () => {
+queryFn: async () => {
       console.log('[useLeads] Fetching leads...');
       const result = await getLeads();
       console.log('[useLeads] Got result:', result?.leads?.length, 'leads');
-      
+
       // Check first lead for linkedJobs
-      if (result.leads && result.leads.length > 0) {
+      if (result?.leads && result.leads.length > 0) {
         const firstLead = result.leads[0];
         console.log('[useLeads] First lead:', firstLead.name, 'linkedJobs:', firstLead.linkedJobs, 'linkedJobIds:', firstLead.linkedJobIds);
       }
-      
-      if (result.error) {
+
+      if (result?.error) {
         console.error('[useLeads] Error:', result.error);
         throw new Error(result.error);
       }
-      return result.leads || [];
+      // === SAFE ARRAY GUARD ===
+      return Array.isArray(result?.leads) ? result.leads : [];
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
     retry: 2,

@@ -105,29 +105,41 @@ export async function getItem<T>(table: string, key: Record<string, any>): Promi
 
 /**
  * Get multiple items by key condition
+ * Now supports pagination with Limit, ScanIndexForward, and ExclusiveStartKey
  */
 export async function queryItems<T>(
   table: string,
   keyCondition: string,
   expressionValues: Record<string, any>,
-  expressionNames?: Record<string, string>
-): Promise<T[]> {
+  options?: {
+    expressionNames?: Record<string, string>;
+    limit?: number;
+    ScanIndexForward?: boolean;
+    ExclusiveStartKey?: Record<string, any>;
+  }
+): Promise<{ items: T[]; lastEvaluatedKey?: Record<string, any> }> {
   const client = getClient();
   
   const command = new QueryCommand({
     TableName: table,
     KeyConditionExpression: keyCondition,
     ExpressionAttributeValues: marshall(expressionValues),
-    ExpressionAttributeNames: expressionNames,
+    ExpressionAttributeNames: options?.expressionNames,
+    Limit: options?.limit,
+    ScanIndexForward: options?.ScanIndexForward,
+    ExclusiveStartKey: options?.ExclusiveStartKey ? marshall(options.ExclusiveStartKey) : undefined,
   });
   
   const response = await client.send(command);
   
   if (!response.Items || response.Items.length === 0) {
-    return [];
+    return { items: [] };
   }
   
-  return response.Items.map(item => unmarshall(item) as T);
+  return {
+    items: response.Items.map(item => unmarshall(item) as T),
+    lastEvaluatedKey: response.LastEvaluatedKey ? unmarshall(response.LastEvaluatedKey) : undefined,
+  };
 }
 
 /**

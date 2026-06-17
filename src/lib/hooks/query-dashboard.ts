@@ -41,30 +41,33 @@ export function useDashboardStats() {
 
 // Debug logging with null safety and error details
   console.log("Dashboard Data:", {
-    clientsCount: clients?.length || 0, 
-    leadsCount: leads?.length || 0, 
-    pipelineCount: pipeline?.length || 0,
+    clientsCount: Array.isArray(clients) ? clients.length : 0,
+    leadsCount: Array.isArray(leads) ? leads.length : 0,
+    pipelineCount: Array.isArray(pipeline) ? pipeline.length : 0,
     clientsError: clientsError?.message || null,
     leadsError: leadsError?.message || null,
     clientsLoaded: !!clients,
     leadsLoaded: !!leads
   });
 
-// More robust stats calculation with null safety and multiple property names
-  const openJobsPipeline = pipeline || [];
-  const contactsCount = leads?.length || 0;
-  const companiesCount = clients?.length || 0;
-  
+// === SAFE ARRAY GUARDS ===
+  const safeClients = Array.isArray(clients) ? clients : [];
+  const safeLeads = Array.isArray(leads) ? leads : [];
+  const safePipeline = Array.isArray(pipeline) ? pipeline : [];
+
+  const contactsCount = safeLeads.length;
+  const companiesCount = safeClients.length;
+
   // Count open jobs from pipeline - check stage, status, or pipeline_stage properties
-  const openJobs = openJobsPipeline.filter((item: any) => {
+  const openJobs = safePipeline.filter((item: any) => {
     const stage = item.stage || item.status || item.pipeline_stage || '';
     return ['interviewing', 'interview', 'new', 'contacted', 'qualified'].includes(
       stage.toLowerCase()
     );
   }).length;
-  
+
   // Count placements - check for hired, closed_won, placement, etc.
-  const placements = openJobsPipeline.filter((item: any) => {
+  const placements = safePipeline.filter((item: any) => {
     const stage = item.stage || item.status || item.pipeline_stage || '';
     return ['hired', 'closed_won', 'placement', 'placed'].includes(stage.toLowerCase());
   }).length;
@@ -72,8 +75,8 @@ export function useDashboardStats() {
   const stats: DashboardStats = {
     contacts: contactsCount,
     companies: companiesCount,
-    openJobs: openJobs || 0,
-    placements: placements || 0,
+    openJobs: openJobs,
+    placements: placements,
   };
 
   const isLoading = loadingClients || loadingLeads || loadingPipeline;
@@ -93,9 +96,13 @@ export function useRecentActivity() {
   const { data: leads = [], isLoading: loadingLeads } = useLeads();
   const { data: pipeline = [], isLoading: loadingPipeline } = usePipeline();
 
+  // === SAFE ARRAY GUARDS ===
+  const safeLeads = Array.isArray(leads) ? leads : [];
+  const safePipeline = Array.isArray(pipeline) ? pipeline : [];
+
   // Combine and sort by most recent
   const activity = [
-    ...leads.slice(0, 5).map((lead: any) => ({
+    ...safeLeads.slice(0, 5).map((lead: any) => ({
       id: lead.id,
       type: 'lead' as const,
       name: lead.name,
@@ -103,7 +110,7 @@ export function useRecentActivity() {
       action: 'added',
       date: lead.created_at || lead.createdAt,
     })),
-    ...pipeline.slice(0, 5).map((item: any) => ({
+    ...safePipeline.slice(0, 5).map((item: any) => ({
       id: item.id,
       type: 'pipeline' as const,
       name: item.name,

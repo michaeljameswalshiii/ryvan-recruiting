@@ -3,21 +3,54 @@
 /**
  * Contact Detail Client Component
  * Displays contact info and allows logging activities
+ * Updated to use decoupled events table
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
+
+interface Activity {
+  id: string;
+  type: string;
+  content: string;
+  createdAt: string;
+  createdBy?: string;
+}
 
 interface ContactDetailClientProps {
   contact: any;
 }
 
 export default function ContactDetailClient({ contact: initialContact }: ContactDetailClientProps) {
+  const router = useRouter();
   const [contact, setContact] = useState(initialContact);
   const [noteType, setNoteType] = useState('');
   const [noteContent, setNoteContent] = useState('');
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(true);
+
+  // Load activities from the new events table
+  const loadActivities = async () => {
+    try {
+      setLoadingActivities(true);
+      const res = await fetch(`/api/data/contacts/${initialContact.id}/notes`);
+      if (res.ok) {
+        const data = await res.json();
+        setActivities(data.events || []);
+      }
+    } catch (e) {
+      console.error('Failed to load activities', e);
+    } finally {
+      setLoadingActivities(false);
+    }
+  };
+
+  useEffect(() => {
+    loadActivities();
+  }, [initialContact.id]);
 
   const handleLogActivity = async () => {
     if (!noteType || !noteContent.trim()) {
@@ -25,7 +58,7 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
       return;
     }
 
-    try {
+try {
       const response = await fetch(`/api/data/contacts/${contact.id}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -33,27 +66,20 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
           type: noteType,
           content: noteContent,
           createdBy: "current-user",
+          companyId: contact.companyId,
         }),
       });
 
-      if (response.ok) {
-        const newNote = {
-          id: `note_${Date.now()}`,
-          type: noteType,
-          content: noteContent,
-          createdAt: new Date().toISOString(),
-          createdBy: "current-user",
-        };
-
-        // Update local state immediately
-        setContact((prev: any) => ({
-          ...prev,
-          notes: [...(prev.notes || []), newNote]
-        }));
-
+if (response.ok) {
         toast.success("Activity logged successfully");
         setNoteContent("");
         setNoteType("");
+        
+        // Refresh the list from server
+        await loadActivities();
+        
+        // Optional: revalidate server components
+        router.refresh();
       } else {
         toast.error("Failed to log activity");
       }
@@ -143,18 +169,20 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
 
 {/* Timeline */}
             <div className="space-y-6 max-h-[600px] overflow-y-auto">
-              {Array.isArray(contact.notes) && contact.notes.length > 0 ? (
-                contact.notes
-                  .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                  .map((note: any, i: number) => (
-                    <div key={i} className="border-l-2 border-gray-200 pl-4 py-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="font-medium">{note.type}</span>
-                        <span className="text-gray-500">{new Date(note.createdAt).toLocaleDateString()}</span>
-                      </div>
-                      <p className="text-gray-600 mt-1">{note.content}</p>
+              {loadingActivities ? (
+                <div className="text-center py-8 text-gray-400">Loading activity...</div>
+              ) : activities.length > 0 ? (
+                activities.map((note, i) => (
+                  <div key={note.id || i} className="border-l-2 border-gray-200 pl-4 py-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium">{note.type}</span>
+                      <span className="text-gray-500">
+                        {new Date(note.createdAt).toLocaleDateString()}
+                      </span>
                     </div>
-                  ))
+                    <p className="text-gray-600 mt-1">{note.content}</p>
+                  </div>
+                ))
               ) : (
                 <div className="text-center py-16 text-gray-400">
                   No activity yet. Use the form above to add the first note.

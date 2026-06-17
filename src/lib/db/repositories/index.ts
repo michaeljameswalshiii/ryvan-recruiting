@@ -42,3 +42,6 @@ export * from './pipeline-repository';
 
 // Contact repository - re-export all
 export * from './contact-repository';
+
+// Event repository - re-export all
+export * from './event-repository';

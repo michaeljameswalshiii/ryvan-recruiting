@@ -113,33 +113,41 @@ export default function CandidatesPage() {
     }
   };
 
-  const { data: leads = [], isLoading, error } = useLeads();
+const { data: leadsData = [], isLoading, error } = useLeads();
 
-// Filter candidates based on search query and active filter
+  // Force it to always be a real array
+  const leads: any[] = Array.isArray(leadsData) ? leadsData : [];
+
+  // Then replace your filteredCandidates logic with this:
   const filteredCandidates = useMemo(() => {
-    let candidates = leads;
-    
-    // Apply stage filter if active
+    // Start with a guaranteed array
+    let result: any[] = [...leads];
+
+    // Stage filter
     if (activeFilter) {
-      candidates = candidates.filter((candidate: any) =>
-        candidate.linkedJobs?.some((job: any) => job.stage === activeFilter)
-      );
+      result = result.filter((candidate: any) => {
+        if (!candidate || !Array.isArray(candidate.linkedJobs)) return false;
+        return candidate.linkedJobs.some((job: any) => job?.stage === activeFilter);
+      });
     }
-    
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      candidates = candidates.filter((lead: any) =>
-        lead.name?.toLowerCase().includes(query) ||
-        lead.title?.toLowerCase().includes(query) ||
-        lead.location?.toLowerCase().includes(query) ||
-        lead.email?.toLowerCase().includes(query) ||
-        lead.source?.toLowerCase().includes(query)
-      );
+
+    // Search filter
+    if (searchQuery?.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter((lead: any) => {
+        if (!lead) return false;
+        return (
+          lead.name?.toLowerCase().includes(query) ||
+          lead.title?.toLowerCase().includes(query) ||
+          lead.location?.toLowerCase().includes(query) ||
+          lead.email?.toLowerCase().includes(query) ||
+          lead.source?.toLowerCase().includes(query)
+        );
+      });
     }
-    
-    return candidates;
-  }, [leads, searchQuery, activeFilter]);
+
+    return result;
+  }, [leads, activeFilter, searchQuery]);
 
 // Get candidates sorted by selected field
   const recentCandidates = useMemo(() => {

@@ -68,13 +68,13 @@ export async function getAllClients(tenantId: string): Promise<Client[]> {
   // (Vercel's in-memory cache doesn't work across instances)
   
   // Query from DynamoDB
-  const clients = await queryItems<Client>(
+  const result = await queryItems<Client>(
     clientsTable,
     'tenant_id = :tenantId',
     { ':tenantId': tenantId }
   );
   
-  return clients;
+  return result.items || [];
 }
 
 /**

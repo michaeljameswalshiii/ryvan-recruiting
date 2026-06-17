@@ -120,11 +120,13 @@ export async function getAllLeads(tenantId: string): Promise<Lead[]> {
   }
 
   // Query from DynamoDB
-  const leads = await queryItems<Lead>(
+  const result = await queryItems<Lead>(
     leadsTable,
     'tenant_id = :tenantId',
     { ':tenantId': tenantId }
   );
+
+  const leads = result.items || [];
 
   // Cache the result
   await setCached(cacheKey, leads, CACHE_TTL);
@@ -173,12 +175,13 @@ export async function getAllLeadsWithLinkedJobs(tenantId: string): Promise<(Lead
  * Get leads by status
  */
 export async function getLeadsByStatus(tenantId: string, status: string): Promise<Lead[]> {
-  return queryItems<Lead>(
+  const result = await queryItems<Lead>(
     leadsTable,
     'tenant_id = :tenantId AND #status = :status',
     { ':tenantId': tenantId, ':status': status },
     { '#status': 'status' }
   );
+  return result.items || [];
 }
 
 /**

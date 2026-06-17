@@ -52,8 +52,8 @@ export async function getContactsForCompany(
     return cached;
   }
 
-  // Query contacts for this tenant using begins_with on SK
-  const contacts = await queryItems<Contact>(
+// Query contacts for this tenant using begins_with on SK
+  const result = await queryItems<Contact>(
     clientsTable,
     'tenant_id = :tenantId AND begins_with(SK, :contactPrefix)',
     { 
@@ -61,6 +61,8 @@ export async function getContactsForCompany(
       ':contactPrefix': `CONTACT#`
     }
   );
+
+  const contacts = result.items || [];
 
   // Filter by companyId (since we're storing companyId on each contact)
   const filteredContacts = (contacts as CompanyContact[]).filter(c => c.companyId === companyId);
@@ -307,16 +309,45 @@ export async function setPrimaryContact(
 
 /**
  * Add a note/activity to a contact - RELIABLE DIRECT VERSION
+ * Updated to write to direct contact item (and fallback to embedded)
  */
 import { getAllClients, updateClient } from './client-repository';
+import { getSessionTenantId } from '@/lib/server-auth';
 
 export async function addNoteToContact(contactId: string, note: any) {
   try {
-    const { getSessionTenantId } = await import('@/lib/server-auth');
     const tenantId = await getSessionTenantId();
     if (!tenantId) throw new Error("No tenantId");
 
-    // Find the contact item directly
+    // Try direct contact item first (preferred path)
+    const existingContact = await getItem<any>(clientsTable, {
+      tenant_id: tenantId,
+      SK: `CONTACT#${contactId}`,
+    });
+
+    if (existingContact) {
+      const notes = Array.isArray(existingContact.notes) ? [...existingContact.notes] : [];
+      const newNote = {
+        id: `note_${Date.now()}`,
+        type: note.type,
+        content: note.content,
+        createdAt: new Date().toISOString(),
+        createdBy: note.createdBy || "current-user",
+      };
+
+      await updateItem(clientsTable, {
+        tenant_id: tenantId,
+        SK: `CONTACT#${contactId}`,
+      }, {
+        notes: [...notes, newNote],
+        updatedAt: new Date().toISOString(),
+      });
+
+      console.log(`✅ Note added directly to CONTACT#${contactId}`);
+      return { success: true };
+    }
+
+    // Fallback to old embedded path (for backward compat during migration)
     const allClients = await getAllClients(tenantId);
 
     for (const client of allClients) {
@@ -340,7 +371,7 @@ export async function addNoteToContact(contactId: string, note: any) {
           )
         });
 
-        console.log(`✅ Note saved to contact ${contactId}`);
+        console.log(`✅ Note saved to embedded contact ${contactId}`);
         return { success: true };
       }
     }
