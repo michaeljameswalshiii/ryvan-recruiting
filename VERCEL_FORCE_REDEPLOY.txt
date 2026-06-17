@@ -33,3 +33,4 @@ redeploy 06/18/2026 09:30:00 - fix: final reliable note persistence with tenantI
 redeploy 06/18/2026 10:00:00 - fix: force fresh data on contact detail page load (no cache)
 redeploy 06/18/2026 10:30:00 - force redeploy
 redeploy 06/18/2026 10:45:00 - fix: addNoteToContact writes to direct contact item (with fallback)
+redeploy 07/06/2026 14:30:00 - fix: EventTimeline handleAddNote with toast + entityType

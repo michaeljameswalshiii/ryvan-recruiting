@@ -28,7 +28,7 @@ import { toast } from 'sonner';
 // Types - Reusable for both Candidates and Companies
 // ============================================================================
 
-export type EntityType = 'candidate' | 'company';
+export type EntityType = 'candidate' | 'company' | 'job';
 
 type EventType = 
   // Common
@@ -116,9 +116,15 @@ const fetchEvents = useCallback(async () => {
       setLoading(true);
       setError(null);
       
-      const endpoint = entityType === 'candidate' 
-        ? `/api/candidate/${entityId}/events`
-        : `/api/company/${entityId}/events`;
+      // Determine endpoint based on entity type
+      let endpoint: string;
+      if (entityType === 'candidate') {
+        endpoint = `/api/candidate/${entityId}/events`;
+      } else if (entityType === 'job') {
+        endpoint = `/api/jobs/${entityId}/events`;
+      } else {
+        endpoint = `/api/company/${entityId}/events`;
+      }
         
       // Use timestamp cache-busting to prevent stale data
       const timestamp = new Date().getTime();
@@ -155,9 +161,15 @@ const handleAddNote = async () => {
       setAddingNote(true);
       setError(null);
 
-      const endpoint = entityType === 'candidate'
-        ? `/api/candidate/${entityId}/notes`
-        : `/api/company/${entityId}/notes`;
+      // Determine endpoint based on entity type
+      let endpoint: string;
+      if (entityType === 'candidate') {
+        endpoint = `/api/candidate/${entityId}/notes`;
+      } else if (entityType === 'job') {
+        endpoint = `/api/jobs/${entityId}/notes`;
+      } else {
+        endpoint = `/api/company/${entityId}/notes`;
+      }
 
       const response = await fetch(endpoint, {
         method: 'POST',
