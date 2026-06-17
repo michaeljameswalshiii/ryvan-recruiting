@@ -3,21 +3,49 @@
 /**
  * Contact Detail Client Component
  * Displays contact info and allows logging activities
+ * Now uses separate events table (decoupled from client.contacts[].notes)
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
 
-interface ContactDetailClientProps {
-  contact: any;
+interface Activity {
+  id: string;
+  type: string;
+  content: string;
+  createdAt: string;
+  createdBy?: string;
 }
 
-export default function ContactDetailClient({ contact: initialContact }: ContactDetailClientProps) {
-  const [contact, setContact] = useState(initialContact);
+export default function ContactDetailClient({ contact: initialContact }: { contact: any }) {
+  const router = useRouter();
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(true);
   const [noteType, setNoteType] = useState('');
   const [noteContent, setNoteContent] = useState('');
+
+  // Load activities from the new events table
+  const loadActivities = async () => {
+    try {
+      setLoadingActivities(true);
+      const res = await fetch(`/api/data/contacts/${initialContact.id}/notes`);
+      if (res.ok) {
+        const data = await res.json();
+        setActivities(data.events || []);
+      }
+    } catch (e) {
+      console.error('Failed to load activities', e);
+    } finally {
+      setLoadingActivities(false);
+    }
+  };
+
+  useEffect(() => {
+    loadActivities();
+  }, [initialContact.id]);
 
   const handleLogActivity = async () => {
     if (!noteType || !noteContent.trim()) {
@@ -26,44 +54,39 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
     }
 
     try {
-      const response = await fetch(`/api/data/contacts/${contact.id}/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch(`/api/data/contacts/${initialContact.id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: noteType,
           content: noteContent,
-          createdBy: "current-user",
+          createdBy: 'current-user',
+          companyId: initialContact.companyId,
         }),
       });
 
-      if (response.ok) {
-        const newNote = {
-          id: `note_${Date.now()}`,
-          type: noteType,
-          content: noteContent,
-          createdAt: new Date().toISOString(),
-          createdBy: "current-user",
-        };
+      const data = await res.json();
 
-        // Update local state immediately
-        setContact((prev: any) => ({
-          ...prev,
-          notes: [...(prev.notes || []), newNote]
-        }));
-
-        toast.success("Activity logged successfully");
-        setNoteContent("");
-        setNoteType("");
+      if (res.ok) {
+        toast.success('Activity logged successfully');
+        setNoteContent('');
+        setNoteType('');
+        
+        // Refresh the list from server
+        await loadActivities();
+        
+        // Optional: revalidate server components
+        router.refresh();
       } else {
-        toast.error("Failed to log activity");
+        toast.error(data.error || 'Failed to log activity');
       }
     } catch (err: any) {
       console.error(err);
-      toast.error("Failed to log activity");
+      toast.error('Failed to log activity');
     }
   };
 
-  const initials = contact.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || '??';
+  const initials = initialContact.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || '??';
 
   return (
     <div className="max-w-7xl mx-auto p-6">
@@ -83,13 +106,13 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
 
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-semibold">{contact.name}</h1>
-              {contact.isPrimary && (
+              <h1 className="text-3xl font-semibold">{initialContact.name}</h1>
+              {initialContact.isPrimary && (
                 <span className="px-3 py-1 text-sm bg-yellow-100 text-yellow-700 rounded-full font-medium">⭐ Primary</span>
               )}
             </div>
-            <p className="text-gray-600 text-lg">{contact.title}</p>
-            {contact.companyName && <p className="text-sm text-gray-500">{contact.companyName}</p>}
+            <p className="text-gray-600 text-lg">{initialContact.title}</p>
+            {initialContact.companyName && <p className="text-sm text-gray-500">{initialContact.companyName}</p>}
           </div>
         </div>
 
@@ -141,20 +164,22 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
               </Button>
             </div>
 
-{/* Timeline */}
+            {/* Timeline - Now from events table */}
             <div className="space-y-6 max-h-[600px] overflow-y-auto">
-              {Array.isArray(contact.notes) && contact.notes.length > 0 ? (
-                contact.notes
-                  .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                  .map((note: any, i: number) => (
-                    <div key={i} className="border-l-2 border-gray-200 pl-4 py-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="font-medium">{note.type}</span>
-                        <span className="text-gray-500">{new Date(note.createdAt).toLocaleDateString()}</span>
-                      </div>
-                      <p className="text-gray-600 mt-1">{note.content}</p>
+              {loadingActivities ? (
+                <div className="text-center py-8 text-gray-400">Loading activity...</div>
+              ) : activities.length > 0 ? (
+                activities.map((note, i) => (
+                  <div key={note.id || i} className="border-l-2 border-gray-200 pl-4 py-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium">{note.type}</span>
+                      <span className="text-gray-500">
+                        {new Date(note.createdAt).toLocaleDateString()}
+                      </span>
                     </div>
-                  ))
+                    <p className="text-gray-600 mt-1">{note.content}</p>
+                  </div>
+                ))
               ) : (
                 <div className="text-center py-16 text-gray-400">
                   No activity yet. Use the form above to add the first note.

@@ -85,6 +85,16 @@ function mapStatusToPipeline(status: string | undefined): string {
 type SortField = "created_at" | "modified_at";
 type SortDirection = "asc" | "desc";
 
+// === SAFE FILTER HELPER ===
+function safeFilter<T>(arr: any, predicate: (item: T) => boolean): T[] {
+  if (!Array.isArray(arr)) return [];
+  try {
+    return arr.filter(predicate);
+  } catch {
+    return [];
+  }
+}
+
 export default function CandidatesPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -113,33 +123,40 @@ export default function CandidatesPage() {
     }
   };
 
-  const { data: leads = [], isLoading, error } = useLeads();
+const { data: leadsData = [], isLoading, error } = useLeads();
 
-// Filter candidates based on search query and active filter
+  // Force leads to always be a real array
+  const leads: any[] = Array.isArray(leadsData) ? leadsData : [];
+
   const filteredCandidates = useMemo(() => {
-    let candidates = leads;
-    
-    // Apply stage filter if active
+    // Start with a guaranteed array
+    let result: any[] = safeFilter(leads, (lead: any) => true);
+
+    // Stage filter
     if (activeFilter) {
-      candidates = candidates.filter((candidate: any) =>
-        candidate.linkedJobs?.some((job: any) => job.stage === activeFilter)
-      );
+      result = safeFilter(result, (candidate: any) => {
+        if (!candidate || !Array.isArray(candidate.linkedJobs)) return false;
+        return candidate.linkedJobs.some((job: any) => job?.stage === activeFilter);
+      });
     }
-    
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      candidates = candidates.filter((lead: any) =>
-        lead.name?.toLowerCase().includes(query) ||
-        lead.title?.toLowerCase().includes(query) ||
-        lead.location?.toLowerCase().includes(query) ||
-        lead.email?.toLowerCase().includes(query) ||
-        lead.source?.toLowerCase().includes(query)
-      );
+
+    // Search filter
+    if (searchQuery && searchQuery.trim() !== '') {
+      const query = searchQuery.toLowerCase().trim();
+      result = safeFilter(result, (lead: any) => {
+        if (!lead) return false;
+        return (
+          (lead.name && lead.name.toLowerCase().includes(query)) ||
+          (lead.title && lead.title.toLowerCase().includes(query)) ||
+          (lead.location && lead.location.toLowerCase().includes(query)) ||
+          (lead.email && lead.email.toLowerCase().includes(query)) ||
+          (lead.source && lead.source.toLowerCase().includes(query))
+        );
+      });
     }
-    
-    return candidates;
-  }, [leads, searchQuery, activeFilter]);
+
+    return result;
+  }, [leads, activeFilter, searchQuery]);
 
 // Get candidates sorted by selected field
   const recentCandidates = useMemo(() => {

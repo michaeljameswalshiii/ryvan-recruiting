@@ -52,8 +52,8 @@ export async function getContactsForCompany(
     return cached;
   }
 
-  // Query contacts for this tenant using begins_with on SK
-  const contacts = await queryItems<Contact>(
+// Query contacts for this tenant using begins_with on SK
+  const result = await queryItems<Contact>(
     clientsTable,
     'tenant_id = :tenantId AND begins_with(SK, :contactPrefix)',
     { 
@@ -63,7 +63,7 @@ export async function getContactsForCompany(
   );
 
   // Filter by companyId (since we're storing companyId on each contact)
-  const filteredContacts = (contacts as CompanyContact[]).filter(c => c.companyId === companyId);
+  const filteredContacts = (result.items as CompanyContact[]).filter(c => c.companyId === companyId);
 
   // Cache the result
   await setCached(cacheKey, filteredContacts, CACHE_TTL);

@@ -3,6 +3,8 @@ import ContactDetailClient from "@/components/contact/ContactDetailClient";
 import { getAllClients } from "@/lib/db/repositories/client-repository";
 import { getSessionTenantId } from "@/lib/server-auth";
 
+export const revalidate = 0; // Disable caching for this page
+
 interface Props {
   params: Promise<{ contactId: string }>;
 }
