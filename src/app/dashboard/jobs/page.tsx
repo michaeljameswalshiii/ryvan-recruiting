@@ -51,11 +51,14 @@ export default function JobsPage() {
   const [viewMode, setViewMode] = useState<'list' | 'pipeline'>('list');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   
-  // Use TanStack Query hooks
-  const { data: jobsData, isLoading, error, refetch } = useJobs(true);
+// Use TanStack Query hooks
+  const { data: jobsDataRaw, isLoading, error, refetch } = useJobs(true);
   const createJobMutation = useCreateJob();
   const updateJobMutation = useUpdateJob();
   const { data: companies = [] } = useClients();
+
+  // Force it to always be a valid object with jobs array
+  const jobsData: { jobs?: any[]; stats?: any } = jobsDataRaw && typeof jobsDataRaw === 'object' ? jobsDataRaw : { jobs: [] };
 
   // Form state for adding new job
   const [newJobTitle, setNewJobTitle] = useState("");
@@ -66,8 +69,9 @@ export default function JobsPage() {
   const [newJobCompanyId, setNewJobCompanyId] = useState("");
   const [newJobCompanyName, setNewJobCompanyName] = useState("");
 
-// Convert data to Job interface
-  const jobs: Job[] = (jobsData?.jobs || []).map((item: any) => ({
+// Convert data to Job interface - force jobs to be an array
+  const jobsArray = Array.isArray(jobsData?.jobs) ? jobsData.jobs : [];
+  const jobs: Job[] = jobsArray.map((item: any) => ({
     id: item.id,
     title: item.title || "",
     description: item.description || "",
