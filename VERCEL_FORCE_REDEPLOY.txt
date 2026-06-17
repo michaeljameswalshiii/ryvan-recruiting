@@ -30,3 +30,4 @@ vercel deploy 06/16/2026 16:59:09
 VERCEL_DEPLOY_FORCE_TRIGGER
 redeploy 01/20/2026 10:45:00 - fix: ensure contact.notes is always an array
 redeploy 06/18/2026 09:30:00 - fix: final reliable note persistence with tenantId and array handling
+redeploy 06/18/2026 10:00:00 - fix: force fresh data on contact detail page load (no cache)
