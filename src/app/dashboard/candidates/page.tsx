@@ -135,7 +135,7 @@ const { data: leadsData = [], isLoading, error } = useLeads();
     linkedJobIds: Array.isArray(lead.linkedJobIds) ? lead.linkedJobIds : [],
   }));
 
-const filteredCandidates = useMemo(() => {
+  const filteredCandidates = useMemo(() => {
     // Start with a guaranteed array (use normalizedLeads for safety)
     let result: any[] = safeFilter(normalizedLeads, (lead: any) => true);
 

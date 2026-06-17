@@ -109,29 +109,37 @@ function generateId(): string {
 
 /**
  * Get all leads for a tenant
+ * Always returns an array, guarding against corrupted DynamoDB data
  */
 export async function getAllLeads(tenantId: string): Promise<Lead[]> {
   const cacheKey = makeCacheKey(tenantId, 'leads', 'all');
 
   // Try cache first
   const cached = await getCached<Lead[]>(cacheKey);
-  if (cached) {
+  if (cached && Array.isArray(cached)) {
     return cached;
   }
 
-  // Query from DynamoDB
-  const result = await queryItems<Lead>(
-    leadsTable,
-    'tenant_id = :tenantId',
-    { ':tenantId': tenantId }
-  );
+  try {
+    // Query from DynamoDB
+    const result = await queryItems<Lead>(
+      leadsTable,
+      'tenant_id = :tenantId',
+      { ':tenantId': tenantId }
+    );
 
-  const leads = result.items || [];
+    // GUARD: Ensure we always have an array - even if DynamoDB returns corrupted data
+    const leads = Array.isArray(result.items) ? result.items : [];
 
-  // Cache the result
-  await setCached(cacheKey, leads, CACHE_TTL);
+    // Cache the result
+    await setCached(cacheKey, leads, CACHE_TTL);
 
-  return leads;
+    return leads;
+  } catch (error: any) {
+    // Table doesn't exist or other error - return empty array gracefully
+    console.error('[getAllLeads] Error fetching leads:', error?.message);
+    return [];
+  }
 }
 
 /**
@@ -140,6 +148,14 @@ export async function getAllLeads(tenantId: string): Promise<Lead[]> {
  */
 function normalizeLinkedJobIds(linkedJobIds: unknown): string[] {
   return Array.isArray(linkedJobIds) ? linkedJobIds : [];
+}
+
+/**
+ * Normalize a lead's linkedJobs to ensure it's always an array
+ * Guards against corrupted data in DynamoDB
+ */
+function normalizeLinkedJobs(linkedJobs: unknown): LinkedJob[] {
+  return Array.isArray(linkedJobs) ? linkedJobs : [];
 }
 
 /**
@@ -159,17 +175,34 @@ export async function getAllLeadsWithLinkedJobs(tenantId: string): Promise<(Lead
     // NORMALIZE linkedJobIds to always be an array
     const safeLinkedJobIds = normalizeLinkedJobIds(lead.linkedJobIds);
     
+    // NORMALIZE linkedJobs to always be an array (new application-centric model)
+    const safeExistingLinkedJobs = normalizeLinkedJobs(lead.linkedJobs);
+    
     const linkedJobs: LinkedJob[] = [];
     
+    // First, add any explicitly stored linkedJobs
+    if (safeExistingLinkedJobs.length > 0) {
+      for (const linkedJob of safeExistingLinkedJobs) {
+        if (linkedJob.jobId) {
+          linkedJobs.push(linkedJob);
+        }
+      }
+    }
+    
+    // Then, add any from linkedJobIds that aren't already included
     if (safeLinkedJobIds.length > 0) {
       for (const jobId of safeLinkedJobIds) {
-        const job = jobsMap.get(jobId);
-        if (job) {
-          linkedJobs.push({
-            jobId: job.id,
-            jobTitle: job.title,
-            companyName: job.companyName,
-          });
+        const alreadyIncluded = linkedJobs.some(j => j.jobId === jobId);
+        if (!alreadyIncluded) {
+          const job = jobsMap.get(jobId);
+          if (job) {
+            linkedJobs.push({
+              jobId: job.id,
+              jobTitle: job.title,
+              companyName: job.companyName,
+              stage: 'sourced',
+            });
+          }
         }
       }
     }
