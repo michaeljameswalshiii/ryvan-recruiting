@@ -85,6 +85,16 @@ function mapStatusToPipeline(status: string | undefined): string {
 type SortField = "created_at" | "modified_at";
 type SortDirection = "asc" | "desc";
 
+// === SAFE FILTER HELPER ===
+function safeFilter<T>(arr: any, predicate: (item: T) => boolean): T[] {
+  if (!Array.isArray(arr)) return [];
+  try {
+    return arr.filter(predicate);
+  } catch {
+    return [];
+  }
+}
+
 export default function CandidatesPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -115,33 +125,32 @@ export default function CandidatesPage() {
 
 const { data: leadsData = [], isLoading, error } = useLeads();
 
-  // Force it to always be a real array
+  // Force leads to always be a real array
   const leads: any[] = Array.isArray(leadsData) ? leadsData : [];
 
-  // Then replace your filteredCandidates logic with this:
   const filteredCandidates = useMemo(() => {
     // Start with a guaranteed array
-    let result: any[] = [...leads];
+    let result: any[] = safeFilter(leads, (lead: any) => true);
 
     // Stage filter
     if (activeFilter) {
-      result = result.filter((candidate: any) => {
+      result = safeFilter(result, (candidate: any) => {
         if (!candidate || !Array.isArray(candidate.linkedJobs)) return false;
         return candidate.linkedJobs.some((job: any) => job?.stage === activeFilter);
       });
     }
 
     // Search filter
-    if (searchQuery?.trim()) {
+    if (searchQuery && searchQuery.trim() !== '') {
       const query = searchQuery.toLowerCase().trim();
-      result = result.filter((lead: any) => {
+      result = safeFilter(result, (lead: any) => {
         if (!lead) return false;
         return (
-          lead.name?.toLowerCase().includes(query) ||
-          lead.title?.toLowerCase().includes(query) ||
-          lead.location?.toLowerCase().includes(query) ||
-          lead.email?.toLowerCase().includes(query) ||
-          lead.source?.toLowerCase().includes(query)
+          (lead.name && lead.name.toLowerCase().includes(query)) ||
+          (lead.title && lead.title.toLowerCase().includes(query)) ||
+          (lead.location && lead.location.toLowerCase().includes(query)) ||
+          (lead.email && lead.email.toLowerCase().includes(query)) ||
+          (lead.source && lead.source.toLowerCase().includes(query))
         );
       });
     }
