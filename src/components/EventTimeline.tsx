@@ -77,20 +77,38 @@ interface EventTimelineProps {
 }
 
 // ============================================================================
-// Note Types (exactly from user's screenshot)
+// Note Types with ParentCategory
 // ============================================================================
 
-const noteTypes = [
-  { value: 'general', label: 'General Note' },
-  { value: 'phone_call', label: 'Phone call' },
-  { value: 'email_sent', label: 'Email sent' },
-  { value: 'meeting', label: 'Meeting' },
-  { value: 'follow_up', label: 'Follow-up' },
-  { value: 'proposal_sent', label: 'Proposal sent' },
-  { value: 'contract_signed', label: 'Contract signed' },
-  { value: 'placement_made', label: 'Placement made' },
-  { value: 'check_in', label: 'Check-in' },
-  { value: 'other', label: 'Other' },
+interface NoteType {
+  value: string;
+  label: string;
+  parentCategory: string;
+}
+
+const noteTypes: NoteType[] = [
+  // Communication
+  { value: 'phone_call', label: 'Phone Call', parentCategory: 'Communication' },
+  { value: 'email_sent', label: 'Email Sent', parentCategory: 'Communication' },
+  { value: 'voicemail', label: 'Voicemail', parentCategory: 'Communication' },
+  
+  // Meetings
+  { value: 'meeting', label: 'Meeting', parentCategory: 'Meetings' },
+  { value: 'initial_call', label: 'Initial Call', parentCategory: 'Meetings' },
+  { value: 'interview', label: 'Interview', parentCategory: 'Meetings' },
+  
+  // Deal Activities
+  { value: 'proposal_sent', label: 'Proposal Sent', parentCategory: 'Deal Activities' },
+  { value: 'contract_signed', label: 'Contract Signed', parentCategory: 'Deal Activities' },
+  { value: 'placement_made', label: 'Placement Made', parentCategory: 'Deal Activities' },
+  
+  // Tracking  
+  { value: 'follow_up', label: 'Follow-up', parentCategory: 'Tracking' },
+  { value: 'check_in', label: 'Check-in', parentCategory: 'Tracking' },
+  
+  // General
+  { value: 'general', label: 'General Note', parentCategory: 'General' },
+  { value: 'other', label: 'Other', parentCategory: 'General' },
 ];
 
 // ============================================================================
@@ -315,11 +333,11 @@ const handleAddNote = async () => {
     return relativeTime ? `${formatted} (${relativeTime})` : formatted;
   }
 
-  // Loading state
+// Loading state
   if (loading) {
     return (
       <div className="border border-border rounded-lg p-4 bg-background">
-        <h3 className="text-lg font-semibold mb-4">Activity Timeline</h3>
+        <h3 className="text-lg font-semibold mb-4">Category</h3>
         <div className="flex items-center justify-center py-8 text-muted-foreground">
           <div className="flex items-center gap-2">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -332,9 +350,9 @@ const handleAddNote = async () => {
 
   return (
     <div className="border border-border rounded-lg bg-background overflow-hidden">
-      {/* Header */}
+{/* Header */}
       <div className="border-b border-border p-4">
-        <h3 className="text-lg font-semibold">Activity Timeline</h3>
+        <h3 className="text-lg font-semibold">Category</h3>
         <p className="text-sm text-muted-foreground">
           {events.length} event{events.length !== 1 ? 's' : ''} • Chronological
         </p>
