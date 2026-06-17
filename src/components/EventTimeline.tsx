@@ -22,6 +22,7 @@ import {
   Phone,
   Clock
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 // ============================================================================
 // Types - Reusable for both Candidates and Companies
@@ -145,44 +146,51 @@ const fetchEvents = useCallback(async () => {
   }, [initialEvents.length, fetchEvents]);
 
 const handleAddNote = async () => {
-    if (!newNote.trim()) return;
-    
+    if (!newNote.trim()) {
+      setError("Please enter a note");
+      return;
+    }
+
     try {
       setAddingNote(true);
       setError(null);
-      
+
       const endpoint = entityType === 'candidate'
         ? `/api/candidate/${entityId}/notes`
         : `/api/company/${entityId}/notes`;
-        
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          noteText: newNote,
+          noteText: newNote.trim(),
           noteType: noteType,
-          createdBy: 'user@turnkey.com'
+          createdBy: 'current-user',
+          entityType: entityType,   // Important for backend
         }),
       });
-      
+
       if (!response.ok) {
-        throw new Error('Failed to add note');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to add note');
       }
-      
-const data = await response.json();
+
+      const data = await response.json();
+
       if (data.success) {
+        toast.success("Note added successfully");   // Use toast if available
         setNewNote('');
         setNoteType('general');
-        // Add a small delay to ensure the write completes before refetching
+
+        // Refresh events
         await new Promise(resolve => setTimeout(resolve, 300));
-        // Refresh events list with timestamp to prevent caching
         await fetchEvents();
       } else {
         setError(data.error || 'Failed to add note');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to add note:', err);
-      setError('Failed to add note');
+      setError(err.message || 'Failed to add note');
     } finally {
       setAddingNote(false);
     }
