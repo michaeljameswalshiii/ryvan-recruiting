@@ -1,14 +1,13 @@
 ﻿import { notFound } from "next/navigation";
 import ContactDetailClient from "@/components/contact/ContactDetailClient";
-import { getClientById, getAllClients } from "@/lib/db/repositories/client-repository";
+import { getAllClients } from "@/lib/db/repositories/client-repository";
 import { getSessionTenantId } from "@/lib/server-auth";
 
 interface Props {
   params: Promise<{ contactId: string }>;
-  searchParams: { companyId?: string };
 }
 
-export default async function ContactDetailPage({ params, searchParams }: Props) {
+export default async function ContactDetailPage({ params }: Props) {
   const { contactId } = await params;
   const tenantId = await getSessionTenantId();
   
@@ -16,31 +15,18 @@ export default async function ContactDetailPage({ params, searchParams }: Props)
 
   let contact: any = null;
   let companyName = "";
-  let companyId = searchParams.companyId || "";
+  let companyId = "";
 
-  // Try direct lookup via companyId if provided
-  if (companyId) {
-    const client = await getClientById(tenantId, companyId);
-    if (client?.contacts) {
-      contact = client.contacts.find((c: any) => c.id === contactId);
+  // Force fresh data - no cache
+  const clients = await getAllClients(tenantId);
+
+  for (const client of clients) {
+    const found = client.contacts?.find((c: any) => c.id === contactId);
+    if (found) {
+      contact = found;
       companyName = client.name || "";
-    }
-  }
-
-  // Fallback: Search across all companies
-  if (!contact) {
-    const clients = await getAllClients(tenantId);
-    
-    for (const client of clients) {
-      if (client.contacts && client.contacts.length > 0) {
-        const found = client.contacts.find((c: any) => c.id === contactId);
-        if (found) {
-          contact = found;
-          companyName = client.name || "";
-          companyId = client.id;
-          break;
-        }
-      }
+      companyId = client.id;
+      break;
     }
   }
 
@@ -49,26 +35,12 @@ export default async function ContactDetailPage({ params, searchParams }: Props)
     notFound();
   }
 
-// Map contact to compatible format for client component
   const contactData = {
-    id: contact.id || "",
-    name: contact.name || "",
-    email: contact.email || "",
-    phone: contact.phone || "",
-    phones: contact.phones || [],
-    title: contact.title || "",
-    isPrimary: contact.isPrimary || false,
-    notes: contact.notes || [],           // ← Must be array, not string
-    createdAt: contact.createdAt || "",
-    updatedAt: contact.updatedAt || "",
-    // Company info
-    companyId: companyId,
-    companyName: companyName || "",
-    // Additional fields
-    linkedin: (contact as any).linkedin || "",
-    location: (contact as any).location || "",
-    source: (contact as any).source || "",
+    ...contact,
+    companyId,
+    companyName,
+    notes: Array.isArray(contact.notes) ? contact.notes : [],
   };
 
-return <ContactDetailClient contact={contactData} />;
+  return <ContactDetailClient contact={contactData} />;
 }

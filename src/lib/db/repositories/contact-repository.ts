@@ -348,6 +348,8 @@ export async function addNoteToContact(contactId: string, note: any) {
           updatedAt: new Date().toISOString() 
         });
 
+        await invalidateTenantCache(tenantId);
+
         console.log(`✅ Note added to contact ${contactId}`);
         return { success: true };
       }
