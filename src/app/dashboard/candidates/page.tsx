@@ -128,9 +128,16 @@ const { data: leadsData = [], isLoading, error } = useLeads();
   // Force leads to always be a real array
   const leads: any[] = Array.isArray(leadsData) ? leadsData : [];
 
-  const filteredCandidates = useMemo(() => {
-    // Start with a guaranteed array
-    let result: any[] = safeFilter(leads, (lead: any) => true);
+  // Normalize each lead's linkedJobs and linkedJobIds to ensure they're arrays
+  const normalizedLeads = leads.map((lead: any) => ({
+    ...lead,
+    linkedJobs: Array.isArray(lead.linkedJobs) ? lead.linkedJobs : [],
+    linkedJobIds: Array.isArray(lead.linkedJobIds) ? lead.linkedJobIds : [],
+  }));
+
+const filteredCandidates = useMemo(() => {
+    // Start with a guaranteed array (use normalizedLeads for safety)
+    let result: any[] = safeFilter(normalizedLeads, (lead: any) => true);
 
     // Stage filter
     if (activeFilter) {

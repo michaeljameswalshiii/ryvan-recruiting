@@ -135,22 +135,34 @@ export async function getAllLeads(tenantId: string): Promise<Lead[]> {
 }
 
 /**
+ * Normalize a lead's linkedJobIds to ensure it's always an array
+ * Guards against corrupted data in DynamoDB
+ */
+function normalizeLinkedJobIds(linkedJobIds: unknown): string[] {
+  return Array.isArray(linkedJobIds) ? linkedJobIds : [];
+}
+
+/**
  * Get all leads with enriched linked job data
  * Fetches job info for all linkedJobIds and returns enriched leads
+ * Includes defensive normalization for corrupted data
  */
 export async function getAllLeadsWithLinkedJobs(tenantId: string): Promise<(Lead & { linkedJobs: LinkedJob[] })[]> {
   const leads = await getAllLeads(tenantId);
   
-// Get all jobs for the tenant to look up by ID
+  // Get all jobs for the tenant to look up by ID
   const allJobs = await getAllJobs(tenantId);
   const jobsMap = new Map(allJobs.map(job => [job.id, job]));
   
   // Enrich leads with linked job data
   const enrichedLeads = leads.map(lead => {
+    // NORMALIZE linkedJobIds to always be an array
+    const safeLinkedJobIds = normalizeLinkedJobIds(lead.linkedJobIds);
+    
     const linkedJobs: LinkedJob[] = [];
     
-    if (lead.linkedJobIds && lead.linkedJobIds.length > 0) {
-      for (const jobId of lead.linkedJobIds) {
+    if (safeLinkedJobIds.length > 0) {
+      for (const jobId of safeLinkedJobIds) {
         const job = jobsMap.get(jobId);
         if (job) {
           linkedJobs.push({
@@ -164,6 +176,7 @@ export async function getAllLeadsWithLinkedJobs(tenantId: string): Promise<(Lead
     
     return {
       ...lead,
+      linkedJobIds: safeLinkedJobIds,
       linkedJobs,
     };
   });
