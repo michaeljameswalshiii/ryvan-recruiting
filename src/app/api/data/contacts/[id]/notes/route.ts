@@ -7,26 +7,17 @@ export async function POST(
 ) {
   try {
     const { id: contactId } = params;
-    const { type, content, createdBy = 'system' } = await request.json();
+    const body = await request.json();
+
+    const { type, content, createdBy = 'current-user' } = body;
 
     if (!type || !content) {
       return NextResponse.json({ error: 'Type and content are required' }, { status: 400 });
     }
 
-    const newNote = {
-      id: `note_${Date.now()}`,
-      type,
-      content,
-      createdAt: new Date().toISOString(),
-      createdBy,
-    };
+    await addNoteToContact(contactId, { type, content, createdBy });
 
-    await addNoteToContact(contactId, newNote);
-
-    return NextResponse.json({ 
-      success: true, 
-      note: newNote 
-    });
+    return NextResponse.json({ success: true });
 
   } catch (error: any) {
     console.error('Error logging contact activity:', error);
