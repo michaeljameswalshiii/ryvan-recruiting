@@ -6,23 +6,16 @@
  * Now uses separate events table (decoupled from client.contacts[].notes)
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
 import { useJobsForCompany, useCreateJob } from '@/lib/hooks/query-job';
 import { useClients } from '@/lib/hooks/query-client';
 import { SimpleDialog } from '@/components/ui/simple-dialog';
-import EventTimeline from '@/components/EventTimeline';
-
-interface Activity {
-  id: string;
-  type: string;
-  content: string;
-  createdAt: string;
-  createdBy?: string;
-}
+import { logContactActivity, getContactActivities } from '@/lib/actions/contact-actions';
 
 interface ContactDetailClientProps {
   contact: any;
@@ -30,8 +23,6 @@ interface ContactDetailClientProps {
 
 export default function ContactDetailClient({ contact: initialContact }: ContactDetailClientProps) {
   const router = useRouter();
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [loadingActivities, setLoadingActivities] = useState(true);
   const [isAddJobOpen, setIsAddJobOpen] = useState(false);
   const [newJobTitle, setNewJobTitle] = useState('');
 
@@ -44,66 +35,46 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
   const companyId = initialContact.companyId || '';
   const companyName = initialContact.companyName || initialContact.company?.name || '';
 
-  const { data: jobs = [] } = useJobsForCompany(companyId);
+const { data: jobs = [] } = useJobsForCompany(companyId);
   const createJob = useCreateJob();
   useClients();
 
-  const loadActivities = async () => {
-    try {
-      setLoadingActivities(true);
-      const res = await fetch(`/api/data/contacts/${initialContact.id}/notes`);
-      if (res.ok) {
-        const data = await res.json();
-        setActivities(data.events || []);
-      }
-    } catch (e) {
-      console.error('Failed to load activities', e);
-    } finally {
-      setLoadingActivities(false);
-    }
+  // Use React Query to load activities from server action
+  const { data: activities = [], refetch: refetchActivities } = useQuery({
+    queryKey: ['contact-activities', initialContact.id],
+    queryFn: () => getContactActivities(initialContact.id),
+    enabled: !!initialContact.id,
+  });
+  const loadingActivities = false; // Query handles loading state
+
+  // Reset activity form helper
+  const resetActivityForm = () => {
+    setNewActivityContent('');
+    setNewActivityType('');
+    setNewActivityJobId(undefined);
   };
 
-  useEffect(() => {
-    loadActivities();
-  }, [initialContact.id]);
-
-  // Handler for new activity form
+  // Handler for new activity form - uses server action
   const handleLogActivity = async () => {
-    if (!newActivityContent.trim() || !newActivityType) {
-      toast.error("Please select activity type and enter details");
+    if (!newActivityType || !newActivityContent.trim()) {
+      toast.error("Please select activity type and add details");
       return;
     }
 
     try {
-      const res = await fetch(`/api/data/contacts/${initialContact.id}/notes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: newActivityType,
-          content: newActivityContent,
-          createdBy: 'current-user',
-          companyId: initialContact.companyId,
-          relatedJobId: newActivityJobId,
-        }),
+      await logContactActivity({
+        contactId: initialContact.id,
+        companyId: initialContact.companyId,
+        type: newActivityType,
+        content: newActivityContent,
+        relatedJobId: newActivityJobId,
       });
 
-      const data = await res.json();
-
-      if (res.ok) {
-        toast.success("Activity logged successfully");
-        
-        // Reset form
-        setNewActivityContent('');
-        setNewActivityType('');
-        setNewActivityJobId(undefined);
-        setShowLogForm(false);
-        
-        // Refresh activities
-        await loadActivities();
-        router.refresh();
-      } else {
-        toast.error(data.error || 'Failed to log activity');
-      }
+      toast.success("Activity logged successfully!");
+      resetActivityForm();
+      setShowLogForm(false);
+      refetchActivities(); // Refresh the timeline
+      router.refresh();
     } catch (err: any) {
       console.error(err);
       toast.error("Failed to log activity");
