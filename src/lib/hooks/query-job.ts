@@ -86,7 +86,7 @@ export function useJob(jobId: string) {
 export function useCreateJob() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+return useMutation({
     mutationFn: async (jobData: {
       title: string;
       companyId: string;
@@ -94,6 +94,8 @@ export function useCreateJob() {
       status?: string;
       description?: string;
       location?: string;
+      salaryRange?: string;
+      employmentType?: string;
     }) => {
       const formData = new FormData();
       formData.set('title', jobData.title);
@@ -103,6 +105,8 @@ export function useCreateJob() {
       
       if (jobData.description) formData.set('description', jobData.description);
       if (jobData.location) formData.set('location', jobData.location);
+      if (jobData.salaryRange) formData.set('salaryRange', jobData.salaryRange);
+      if (jobData.employmentType) formData.set('employmentType', jobData.employmentType);
 
       console.log('[useCreateJob] Sending FormData:', {
         title: jobData.title,

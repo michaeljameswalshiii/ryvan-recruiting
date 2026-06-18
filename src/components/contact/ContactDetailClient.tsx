@@ -56,6 +56,8 @@ const handleCreateJob = async () => {
         title: newJobTitle,
         description: newJobDescription || "",
         location: newJobLocation || "",
+        salaryRange: newJobSalary || "",
+        employmentType: newJobEmploymentType,
         companyId: companyId,
         companyName: companyName,
         status: "Open",
