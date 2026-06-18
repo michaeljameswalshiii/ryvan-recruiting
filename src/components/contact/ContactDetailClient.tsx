@@ -19,10 +19,16 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
   const companyId = contact.companyId || '';
   const companyName = contact.companyName || contact.company?.name || '';
 
-  // === Job Creation ===
+  // === Job Creation (matched to Jobs page) ===
   const createJob = useCreateJob();
   const [isAddJobOpen, setIsAddJobOpen] = useState(false);
+
+  // Form state for Add Job (expanded to match Jobs page)
   const [newJobTitle, setNewJobTitle] = useState('');
+  const [newJobDescription, setNewJobDescription] = useState('');
+  const [newJobLocation, setNewJobLocation] = useState('');
+  const [newJobSalary, setNewJobSalary] = useState('');
+  const [newJobEmploymentType, setNewJobEmploymentType] = useState('Full-time');
 
   // === Activity Logging ===
   const [showLogForm, setShowLogForm] = useState(false);
@@ -30,12 +36,8 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
   const [newActivityContent, setNewActivityContent] = useState('');
   const [newActivityJobId, setNewActivityJobId] = useState<string | undefined>(undefined);
 
-  // Real Activities Fetch
-  const { 
-    data: activities = [], 
-    refetch: refetchActivities, 
-    isLoading: activitiesLoading 
-  } = useQuery({
+  // Real Activities
+  const { data: activities = [], refetch: refetchActivities, isLoading: activitiesLoading } = useQuery({
     queryKey: ['contact-activities', contact.id],
     queryFn: () => getContactActivities(contact.id),
     enabled: !!contact.id,
@@ -52,16 +54,28 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
       toast.error("Job title is required");
       return;
     }
+
     try {
       await createJob.mutateAsync({
         title: newJobTitle,
+        description: newJobDescription,
+        location: newJobLocation,
+        salaryRange: newJobSalary,
+        employmentType: newJobEmploymentType,
         companyId,
         companyName,
         status: "Open",
       });
+
       toast.success("Job created successfully!");
       setIsAddJobOpen(false);
+      
+      // Reset form
       setNewJobTitle('');
+      setNewJobDescription('');
+      setNewJobLocation('');
+      setNewJobSalary('');
+      setNewJobEmploymentType('Full-time');
     } catch (err) {
       console.error(err);
       toast.error("Failed to create job");
@@ -94,7 +108,7 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
-      {/* Header */}
+      {/* Header - unchanged */}
       <div className="flex justify-between items-start">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
@@ -121,7 +135,7 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column - Activity */}
+        {/* Activity Section */}
         <div className="lg:col-span-8">
           <div className="bg-white border rounded-2xl p-6">
             <div className="flex justify-between items-center mb-6">
@@ -235,7 +249,6 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
 
         {/* Sidebar */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Open Jobs */}
           <div className="bg-white border rounded-2xl p-6">
             <div className="flex justify-between mb-4">
               <h3 className="font-semibold">Open Jobs</h3>
@@ -247,6 +260,7 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
                 <Plus className="h-4 w-4 mr-1" /> Add Job
               </Button>
             </div>
+
             {companyJobs.length > 0 ? (
               <div className="space-y-3">
                 {companyJobs.slice(0, 5).map((job: any) => (
@@ -260,12 +274,10 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
               <p className="text-gray-500 text-sm">No open jobs for this company.</p>
             )}
           </div>
-
-          {/* You can add Quick Stats or AI Tools here later */}
         </div>
       </div>
 
-      {/* Add Job Dialog */}
+      {/* === FULL ADD JOB DIALOG (matched to Jobs page) === */}
       <SimpleDialog
         open={isAddJobOpen}
         onOpenChange={setIsAddJobOpen}
@@ -274,16 +286,75 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
         footer={
           <>
             <Button variant="outline" onClick={() => setIsAddJobOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateJob} disabled={!newJobTitle.trim()}>Create Job</Button>
+            <Button onClick={handleCreateJob} disabled={!newJobTitle.trim() || createJob.isPending}>
+              {createJob.isPending ? "Creating..." : "Create Job"}
+            </Button>
           </>
         }
       >
-        <input
-          value={newJobTitle}
-          onChange={(e) => setNewJobTitle(e.target.value)}
-          placeholder="Job Title *"
-          className="w-full border rounded-md px-3 py-2"
-        />
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium">Company</label>
+            <div className="border rounded-md px-3 py-2 bg-gray-50 text-sm font-medium">
+              {companyName}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Job Title *</label>
+            <input
+              value={newJobTitle}
+              onChange={(e) => setNewJobTitle(e.target.value)}
+              className="w-full border rounded-md px-3 py-2"
+              placeholder="e.g. Senior Software Engineer"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Description</label>
+            <textarea
+              value={newJobDescription}
+              onChange={(e) => setNewJobDescription(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 min-h-[100px]"
+              placeholder="Job responsibilities and requirements..."
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium">Location</label>
+              <input
+                value={newJobLocation}
+                onChange={(e) => setNewJobLocation(e.target.value)}
+                className="w-full border rounded-md px-3 py-2"
+                placeholder="Remote / New York, NY"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Salary Range</label>
+              <input
+                value={newJobSalary}
+                onChange={(e) => setNewJobSalary(e.target.value)}
+                className="w-full border rounded-md px-3 py-2"
+                placeholder="120k - 160k"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Employment Type</label>
+            <select
+              value={newJobEmploymentType}
+              onChange={(e) => setNewJobEmploymentType(e.target.value)}
+              className="w-full border rounded-md px-3 py-2"
+            >
+              <option value="Full-time">Full-time</option>
+              <option value="Part-time">Part-time</option>
+              <option value="Contract">Contract</option>
+              <option value="Internship">Internship</option>
+            </select>
+          </div>
+        </div>
       </SimpleDialog>
     </div>
   );
