@@ -1,6 +1,6 @@
 'use server';
 
-import { createEvent, getEventsForContact } from '../db/repositories';
+import { createEvent, getEventsForContact, updateEvent, deleteEvent } from '../db/repositories';
 import { revalidatePath } from 'next/cache';
 
 export async function logContactActivity(data: {
@@ -30,4 +30,37 @@ export async function logContactActivity(data: {
 export async function getContactActivities(contactId: string) {
   const { events } = await getEventsForContact(contactId);
   return events;
+}
+
+export async function updateContactActivity(data: {
+  contactId: string;
+  activityId: string;
+  type: string;
+  content: string;
+}) {
+  const result = await updateEvent(data.activityId, data.contactId, {
+    type: data.type,
+    content: data.content,
+  });
+
+  if (!result.success) {
+    throw new Error('Failed to update activity event');
+  }
+
+  revalidatePath(`/dashboard/contacts/${data.contactId}`);
+  return result.event;
+}
+
+export async function deleteContactActivity(data: {
+  contactId: string;
+  activityId: string;
+}) {
+  const result = await deleteEvent(data.activityId, data.contactId);
+
+  if (!result.success) {
+    throw new Error('Failed to delete activity event');
+  }
+
+  revalidatePath(`/dashboard/contacts/${data.contactId}`);
+  return { success: true };
 }

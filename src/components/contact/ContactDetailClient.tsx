@@ -5,10 +5,21 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { ArrowLeft, Phone, Edit, Mail, Plus, Sparkles, Search, Users, FileText } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCreateJob } from '@/lib/hooks/query-job';
-import { logContactActivity, getContactActivities } from '@/lib/actions/contact-actions';
+import { logContactActivity, getContactActivities, updateContactActivity, deleteContactActivity } from '@/lib/actions/contact-actions';
 import { SimpleDialog } from '@/components/ui/simple-dialog';
+import ActivityModal from './ActivityModal';
+import ActivityItem from './ActivityItem';
+
+type ActivityEvent = {
+  id: string;
+  type: string;
+  title?: string;
+  description?: string;
+  content?: string;
+  createdAt: string;
+};
 
 interface ContactDetailClientProps {
   contact: any;
@@ -17,6 +28,7 @@ interface ContactDetailClientProps {
 
 export default function ContactDetailClient({ contact, companyJobs = [] }: ContactDetailClientProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const companyName = contact.companyName || contact.company?.name || 'Unknown Company';
   const companyId = contact.companyId || '';
 
@@ -29,23 +41,61 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
   const [newJobSalary, setNewJobSalary] = useState('');
   const [newJobEmploymentType, setNewJobEmploymentType] = useState('Full-time');
 
-  // Activity
-  const [showLogForm, setShowLogForm] = useState(false);
-  const [newActivityType, setNewActivityType] = useState('');
-  const [newActivityContent, setNewActivityContent] = useState('');
-  const [newActivityJobId, setNewActivityJobId] = useState<string | undefined>(undefined);
+  // Activity Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<ActivityEvent | null>(null);
 
-  const { data: activities = [], refetch: refetchActivities } = useQuery({
+  const { data: activities = [] } = useQuery({
     queryKey: ['contact-activities', contact.id],
     queryFn: () => getContactActivities(contact.id),
     enabled: !!contact.id,
   });
 
-  const resetActivityForm = () => {
-    setNewActivityType('');
-    setNewActivityContent('');
-    setNewActivityJobId(undefined);
-  };
+  // Create/Update Activity Mutation
+  const saveActivityMutation = useMutation({
+    mutationFn: async (data: { type: string; content: string; title?: string }) => {
+      if (editingActivity?.id) {
+        return updateContactActivity({
+          contactId: contact.id,
+          activityId: editingActivity.id,
+          type: data.type,
+          content: data.content,
+        });
+      } else {
+        return logContactActivity({
+          contactId: contact.id,
+          type: data.type,
+          content: data.content,
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contact-activities', contact.id] });
+      setIsModalOpen(false);
+      setEditingActivity(null);
+      toast.success(editingActivity ? 'Activity updated!' : 'Activity logged!');
+    },
+    onError: (error: any) => {
+      console.error(error);
+      toast.error(error?.message || 'Failed to save activity');
+    },
+  });
+
+  // Delete Activity Mutation
+  const deleteActivityMutation = useMutation({
+    mutationFn: (activityId: string) => deleteContactActivity({
+      contactId: contact.id,
+      activityId,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contact-activities', contact.id] });
+      toast.success('Activity deleted!');
+    },
+    onError: (error: any) => {
+      console.error(error);
+      toast.error(error?.message || 'Failed to delete activity');
+    },
+  });
 
   const handleCreateJob = async () => {
     if (!newJobTitle.trim()) {
@@ -82,27 +132,27 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
     }
   };
 
-  const handleLogActivity = async () => {
-    if (!newActivityType || !newActivityContent.trim()) {
-      toast.error("Please select activity type and add details");
-      return;
-    }
+  // Modal handlers
+  const openCreateModal = () => {
+    setEditingActivity(null);
+    setIsModalOpen(true);
+  };
 
-    try {
-      await logContactActivity({
-        contactId: contact.id,
-        type: newActivityType,
-        content: newActivityContent,
-        relatedJobId: newActivityJobId,
-      });
+  const openEditModal = (activity: ActivityEvent) => {
+    setEditingActivity(activity);
+    setIsModalOpen(true);
+  };
 
-      toast.success("Activity logged successfully!");
-      resetActivityForm();
-      setShowLogForm(false);
-      refetchActivities();
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to log activity");
+  const handleSaveActivity = (data: { type: string; title: string; description?: string; date?: string }) => {
+    saveActivityMutation.mutate({
+      type: data.type,
+      content: data.description || data.title,
+    });
+  };
+
+  const handleDeleteActivity = (activityId: string) => {
+    if (confirm('Are you sure you want to delete this activity?')) {
+      deleteActivityMutation.mutate(activityId);
     }
   };
 
@@ -139,90 +189,30 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
           <div className="bg-white border rounded-2xl p-6">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-semibold">Activity & Relationship Tracking</h3>
-              <Button onClick={() => setShowLogForm(true)} size="sm">
+              <Button onClick={openCreateModal} size="sm">
                 <Plus className="h-4 w-4 mr-2" /> Log New Activity
               </Button>
             </div>
 
-            {/* Log Form */}
-            {showLogForm && (
-              <div className="mb-8 bg-gray-50 border rounded-xl p-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div className="md:col-span-2">
-                    <label className="text-sm font-medium block mb-1">Activity Type *</label>
-                    <select 
-                      value={newActivityType}
-                      onChange={(e) => setNewActivityType(e.target.value)}
-                      className="w-full border rounded-md px-3 py-2.5 text-sm"
-                    >
-                      <option value="">— Select Activity Type —</option>
-                      <optgroup label="OUTREACH & COMMUNICATION">
-                        <option value="01 Left Voicemail">01 Left Voicemail outreach</option>
-                        <option value="02 Email Sent">02 Email Sent outreach</option>
-                        <option value="03 Email Received">03 Email Received inbound</option>
-                        <option value="04 Text Sent">04 Text Sent outreach</option>
-                        <option value="05 Text Received">05 Text Received inbound</option>
-                        <option value="06 LinkedIn Message Sent">06 LinkedIn Message Sent outreach</option>
-                        <option value="07 Conversation Engaged">07 Conversation engaged</option>
-                        <option value="08 No Answer">08 No Answer / No Response attempt</option>
-                      </optgroup>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium block mb-1">Related Job (optional)</label>
-                    <select 
-                      value={newActivityJobId || ''}
-                      onChange={(e) => setNewActivityJobId(e.target.value || undefined)}
-                      className="w-full border rounded-md px-3 py-2.5 text-sm"
-                    >
-                      <option value="">None</option>
-                      {companyJobs?.map((job: any) => (
-                        <option key={job.id} value={job.id}>{job.title}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <textarea
-                  value={newActivityContent}
-                  onChange={(e) => setNewActivityContent(e.target.value)}
-                  placeholder="Add detailed notes..."
-                  className="w-full border rounded-md px-3 py-3 min-h-[120px] text-sm"
-                />
-
-                <div className="flex justify-end gap-3 mt-4">
-                  <Button variant="outline" onClick={() => {setShowLogForm(false); resetActivityForm();}}>Cancel</Button>
-                  <Button onClick={handleLogActivity} disabled={!newActivityType || !newActivityContent.trim()}>Log Activity</Button>
-                </div>
-              </div>
-            )}
-
-            {/* Activity List with Nice Colors */}
+            {/* Activity List */}
             <div className="space-y-4">
               {activities.length === 0 ? (
                 <p className="text-gray-500 py-12 text-center">No activities logged yet</p>
               ) : (
-                activities.map((act: any, i: number) => {
-                  const isBD = act.type.includes('BD') || act.type.includes('Proposal') || act.type.includes('Contract');
-                  const isOutreach = act.type.includes('Voicemail') || act.type.includes('Email') || act.type.includes('Text');
-                  return (
-                    <div 
-                      key={i} 
-                      className={`border-l-4 pl-4 py-4 rounded-lg bg-white shadow-sm ${
-                        isBD ? 'border-blue-500' : isOutreach ? 'border-amber-500' : 'border-emerald-500'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="font-semibold text-lg">{act.type}</div>
-                        <div className="text-xs text-gray-500 whitespace-nowrap">
-                          {new Date(act.createdAt).toLocaleDateString()}
-                        </div>
-                      </div>
-                      <p className="text-gray-700 mt-2 leading-relaxed">{act.content}</p>
-                    </div>
-                  );
-                })
+                activities.map((act: any, i: number) => (
+                  <ActivityItem
+                    key={act.id || i}
+                    activity={{
+                      id: act.id,
+                      type: act.type,
+                      title: act.content?.slice(0, 50),
+                      description: act.content,
+                      createdAt: act.createdAt,
+                    }}
+                    onEdit={openEditModal}
+                    onDelete={handleDeleteActivity}
+                  />
+                ))
               )}
             </div>
           </div>
@@ -307,6 +297,24 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
           </div>
         </div>
       </SimpleDialog>
+
+      {/* Activity Modal */}
+      <ActivityModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingActivity(null);
+        }}
+        activity={editingActivity ? {
+          id: editingActivity.id,
+          type: editingActivity.type,
+          title: editingActivity.title || editingActivity.content?.slice(0, 30) || '',
+          description: editingActivity.description || editingActivity.content,
+          date: editingActivity.createdAt ? new Date(editingActivity.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        } : null}
+        onSave={handleSaveActivity}
+        isLoading={saveActivityMutation.isPending}
+      />
     </div>
   );
 }
