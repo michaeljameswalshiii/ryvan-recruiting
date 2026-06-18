@@ -48,6 +48,13 @@ interface ActivityModalProps {
   isLoading?: boolean;
 }
 
+// Helper to format date safely
+const formatDateSafe = (d: string | undefined): string => {
+  if (!d) return new Date().toISOString().split('T')[0];
+  if (typeof d === 'string') return d.split('T')[0];
+  return new Date(d).toISOString().split('T')[0];
+};
+
 export default function ActivityModal({
   isOpen,
   onClose,
@@ -66,10 +73,10 @@ export default function ActivityModal({
     if (activity) {
       setForm({
         id: activity.id,
-        type: activity.type,
-        title: activity.title,
+        type: activity.type || '',
+        title: activity.title || '',
         description: activity.description || '',
-        date: activity.date ? new Date(activity.date).toISOString().split('T')[0] : '',
+        date: formatDateSafe(activity.date),
       });
     } else {
       setForm({
