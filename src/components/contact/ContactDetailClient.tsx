@@ -6,9 +6,8 @@ import { toast } from 'sonner';
 import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useCreateJob } from '@/lib/hooks/query-job';
-import { logContactActivity, getContactActivities } from '@/lib/actions/contact-actions';
 import { SimpleDialog } from '@/components/ui/simple-dialog';
-import { EventTimeline } from '@/components/shared/EventTimeline';
+import { logContactActivity, getContactActivities } from '@/lib/actions/contact-actions';
 
 interface ContactDetailClientProps {
   contact: any;
@@ -19,7 +18,7 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
   const companyId = contact.companyId || '';
   const companyName = contact.companyName || contact.company?.name || '';
 
-  // === Job Creation (matched to Jobs page) ===
+  // Job Creation (matched to Jobs page)
   const createJob = useCreateJob();
   const [isAddJobOpen, setIsAddJobOpen] = useState(false);
 
@@ -108,7 +107,7 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
-      {/* Header - unchanged */}
+      {/* Header */}
       <div className="flex justify-between items-start">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
@@ -235,14 +234,27 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
               </div>
             )}
 
-            {/* Timeline */}
+            {/* Simple Timeline Display */}
             {activitiesLoading ? (
               <p className="text-center py-8 text-gray-500">Loading activities...</p>
+            ) : activities.length === 0 ? (
+              <p className="text-center py-8 text-gray-500">No activity yet</p>
             ) : (
-              <EventTimeline 
-                events={activities} 
-                emptyMessage="No activity yet"
-              />
+              <div className="space-y-4">
+                {activities.map((activity: any, index: number) => (
+                  <div key={activity.id || index} className="border rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-medium">{activity.type}</span>
+                      {activity.createdAt && (
+                        <span className="text-xs text-gray-500">
+                          {new Date(activity.createdAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-700">{activity.content}</p>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -277,7 +289,7 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
         </div>
       </div>
 
-      {/* === FULL ADD JOB DIALOG (matched to Jobs page) === */}
+      {/* === ADD JOB DIALOG (matched to Jobs page) === */}
       <SimpleDialog
         open={isAddJobOpen}
         onOpenChange={setIsAddJobOpen}
