@@ -1,4 +1,4 @@
-﻿Triggering rebuild
+﻿﻿Triggering rebuild
 2025-07-06 00:00 UTC - Fixed default export for CandidateDetailClient
 2026-06-18 00:00 UTC - Delete Company button fully wired up in Kanban view
 2026-06-27 14:00 UTC - Verified delete functionality: confirmed working in both list and Kanban views
@@ -30,5 +30,7 @@ vercel deploy 06/16/2026 16:59:09
 VERCEL_DEPLOY_FORCE_TRIGGER
 redeploy 01/20/2026 10:45:00 - fix: ensure contact.notes is always an array
 redeploy 06/18/2026 09:30:00 - fix: final reliable note persistence with tenantId and array handling
-Force redeploy: 2026-06-17 12:06:20 UTC - fresh contact detail + note cache invalidation
-Force redeploy: 2026-06-17 12:24:39 UTC - contact notes API route update
+redeploy 06/18/2026 10:00:00 - fix: force fresh data on contact detail page load (no cache)
+redeploy 06/18/2026 10:30:00 - force redeploy
+redeploy 06/18/2026 10:45:00 - fix: addNoteToContact writes to direct contact item (with fallback)
+redeploy 07/06/2026 14:30:00 - fix: EventTimeline handleAddNote with toast + entityType

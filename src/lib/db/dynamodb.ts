@@ -105,6 +105,7 @@ export async function getItem<T>(table: string, key: Record<string, any>): Promi
 
 /**
  * Get multiple items by key condition
+ * Now supports pagination with Limit, ScanIndexForward, and ExclusiveStartKey
  */
 export async function queryItems<T>(
   table: string,
@@ -125,19 +126,19 @@ export async function queryItems<T>(
     ExpressionAttributeValues: marshall(expressionValues),
     ExpressionAttributeNames: options?.expressionNames,
     Limit: options?.limit,
-    ScanIndexForward: options?.ScanIndexForward ?? true,
-    ExclusiveStartKey: options?.ExclusiveStartKey,
+    ScanIndexForward: options?.ScanIndexForward,
+    ExclusiveStartKey: options?.ExclusiveStartKey ? marshall(options.ExclusiveStartKey) : undefined,
   });
   
   const response = await client.send(command);
   
   if (!response.Items || response.Items.length === 0) {
-    return { items: [], lastEvaluatedKey: response.LastEvaluatedKey };
+    return { items: [] };
   }
   
   return {
     items: response.Items.map(item => unmarshall(item) as T),
-    lastEvaluatedKey: response.LastEvaluatedKey,
+    lastEvaluatedKey: response.LastEvaluatedKey ? unmarshall(response.LastEvaluatedKey) : undefined,
   };
 }
 

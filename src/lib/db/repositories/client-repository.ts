@@ -74,7 +74,7 @@ export async function getAllClients(tenantId: string): Promise<Client[]> {
     { ':tenantId': tenantId }
   );
   
-  return result.items;
+  return result.items || [];
 }
 
 /**

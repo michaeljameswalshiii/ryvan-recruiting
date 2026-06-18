@@ -62,8 +62,10 @@ export async function getContactsForCompany(
     }
   );
 
+  const contacts = result.items || [];
+
   // Filter by companyId (since we're storing companyId on each contact)
-  const filteredContacts = (result.items as CompanyContact[]).filter(c => c.companyId === companyId);
+  const filteredContacts = (contacts as CompanyContact[]).filter(c => c.companyId === companyId);
 
   // Cache the result
   await setCached(cacheKey, filteredContacts, CACHE_TTL);
@@ -306,28 +308,53 @@ export async function setPrimaryContact(
 }
 
 /**
- * Add a note/activity to a contact - FIXED VERSION
+ * Add a note/activity to a contact - RELIABLE DIRECT VERSION
+ * Updated to write to direct contact item (and fallback to embedded)
  */
 import { getAllClients, updateClient } from './client-repository';
+import { getSessionTenantId } from '@/lib/server-auth';
 
 export async function addNoteToContact(contactId: string, note: any) {
   try {
-    // Get tenantId from session (this is the missing piece)
-    const { getSessionTenantId } = await import('@/lib/server-auth');
     const tenantId = await getSessionTenantId();
+    if (!tenantId) throw new Error("No tenantId");
 
-    if (!tenantId) {
-      throw new Error('No tenant ID found in session');
+    // Try direct contact item first (preferred path)
+    const existingContact = await getItem<any>(clientsTable, {
+      tenant_id: tenantId,
+      SK: `CONTACT#${contactId}`,
+    });
+
+    if (existingContact) {
+      const notes = Array.isArray(existingContact.notes) ? [...existingContact.notes] : [];
+      const newNote = {
+        id: `note_${Date.now()}`,
+        type: note.type,
+        content: note.content,
+        createdAt: new Date().toISOString(),
+        createdBy: note.createdBy || "current-user",
+      };
+
+      await updateItem(clientsTable, {
+        tenant_id: tenantId,
+        SK: `CONTACT#${contactId}`,
+      }, {
+        notes: [...notes, newNote],
+        updatedAt: new Date().toISOString(),
+      });
+
+      console.log(`✅ Note added directly to CONTACT#${contactId}`);
+      return { success: true };
     }
 
-    const allClients = await getAllClients(tenantId);   // ← Now passing tenantId
+    // Fallback to old embedded path (for backward compat during migration)
+    const allClients = await getAllClients(tenantId);
 
     for (const client of allClients) {
       const contactIndex = client.contacts?.findIndex((c: any) => c.id === contactId);
-      
       if (contactIndex !== -1) {
         const contact = client.contacts[contactIndex];
-        const notes = contact.notes || [];
+        const notes = Array.isArray(contact.notes) ? [...contact.notes] : [];
 
         notes.push({
           id: `note_${Date.now()}`,
@@ -337,27 +364,21 @@ export async function addNoteToContact(contactId: string, note: any) {
           createdBy: note.createdBy || "current-user",
         });
 
-        client.contacts[contactIndex] = { 
-          ...contact, 
-          notes, 
-          updatedAt: new Date().toISOString() 
-        };
-
-        await updateClient(tenantId, client.id, {   // ← Pass tenantId here too
-          contacts: client.contacts,
-          updatedAt: new Date().toISOString() 
+        // Direct update using map for all contacts
+        await updateClient(tenantId, client.id, {
+          contacts: client.contacts.map((c: any, i: number) => 
+            i === contactIndex ? { ...c, notes, updatedAt: new Date().toISOString() } : c
+          )
         });
 
-        await invalidateTenantCache(tenantId);
-
-        console.log(`✅ Note added to contact ${contactId}`);
+        console.log(`✅ Note saved to embedded contact ${contactId}`);
         return { success: true };
       }
     }
 
-    throw new Error(`Contact ${contactId} not found`);
+    throw new Error(`Contact not found: ${contactId}`);
   } catch (error: any) {
-    console.error('❌ addNoteToContact failed:', error.message || error);
+    console.error('addNoteToContact error:', error);
     throw error;
   }
 }

@@ -1,13 +1,11 @@
-/**
- * Event Repository
- * Server-only data access layer for Activity Events (Notes)
- * Uses separate turnkey-events table with PK/SK pattern
- * 
- * @serverOnly
- */
-
 import { getSessionTenantId } from '@/lib/server-auth';
-import { putItem, queryItems } from '../dynamodb';
+import {
+  putItem,
+  queryItems,
+  getItem,
+  deleteItem,
+  updateItem,
+} from '../dynamodb';
 
 const EVENTS_TABLE = process.env.DYNAMODB_EVENTS_TABLE || 'turnkey-events';
 
@@ -114,7 +112,7 @@ export async function getRecentEvents(limit = 50) {
   const tenantId = await getSessionTenantId();
   if (!tenantId) return { events: [] };
 
-  const result = await queryItems<any>(
+const result = await queryItems<any>(
     EVENTS_TABLE,
     'PK = :pk',
     { ':pk': tenantId },

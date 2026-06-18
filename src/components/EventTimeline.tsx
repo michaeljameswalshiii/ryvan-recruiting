@@ -22,12 +22,13 @@ import {
   Phone,
   Clock
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 // ============================================================================
 // Types - Reusable for both Candidates and Companies
 // ============================================================================
 
-export type EntityType = 'candidate' | 'company';
+export type EntityType = 'candidate' | 'company' | 'job';
 
 type EventType = 
   // Common
@@ -76,20 +77,38 @@ interface EventTimelineProps {
 }
 
 // ============================================================================
-// Note Types (exactly from user's screenshot)
+// Note Types with ParentCategory
 // ============================================================================
 
-const noteTypes = [
-  { value: 'general', label: 'General Note' },
-  { value: 'phone_call', label: 'Phone call' },
-  { value: 'email_sent', label: 'Email sent' },
-  { value: 'meeting', label: 'Meeting' },
-  { value: 'follow_up', label: 'Follow-up' },
-  { value: 'proposal_sent', label: 'Proposal sent' },
-  { value: 'contract_signed', label: 'Contract signed' },
-  { value: 'placement_made', label: 'Placement made' },
-  { value: 'check_in', label: 'Check-in' },
-  { value: 'other', label: 'Other' },
+interface NoteType {
+  value: string;
+  label: string;
+  parentCategory: string;
+}
+
+const noteTypes: NoteType[] = [
+  // Communication
+  { value: 'phone_call', label: 'Phone Call', parentCategory: 'Communication' },
+  { value: 'email_sent', label: 'Email Sent', parentCategory: 'Communication' },
+  { value: 'voicemail', label: 'Voicemail', parentCategory: 'Communication' },
+  
+  // Meetings
+  { value: 'meeting', label: 'Meeting', parentCategory: 'Meetings' },
+  { value: 'initial_call', label: 'Initial Call', parentCategory: 'Meetings' },
+  { value: 'interview', label: 'Interview', parentCategory: 'Meetings' },
+  
+  // Deal Activities
+  { value: 'proposal_sent', label: 'Proposal Sent', parentCategory: 'Deal Activities' },
+  { value: 'contract_signed', label: 'Contract Signed', parentCategory: 'Deal Activities' },
+  { value: 'placement_made', label: 'Placement Made', parentCategory: 'Deal Activities' },
+  
+  // Tracking  
+  { value: 'follow_up', label: 'Follow-up', parentCategory: 'Tracking' },
+  { value: 'check_in', label: 'Check-in', parentCategory: 'Tracking' },
+  
+  // General
+  { value: 'general', label: 'General Note', parentCategory: 'General' },
+  { value: 'other', label: 'Other', parentCategory: 'General' },
 ];
 
 // ============================================================================
@@ -115,9 +134,15 @@ const fetchEvents = useCallback(async () => {
       setLoading(true);
       setError(null);
       
-      const endpoint = entityType === 'candidate' 
-        ? `/api/candidate/${entityId}/events`
-        : `/api/company/${entityId}/events`;
+      // Determine endpoint based on entity type
+      let endpoint: string;
+      if (entityType === 'candidate') {
+        endpoint = `/api/candidate/${entityId}/events`;
+      } else if (entityType === 'job') {
+        endpoint = `/api/jobs/${entityId}/events`;
+      } else {
+        endpoint = `/api/company/${entityId}/events`;
+      }
         
       // Use timestamp cache-busting to prevent stale data
       const timestamp = new Date().getTime();
@@ -145,44 +170,57 @@ const fetchEvents = useCallback(async () => {
   }, [initialEvents.length, fetchEvents]);
 
 const handleAddNote = async () => {
-    if (!newNote.trim()) return;
-    
+    if (!newNote.trim()) {
+      setError("Please enter a note");
+      return;
+    }
+
     try {
       setAddingNote(true);
       setError(null);
-      
-      const endpoint = entityType === 'candidate'
-        ? `/api/candidate/${entityId}/notes`
-        : `/api/company/${entityId}/notes`;
-        
+
+      // Determine endpoint based on entity type
+      let endpoint: string;
+      if (entityType === 'candidate') {
+        endpoint = `/api/candidate/${entityId}/notes`;
+      } else if (entityType === 'job') {
+        endpoint = `/api/jobs/${entityId}/notes`;
+      } else {
+        endpoint = `/api/company/${entityId}/notes`;
+      }
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          noteText: newNote,
+          noteText: newNote.trim(),
           noteType: noteType,
-          createdBy: 'user@turnkey.com'
+          createdBy: 'current-user',
+          entityType: entityType,   // Important for backend
         }),
       });
-      
+
       if (!response.ok) {
-        throw new Error('Failed to add note');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to add note');
       }
-      
-const data = await response.json();
+
+      const data = await response.json();
+
       if (data.success) {
+        toast.success("Note added successfully");   // Use toast if available
         setNewNote('');
         setNoteType('general');
-        // Add a small delay to ensure the write completes before refetching
+
+        // Refresh events
         await new Promise(resolve => setTimeout(resolve, 300));
-        // Refresh events list with timestamp to prevent caching
         await fetchEvents();
       } else {
         setError(data.error || 'Failed to add note');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to add note:', err);
-      setError('Failed to add note');
+      setError(err.message || 'Failed to add note');
     } finally {
       setAddingNote(false);
     }
@@ -295,11 +333,11 @@ const data = await response.json();
     return relativeTime ? `${formatted} (${relativeTime})` : formatted;
   }
 
-  // Loading state
+// Loading state
   if (loading) {
     return (
       <div className="border border-border rounded-lg p-4 bg-background">
-        <h3 className="text-lg font-semibold mb-4">Activity Timeline</h3>
+        <h3 className="text-lg font-semibold mb-4">Category</h3>
         <div className="flex items-center justify-center py-8 text-muted-foreground">
           <div className="flex items-center gap-2">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -312,9 +350,9 @@ const data = await response.json();
 
   return (
     <div className="border border-border rounded-lg bg-background overflow-hidden">
-      {/* Header */}
+{/* Header */}
       <div className="border-b border-border p-4">
-        <h3 className="text-lg font-semibold">Activity Timeline</h3>
+        <h3 className="text-lg font-semibold">Category</h3>
         <p className="text-sm text-muted-foreground">
           {events.length} event{events.length !== 1 ? 's' : ''} • Chronological
         </p>

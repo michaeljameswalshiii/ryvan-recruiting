@@ -30,8 +30,9 @@ export function LinkJobModal({
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Fetch all jobs
-  const { data: allJobs = [], isLoading } = useJobs();
+// Fetch all jobs - ensure always an array
+  const { data: jobsData = [], isLoading } = useJobs();
+  const allJobs: any[] = Array.isArray(jobsData) ? jobsData : [];
 
   // Initialize selected job IDs when modal opens
   useEffect(() => {

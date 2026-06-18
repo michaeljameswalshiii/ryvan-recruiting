@@ -12,7 +12,7 @@ interface Props {
 export default async function ContactDetailPage({ params }: Props) {
   const { contactId } = await params;
   const tenantId = await getSessionTenantId();
-  
+
   if (!tenantId) notFound();
 
   let contact: any = null;
@@ -26,7 +26,7 @@ export default async function ContactDetailPage({ params }: Props) {
     const found = client.contacts?.find((c: any) => c.id === contactId);
     if (found) {
       contact = found;
-      companyName = client.name || "";
+      companyName = client.name ?? "";
       companyId = client.id;
       break;
     }
@@ -44,11 +44,5 @@ export default async function ContactDetailPage({ params }: Props) {
     notes: Array.isArray(contact.notes) ? contact.notes : [],
   };
 
-  return (
-    <ContactDetailClient
-      contact={contactData}
-      companyId={contactData.companyId}
-      companyName={contactData.companyName || contactData.company?.name}
-    />
-  );
+  return <ContactDetailClient contact={contactData} />;
 }
