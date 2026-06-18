@@ -3,6 +3,8 @@ import ContactDetailClient from "@/components/contact/ContactDetailClient";
 import { getAllClients } from "@/lib/db/repositories/client-repository";
 import { getSessionTenantId } from "@/lib/server-auth";
 
+export const revalidate = 0; // Disable caching for this page
+
 interface Props {
   params: Promise<{ contactId: string }>;
 }
@@ -10,7 +12,7 @@ interface Props {
 export default async function ContactDetailPage({ params }: Props) {
   const { contactId } = await params;
   const tenantId = await getSessionTenantId();
-  
+
   if (!tenantId) notFound();
 
   let contact: any = null;
@@ -24,7 +26,7 @@ export default async function ContactDetailPage({ params }: Props) {
     const found = client.contacts?.find((c: any) => c.id === contactId);
     if (found) {
       contact = found;
-      companyName = client.name || "";
+      companyName = client.name ?? "";
       companyId = client.id;
       break;
     }

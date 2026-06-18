@@ -3,7 +3,7 @@
 /**
  * Contact Detail Client Component
  * Displays contact info and allows logging activities
- * Updated to use decoupled events table
+ * Now uses separate events table (decoupled from client.contacts[].notes)
  */
 
 import { useState, useEffect } from 'react';
@@ -11,6 +11,9 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
+import { useJobsForCompany, useCreateJob } from '@/lib/hooks/query-job';
+import { useClients } from '@/lib/hooks/query-client';
+import { SimpleDialog } from '@/components/ui/simple-dialog';
 
 interface Activity {
   id: string;
@@ -26,13 +29,20 @@ interface ContactDetailClientProps {
 
 export default function ContactDetailClient({ contact: initialContact }: ContactDetailClientProps) {
   const router = useRouter();
-  const [contact, setContact] = useState(initialContact);
-  const [noteType, setNoteType] = useState('');
-  const [noteContent, setNoteContent] = useState('');
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(true);
+  const [noteType, setNoteType] = useState('');
+  const [noteContent, setNoteContent] = useState('');
+  const [isAddJobOpen, setIsAddJobOpen] = useState(false);
+  const [newJobTitle, setNewJobTitle] = useState('');
 
-  // Load activities from the new events table
+  const companyId = initialContact.companyId || '';
+  const companyName = initialContact.companyName || initialContact.company?.name || '';
+
+  const { data: jobs = [] } = useJobsForCompany(companyId);
+  const createJob = useCreateJob();
+  useClients();
+
   const loadActivities = async () => {
     try {
       setLoadingActivities(true);
@@ -54,50 +64,70 @@ export default function ContactDetailClient({ contact: initialContact }: Contact
 
   const handleLogActivity = async () => {
     if (!noteType || !noteContent.trim()) {
-      toast.error("Please select a type and enter a note");
+      toast.error('Please select a type and enter a note');
       return;
     }
 
-try {
-      const response = await fetch(`/api/data/contacts/${contact.id}/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+    try {
+      const res = await fetch(`/api/data/contacts/${initialContact.id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: noteType,
           content: noteContent,
-          createdBy: "current-user",
-          companyId: contact.companyId,
+          createdBy: 'current-user',
+          companyId: initialContact.companyId,
         }),
       });
 
-if (response.ok) {
-        toast.success("Activity logged successfully");
-        setNoteContent("");
-        setNoteType("");
-        
-        // Refresh the list from server
+      const data = await res.json();
+
+      if (res.ok) {
+        toast.success('Activity logged successfully');
+        setNoteContent('');
+        setNoteType('');
         await loadActivities();
-        
-        // Optional: revalidate server components
         router.refresh();
       } else {
-        toast.error("Failed to log activity");
+        toast.error(data.error || 'Failed to log activity');
       }
     } catch (err: any) {
       console.error(err);
-      toast.error("Failed to log activity");
+      toast.error('Failed to log activity');
     }
   };
 
-  const initials = contact.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || '??';
+  const handleCreateJob = async () => {
+    if (!newJobTitle.trim()) {
+      toast.error('Job title is required');
+      return;
+    }
+
+    try {
+      await createJob.mutateAsync({
+        title: newJobTitle,
+        companyId,
+        companyName,
+        status: 'Open',
+      });
+
+      toast.success('Job created successfully');
+      setIsAddJobOpen(false);
+      setNewJobTitle('');
+    } catch (err) {
+      toast.error('Failed to create job');
+    }
+  };
+
+  const initials =
+    initialContact.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || '??';
 
   return (
     <div className="max-w-7xl mx-auto p-6">
-      {/* Header */}
       <div className="flex items-start justify-between mb-8">
         <div className="flex items-center gap-4">
-          <button 
-            onClick={() => window.history.back()} 
+          <button
+            onClick={() => window.history.back()}
             className="text-gray-500 hover:text-gray-700 p-2 -ml-2"
           >
             <ArrowLeft className="h-6 w-6" />
@@ -109,13 +139,17 @@ if (response.ok) {
 
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-semibold">{contact.name}</h1>
-              {contact.isPrimary && (
-                <span className="px-3 py-1 text-sm bg-yellow-100 text-yellow-700 rounded-full font-medium">⭐ Primary</span>
+              <h1 className="text-3xl font-semibold">{initialContact.name}</h1>
+              {initialContact.isPrimary && (
+                <span className="px-3 py-1 text-sm bg-yellow-100 text-yellow-700 rounded-full font-medium">
+                  ⭐ Primary
+                </span>
               )}
             </div>
-            <p className="text-gray-600 text-lg">{contact.title}</p>
-            {contact.companyName && <p className="text-sm text-gray-500">{contact.companyName}</p>}
+            <p className="text-gray-600 text-lg">{initialContact.title}</p>
+            {initialContact.companyName && (
+              <p className="text-sm text-gray-500">{initialContact.companyName}</p>
+            )}
           </div>
         </div>
 
@@ -133,12 +167,10 @@ if (response.ok) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left - Activity & Notes */}
         <div className="lg:col-span-8">
           <div className="bg-white border rounded-2xl p-6">
             <h3 className="text-lg font-semibold mb-4">ACTIVITY & NOTES</h3>
 
-            {/* Log Form */}
             <div className="flex gap-3 mb-6">
               <select
                 value={noteType}
@@ -167,7 +199,6 @@ if (response.ok) {
               </Button>
             </div>
 
-{/* Timeline */}
             <div className="space-y-6 max-h-[600px] overflow-y-auto">
               {loadingActivities ? (
                 <div className="text-center py-8 text-gray-400">Loading activity...</div>
@@ -192,14 +223,30 @@ if (response.ok) {
           </div>
         </div>
 
-        {/* Right Sidebar */}
         <div className="lg:col-span-4 space-y-6">
           <div className="bg-white border rounded-2xl p-6">
-            <div className="flex justify-between mb-4">
+            <div className="flex justify-between items-center mb-4">
               <h3 className="font-semibold">Open Jobs</h3>
-              <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" /> Add Job</Button>
+              <Button size="sm" variant="outline" onClick={() => setIsAddJobOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" /> Add Job
+              </Button>
             </div>
-            <p className="text-gray-500 text-sm">No open jobs for this company.</p>
+
+            {jobs.filter((j: any) => (j.status || '').toLowerCase() !== 'closed').length > 0 ? (
+              <div className="space-y-3">
+                {jobs
+                  .filter((j: any) => (j.status || '').toLowerCase() !== 'closed')
+                  .slice(0, 5)
+                  .map((job: any) => (
+                    <div key={job.id} className="border rounded-lg p-3 text-sm">
+                      <div className="font-medium">{job.title}</div>
+                      <div className="text-gray-500 text-xs">{job.location}</div>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">No open jobs for this company.</p>
+            )}
           </div>
 
           <div className="bg-white border rounded-2xl p-6">
@@ -219,14 +266,53 @@ if (response.ok) {
           <div className="bg-white border rounded-2xl p-6">
             <h3 className="font-semibold mb-4">AI Client Tools</h3>
             <div className="space-y-3">
-              <Button className="w-full justify-start" variant="default">✨ Draft Outreach / Follow-Up</Button>
-              <Button className="w-full justify-start" variant="secondary">🔍 Research This Contact</Button>
-              <Button className="w-full justify-start" variant="secondary">👥 Find Similar Contacts</Button>
-              <Button className="w-full justify-start" variant="secondary">📋 Generate Client Summary</Button>
+              <Button className="w-full justify-start" variant="default">
+                ✨ Draft Outreach / Follow-Up
+              </Button>
+              <Button className="w-full justify-start" variant="secondary">
+                🔍 Research This Contact
+              </Button>
+              <Button className="w-full justify-start" variant="secondary">
+                👥 Find Similar Contacts
+              </Button>
+              <Button className="w-full justify-start" variant="secondary">
+                📋 Generate Client Summary
+              </Button>
             </div>
           </div>
         </div>
       </div>
+
+      <SimpleDialog
+        open={isAddJobOpen}
+        onOpenChange={setIsAddJobOpen}
+        title="Add New Job"
+        description={`For ${companyName}`}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setIsAddJobOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateJob} disabled={createJob.isPending}>
+              {createJob.isPending ? 'Creating...' : 'Create Job'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium">Company</label>
+            <input value={companyName} disabled className="w-full border rounded-md px-3 py-2 bg-gray-50" />
+          </div>
+
+          <input
+            placeholder="Job Title *"
+            value={newJobTitle}
+            onChange={(e) => setNewJobTitle(e.target.value)}
+            className="w-full border rounded-md px-3 py-2"
+          />
+        </div>
+      </SimpleDialog>
     </div>
   );
 }
