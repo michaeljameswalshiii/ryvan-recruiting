@@ -12,6 +12,7 @@ type Activity = {
 };
 
 const activityTypes = [
+  // OUTREACH & COMMUNICATION
   '01 Left Voicemail',
   '02 Email Sent',
   '03 Email Received',
@@ -20,6 +21,23 @@ const activityTypes = [
   '06 LinkedIn Message Sent',
   '07 Conversation Engaged',
   '08 No Answer',
+  // BUSINESS DEVELOPMENT
+  '09 Initial Outreach',
+  '10 Qualification Call',
+  '11 Discovery Call',
+  '12 Demo / Presentation',
+  '13 Proposal Sent',
+  '14 Proposal Review',
+  '15 Contract Sent',
+  '16 Contract Signed',
+  // MEETINGS & FOLLOW-UP
+  '17 Meeting Scheduled',
+  '18 Meeting Completed',
+  '19 Follow-up Needed',
+  '20 Follow-up Completed',
+  // OTHER
+  '21 Note',
+  '22 Other',
 ];
 
 interface ActivityModalProps {
