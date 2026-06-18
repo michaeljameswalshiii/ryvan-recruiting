@@ -76,7 +76,7 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
       setNewJobSalary('');
       setNewJobEmploymentType('Full-time');
 
-      router.refresh();   // ← This is the key fix
+      router.refresh();   // This is the key fix
     } catch (err: any) {
       console.error(err);
       toast.error(err?.message || "Failed to create job");
@@ -168,7 +168,6 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
                         <option value="07 Conversation Engaged">07 Conversation engaged</option>
                         <option value="08 No Answer">08 No Answer / No Response attempt</option>
                       </optgroup>
-                      {/* Add other optgroups as needed */}
                     </select>
                   </div>
 
@@ -284,8 +283,6 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
               placeholder="Job Title"
             />
           </div>
-
-          {/* Add more fields here as needed */}
         </div>
       </SimpleDialog>
     </div>
