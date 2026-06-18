@@ -68,7 +68,7 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
 
       toast.success("Job created successfully!");
 
-      // Close dialog + refresh the page to show new job in sidebar
+      // Close dialog + reset form
       setIsAddJobOpen(false);
       setNewJobTitle('');
       setNewJobDescription('');
@@ -76,7 +76,11 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
       setNewJobSalary('');
       setNewJobEmploymentType('Full-time');
 
-      router.refresh();   // This is the key fix
+      // Refresh page to fetch fresh data (this is the key!)
+      router.refresh();
+      
+      // Small delay then re-refresh to ensure we get latest from DB
+      setTimeout(() => router.refresh(), 500);
     } catch (err: any) {
       console.error(err);
       toast.error(err?.message || "Failed to create job");
