@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
+import { ArrowLeft, Phone, Edit, Mail, Plus, Sparkles, Search, Users, FileText } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useCreateJob } from '@/lib/hooks/query-job';
 import { logContactActivity, getContactActivities } from '@/lib/actions/contact-actions';
@@ -17,10 +17,10 @@ interface ContactDetailClientProps {
 
 export default function ContactDetailClient({ contact, companyJobs = [] }: ContactDetailClientProps) {
   const router = useRouter();
+  const companyName = contact.companyName || contact.company?.name || 'Unknown Company';
   const companyId = contact.companyId || '';
-  const companyName = contact.companyName || contact.company?.name || '';
 
-  // === Job Creation ===
+  // Job Creation
   const createJob = useCreateJob();
   const [isAddJobOpen, setIsAddJobOpen] = useState(false);
   const [newJobTitle, setNewJobTitle] = useState('');
@@ -29,13 +29,12 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
   const [newJobSalary, setNewJobSalary] = useState('');
   const [newJobEmploymentType, setNewJobEmploymentType] = useState('Full-time');
 
-  // === Activity Logging ===
+  // Activity
   const [showLogForm, setShowLogForm] = useState(false);
   const [newActivityType, setNewActivityType] = useState('');
   const [newActivityContent, setNewActivityContent] = useState('');
   const [newActivityJobId, setNewActivityJobId] = useState<string | undefined>(undefined);
 
-  // Real Activities
   const { data: activities = [], refetch: refetchActivities } = useQuery({
     queryKey: ['contact-activities', contact.id],
     queryFn: () => getContactActivities(contact.id),
@@ -68,7 +67,6 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
 
       toast.success("Job created successfully!");
 
-      // Close dialog + reset form
       setIsAddJobOpen(false);
       setNewJobTitle('');
       setNewJobDescription('');
@@ -76,10 +74,7 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
       setNewJobSalary('');
       setNewJobEmploymentType('Full-time');
 
-      // Refresh page to fetch fresh data (this is the key!)
       router.refresh();
-      
-      // Small delay then re-refresh to ensure we get latest from DB
       setTimeout(() => router.refresh(), 500);
     } catch (err: any) {
       console.error(err);
@@ -112,50 +107,49 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
+    <div className="max-w-7xl mx-auto p-6">
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className="flex justify-between items-start mb-8">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
-            <ArrowLeft className="h-4 w-4" />
+          <Button variant="ghost" size="sm" onClick={() => router.back()}>
+            <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold">{contact.name}</h1>
-            <p className="text-gray-500">{companyName}</p>
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center text-white text-3xl font-bold">
+              {contact.name?.[0] || '?'}
+            </div>
+            <div>
+              <h1 className="text-4xl font-bold">{contact.name}</h1>
+              <p className="text-xl text-gray-600">{contact.title || 'Contact'}</p>
+              <p className="text-gray-500">{companyName}</p>
+            </div>
           </div>
         </div>
 
         <div className="flex gap-3">
-          <Button variant="outline"><Phone className="h-4 w-4 mr-2" /> Call</Button>
-          <Button variant="outline"><Edit className="h-4 w-4 mr-2" /> Edit</Button>
-          <Button><Mail className="h-4 w-4 mr-2" /> Send Email</Button>
+          <Button variant="outline" size="lg"><Phone className="mr-2 h-5 w-5" /> Call</Button>
+          <Button variant="outline" size="lg"><Edit className="mr-2 h-5 w-5" /> Edit</Button>
+          <Button size="lg"><Mail className="mr-2 h-5 w-5" /> Send Email</Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Activity Section */}
-        <div className="lg:col-span-8">
+        {/* Main Activity Area */}
+        <div className="lg:col-span-7">
           <div className="bg-white border rounded-2xl p-6">
             <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="font-semibold text-lg">Activity & Relationship Tracking</h3>
-                <p className="text-sm text-gray-500">BD Outreach • Client Engagement • Disposition</p>
-              </div>
-              <Button 
-                onClick={() => setShowLogForm(true)}
-                variant="outline" 
-                size="sm"
-              >
-                <Plus className="h-4 w-4 mr-1" /> Log New Activity
+              <h3 className="text-xl font-semibold">Activity & Relationship Tracking</h3>
+              <Button onClick={() => setShowLogForm(true)} size="sm">
+                <Plus className="h-4 w-4 mr-2" /> Log New Activity
               </Button>
             </div>
 
             {/* Log Form */}
             {showLogForm && (
-              <div className="mb-8 border rounded-xl p-6 bg-gray-50">
+              <div className="mb-8 bg-gray-50 border rounded-xl p-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div className="md:col-span-2">
-                    <label className="text-sm font-medium block mb-1">Activity Type</label>
+                    <label className="text-sm font-medium block mb-1">Activity Type *</label>
                     <select 
                       value={newActivityType}
                       onChange={(e) => setNewActivityType(e.target.value)}
@@ -197,50 +191,53 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
                   className="w-full border rounded-md px-3 py-3 min-h-[120px] text-sm"
                 />
 
-                <div className="flex justify-end gap-3 mt-5">
-                  <Button variant="outline" onClick={() => { setShowLogForm(false); resetActivityForm(); }}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleLogActivity} disabled={!newActivityType || !newActivityContent.trim()}>
-                    Log Activity
-                  </Button>
+                <div className="flex justify-end gap-3 mt-4">
+                  <Button variant="outline" onClick={() => {setShowLogForm(false); resetActivityForm();}}>Cancel</Button>
+                  <Button onClick={handleLogActivity} disabled={!newActivityType || !newActivityContent.trim()}>Log Activity</Button>
                 </div>
               </div>
             )}
 
-            {/* Activities List */}
+            {/* Activity List with Nice Colors */}
             <div className="space-y-4">
               {activities.length === 0 ? (
-                <p className="text-gray-500 py-8 text-center">No activities yet</p>
+                <p className="text-gray-500 py-12 text-center">No activities logged yet</p>
               ) : (
-                activities.map((act: any, i: number) => (
-                  <div key={i} className="border rounded-lg p-4">
-                    <div className="font-medium">{act.type}</div>
-                    <div className="text-sm text-gray-600 mt-1">{act.content}</div>
-                    <div className="text-xs text-gray-400 mt-2">
-                      {new Date(act.createdAt).toLocaleDateString()}
+                activities.map((act: any, i: number) => {
+                  const isBD = act.type.includes('BD') || act.type.includes('Proposal') || act.type.includes('Contract');
+                  const isOutreach = act.type.includes('Voicemail') || act.type.includes('Email') || act.type.includes('Text');
+                  return (
+                    <div 
+                      key={i} 
+                      className={`border-l-4 pl-4 py-4 rounded-lg bg-white shadow-sm ${
+                        isBD ? 'border-blue-500' : isOutreach ? 'border-amber-500' : 'border-emerald-500'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="font-semibold text-lg">{act.type}</div>
+                        <div className="text-xs text-gray-500 whitespace-nowrap">
+                          {new Date(act.createdAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <p className="text-gray-700 mt-2 leading-relaxed">{act.content}</p>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
         </div>
 
-        {/* Sidebar - Open Jobs */}
-        <div className="lg:col-span-4 space-y-6">
+        {/* Right Sidebar */}
+        <div className="lg:col-span-5 space-y-6">
+          {/* Open Jobs */}
           <div className="bg-white border rounded-2xl p-6">
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between mb-4">
               <h3 className="font-semibold">Open Jobs</h3>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={() => setIsAddJobOpen(true)}
-              >
+              <Button size="sm" variant="outline" onClick={() => setIsAddJobOpen(true)}>
                 <Plus className="h-4 w-4 mr-1" /> Add Job
               </Button>
             </div>
-
             {companyJobs?.length > 0 ? (
               <div className="space-y-3">
                 {companyJobs.slice(0, 5).map((job: any) => (
@@ -253,6 +250,27 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
             ) : (
               <p className="text-gray-500 text-sm">No open jobs for this company.</p>
             )}
+          </div>
+
+          {/* AI Client Tools */}
+          <div className="bg-white border rounded-2xl p-6">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-600" /> AI Client Tools
+            </h3>
+            <div className="space-y-2">
+              <Button variant="default" className="w-full justify-start bg-blue-600 hover:bg-blue-700" size="lg">
+                <Sparkles className="mr-3 h-5 w-5" /> Draft Outreach / Follow-Up
+              </Button>
+              <Button variant="outline" className="w-full justify-start" size="lg">
+                <Search className="mr-3 h-5 w-5" /> Research This Contact
+              </Button>
+              <Button variant="outline" className="w-full justify-start" size="lg">
+                <Users className="mr-3 h-5 w-5" /> Find Similar Contacts
+              </Button>
+              <Button variant="outline" className="w-full justify-start" size="lg">
+                <FileText className="mr-3 h-5 w-5" /> Generate Client Summary
+              </Button>
+            </div>
           </div>
         </div>
       </div>
