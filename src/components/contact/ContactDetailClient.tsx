@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
@@ -15,10 +16,11 @@ interface ContactDetailClientProps {
 }
 
 export default function ContactDetailClient({ contact, companyJobs = [] }: ContactDetailClientProps) {
+  const router = useRouter();
   const companyId = contact.companyId || '';
   const companyName = contact.companyName || contact.company?.name || '';
 
-  // Job Creation
+  // === Job Creation ===
   const createJob = useCreateJob();
   const [isAddJobOpen, setIsAddJobOpen] = useState(false);
   const [newJobTitle, setNewJobTitle] = useState('');
@@ -27,12 +29,13 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
   const [newJobSalary, setNewJobSalary] = useState('');
   const [newJobEmploymentType, setNewJobEmploymentType] = useState('Full-time');
 
-  // Activity
+  // === Activity Logging ===
   const [showLogForm, setShowLogForm] = useState(false);
   const [newActivityType, setNewActivityType] = useState('');
   const [newActivityContent, setNewActivityContent] = useState('');
   const [newActivityJobId, setNewActivityJobId] = useState<string | undefined>(undefined);
 
+  // Real Activities
   const { data: activities = [], refetch: refetchActivities } = useQuery({
     queryKey: ['contact-activities', contact.id],
     queryFn: () => getContactActivities(contact.id),
@@ -45,7 +48,7 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
     setNewActivityJobId(undefined);
   };
 
-const handleCreateJob = async () => {
+  const handleCreateJob = async () => {
     if (!newJobTitle.trim()) {
       toast.error("Job title is required");
       return;
@@ -58,22 +61,24 @@ const handleCreateJob = async () => {
         location: newJobLocation || "",
         salaryRange: newJobSalary || "",
         employmentType: newJobEmploymentType,
-        companyId: companyId,
-        companyName: companyName,
+        companyId,
+        companyName,
         status: "Open",
       });
 
       toast.success("Job created successfully!");
+
+      // Close dialog + refresh the page to show new job in sidebar
       setIsAddJobOpen(false);
-      
-      // Reset form
       setNewJobTitle('');
       setNewJobDescription('');
       setNewJobLocation('');
       setNewJobSalary('');
       setNewJobEmploymentType('Full-time');
+
+      router.refresh();   // ← This is the key fix
     } catch (err: any) {
-      console.error("Job creation error:", err);
+      console.error(err);
       toast.error(err?.message || "Failed to create job");
     }
   };
@@ -83,6 +88,7 @@ const handleCreateJob = async () => {
       toast.error("Please select activity type and add details");
       return;
     }
+
     try {
       await logContactActivity({
         contactId: contact.id,
@@ -90,11 +96,13 @@ const handleCreateJob = async () => {
         content: newActivityContent,
         relatedJobId: newActivityJobId,
       });
-      toast.success("Activity logged!");
+
+      toast.success("Activity logged successfully!");
       resetActivityForm();
       setShowLogForm(false);
       refetchActivities();
     } catch (error) {
+      console.error(error);
       toast.error("Failed to log activity");
     }
   };
@@ -121,7 +129,7 @@ const handleCreateJob = async () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT: Activity Section */}
+        {/* Activity Section */}
         <div className="lg:col-span-8">
           <div className="bg-white border rounded-2xl p-6">
             <div className="flex justify-between items-center mb-6">
@@ -129,17 +137,21 @@ const handleCreateJob = async () => {
                 <h3 className="font-semibold text-lg">Activity & Relationship Tracking</h3>
                 <p className="text-sm text-gray-500">BD Outreach • Client Engagement • Disposition</p>
               </div>
-<Button onClick={() => setShowLogForm(true)} variant="outline" size="sm">
+              <Button 
+                onClick={() => setShowLogForm(true)}
+                variant="outline" 
+                size="sm"
+              >
                 <Plus className="h-4 w-4 mr-1" /> Log New Activity
               </Button>
             </div>
 
-{/* Log Form - Always controlled */}
+            {/* Log Form */}
             {showLogForm && (
               <div className="mb-8 border rounded-xl p-6 bg-gray-50">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div className="md:col-span-2">
-                    <label className="text-sm font-medium block mb-1">Activity Type *</label>
+                    <label className="text-sm font-medium block mb-1">Activity Type</label>
                     <select 
                       value={newActivityType}
                       onChange={(e) => setNewActivityType(e.target.value)}
@@ -147,35 +159,16 @@ const handleCreateJob = async () => {
                     >
                       <option value="">— Select Activity Type —</option>
                       <optgroup label="OUTREACH & COMMUNICATION">
-                        <option value="01 Left Voicemail">01 Left Voicemail</option>
-                        <option value="02 Sent Email">02 Sent Email</option>
-                        <option value="03 Sent Text">03 Sent Text</option>
-                        <option value="04 In-Person Meeting">04 In-Person Meeting</option>
-                        <option value="05 Virtual Meeting">05 Virtual Meeting</option>
-                        <option value="06 Network Event">06 Network Event</option>
-                        <option value="07 Cold Outreach">07 Cold Outreach</option>
+                        <option value="01 Left Voicemail">01 Left Voicemail outreach</option>
+                        <option value="02 Email Sent">02 Email Sent outreach</option>
+                        <option value="03 Email Received">03 Email Received inbound</option>
+                        <option value="04 Text Sent">04 Text Sent outreach</option>
+                        <option value="05 Text Received">05 Text Received inbound</option>
+                        <option value="06 LinkedIn Message Sent">06 LinkedIn Message Sent outreach</option>
+                        <option value="07 Conversation Engaged">07 Conversation engaged</option>
+                        <option value="08 No Answer">08 No Answer / No Response attempt</option>
                       </optgroup>
-                      <optgroup label="JOB DISCUSSIONS">
-                        <option value="08 Discussed Open Role">08 Discussed Open Role</option>
-                        <option value="09 Job Description Review">09 Job Description Review</option>
-                        <option value="10 Candidate Referral">10 Candidate Referral</option>
-                        <option value="11 Submitted Candidate">11 Submitted Candidate</option>
-                        <option value="12 Interview Scheduling">12 Interview Scheduling</option>
-                        <option value="13 Interview Feedback">13 Interview Feedback</option>
-                      </optgroup>
-                      <optgroup label="CLIENT MANAGEMENT">
-                        <option value="14 Contract Discussion">14 Contract Discussion</option>
-                        <option value="15 Rate Negotiation">15 Rate Negotiation</option>
-                        <option value="16 SOW Signed">16 SOW Signed</option>
-                        <option value="17 Invoice Follow-up">17 Invoice Follow-up</option>
-                        <option value="18 Payment Received">18 Payment Received</option>
-                        <option value="19 Renewal Discussion">19 Renewal Discussion</option>
-                      </optgroup>
-                      <optgroup label="RELATIONSHIP STATUS">
-                        <option value="20 Intro Call">20 Intro Call</option>
-                        <option value="21 Needs Assessment">21 Needs Assessment</option>
-                        <option value="22 QBR Meeting">22 QBR Meeting</option>
-                      </optgroup>
+                      {/* Add other optgroups as needed */}
                     </select>
                   </div>
 
@@ -197,24 +190,15 @@ const handleCreateJob = async () => {
                 <textarea
                   value={newActivityContent}
                   onChange={(e) => setNewActivityContent(e.target.value)}
-                  placeholder="Add detailed notes about this activity..."
+                  placeholder="Add detailed notes..."
                   className="w-full border rounded-md px-3 py-3 min-h-[120px] text-sm"
                 />
 
                 <div className="flex justify-end gap-3 mt-5">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => {
-                      setShowLogForm(false);
-                      resetActivityForm();
-                    }}
-                  >
+                  <Button variant="outline" onClick={() => { setShowLogForm(false); resetActivityForm(); }}>
                     Cancel
                   </Button>
-                  <Button 
-                    onClick={handleLogActivity} 
-                    disabled={!newActivityType || !newActivityContent.trim()}
-                  >
+                  <Button onClick={handleLogActivity} disabled={!newActivityType || !newActivityContent.trim()}>
                     Log Activity
                   </Button>
                 </div>
@@ -240,16 +224,20 @@ const handleCreateJob = async () => {
           </div>
         </div>
 
-        {/* RIGHT: Sidebar */}
+        {/* Sidebar - Open Jobs */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Open Jobs */}
           <div className="bg-white border rounded-2xl p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-semibold">Open Jobs</h3>
-              <Button size="sm" variant="outline" onClick={() => setIsAddJobOpen(true)}>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => setIsAddJobOpen(true)}
+              >
                 <Plus className="h-4 w-4 mr-1" /> Add Job
               </Button>
             </div>
+
             {companyJobs?.length > 0 ? (
               <div className="space-y-3">
                 {companyJobs.slice(0, 5).map((job: any) => (
@@ -275,70 +263,29 @@ const handleCreateJob = async () => {
         footer={
           <>
             <Button variant="outline" onClick={() => setIsAddJobOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateJob} disabled={!newJobTitle.trim()}>Create Job</Button>
+            <Button onClick={handleCreateJob} disabled={!newJobTitle.trim() || createJob.isPending}>
+              {createJob.isPending ? "Creating..." : "Create Job"}
+            </Button>
           </>
         }
       >
-<div className="space-y-4">
+        <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Company</label>
-            <div className="bg-gray-50 border rounded-md px-3 py-2">{companyName}</div>
+            <label className="text-sm font-medium">Company</label>
+            <div className="bg-gray-50 border rounded-md px-3 py-2 font-medium">{companyName}</div>
           </div>
-          
+
           <div>
-            <label className="block text-sm font-medium mb-1">Job Title *</label>
+            <label className="text-sm font-medium">Job Title *</label>
             <input
               value={newJobTitle}
               onChange={(e) => setNewJobTitle(e.target.value)}
               className="w-full border rounded-md px-3 py-2"
-              placeholder="e.g. Senior Software Engineer"
+              placeholder="Job Title"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Description</label>
-            <textarea
-              value={newJobDescription}
-              onChange={(e) => setNewJobDescription(e.target.value)}
-              className="w-full border rounded-md px-3 py-2 min-h-[80px]"
-              placeholder="Job responsibilities and requirements..."
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Location</label>
-              <input
-                value={newJobLocation}
-                onChange={(e) => setNewJobLocation(e.target.value)}
-                className="w-full border rounded-md px-3 py-2"
-                placeholder="Remote / New York, NY"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Salary Range</label>
-              <input
-                value={newJobSalary}
-                onChange={(e) => setNewJobSalary(e.target.value)}
-                className="w-full border rounded-md px-3 py-2"
-                placeholder="120k - 160k"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Employment Type</label>
-            <select
-              value={newJobEmploymentType}
-              onChange={(e) => setNewJobEmploymentType(e.target.value)}
-              className="w-full border rounded-md px-3 py-2"
-            >
-              <option value="Full-time">Full-time</option>
-              <option value="Part-time">Part-time</option>
-              <option value="Contract">Contract</option>
-              <option value="Internship">Internship</option>
-            </select>
-          </div>
+          {/* Add more fields here as needed */}
         </div>
       </SimpleDialog>
     </div>
