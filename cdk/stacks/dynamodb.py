@@ -171,3 +171,34 @@ class DataStack(Stack):
             ),
             projection_type=dynamodb.ProjectionType.ALL,
         )
+
+        # Issues table for tracking defects and enhancements
+        self.issues_table = dynamodb.Table(
+            self,
+            "Issues",
+            table_name="turnkey-issues",
+            partition_key=dynamodb.Attribute(
+                name="tenant_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
+                name="id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
+        # GSI for status filtering
+        self.issues_table.add_global_secondary_index(
+            index_name="TenantStatusIndex",
+            partition_key=dynamodb.Attribute(
+                name="tenant_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
+                name="status",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            projection_type=dynamodb.ProjectionType.ALL,
+        )

@@ -37,6 +37,7 @@ const sourcesTable = process.env.DYNAMODB_SOURCES_TABLE || 'turnkey-sources';
 const emailLogsTable = process.env.DYNAMODB_EMAIL_LOGS_TABLE || 'turnkey-email-logs';
 const eventsTable = process.env.DYNAMODB_EVENTS_TABLE || 'turnkey-events';
 const bedrockUsageTable = process.env.DYNAMODB_BEDROCK_USAGE_TABLE || 'turnkey-bedrock-usage';
+const issuesTable = process.env.DYNAMODB_ISSUES_TABLE || 'turnkey-issues';
 
 // ============================================================================
 // Client
@@ -77,6 +78,7 @@ const tableNames = {
   sources: sourcesTable,
   emailLogs: emailLogsTable,
   events: eventsTable,
+  issues: issuesTable,
 } as const;
 
 // ============================================================================
@@ -160,6 +162,7 @@ export async function putItem<T>(table: string, item: T): Promise<T> {
 
 /**
  * Update an item
+ * Note: expressionValues must be raw JS values - do NOT marshall them
  */
 export async function updateItem<T>(
   table: string,
@@ -170,11 +173,12 @@ export async function updateItem<T>(
 ): Promise<T | null> {
   const client = getClient();
   
+  // Use raw expressionValues - DynamoDB UpdateCommand handles conversion
   const command = new UpdateItemCommand({
     TableName: table,
     Key: marshall(key),
     UpdateExpression: updateExpression,
-    ExpressionAttributeValues: marshall(expressionValues),
+    ExpressionAttributeValues: expressionValues as any,
     ExpressionAttributeNames: expressionNames,
     ReturnValues: 'ALL_NEW',
   });
@@ -325,4 +329,5 @@ export {
   emailLogsTable,
   eventsTable,
   bedrockUsageTable,
+  issuesTable,
 };

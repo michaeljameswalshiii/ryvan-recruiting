@@ -89,39 +89,43 @@ export function useCreateJob() {
   return useMutation({
     mutationFn: async (jobData: {
       title: string;
-      description?: string;
-      location?: string;
-      salaryRange?: string;
-      employmentType?: string;
       companyId: string;
       companyName: string;
       status?: string;
+      description?: string;
+      location?: string;
     }) => {
       const formData = new FormData();
       formData.set('title', jobData.title);
-      if (jobData.description) formData.set('description', jobData.description);
-      if (jobData.location) formData.set('location', jobData.location);
-      if (jobData.salaryRange) formData.set('salaryRange', jobData.salaryRange);
-      if (jobData.employmentType) formData.set('employmentType', jobData.employmentType);
       formData.set('companyId', jobData.companyId);
       formData.set('companyName', jobData.companyName);
-      if (jobData.status) formData.set('status', jobData.status);
+      formData.set('status', jobData.status || 'Open');
       
+      if (jobData.description) formData.set('description', jobData.description);
+      if (jobData.location) formData.set('location', jobData.location);
+
+      console.log('[useCreateJob] Sending FormData:', {
+        title: jobData.title,
+        companyId: jobData.companyId,
+      });
+
       const result = await createJobAction(formData);
+      
       if (result.error) {
-        throw new Error(result.error);
+        throw new Error(result.error || 'Failed to create job');
       }
       return result;
     },
     onSuccess: () => {
-      toast.success('Job created successfully');
-      queryClient.invalidateQueries({ queryKey: jobKeys.lists(), refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: jobKeys.stats(), refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'], refetchType: 'all' });
+      toast.success('Job created successfully!');
+      queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: jobKeys.stats() });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      console.error('[useCreateJob] Error:', error);
       toast.error('Failed to create job', {
-        description: error instanceof Error ? error.message : 'Please try again',
+        description: error.message || 'Please check console for details',
       });
     },
   });

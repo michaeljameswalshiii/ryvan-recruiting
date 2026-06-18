@@ -137,14 +137,15 @@ export async function createJobAction(formData: FormData) {
   let tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
   
-  if (!userId) {
-    return { error: 'Unauthorized' };
+  console.log('[createJobAction] Session → tenantId:', tenantId, 'userId:', userId);
+
+  if (!tenantId && userId) {
+    tenantId = `tenant-${userId}`;
+    console.log('[createJobAction] Using default tenant:', tenantId);
   }
 
-  // If no tenantId but user is logged in, create/use default tenant
   if (!tenantId) {
-    console.log('[createJobAction] No tenantId for user, creating default tenant');
-    tenantId = `tenant-${userId}`;
+    return { error: 'No tenant ID found. Please log in again.' };
   }
 
   const rawData = {

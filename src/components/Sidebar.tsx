@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Users, Building2, User, Briefcase, BarChart3, Bot, Settings, LogOut } from "lucide-react";
+import { Home, Users, Building2, User, Briefcase, BarChart3, Bot, AlertCircle, Settings, LogOut } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 
 const themeOptions = [
@@ -21,6 +21,7 @@ export default function Sidebar() {
     { href: "/dashboard/companies", label: "Companies", icon: Building2 },
     { href: "/dashboard/contacts", label: "Contacts", icon: User },
     { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
+    { href: "/dashboard/issues", label: "Issues", icon: AlertCircle },
     { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
     { href: "/dashboard/ai", label: "AI Apollo", icon: Bot },
   ];
