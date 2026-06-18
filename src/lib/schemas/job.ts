@@ -77,7 +77,7 @@ export const createJobSchema = jobSchema.omit({
   created_at: true, 
   modified_at: true 
 }).extend({
-  companyId: z.string().uuid().min(1, 'Company is required'),
+  companyId: z.string().min(1, 'Company ID is required'),  // Allow any string (not just UUID)
   companyName: z.string().min(1, 'Company name is required'),
 });
 
