@@ -129,26 +129,94 @@ const handleCreateJob = async () => {
                 <h3 className="font-semibold text-lg">Activity & Relationship Tracking</h3>
                 <p className="text-sm text-gray-500">BD Outreach • Client Engagement • Disposition</p>
               </div>
-              <Button onClick={() => setShowLogForm(!showLogForm)} variant="outline" size="sm">
+<Button onClick={() => setShowLogForm(true)} variant="outline" size="sm">
                 <Plus className="h-4 w-4 mr-1" /> Log New Activity
               </Button>
             </div>
 
-            {/* Log Form */}
+{/* Log Form - Always controlled */}
             {showLogForm && (
-              <div className="mb-8 p-6 bg-gray-50 border rounded-xl">
-                {/* Paste your full 22-type select here if you want it back */}
+              <div className="mb-8 border rounded-xl p-6 bg-gray-50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-medium block mb-1">Activity Type *</label>
+                    <select 
+                      value={newActivityType}
+                      onChange={(e) => setNewActivityType(e.target.value)}
+                      className="w-full border rounded-md px-3 py-2.5 text-sm"
+                    >
+                      <option value="">— Select Activity Type —</option>
+                      <optgroup label="OUTREACH & COMMUNICATION">
+                        <option value="01 Left Voicemail">01 Left Voicemail</option>
+                        <option value="02 Sent Email">02 Sent Email</option>
+                        <option value="03 Sent Text">03 Sent Text</option>
+                        <option value="04 In-Person Meeting">04 In-Person Meeting</option>
+                        <option value="05 Virtual Meeting">05 Virtual Meeting</option>
+                        <option value="06 Network Event">06 Network Event</option>
+                        <option value="07 Cold Outreach">07 Cold Outreach</option>
+                      </optgroup>
+                      <optgroup label="JOB DISCUSSIONS">
+                        <option value="08 Discussed Open Role">08 Discussed Open Role</option>
+                        <option value="09 Job Description Review">09 Job Description Review</option>
+                        <option value="10 Candidate Referral">10 Candidate Referral</option>
+                        <option value="11 Submitted Candidate">11 Submitted Candidate</option>
+                        <option value="12 Interview Scheduling">12 Interview Scheduling</option>
+                        <option value="13 Interview Feedback">13 Interview Feedback</option>
+                      </optgroup>
+                      <optgroup label="CLIENT MANAGEMENT">
+                        <option value="14 Contract Discussion">14 Contract Discussion</option>
+                        <option value="15 Rate Negotiation">15 Rate Negotiation</option>
+                        <option value="16 SOW Signed">16 SOW Signed</option>
+                        <option value="17 Invoice Follow-up">17 Invoice Follow-up</option>
+                        <option value="18 Payment Received">18 Payment Received</option>
+                        <option value="19 Renewal Discussion">19 Renewal Discussion</option>
+                      </optgroup>
+                      <optgroup label="RELATIONSHIP STATUS">
+                        <option value="20 Intro Call">20 Intro Call</option>
+                        <option value="21 Needs Assessment">21 Needs Assessment</option>
+                        <option value="22 QBR Meeting">22 QBR Meeting</option>
+                      </optgroup>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium block mb-1">Related Job (optional)</label>
+                    <select 
+                      value={newActivityJobId || ''}
+                      onChange={(e) => setNewActivityJobId(e.target.value || undefined)}
+                      className="w-full border rounded-md px-3 py-2.5 text-sm"
+                    >
+                      <option value="">None</option>
+                      {companyJobs?.map((job: any) => (
+                        <option key={job.id} value={job.id}>{job.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 <textarea
                   value={newActivityContent}
                   onChange={(e) => setNewActivityContent(e.target.value)}
-                  placeholder="Details..."
-                  className="w-full border rounded-md p-3 min-h-[100px]"
+                  placeholder="Add detailed notes about this activity..."
+                  className="w-full border rounded-md px-3 py-3 min-h-[120px] text-sm"
                 />
-                <div className="flex justify-end gap-3 mt-4">
-                  <Button variant="outline" onClick={() => {setShowLogForm(false); resetActivityForm();}}>
+
+                <div className="flex justify-end gap-3 mt-5">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      setShowLogForm(false);
+                      resetActivityForm();
+                    }}
+                  >
                     Cancel
                   </Button>
-                  <Button onClick={handleLogActivity}>Log Activity</Button>
+                  <Button 
+                    onClick={handleLogActivity} 
+                    disabled={!newActivityType || !newActivityContent.trim()}
+                  >
+                    Log Activity
+                  </Button>
                 </div>
               </div>
             )}
