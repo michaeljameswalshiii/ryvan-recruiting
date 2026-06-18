@@ -11,6 +11,9 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
+import { useJobsForCompany, useCreateJob } from '@/lib/hooks/query-job';
+import { useClients } from '@/lib/hooks/query-client';
+import { SimpleDialog } from '@/components/ui/simple-dialog';
 
 interface Activity {
   id: string;
@@ -26,6 +29,16 @@ export default function ContactDetailClient({ contact: initialContact }: { conta
   const [loadingActivities, setLoadingActivities] = useState(true);
   const [noteType, setNoteType] = useState('');
   const [noteContent, setNoteContent] = useState('');
+  const [isAddJobOpen, setIsAddJobOpen] = useState(false);
+  const [newJobTitle, setNewJobTitle] = useState('');
+
+  const { data: jobs = [] } = useJobsForCompany(initialContact.companyId || '');
+  const createJob = useCreateJob();
+  const { data: companies = [] } = useClients();
+
+  // Pre-filled values
+  const companyId = initialContact.companyId || '';
+  const companyName = initialContact.companyName || initialContact.company?.name || '';
 
   // Load activities from the new events table
   const loadActivities = async () => {
@@ -83,6 +96,29 @@ export default function ContactDetailClient({ contact: initialContact }: { conta
     } catch (err: any) {
       console.error(err);
       toast.error('Failed to log activity');
+    }
+  };
+
+  const handleCreateJob = async () => {
+    if (!newJobTitle.trim()) {
+      toast.error("Job title is required");
+      return;
+    }
+
+    try {
+      await createJob.mutateAsync({
+        title: newJobTitle,
+        companyId,
+        companyName,
+        status: "Open",
+        // add other fields as empty strings for now
+      });
+
+      toast.success("Job created successfully");
+      setIsAddJobOpen(false);
+      setNewJobTitle("");
+    } catch (err) {
+      toast.error("Failed to create job");
     }
   };
 
@@ -192,11 +228,32 @@ export default function ContactDetailClient({ contact: initialContact }: { conta
         {/* Right Sidebar */}
         <div className="lg:col-span-4 space-y-6">
           <div className="bg-white border rounded-2xl p-6">
-            <div className="flex justify-between mb-4">
+            <div className="flex justify-between items-center mb-4">
               <h3 className="font-semibold">Open Jobs</h3>
-              <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" /> Add Job</Button>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => setIsAddJobOpen(true)}
+              >
+                <Plus className="h-4 w-4 mr-1" /> Add Job
+              </Button>
             </div>
-            <p className="text-gray-500 text-sm">No open jobs for this company.</p>
+
+            {jobs.filter((j: any) => (j.status || '').toLowerCase() !== 'closed').length > 0 ? (
+              <div className="space-y-3">
+                {jobs
+                  .filter((j: any) => (j.status || '').toLowerCase() !== 'closed')
+                  .slice(0, 5)
+                  .map((job: any) => (
+                    <div key={job.id} className="border rounded-lg p-3 text-sm">
+                      <div className="font-medium">{job.title}</div>
+                      <div className="text-gray-500 text-xs">{job.location}</div>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">No open jobs for this company.</p>
+            )}
           </div>
 
           <div className="bg-white border rounded-2xl p-6">
@@ -224,6 +281,47 @@ export default function ContactDetailClient({ contact: initialContact }: { conta
           </div>
         </div>
       </div>
+
+      {/* Add Job Dialog */}
+      <SimpleDialog
+        open={isAddJobOpen}
+        onOpenChange={setIsAddJobOpen}
+        title="Add New Job"
+        description={`For ${companyName}`}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setIsAddJobOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCreateJob} 
+              disabled={createJob.isPending}
+            >
+              {createJob.isPending ? "Creating..." : "Create Job"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium">Company</label>
+            <input 
+              value={companyName} 
+              disabled 
+              className="w-full border rounded-md px-3 py-2 bg-gray-50" 
+            />
+          </div>
+
+          {/* Add more fields as needed - start minimal */}
+          <input
+            placeholder="Job Title *"
+            value={newJobTitle}
+            onChange={(e) => setNewJobTitle(e.target.value)}
+            className="w-full border rounded-md px-3 py-2"
+          />
+          {/* ... other fields can be added in next step */}
+        </div>
+      </SimpleDialog>
     </div>
   );
 }

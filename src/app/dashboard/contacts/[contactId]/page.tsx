@@ -44,5 +44,11 @@ export default async function ContactDetailPage({ params }: Props) {
     notes: Array.isArray(contact.notes) ? contact.notes : [],
   };
 
-  return <ContactDetailClient contact={contactData} />;
+  return (
+    <ContactDetailClient
+      contact={contactData}
+      companyId={contactData.companyId}
+      companyName={contactData.companyName || contactData.company?.name}
+    />
+  );
 }
