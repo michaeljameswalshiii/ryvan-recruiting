@@ -45,27 +45,34 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
     setNewActivityJobId(undefined);
   };
 
-  const handleCreateJob = async () => {
+const handleCreateJob = async () => {
     if (!newJobTitle.trim()) {
       toast.error("Job title is required");
       return;
     }
+
     try {
       await createJob.mutateAsync({
         title: newJobTitle,
-        description: newJobDescription,
-        location: newJobLocation,
-        salaryRange: newJobSalary,
-        employmentType: newJobEmploymentType,
-        companyId,
-        companyName,
+        description: newJobDescription || "",
+        location: newJobLocation || "",
+        companyId: companyId,
+        companyName: companyName,
         status: "Open",
       });
+
       toast.success("Job created successfully!");
       setIsAddJobOpen(false);
-      setNewJobTitle(''); setNewJobDescription(''); setNewJobLocation(''); setNewJobSalary('');
-    } catch (err) {
-      toast.error("Failed to create job");
+      
+      // Reset form
+      setNewJobTitle('');
+      setNewJobDescription('');
+      setNewJobLocation('');
+      setNewJobSalary('');
+      setNewJobEmploymentType('Full-time');
+    } catch (err: any) {
+      console.error("Job creation error:", err);
+      toast.error(err?.message || "Failed to create job");
     }
   };
 
@@ -202,17 +209,66 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
           </>
         }
       >
-        <div className="space-y-4">
+<div className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">Company</label>
             <div className="bg-gray-50 border rounded-md px-3 py-2">{companyName}</div>
           </div>
-          <input
-            value={newJobTitle}
-            onChange={(e) => setNewJobTitle(e.target.value)}
-            placeholder="Job Title *"
-            className="w-full border rounded-md px-3 py-2"
-          />
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">Job Title *</label>
+            <input
+              value={newJobTitle}
+              onChange={(e) => setNewJobTitle(e.target.value)}
+              className="w-full border rounded-md px-3 py-2"
+              placeholder="e.g. Senior Software Engineer"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Description</label>
+            <textarea
+              value={newJobDescription}
+              onChange={(e) => setNewJobDescription(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 min-h-[80px]"
+              placeholder="Job responsibilities and requirements..."
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Location</label>
+              <input
+                value={newJobLocation}
+                onChange={(e) => setNewJobLocation(e.target.value)}
+                className="w-full border rounded-md px-3 py-2"
+                placeholder="Remote / New York, NY"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Salary Range</label>
+              <input
+                value={newJobSalary}
+                onChange={(e) => setNewJobSalary(e.target.value)}
+                className="w-full border rounded-md px-3 py-2"
+                placeholder="120k - 160k"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Employment Type</label>
+            <select
+              value={newJobEmploymentType}
+              onChange={(e) => setNewJobEmploymentType(e.target.value)}
+              className="w-full border rounded-md px-3 py-2"
+            >
+              <option value="Full-time">Full-time</option>
+              <option value="Part-time">Part-time</option>
+              <option value="Contract">Contract</option>
+              <option value="Internship">Internship</option>
+            </select>
+          </div>
         </div>
       </SimpleDialog>
     </div>
