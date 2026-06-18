@@ -68,12 +68,28 @@ interface EventItem {
   createdByName?: string;
 }
 
+// Simple interface for passing events directly (used by ContactDetailClient)
+interface SimpleEventItem {
+  id?: string;
+  type?: string;
+  title?: string;
+  content?: string;
+  description?: string;
+  createdAt?: string;
+  // Add other optional fields as needed
+  [key: string]: any;
+}
+
 interface EventTimelineProps {
+  // Full interface (original)
   entityType: EntityType;
   entityId: string;
   tenantId: string;
   initialEvents?: EventItem[];
   maxHeight?: string;
+  // Simple interface (for passing events directly)
+  events?: SimpleEventItem[];
+  emptyMessage?: string;
 }
 
 // ============================================================================

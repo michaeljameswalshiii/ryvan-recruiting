@@ -16,6 +16,7 @@ import { useJobsForCompany, useCreateJob } from '@/lib/hooks/query-job';
 import { useClients } from '@/lib/hooks/query-client';
 import { SimpleDialog } from '@/components/ui/simple-dialog';
 import { logContactActivity, getContactActivities } from '@/lib/actions/contact-actions';
+import EventTimeline from '@/components/EventTimeline';
 
 interface ContactDetailClientProps {
   contact: any;
@@ -266,28 +267,11 @@ const handleCreateJob = async () => {
               </div>
             )}
 
-            {/* Timeline Display */}
-            {loadingActivities ? (
-              <div className="text-center py-8 text-gray-400">Loading activity...</div>
-            ) : activities.length > 0 ? (
-              <div className="space-y-6 max-h-[600px] overflow-y-auto">
-                {activities.map((note, i) => (
-                  <div key={note.id || i} className="border-l-2 border-gray-200 pl-4 py-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium">{note.type}</span>
-                      <span className="text-gray-500">
-                        {new Date(note.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <p className="text-gray-600 mt-1">{note.content}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-16 text-gray-400">
-                No activities logged for this contact yet.
-              </div>
-            )}
+{/* Timeline Display using EventTimeline component */}
+            <EventTimeline 
+              events={activities}
+              emptyMessage="No activities logged for this contact yet. Start building the relationship!"
+            />
           </div>
         </div>
 
