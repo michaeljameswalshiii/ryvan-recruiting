@@ -27,7 +27,7 @@ const sanitizeActivityForClient = (act: any) => {
     try { return new Date(val).toISOString().split('T')[0]; } catch { return ''; }
   };
   
-  return {
+  const base = {
     id: act?.id,
     type: act?.type || '',
     title: act?.title || act?.content?.slice(0, 80) || '',
@@ -35,6 +35,14 @@ const sanitizeActivityForClient = (act: any) => {
     createdAt: safeCreatedAt(act?.createdAt),
     date: safeCreatedAt(act?.date),
   };
+  
+  // Remove any potential Date objects or functions from rest of properties
+  const rest = Object.fromEntries(
+    Object.entries(act || {}).filter(([key]) => !['createdAt', 'updatedAt', 'date'].includes(key))
+      .map(([key, val]) => [key, (typeof val === 'function' || val instanceof Date) ? undefined : val])
+  );
+  
+  return { ...base, ...rest };
 };
 
 // Sanitize companyJobs - handle BOTH property naming conventions (created_at/modified_at AND createdAt/updatedAt)
