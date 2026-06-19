@@ -37,20 +37,26 @@ const sanitizeActivityForClient = (act: any) => {
   };
 };
 
-// Sanitize companyJobs too (common culprit for serialization errors)
-const sanitizeJob = (job: any) => ({
-  ...job,
-  createdAt: job?.createdAt 
-    ? (typeof job.createdAt === 'string' 
-        ? job.createdAt 
-        : new Date(job.createdAt).toISOString())
-    : undefined,
-  updatedAt: job?.updatedAt 
-    ? (typeof job.updatedAt === 'string' 
-        ? job.updatedAt 
-        : new Date(job.updatedAt).toISOString())
-    : undefined,
-});
+// Sanitize companyJobs - handle BOTH property naming conventions (created_at/modified_at AND createdAt/updatedAt)
+const sanitizeJob = (job: any) => {
+  const safeDate = (val: any) => {
+    if (!val) return undefined;
+    if (typeof val === 'string') return val;
+    if (val instanceof Date) return val.toISOString();
+    try { return new Date(val).toISOString(); } catch { return undefined; }
+  };
+  
+  return {
+    ...job,
+    // Handle created_at (schema standard)
+    created_at: safeDate(job?.created_at || job?.createdAt),
+    // Handle modified_at (schema standard)
+    modified_at: safeDate(job?.modified_at || job?.updatedAt),
+    // Also set legacy names for compatibility
+    createdAt: safeDate(job?.created_at || job?.createdAt),
+    updatedAt: safeDate(job?.modified_at || job?.updatedAt),
+  };
+};
 
 // Pre-sanitize companyJobs at render time
 const safeCompanyJobs = (companyJobs || []).map(sanitizeJob);

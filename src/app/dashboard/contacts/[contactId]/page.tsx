@@ -37,15 +37,17 @@ export default async function ContactDetailPage({ params }: Props) {
     notFound();
   }
 
-  const allJobs = await getAllJobs(tenantId);
+const allJobs = await getAllJobs(tenantId);
+  // Use correct property names from Job schema: created_at and modified_at
   const companyJobs = allJobs
     .filter((job: any) => job.companyId === companyId && job.status !== "Closed")
-    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .sort((a: any, b: any) => new Date(b.created_at || b.createdAt).getTime() - new Date(a.created_at || a.createdAt).getTime())
     .slice(0, 10)
     .map((job: any) => ({
       ...job,
-      createdAt: job.createdAt instanceof Date ? job.createdAt.toISOString() : job.createdAt,
-      updatedAt: job.updatedAt instanceof Date ? job.updatedAt.toISOString() : job.updatedAt,
+      // Handle both created_at (schema) and createdAt (fallback)
+      created_at: job.created_at instanceof Date ? job.created_at.toISOString() : (job.created_at || job.createdAt),
+      modified_at: job.modified_at instanceof Date ? job.modified_at.toISOString() : (job.modified_at || job.updatedAt),
     }));
 
   const contactData = {
