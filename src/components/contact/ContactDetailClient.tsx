@@ -66,10 +66,9 @@ const sanitizeJob = (job: any) => {
   };
 };
 
-// Pre-sanitize companyJobs at render time
-const safeCompanyJobs = (companyJobs || []).map(sanitizeJob);
-
 export default function ContactDetailClient({ contact, companyJobs = [] }: ContactDetailClientProps) {
+  // Pre-sanitize companyJobs at render time - MUST be inside component
+  const safeCompanyJobs = (companyJobs || []).map(sanitizeJob);
   const router = useRouter();
   const queryClient = useQueryClient();
   const companyName = contact.companyName || contact.company?.name || 'Unknown Company';
