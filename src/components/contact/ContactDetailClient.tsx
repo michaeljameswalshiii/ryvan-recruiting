@@ -17,23 +17,25 @@ interface ContactDetailClientProps {
   companyJobs?: any[];
 }
 
-// Safe sanitizer - expanded with null checks
-const sanitizeActivityForClient = (act: any) => ({
-  id: act?.id,
-  type: act?.type || '',
-  title: act?.title || act?.content?.slice(0, 50) || '',
-  description: act?.description || act?.content || '',
-  createdAt: act?.createdAt 
-    ? (typeof act.createdAt === 'string' 
-        ? act.createdAt.split('T')[0] 
-        : new Date(act.createdAt).toISOString().split('T')[0])
-    : '',
-  date: act?.date 
-    ? (typeof act.date === 'string' 
-        ? act.date.split('T')[0] 
-        : new Date(act.date).toISOString().split('T')[0])
-    : '',
-});
+// Safe sanitizer - expanded to catch everything
+const sanitizeActivityForClient = (act: any) => {
+  // Handle both string dates and potential Date objects
+  const safeCreatedAt = (val: any) => {
+    if (!val) return '';
+    if (typeof val === 'string') return val.split('T')[0];
+    if (val instanceof Date) return val.toISOString().split('T')[0];
+    try { return new Date(val).toISOString().split('T')[0]; } catch { return ''; }
+  };
+  
+  return {
+    id: act?.id,
+    type: act?.type || '',
+    title: act?.title || act?.content?.slice(0, 80) || '',
+    description: act?.description || act?.content || '',
+    createdAt: safeCreatedAt(act?.createdAt),
+    date: safeCreatedAt(act?.date),
+  };
+};
 
 // Sanitize companyJobs too (common culprit for serialization errors)
 const sanitizeJob = (job: any) => ({
