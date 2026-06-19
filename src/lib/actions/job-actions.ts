@@ -24,42 +24,81 @@ import {
 import { createJobSchema } from '../schemas/job';
 
 /**
+ * Helper to safely convert any value to ISO string
+ */
+function toISOString(value: any): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'string') return value;
+  if (value instanceof Date) return value.toISOString();
+  // Handle string timestamps or numeric timestamps
+  const date = new Date(value);
+  if (!isNaN(date.getTime())) return date.toISOString();
+  return undefined;
+}
+
+/**
  * Sanitize a job object to ensure all date fields are ISO strings (JSON serializable)
+ * Uses deep clone to ensure no circular references or non-serializable values
  */
 function sanitizeJob(job: any): any {
   if (!job) return job;
-  return {
-    ...job,
-    // Handle created_at - could be Date object or string
-    created_at: job.created_at instanceof Date
-      ? job.created_at.toISOString()
-      : typeof job.created_at === 'string'
-        ? job.created_at
-        : job.created_at
-          ? new Date(job.created_at).toISOString()
-          : undefined,
-    // Handle modified_at - could be Date object or string  
-    modified_at: job.modified_at instanceof Date
-      ? job.modified_at.toISOString()
-      : typeof job.modified_at === 'string'
-        ? job.modified_at
-        : job.modified_at
-          ? new Date(job.modified_at).toISOString()
-          : undefined,
-    // Handle any nested candidate dates
-    candidates: Array.isArray(job.candidates)
-      ? job.candidates.map((c: any) => ({
-          ...c,
-          dateApplied: c.dateApplied instanceof Date
-            ? c.dateApplied.toISOString()
-            : typeof c.dateApplied === 'string'
-              ? c.dateApplied
-              : c.dateApplied
-                ? new Date(c.dateApplied).toISOString()
-                : undefined,
-        }))
-      : [],
-  };
+  
+  // Deep clone and sanitize - handle any date-like field
+  const sanitized: any = {};
+  
+  for (const key of Object.keys(job)) {
+    const value = job[key];
+    
+    if (value === null || value === undefined) {
+      sanitized[key] = value;
+    } else if (Array.isArray(value)) {
+      // Handle arrays (like candidates)
+      sanitized[key] = value.map((item: any) => {
+        if (item && typeof item === 'object') {
+          // Recursively sanitize object items
+          const sanitizedItem: any = {};
+          for (const itemKey of Object.keys(item)) {
+            const itemValue = item[itemKey];
+            if (itemValue instanceof Date) {
+              sanitizedItem[itemKey] = itemValue.toISOString();
+            } else if (typeof itemValue === 'string' && itemValue.match(/^\d{4}-\d{2}/)) {
+              // Already ISO string
+              sanitizedItem[itemKey] = itemValue;
+            } else if (itemValue && typeof itemValue === 'object' && itemValue.toISOString) {
+              // Has toISOString method (Date-like)
+              sanitizedItem[itemKey] = itemValue.toISOString();
+            } else {
+              sanitizedItem[itemKey] = itemValue;
+            }
+          }
+          return sanitizedItem;
+        }
+        return item;
+      });
+    } else if (value instanceof Date) {
+      sanitized[key] = value.toISOString();
+    } else if (typeof value === 'object' && value !== null) {
+      // Handle nested objects - check for date-like properties
+      const nested: any = {};
+      for (const nestedKey of Object.keys(value)) {
+        const nestedValue = value[nestedKey];
+        if (nestedValue instanceof Date) {
+          nested[nestedKey] = nestedValue.toISOString();
+        } else if (typeof nestedValue === 'string' && nestedValue.match(/^\d{4}-\d{2}/)) {
+          nested[nestedKey] = nestedValue;
+        } else if (nestedValue && typeof nestedValue === 'object' && nestedValue.toISOString) {
+          nested[nestedKey] = nestedValue.toISOString();
+        } else {
+          nested[nestedKey] = nestedValue;
+        }
+      }
+      sanitized[key] = nested;
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  
+  return sanitized;
 }
 
 /**
