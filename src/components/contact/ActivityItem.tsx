@@ -1,14 +1,13 @@
 'use client';
-
-import { Edit2, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
 
 type Activity = {
   id: string;
   type: string;
-  title?: string;
+  title: string;
   description?: string;
-  content?: string;
-  createdAt?: string;
+  createdAt: string;
 };
 
 interface ActivityItemProps {
@@ -18,54 +17,55 @@ interface ActivityItemProps {
 }
 
 export default function ActivityItem({ activity, onEdit, onDelete }: ActivityItemProps) {
-  const isOutreach =
-    activity.type.includes('Voicemail') ||
-    activity.type.includes('Email') ||
-    activity.type.includes('Text') ||
-    activity.type.includes('LinkedIn');
-
-  const isBD =
-    activity.type.includes('BD') ||
-    activity.type.includes('Proposal') ||
-    activity.type.includes('Contract');
-
-  const getBorderColor = () => {
-    if (isBD) return 'border-blue-500';
-    if (isOutreach) return 'border-amber-500';
-    return 'border-emerald-500';
-  };
+  const [showConfirm, setShowConfirm] = useState(false);
 
   return (
-    <div className={`border-l-4 pl-4 py-4 rounded-lg bg-white shadow-sm ${getBorderColor()}`}>
-      <div className="flex justify-between items-start">
-        <div>
-          <div className="font-semibold text-lg">{activity.type}</div>
-          {activity.title && (
-            <div className="text-gray-700 mt-1 font-medium">{activity.title}</div>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="text-xs text-gray-500 whitespace-nowrap">
-            {activity.createdAt ? new Date(activity.createdAt).toLocaleDateString() : ''}
-          </div>
-          <button
-            onClick={() => onEdit(activity)}
-            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            title="Edit"
-          >
-            <Edit2 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => onDelete(activity.id)}
-            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            title="Delete"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
+    <div className="group relative border-l-4 border-orange-500 pl-4 py-3 hover:bg-gray-50 rounded-r-xl flex gap-4">
+      <div className="flex-1">
+        <div className="font-medium">{activity.type}</div>
+        <div className="text-gray-900">{activity.title}</div>
+        {activity.description && (
+          <p className="text-sm text-gray-600 mt-1">{activity.description}</p>
+        )}
       </div>
-      {activity.description && (
-        <p className="text-gray-700 mt-2 leading-relaxed">{activity.description}</p>
+
+      <div className="text-right text-sm text-gray-500 whitespace-nowrap">
+        {activity.createdAt}
+      </div>
+
+      {/* Hover Actions */}
+      <div className="absolute right-4 top-4 opacity-0 group-hover:opacity-100 flex gap-1">
+        <button
+          onClick={() => onEdit(activity)}
+          className="p-1.5 hover:bg-blue-50 rounded text-blue-600"
+        >
+          <Pencil className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => setShowConfirm(true)}
+          className="p-1.5 hover:bg-red-50 rounded text-red-600"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+
+      {showConfirm && (
+        <div className="absolute inset-0 bg-white/95 flex items-center justify-center rounded-xl z-10">
+          <div className="text-center">
+            <p className="text-red-600 font-medium mb-2">Delete activity?</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowConfirm(false)} className="px-4 py-1 border rounded">
+                Cancel
+              </button>
+              <button 
+                onClick={() => { onDelete(activity.id); setShowConfirm(false); }}
+                className="px-4 py-1 bg-red-600 text-white rounded"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
