@@ -21,6 +21,34 @@ export interface ActivityEvent {
 }
 
 /**
+ * Sanitize any value to ensure JSON serializability
+ */
+function sanitizeValue(value: any): any {
+  if (value === undefined || value === null) return value;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string') return value;
+  // Handle numeric timestamps
+  if (typeof value === 'number') return new Date(value).toISOString();
+  return value;
+}
+
+/**
+ * Sanitize an ActivityEvent to ensure all dates are ISO strings
+ */
+function sanitizeEvent(item: any): ActivityEvent {
+  return {
+    id: item.id,
+    contactId: item.contactId,
+    companyId: item.companyId,
+    type: item.type,
+    content: item.content,
+    createdAt: sanitizeValue(item.createdAt),
+    createdBy: item.createdBy,
+    metadata: item.metadata,
+  };
+}
+
+/**
  * Create a new activity/note event
  */
 export async function createEvent(
@@ -90,17 +118,9 @@ const result = await queryItems<any>(
     }
   );
 
+  // Sanitize all events to ensure JSON serializability
   return {
-    events: (result.items || []).map((item: any) => ({
-      id: item.id,
-      contactId: item.contactId,
-      companyId: item.companyId,
-      type: item.type,
-      content: item.content,
-      createdAt: item.createdAt,
-      createdBy: item.createdBy,
-      metadata: item.metadata,
-    })),
+    events: (result.items || []).map(sanitizeEvent),
     lastKey: result.lastEvaluatedKey,
   };
 }
@@ -122,8 +142,9 @@ const result = await queryItems<any>(
     }
   );
 
+  // Sanitize all events to ensure JSON serializability
   return {
-    events: result.items || [],
+    events: (result.items || []).map(sanitizeEvent),
   };
 }
 
@@ -170,8 +191,8 @@ export async function updateEvent(
     expressionNames['#content'] = 'content';
   }
 
-  if (updateExpressions.length === 0) {
-    return { success: true, event: existingItem };
+if (updateExpressions.length === 0) {
+    return { success: true, event: sanitizeEvent(existingItem) };
   }
 
   await updateItem(
@@ -182,9 +203,10 @@ export async function updateEvent(
     expressionNames
   );
 
-return {
+  // Return sanitized event
+  return {
     success: true,
-    event: {
+    event: sanitizeEvent({
       id: existingItem.id,
       contactId: existingItem.contactId,
       companyId: existingItem.companyId,
@@ -193,7 +215,7 @@ return {
       createdAt: existingItem.createdAt,
       createdBy: existingItem.createdBy,
       metadata: existingItem.metadata,
-    },
+    }),
   };
 }
 
