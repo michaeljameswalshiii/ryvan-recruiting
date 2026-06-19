@@ -29,7 +29,19 @@ export async function logContactActivity(data: {
 
 export async function getContactActivities(contactId: string) {
   const { events } = await getEventsForContact(contactId);
-  return events;
+  
+  // Sanitize all dates to ensure JSON serializability
+  return events.map((event: any) => ({
+    id: event.id,
+    type: event.type,
+    content: event.content,
+    createdAt: typeof event.createdAt === 'string' 
+      ? event.createdAt 
+      : new Date(event.createdAt).toISOString(),
+    createdBy: event.createdBy,
+    contactId: event.contactId,
+    companyId: event.companyId,
+  }));
 }
 
 export async function updateContactActivity(data: {
@@ -48,7 +60,18 @@ export async function updateContactActivity(data: {
   }
 
   revalidatePath(`/dashboard/contacts/${data.contactId}`);
-  return result.event;
+  
+  // Sanitize the returned event
+  const event = result.event;
+  return {
+    id: event.id,
+    type: event.type,
+    content: event.content,
+    createdAt: typeof event.createdAt === 'string' ? event.createdAt : new Date(event.createdAt).toISOString(),
+    createdBy: event.createdBy,
+    contactId: event.contactId,
+    companyId: event.companyId,
+  };
 }
 
 export async function deleteContactActivity(data: {
