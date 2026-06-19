@@ -17,16 +17,41 @@ interface ContactDetailClientProps {
   companyJobs?: any[];
 }
 
-// Safe sanitizer
+// Safe sanitizer - expanded with null checks
 const sanitizeActivityForClient = (act: any) => ({
-  id: act.id,
-  type: act.type,
-  title: act.title || act.content?.slice(0, 50) || '',
-  description: act.description || act.content || '',
-  createdAt: act.createdAt 
-    ? (typeof act.createdAt === 'string' ? act.createdAt.split('T')[0] : new Date(act.createdAt).toISOString().split('T')[0])
+  id: act?.id,
+  type: act?.type || '',
+  title: act?.title || act?.content?.slice(0, 50) || '',
+  description: act?.description || act?.content || '',
+  createdAt: act?.createdAt 
+    ? (typeof act.createdAt === 'string' 
+        ? act.createdAt.split('T')[0] 
+        : new Date(act.createdAt).toISOString().split('T')[0])
+    : '',
+  date: act?.date 
+    ? (typeof act.date === 'string' 
+        ? act.date.split('T')[0] 
+        : new Date(act.date).toISOString().split('T')[0])
     : '',
 });
+
+// Sanitize companyJobs too (common culprit for serialization errors)
+const sanitizeJob = (job: any) => ({
+  ...job,
+  createdAt: job?.createdAt 
+    ? (typeof job.createdAt === 'string' 
+        ? job.createdAt 
+        : new Date(job.createdAt).toISOString())
+    : undefined,
+  updatedAt: job?.updatedAt 
+    ? (typeof job.updatedAt === 'string' 
+        ? job.updatedAt 
+        : new Date(job.updatedAt).toISOString())
+    : undefined,
+});
+
+// Pre-sanitize companyJobs at render time
+const safeCompanyJobs = (companyJobs || []).map(sanitizeJob);
 
 export default function ContactDetailClient({ contact, companyJobs = [] }: ContactDetailClientProps) {
   const router = useRouter();
@@ -205,9 +230,9 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
               </Button>
             </div>
 
-            {companyJobs?.length > 0 ? (
+{safeCompanyJobs?.length > 0 ? (
               <div className="space-y-3">
-                {companyJobs.slice(0, 5).map((job: any) => (
+                {safeCompanyJobs.slice(0, 5).map((job: any) => (
                   <div key={job.id} className="border rounded-lg p-3 text-sm">
                     <div className="font-medium">{job.title}</div>
                     <div className="text-gray-500 text-xs">{job.location}</div>
