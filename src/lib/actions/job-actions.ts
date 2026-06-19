@@ -24,6 +24,45 @@ import {
 import { createJobSchema } from '../schemas/job';
 
 /**
+ * Sanitize a job object to ensure all date fields are ISO strings (JSON serializable)
+ */
+function sanitizeJob(job: any): any {
+  if (!job) return job;
+  return {
+    ...job,
+    // Handle created_at - could be Date object or string
+    created_at: job.created_at instanceof Date
+      ? job.created_at.toISOString()
+      : typeof job.created_at === 'string'
+        ? job.created_at
+        : job.created_at
+          ? new Date(job.created_at).toISOString()
+          : undefined,
+    // Handle modified_at - could be Date object or string  
+    modified_at: job.modified_at instanceof Date
+      ? job.modified_at.toISOString()
+      : typeof job.modified_at === 'string'
+        ? job.modified_at
+        : job.modified_at
+          ? new Date(job.modified_at).toISOString()
+          : undefined,
+    // Handle any nested candidate dates
+    candidates: Array.isArray(job.candidates)
+      ? job.candidates.map((c: any) => ({
+          ...c,
+          dateApplied: c.dateApplied instanceof Date
+            ? c.dateApplied.toISOString()
+            : typeof c.dateApplied === 'string'
+              ? c.dateApplied
+              : c.dateApplied
+                ? new Date(c.dateApplied).toISOString()
+                : undefined,
+        }))
+      : [],
+  };
+}
+
+/**
  * Get all jobs for the current tenant
  */
 export async function getJobs(includeStats = false) {
@@ -51,7 +90,11 @@ export async function getJobs(includeStats = false) {
     const jobs = await getAllJobs(tenantId);
     console.log('[getJobs] Got jobs:', jobs?.length || 0);
     
-    let result: Record<string, unknown> = { jobs };
+    // Sanitize all jobs to ensure JSON serializability (no Date objects)
+    const sanitizedJobs = (jobs || []).map(sanitizeJob);
+    console.log('[getJobs] Sanitized jobs:', sanitizedJobs?.length || 0);
+    
+    let result: Record<string, unknown> = { jobs: sanitizedJobs };
 
     if (includeStats) {
       console.log('[getJobs] Getting stats...');
@@ -83,7 +126,9 @@ export async function getJobsByStatusAction(status: string) {
 
   try {
     const jobs = await getJobsByStatus(tenantId, status);
-    return { jobs };
+    // Sanitize jobs to ensure JSON serializability
+    const sanitizedJobs = (jobs || []).map(sanitizeJob);
+    return { jobs: sanitizedJobs };
   } catch (error: any) {
     return { error: error.message || 'Failed to get jobs' };
   }
@@ -106,7 +151,9 @@ export async function getOpenJobsAction() {
 
   try {
     const jobs = await getOpenJobs(tenantId);
-    return { jobs };
+    // Sanitize jobs to ensure JSON serializability
+    const sanitizedJobs = (jobs || []).map(sanitizeJob);
+    return { jobs: sanitizedJobs };
   } catch (error: any) {
     return { error: error.message || 'Failed to get open jobs' };
   }
@@ -124,7 +171,8 @@ export async function getJobByIdAction(jobId: string) {
 
   try {
     const job = await getJobById(tenantId, jobId);
-    return { job };
+    // Sanitize the job to ensure JSON serializability
+    return { job: job ? sanitizeJob(job) : null };
   } catch (error: any) {
     return { error: error.message || 'Failed to get job' };
   }
@@ -171,9 +219,10 @@ export async function createJobAction(formData: FormData) {
     };
   }
 
-  try {
+try {
     const job = await createJobRepo(tenantId, validated.data);
-    return { success: true, job };
+    // Sanitize the job to ensure JSON serializability
+    return { success: true, job: job ? sanitizeJob(job) : null };
   } catch (error: any) {
     return { error: error.message || 'Failed to create job' };
   }
@@ -200,9 +249,10 @@ export async function updateJobAction(jobId: string, formData: FormData) {
     }
   }
 
-  try {
+try {
     const job = await updateJob(tenantId, jobId, rawData);
-    return { success: true, job };
+    // Sanitize the job to ensure JSON serializability
+    return { success: true, job: job ? sanitizeJob(job) : null };
   } catch (error: any) {
     return { error: error.message || 'Failed to update job' };
   }
@@ -245,7 +295,8 @@ export async function linkCandidateToJobAction(jobId: string, candidateData: {
 
   try {
     const job = await linkCandidateToJob(tenantId, jobId, candidateData);
-    return { success: true, job };
+    // Sanitize the job to ensure JSON serializability
+    return { success: true, job: job ? sanitizeJob(job) : null };
   } catch (error: any) {
     return { error: error.message || 'Failed to link candidate' };
   }
@@ -263,7 +314,8 @@ export async function unlinkCandidateFromJobAction(jobId: string, candidateId: s
 
   try {
     const job = await unlinkCandidateFromJob(tenantId, jobId, candidateId);
-    return { success: true, job };
+    // Sanitize the job to ensure JSON serializability
+    return { success: true, job: job ? sanitizeJob(job) : null };
   } catch (error: any) {
     return { error: error.message || 'Failed to unlink candidate' };
   }
@@ -281,7 +333,8 @@ export async function updateCandidateStageAction(jobId: string, candidateId: str
 
   try {
     const job = await updateCandidateStageInJob(tenantId, jobId, { candidateId, stage, notes });
-    return { success: true, job };
+    // Sanitize the job to ensure JSON serializability
+    return { success: true, job: job ? sanitizeJob(job) : null };
   } catch (error: any) {
     return { error: error.message || 'Failed to update stage' };
   }

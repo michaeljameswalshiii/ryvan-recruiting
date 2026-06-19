@@ -182,11 +182,17 @@ export async function updateEvent(
     expressionNames
   );
 
-  return {
+return {
     success: true,
     event: {
-      ...existingItem,
-      ...updates,
+      id: existingItem.id,
+      contactId: existingItem.contactId,
+      companyId: existingItem.companyId,
+      type: updates.type || existingItem.type,
+      content: updates.content ?? existingItem.content,
+      createdAt: existingItem.createdAt,
+      createdBy: existingItem.createdBy,
+      metadata: existingItem.metadata,
     },
   };
 }
