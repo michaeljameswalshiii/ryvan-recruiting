@@ -5,7 +5,13 @@ import { notFound, useParams } from 'next/navigation';
 import ContactDetailClient from "@/components/contact/ContactDetailClient";
 import { getAllClients } from "@/lib/db/repositories/client-repository";
 import { getAllJobs } from "@/lib/db/repositories/job-repository";
-import { getSessionTenantId } from "@/lib/server-auth";
+
+// Temporary client-safe tenant ID (you can improve this later)
+const getClientTenantId = () => {
+  // For now, we'll use a default or session storage fallback
+  // Replace this with your actual auth logic later
+  return "default-tenant"; // ← Change this if you have a better way
+};
 
 export default function ContactDetailPage() {
   const params = useParams();
@@ -19,9 +25,9 @@ export default function ContactDetailPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const tenantId = await getSessionTenantId();
+        const tenantId = getClientTenantId();
         if (!tenantId) {
-          notFound();
+          setError("No tenant ID found");
           return;
         }
 
@@ -61,7 +67,7 @@ export default function ContactDetailPage() {
     loadData();
   }, [contactId]);
 
-  if (loading) return <div className="p-12 text-center">Loading contact...</div>;
+  if (loading) return <div className="p-12 text-center text-lg">Loading contact...</div>;
   if (error) return <div className="p-12 text-center text-red-600">{error}</div>;
   if (!contactData) return <div className="p-12 text-center">Contact not found</div>;
 
