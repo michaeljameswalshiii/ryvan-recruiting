@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { ArrowLeft, Phone, Edit, Mail, Plus, Sparkles, Search, Users, FileText, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCreateJob } from '@/lib/hooks/query-job';
 import { logContactActivity, getContactActivities, updateContactActivity, deleteContactActivity } from '@/lib/actions/contact-actions';
@@ -12,16 +12,23 @@ import { SimpleDialog } from '@/components/ui/simple-dialog';
 import ActivityModal from './ActivityModal';
 import ActivityItem from './ActivityItem';
 
-// Sanitize function to prevent serialization errors
-const sanitizeActivity = (act: any) => ({
+interface ContactDetailClientProps {
+  contact: any;
+  companyJobs?: any[];
+}
+
+// Safe sanitizer
+const sanitizeActivityForClient = (act: any) => ({
   id: act.id,
   type: act.type,
   title: act.title || act.content?.slice(0, 50) || '',
   description: act.description || act.content || '',
-  createdAt: act.createdAt ? new Date(act.createdAt).toISOString().split('T')[0] : '',
+  createdAt: act.createdAt 
+    ? (typeof act.createdAt === 'string' ? act.createdAt.split('T')[0] : new Date(act.createdAt).toISOString().split('T')[0])
+    : '',
 });
 
-export default function ContactDetailClient({ contact, companyJobs = [] }: { contact: any; companyJobs?: any[] }) {
+export default function ContactDetailClient({ contact, companyJobs = [] }: ContactDetailClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const companyName = contact.companyName || contact.company?.name || 'Unknown Company';
@@ -30,10 +37,14 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: { con
   // === JOBS ===
   const createJob = useCreateJob();
   const [isAddJobOpen, setIsAddJobOpen] = useState(false);
-  const [editingJob, setEditingJob] = useState<any>(null);
+  const [newJobTitle, setNewJobTitle] = useState('');
+  const [newJobDescription, setNewJobDescription] = useState('');
+  const [newJobLocation, setNewJobLocation] = useState('');
+  const [newJobSalary, setNewJobSalary] = useState('');
+  const [newJobEmploymentType, setNewJobEmploymentType] = useState('Full-time');
 
   // === ACTIVITIES ===
-  const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<any>(null);
 
   const { data: rawActivities = [] } = useQuery({
@@ -42,9 +53,9 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: { con
     enabled: !!contact.id,
   });
 
-  const activities = rawActivities.map(sanitizeActivity);
+  const activities = rawActivities.map(sanitizeActivityForClient);
 
-  // Activity Mutations
+  // Mutations
   const saveActivityMutation = useMutation({
     mutationFn: async (data: any) => {
       if (editingActivity?.id) {
@@ -54,23 +65,20 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: { con
           type: data.type,
           content: data.description || data.title,
         });
-      } else {
-        return logContactActivity({
-          contactId: contact.id,
-          type: data.type,
-          content: data.description || data.title,
-        });
       }
+      return logContactActivity({
+        contactId: contact.id,
+        type: data.type,
+        content: data.description || data.title,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contact-activities', contact.id] });
-      setIsActivityModalOpen(false);
+      setIsModalOpen(false);
       setEditingActivity(null);
       toast.success(editingActivity ? 'Activity updated!' : 'Activity logged!');
     },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Failed to save activity');
-    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to save'),
   });
 
   const deleteActivityMutation = useMutation({
@@ -81,32 +89,60 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: { con
     },
   });
 
-  // Job Handlers
-  const handleEditJob = (job: any) => {
-    setEditingJob(job);
-    setIsAddJobOpen(true); // reuse dialog for simplicity, or create full modal later
+  const openCreateModal = () => {
+    setEditingActivity(null);
+    setIsModalOpen(true);
   };
 
-  const handleDeleteJob = (jobId: string) => {
-    if (confirm('Delete this job?')) {
-      // Add delete mutation if you have one, or implement via API
-      toast.info('Job delete coming soon...');
+  const openEditModal = (activity: any) => {
+    setEditingActivity(sanitizeActivityForClient(activity));
+    setIsModalOpen(true);
+  };
+
+  const handleSaveActivity = (data: any) => {
+    saveActivityMutation.mutate(data);
+  };
+
+  const handleDeleteActivity = (activityId: string) => {
+    if (confirm('Delete this activity?')) {
+      deleteActivityMutation.mutate(activityId);
     }
   };
 
-  const openCreateActivity = () => {
-    setEditingActivity(null);
-    setIsActivityModalOpen(true);
-  };
-
-  const openEditActivity = (activity: any) => {
-    setEditingActivity(sanitizeActivity(activity));
-    setIsActivityModalOpen(true);
+  // Job creation placeholder
+  const handleCreateJob = async () => {
+    if (!newJobTitle.trim()) {
+      toast.error("Job title is required");
+      return;
+    }
+    try {
+      await createJob.mutateAsync({
+        title: newJobTitle,
+        description: newJobDescription || "",
+        location: newJobLocation || "",
+        salaryRange: newJobSalary || "",
+        employmentType: newJobEmploymentType,
+        companyId,
+        companyName,
+        status: "Open",
+      });
+      toast.success("Job created successfully!");
+      setIsAddJobOpen(false);
+      setNewJobTitle('');
+      setNewJobDescription('');
+      setNewJobLocation('');
+      setNewJobSalary('');
+      setNewJobEmploymentType('Full-time');
+      router.refresh();
+      setTimeout(() => router.refresh(), 500);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to create job");
+    }
   };
 
   return (
     <div className="max-w-7xl mx-auto p-6">
-      {/* Header - unchanged */}
+      {/* Header */}
       <div className="flex justify-between items-start mb-8">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={() => router.back()}>
@@ -137,7 +173,7 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: { con
           <div className="bg-white border rounded-2xl p-6">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-semibold">Activity & Relationship Tracking</h3>
-              <Button onClick={openCreateActivity} size="sm">
+              <Button onClick={openCreateModal} size="sm">
                 <Plus className="h-4 w-4 mr-2" /> Log New Activity
               </Button>
             </div>
@@ -150,8 +186,8 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: { con
                   <ActivityItem
                     key={act.id}
                     activity={act}
-                    onEdit={openEditActivity}
-                    onDelete={deleteActivityMutation.mutate}
+                    onEdit={openEditModal}
+                    onDelete={handleDeleteActivity}
                   />
                 ))
               )}
@@ -159,7 +195,7 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: { con
           </div>
         </div>
 
-        {/* Sidebar - Open Jobs (now clickable) */}
+        {/* Sidebar - Open Jobs */}
         <div className="lg:col-span-5 space-y-6">
           <div className="bg-white border rounded-2xl p-6">
             <div className="flex justify-between mb-4">
@@ -172,19 +208,9 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: { con
             {companyJobs?.length > 0 ? (
               <div className="space-y-3">
                 {companyJobs.slice(0, 5).map((job: any) => (
-                  <div
-                    key={job.id}
-                    onClick={() => handleEditJob(job)}
-                    className="group border rounded-xl p-4 hover:border-blue-300 cursor-pointer flex justify-between items-center"
-                  >
-                    <div>
-                      <div className="font-medium">{job.title}</div>
-                      <div className="text-gray-500 text-sm">{job.location}</div>
-                    </div>
-                    <div className="opacity-0 group-hover:opacity-100 flex gap-2">
-                      <Pencil className="w-4 h-4 text-blue-600" />
-                      <Trash2 onClick={(e: any) => { e.stopPropagation(); handleDeleteJob(job.id); }} className="w-4 h-4 text-red-500 hover:text-red-700" />
-                    </div>
+                  <div key={job.id} className="border rounded-lg p-3 text-sm">
+                    <div className="font-medium">{job.title}</div>
+                    <div className="text-gray-500 text-xs">{job.location}</div>
                   </div>
                 ))}
               </div>
@@ -192,46 +218,48 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: { con
               <p className="text-gray-500 text-sm">No open jobs for this company.</p>
             )}
           </div>
-
-          {/* AI Tools - unchanged */}
-          <div className="bg-white border rounded-2xl p-6">
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-purple-600" /> AI Client Tools
-            </h3>
-            <div className="space-y-2">
-              <Button variant="default" className="w-full justify-start bg-blue-600 hover:bg-blue-700" size="lg">
-                <Sparkles className="mr-3 h-5 w-5" /> Draft Outreach / Follow-Up
-              </Button>
-              <Button variant="outline" className="w-full justify-start" size="lg">
-                <Search className="mr-3 h-5 w-5" /> Research This Contact
-              </Button>
-              <Button variant="outline" className="w-full justify-start" size="lg">
-                <Users className="mr-3 h-5 w-5" /> Find Similar Contacts
-              </Button>
-              <Button variant="outline" className="w-full justify-start" size="lg">
-                <FileText className="mr-3 h-5 w-5" /> Generate Client Summary
-              </Button>
-            </div>
-          </div>
         </div>
       </div>
 
       {/* Modals */}
       <ActivityModal
-        isOpen={isActivityModalOpen}
-        onClose={() => {
-          setIsActivityModalOpen(false);
-          setEditingActivity(null);
-        }}
+        isOpen={isModalOpen}
+        onClose={() => { setIsModalOpen(false); setEditingActivity(null); }}
         activity={editingActivity}
-        onSave={(data: any) => saveActivityMutation.mutate(data)}
+        onSave={handleSaveActivity}
         isLoading={saveActivityMutation.isPending}
       />
 
-      {/* Add/Edit Job Dialog (placeholder - existing job form would go here) */}
-      <SimpleDialog open={isAddJobOpen} onOpenChange={setIsAddJobOpen} title={editingJob ? "Edit Job" : "Add New Job"}>
+      {/* Add Job Dialog */}
+      <SimpleDialog
+        open={isAddJobOpen}
+        onOpenChange={setIsAddJobOpen}
+        title="Add New Job"
+        description={`For ${companyName}`}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setIsAddJobOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateJob} disabled={!newJobTitle.trim() || createJob.isPending}>
+              {createJob.isPending ? "Creating..." : "Create Job"}
+            </Button>
+          </>
+        }
+      >
         <div className="space-y-4">
-          <p className="text-gray-500">Job form placeholder...</p>
+          <div>
+            <label className="text-sm font-medium">Company</label>
+            <div className="bg-gray-50 border rounded-md px-3 py-2 font-medium">{companyName}</div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Job Title *</label>
+            <input
+              value={newJobTitle}
+              onChange={(e) => setNewJobTitle(e.target.value)}
+              className="w-full border rounded-md px-3 py-2"
+              placeholder="Job Title"
+            />
+          </div>
         </div>
       </SimpleDialog>
     </div>
