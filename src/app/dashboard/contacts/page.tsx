@@ -16,17 +16,13 @@ export default function ContactsPage() {
       setLoading(true);
       setError(null);
 
-      const tenantId = "default-tenant"; // ← Update this with real auth later
-      if (!tenantId) {
-        setError("No tenant ID found");
-        return;
-      }
-
+      const tenantId = "default-tenant"; // TODO: Replace with real session tenant later
       const allClients = await getAllClients(tenantId);
+      
       setClients(allClients || []);
     } catch (err: any) {
       console.error("Error loading contacts:", err);
-      setError("Failed to load contacts. Check console or Vercel Logs.");
+      setError(err?.message || "Failed to load contacts");
     } finally {
       setLoading(false);
     }
@@ -37,13 +33,13 @@ export default function ContactsPage() {
   }, []);
 
   if (loading) {
-    return <div className="p-12 text-center text-lg">Loading contacts...</div>;
+    return <div className="p-12 text-center">Loading contacts...</div>;
   }
 
   if (error) {
     return (
-      <div className="p-12 text-center">
-        <p className="text-red-600 mb-4">{error}</p>
+      <div className="p-12 text-center space-y-4">
+        <p className="text-red-600">{error}</p>
         <Button onClick={loadContacts}>Retry</Button>
       </div>
     );
@@ -56,8 +52,9 @@ export default function ContactsPage() {
           <h1 className="text-3xl font-bold flex items-center gap-3">
             <Users className="h-8 w-8" /> Contacts
           </h1>
-          <p className="text-muted-foreground">Manage all your contacts and relationships.</p>
+          <p className="text-muted-foreground">Manage your relationships and key contacts.</p>
         </div>
+        
         <Button asChild>
           <Link href="/dashboard/contacts/new">
             <Plus className="h-4 w-4 mr-2" /> New Contact
@@ -72,26 +69,19 @@ export default function ContactsPage() {
           <p className="text-muted-foreground mt-2">Create your first contact to get started.</p>
         </div>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {clients.map((client) => (
-            <div key={client.id} className="border rounded-xl p-6 hover:shadow-md transition">
-              <div className="flex justify-between">
-                <div>
-                  <h3 className="font-semibold text-lg">{client.name}</h3>
-                  <p className="text-sm text-muted-foreground">{client.industry || '—'}</p>
-                </div>
-                <div className="text-right text-sm">
-                  <div>{client.contacts?.length || 0} contacts</div>
-                </div>
-              </div>
-
+            <div key={client.id} className="border rounded-xl p-6 hover:shadow-md transition-all">
+              <h3 className="font-semibold text-lg">{client.name}</h3>
+              <p className="text-sm text-muted-foreground">{client.industry || '—'}</p>
+              
               {client.contacts && client.contacts.length > 0 && (
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {client.contacts.slice(0, 4).map((contact: any) => (
+                <div className="mt-4 space-y-2">
+                  {client.contacts.slice(0, 3).map((contact: any) => (
                     <Link
                       key={contact.id}
                       href={`/dashboard/contacts/${contact.id}`}
-                      className="block p-3 border rounded-lg hover:bg-muted/50 text-sm"
+                      className="block p-3 border rounded-lg hover:bg-muted text-sm"
                     >
                       <div className="font-medium">{contact.name}</div>
                       <div className="text-xs text-muted-foreground">{contact.title}</div>
