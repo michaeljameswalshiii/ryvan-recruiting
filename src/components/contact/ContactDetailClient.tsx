@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { ArrowLeft, Phone, Edit, Mail, Plus } from 'lucide-react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCreateJob } from '@/lib/hooks/query-job';
 import { logContactActivity, getContactActivities, updateContactActivity, deleteContactActivity } from '@/lib/actions/contact-actions';
@@ -238,24 +239,63 @@ export default function ContactDetailClient({ contact, companyJobs = [] }: Conta
         {/* Sidebar - Open Jobs */}
         <div className="lg:col-span-5 space-y-6">
           <div className="bg-white border rounded-2xl p-6">
-            <div className="flex justify-between mb-4">
+<div className="flex justify-between items-center mb-4">
               <h3 className="font-semibold">Open Jobs</h3>
               <Button size="sm" variant="outline" onClick={() => setIsAddJobOpen(true)}>
                 <Plus className="h-4 w-4 mr-1" /> Add Job
               </Button>
             </div>
 
-{safeCompanyJobs?.length > 0 ? (
-              <div className="space-y-3">
-                {safeCompanyJobs.slice(0, 5).map((job: any) => (
-                  <div key={job.id} className="border rounded-lg p-3 text-sm">
-                    <div className="font-medium">{job.title}</div>
-                    <div className="text-gray-500 text-xs">{job.location}</div>
-                  </div>
+            {safeCompanyJobs?.length > 0 ? (
+              <div className="space-y-2">
+                {safeCompanyJobs.slice(0, 6).map((job: any) => (
+                  <Link 
+                    key={job.id} 
+                    href={`/dashboard/jobs/${job.id}`}
+                    className="block border rounded-lg p-3 text-sm hover:bg-muted/50 hover:border-primary/30 transition-all group"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-base group-hover:text-blue-600 transition-colors">
+                          {job.title}
+                        </div>
+                        <div className="text-gray-500 text-xs mt-0.5">
+                          {job.location || companyName || '—'}
+                        </div>
+                      </div>
+
+                      {/* Status Badge */}
+                      <span className={`ml-2 px-2.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap ${
+                        (job.status || '').toLowerCase() === 'open' 
+                          ? 'bg-green-100 text-green-700' 
+                          : (job.status || '').toLowerCase() === 'on hold'
+                          ? 'bg-yellow-100 text-yellow-700'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {job.status || 'Open'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                      <span>{job.candidates?.length || 0} candidates</span>
+                      {job.createdAt && (
+                        <span>• {new Date(job.createdAt).toLocaleDateString()}</span>
+                      )}
+                    </div>
+                  </Link>
                 ))}
               </div>
             ) : (
               <p className="text-gray-500 text-sm">No open jobs for this company.</p>
+            )}
+
+            {safeCompanyJobs?.length > 6 && (
+              <Link 
+                href="/dashboard/jobs" 
+                className="text-xs text-blue-600 hover:underline mt-2 inline-block"
+              >
+                View all jobs →
+              </Link>
             )}
           </div>
         </div>
