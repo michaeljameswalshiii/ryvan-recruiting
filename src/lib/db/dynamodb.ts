@@ -40,29 +40,27 @@ const bedrockUsageTable = process.env.DYNAMODB_BEDROCK_USAGE_TABLE || 'turnkey-b
 const issuesTable = process.env.DYNAMODB_ISSUES_TABLE || 'turnkey-issues';
 
 // ============================================================================
-// Client
+// Client (UPDATED - Explicit credentials for Vercel)
 // ============================================================================
 
 let _client: DynamoDBClient | null = null;
 
 function getClient(): DynamoDBClient {
   if (!_client) {
-    const regionVal = process.env.AWS_REGION || 'us-east-1';
+    const region = process.env.AWS_REGION || 'us-east-1';
 
-    // Support both explicit env vars and IAM roles (Vercel recommended)
-    // If AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are set, use them
-    // Otherwise, let AWS SDK fall back to IAM role / default provider chain
-    const credentials = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
-      ? {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        }
-      : undefined; // Falls back to IAM role / default provider chain
+    console.log('🔧 Initializing DynamoDBClient with region:', region); // ← Debug
 
+    // Explicit credentials from env vars (required on Vercel)
     _client = new DynamoDBClient({
-      region: regionVal,
-      ...(credentials && { credentials }),
+      region,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
     });
+
+    console.log('✅ DynamoDBClient initialized successfully with credentials');
   }
   return _client;
 }
@@ -72,11 +70,10 @@ function getClient(): DynamoDBClient {
 // ============================================================================
 
 function isConfigured(): boolean {
-  // Check for AWS_REGION (minimum requirement)
-  // Also check for credentials OR allow IAM role (Vercel)
   return !!(
     process.env.AWS_REGION &&
-    (process.env.AWS_ACCESS_KEY_ID || true) // true = allow IAM role fallback
+    process.env.AWS_ACCESS_KEY_ID &&
+    process.env.AWS_SECRET_ACCESS_KEY
   );
 }
 
