@@ -55,7 +55,6 @@ export default function ContactsPage() {
           <h1 className="text-3xl font-bold flex items-center gap-3">
             <Users className="h-8 w-8" /> Contacts
           </h1>
-          <p className="text-muted-foreground">Manage your companies and contacts.</p>
         </div>
         <Button asChild>
           <Link href="/dashboard/contacts/new">
@@ -68,15 +67,12 @@ export default function ContactsPage() {
         <div className="text-center py-20 border rounded-2xl bg-muted/30">
           <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-xl font-medium">No contacts yet</h3>
-          <p className="text-muted-foreground mt-2">Get started by creating your first contact.</p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4">
           {clients.map((client) => (
-            <div key={client.id} className="border rounded-xl p-6 hover:shadow-md transition-all">
-              <h3 className="font-semibold text-lg">{client.name}</h3>
-              <p className="text-sm text-muted-foreground">{client.industry || '—'}</p>
-              {/* Add more details as needed */}
+            <div key={client.id} className="border rounded-xl p-6">
+              <h3 className="font-semibold">{client.name}</h3>
             </div>
           ))}
         </div>
