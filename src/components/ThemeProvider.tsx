@@ -51,11 +51,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setThemeState(newTheme);
   };
 
-  // Prevent flash of wrong theme by rendering nothing until mounted
-  if (!mounted) {
-    return <>{children}</>;
-  }
-
+  // ALWAYS provide context - even before mount - this prevents "useTheme must be used within ThemeProvider" error
   return (
     <ThemeContext.Provider value={{ theme, setTheme }}>
       {children}
@@ -65,8 +61,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
 export function useTheme() {
   const context = useContext(ThemeContext);
+  // Return default values instead of throwing if not mounted yet
   if (context === undefined) {
-    throw new Error("useTheme must be used within a ThemeProvider");
+    // Return a default theme instead of throwing - safe for SSR/hydration
+    return { theme: "white" as ThemeMode, setTheme: () => {} };
   }
   return context;
 }

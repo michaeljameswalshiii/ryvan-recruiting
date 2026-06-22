@@ -47,7 +47,22 @@ let _client: DynamoDBClient | null = null;
 
 function getClient(): DynamoDBClient {
   if (!_client) {
-    _client = new DynamoDBClient({ region });
+    const regionVal = process.env.AWS_REGION || 'us-east-1';
+
+    // Support both explicit env vars and IAM roles (Vercel recommended)
+    // If AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are set, use them
+    // Otherwise, let AWS SDK fall back to IAM role / default provider chain
+    const credentials = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
+      ? {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        }
+      : undefined; // Falls back to IAM role / default provider chain
+
+    _client = new DynamoDBClient({
+      region: regionVal,
+      ...(credentials && { credentials }),
+    });
   }
   return _client;
 }
@@ -57,8 +72,12 @@ function getClient(): DynamoDBClient {
 // ============================================================================
 
 function isConfigured(): boolean {
-  // Use server-side env var
-  return !!(process.env.AWS_REGION);
+  // Check for AWS_REGION (minimum requirement)
+  // Also check for credentials OR allow IAM role (Vercel)
+  return !!(
+    process.env.AWS_REGION &&
+    (process.env.AWS_ACCESS_KEY_ID || true) // true = allow IAM role fallback
+  );
 }
 
 /**
