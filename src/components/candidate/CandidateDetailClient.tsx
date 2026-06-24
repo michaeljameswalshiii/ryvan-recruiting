@@ -53,14 +53,14 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
           <Card>
             <CardHeader><CardTitle>Pipeline Stage</CardTitle></CardHeader>
             <CardContent>
-              <p className="text-lg">Interviewing — Pre-Construction Mgr / Estimator</p>
+              <p className="text-xl">Interviewing — Pre-Construction Mgr / Estimator</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader><CardTitle>Notes & Activity Log</CardTitle></CardHeader>
             <CardContent>
-              <p className="text-gray-500">Activity timeline will appear here (temporarily disabled for stability)</p>
+              <p className="text-gray-500 py-12 text-center">Activity log coming soon (temporarily simplified)</p>
             </CardContent>
           </Card>
         </div>
@@ -69,8 +69,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
           <Card className="sticky top-6">
             <CardHeader><CardTitle>Resume</CardTitle></CardHeader>
             <CardContent>
-              <p className="text-gray-500">Resume viewer temporarily disabled for debugging</p>
-              {/* ResumeViewer will be re-added once base page works */}
+              <p className="text-gray-500 py-12 text-center">Resume viewer coming soon</p>
             </CardContent>
           </Card>
         </div>
