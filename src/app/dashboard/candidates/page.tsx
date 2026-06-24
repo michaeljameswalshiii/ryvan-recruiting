@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, Search, Filter } from 'lucide-react';
+import { Plus, RefreshCw, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -10,38 +10,9 @@ import { SimpleDialog } from '@/components/ui/simple-dialog';
 import { 
   useLeads, 
   useCreateLead, 
-  useUpdateLead, 
   leadKeys 
 } from '@/lib/hooks/query-lead';
 import { useRouter } from 'next/navigation';
-
-// Debug: fetch session info for troubleshooting
-async function fetchSessionInfo() {
-  try {
-    const res = await fetch('/api/auth/session');
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (e) {
-    console.error('Session fetch error:', e);
-  }
-  return null;
-}
-
-// Debug UI - show when debug info is loaded
-function DebugPanel({ session, leadsData, debugInfo, rawLeads }: { session: any, leadsData: any, debugInfo: any, rawLeads?: any }) {
-  return (
-    <div className="p-4 bg-yellow-50 border border-yellow-300 rounded-lg text-sm">
-      <h3 className="font-bold text-yellow-800 mb-2">🔧 Debug Info</h3>
-      <div className="grid gap-2 text-xs">
-        <div><strong>Session:</strong> {JSON.stringify(session)}</div>
-        <div><strong>Leads Data Raw:</strong> {JSON.stringify(rawLeads)}</div>
-        <div><strong>Leads Array:</strong> {leadsData?.leads?.length || 0} items</div>
-        <div><strong>First Lead:</strong> {leadsData?.leads?.[0] ? JSON.stringify(leadsData.leads[0]) : 'none'}</div>
-      </div>
-    </div>
-  );
-}
 
 export default function CandidatesPage() {
   const router = useRouter();
@@ -49,24 +20,10 @@ export default function CandidatesPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [debugInfo, setDebugInfo] = useState<any>(null);
-  
-  // Load debug info on mount
-  useEffect(() => {
-    fetchSessionInfo().then(setDebugInfo);
-  }, []);
   
 // Use TanStack Query hooks
-  console.log('[CandidatesPage] Calling useLeads hook...');
   const { data: leadsDataRaw, isLoading, error, refetch } = useLeads();
-  console.log('[CandidatesPage] After useLeads:', { 
-    isLoading, 
-    error: error?.message, 
-    leadsRaw: leadsDataRaw?.leads?.length,
-    raw: leadsDataRaw 
-  });
   const createLeadMutation = useCreateLead();
-  const updateLeadMutation = useUpdateLead();
 
   // Handle both API response formats: { leads: [...] } or direct [...]
   // Also handle when leadsDataRaw itself IS the array (the actual bug!)
@@ -190,10 +147,7 @@ export default function CandidatesPage() {
 
 return (
     <div className="p-6 space-y-6">
-{/* DEBUG PANEL - Show session and leads data for troubleshooting */}
-      {debugInfo && <DebugPanel session={debugInfo} leadsData={{ leads: leadsArray }} debugInfo={debugInfo} rawLeads={leadsDataRaw} />}
-
-      {/* HEADER */}
+{/* HEADER */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Candidates</h1>
@@ -245,43 +199,41 @@ return (
         </div>
       </div>
 
-      {/* List */}
+{/* List - Card Format */}
       {filteredLeads.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           No candidates found. Add your first candidate to get started.
         </div>
       ) : (
-        <div className="bg-card border rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left p-3 text-sm font-medium">Name</th>
-                <th className="text-left p-3 text-sm font-medium">Title</th>
-                <th className="text-left p-3 text-sm font-medium">Email</th>
-                <th className="text-left p-3 text-sm font-medium">Status</th>
-                <th className="text-left p-3 text-sm font-medium">Source</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredLeads.map((lead: any) => (
-                <tr 
-                  key={lead.id} 
-                  className="border-t hover:bg-muted/30 cursor-pointer"
-                  onClick={() => router.push(`/dashboard/candidates/${lead.id}`)}
-                >
-                  <td className="p-3">{lead.name}</td>
-                  <td className="p-3 text-muted-foreground">{lead.title}</td>
-                  <td className="p-3 text-muted-foreground">{lead.email}</td>
-                  <td className="p-3">
-                    <Badge variant={lead.status === 'Accepted' ? 'default' : 'secondary'}>
-                      {lead.status || 'Identified'}
-                    </Badge>
-                  </td>
-                  <td className="p-3 text-muted-foreground">{lead.source}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredLeads.map((lead: any) => (
+            <div 
+              key={lead.id} 
+              className="bg-card border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => router.push(`/dashboard/candidates/${lead.id}`)}
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white text-lg font-semibold flex-shrink-0">
+                  {lead.name?.split(" ").map((n: string) => n[0]).join("").slice(0, 2)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold truncate">{lead.name}</div>
+                  <div className="text-sm text-muted-foreground truncate">{lead.title || 'No title'}</div>
+                </div>
+              </div>
+              <div className="mt-3 space-y-1 text-sm">
+                {lead.email && <div className="truncate text-muted-foreground">{lead.email}</div>}
+                {lead.phone && <div className="text-muted-foreground">{lead.phone}</div>}
+                {lead.location && <div className="text-muted-foreground">{lead.location}</div>}
+              </div>
+              <div className="mt-3 flex items-center justify-between">
+                <Badge variant={lead.status === 'Accepted' ? 'default' : lead.status === 'Interviewing' ? 'default' : 'secondary'}>
+                  {lead.status || 'Identified'}
+                </Badge>
+                {lead.source && <span className="text-xs text-muted-foreground">{lead.source}</span>}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
