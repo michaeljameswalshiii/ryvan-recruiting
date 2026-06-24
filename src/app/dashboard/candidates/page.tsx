@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, RefreshCw, Search, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,15 +15,34 @@ import {
 } from '@/lib/hooks/query-lead';
 import { useRouter } from 'next/navigation';
 
+// Debug: fetch session info for troubleshooting
+async function fetchSessionInfo() {
+  try {
+    const res = await fetch('/api/auth/session');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.error('Session fetch error:', e);
+  }
+  return null;
+}
+
 export default function CandidatesPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+  
+  // Load debug info on mount
+  useEffect(() => {
+    fetchSessionInfo().then(setDebugInfo);
+  }, []);
   
   // Use TanStack Query hooks
-  const { data: leadsDataRaw, isLoading, error, refetch } = useLeads(true);
+  const { data: leadsDataRaw, isLoading, error, refetch } = useLeads();
   const createLeadMutation = useCreateLead();
   const updateLeadMutation = useUpdateLead();
 
