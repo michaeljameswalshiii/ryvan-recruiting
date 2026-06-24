@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import CandidateDetailClient from "@/components/candidate/CandidateDetailClient"; // ← Correct default import
+import CandidateDetailClient from "@/components/candidate/CandidateDetailClient"; // ← Default import (this fixes it)
 
 import { getLeadById } from "@/lib/db/repositories/lead-repository";
 import { getSessionTenantId } from "@/lib/server-auth";
