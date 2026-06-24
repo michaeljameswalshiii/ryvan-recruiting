@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import CandidateDetailClient from "@/components/candidate/CandidateDetailClient";  // ← Default import (no curly braces)
+import CandidateDetailClient from "@/components/candidate/CandidateDetailClient"; // ← Default import (no curly braces)
+
 import { getLeadById } from "@/lib/db/repositories/lead-repository";
 import { getSessionTenantId } from "@/lib/server-auth";
 
@@ -20,5 +21,16 @@ export default async function CandidateDetailPage({ params }: Props) {
     notFound();
   }
 
-  return <CandidateDetailClient candidate={candidate} />;
+  // Map data for the client component
+  const candidateData = {
+    id: candidate.id || "",
+    name: candidate.name || "",
+    email: candidate.email || "",
+    phone: candidate.phone || "",
+    title: candidate.title || "",
+    location: candidate.location || "Orlando, FL",
+    // Add more fields as needed
+  };
+
+  return <CandidateDetailClient candidate={candidateData} />;
 }
