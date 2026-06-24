@@ -10,7 +10,7 @@ import { ArrowLeft, Loader2, Plus, Mail, MapPin, Phone } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { ResumeUpload } from "@/components/candidate/ResumeUpload";
-import EventTimeline from "@/components/candidate/EventTimeline";
+import { EventTimeline } from "@/components/candidate/EventTimeline";
 import { toast } from "sonner";
 
 interface CandidateDetailClientProps {
@@ -165,12 +165,12 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
                 </Button>
               </div>
 
-              {notesLoading ? (
+{notesLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin" />
                 </div>
               ) : (
-                <EventTimeline events={notes} />
+                <EventTimeline candidateId={candidate.id} initialEvents={notes} />
               )}
             </CardContent>
           </Card>
