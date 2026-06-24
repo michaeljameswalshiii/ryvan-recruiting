@@ -28,6 +28,20 @@ async function fetchSessionInfo() {
   return null;
 }
 
+// Debug UI - show when debug info is loaded
+function DebugPanel({ session, leadsData, debugInfo }: { session: any, leadsData: any, debugInfo: any }) {
+  return (
+    <div className="p-4 bg-yellow-50 border border-yellow-300 rounded-lg text-sm">
+      <h3 className="font-bold text-yellow-800 mb-2">🔧 Debug Info</h3>
+      <div className="grid gap-2 text-xs">
+        <div><strong>Session:</strong> {JSON.stringify(session)}</div>
+        <div><strong>Leads Data:</strong> {JSON.stringify(leadsData)}</div>
+        <div><strong>Debug Info:</strong> {JSON.stringify(debugInfo)}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function CandidatesPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -165,8 +179,11 @@ export default function CandidatesPage() {
     );
   }
 
-  return (
+return (
     <div className="p-6 space-y-6">
+      {/* DEBUG PANEL - Show session and leads data for troubleshooting */}
+      {debugInfo && <DebugPanel session={debugInfo} leadsData={leadsData} debugInfo={debugInfo} />}
+
       {/* HEADER */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
