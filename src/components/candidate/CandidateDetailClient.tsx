@@ -6,8 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Loader2, Plus, Mail, Phone, MapPin, Calendar } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { ResumeViewer } from "@/components/candidate/ResumeViewer";
+import { ResumeUpload } from "@/components/candidate/ResumeUpload";
+import EventTimeline from "@/components/EventTimeline";
 import { toast } from "sonner";
 
 interface CandidateDetailClientProps {
@@ -21,17 +24,17 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
   const [newNote, setNewNote] = useState("");
   const [noteType, setNoteType] = useState("Conversation");
 
-  // Fetch notes
+  // Fetch activity/notes
   useEffect(() => {
     const fetchNotes = async () => {
       try {
         const res = await fetch(`/api/candidate/${candidate.id}/events?t=${Date.now()}`);
         if (res.ok) {
           const data = await res.json();
-          setNotes(Array.isArray(data) ? data : data.events || []);
+          setNotes(Array.isArray(data) ? data : (data.events || []));
         }
       } catch (err) {
-        console.error(err);
+        console.error("Failed to fetch notes", err);
       } finally {
         setNotesLoading(false);
       }
@@ -41,28 +44,32 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
 
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
-    // Add your existing note API call here
-    toast.success("Note added");
-    setNewNote("");
+    try {
+      // TODO: Call your note API
+      toast.success("Note logged successfully");
+      setNewNote("");
+    } catch (err) {
+      toast.error("Failed to log note");
+    }
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto p-6 bg-gray-50 min-h-screen">
       {/* Header */}
-      <div className="flex items-start justify-between mb-8">
-        <div className="flex items-start gap-4">
+      <div className="flex justify-between items-start mb-8">
+        <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={() => router.back()}>
-            <ArrowLeft className="h-5 w-5 mr-2" /> Back
+            <ArrowLeft className="mr-2 h-5 w-5" /> Back to Candidates
           </Button>
           <div>
-            <div className="flex items-center gap-3">
-              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white text-3xl font-semibold">
-                {candidate.name?.split(" ").map(n => n[0]).join("")}
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center text-white text-4xl font-bold">
+                {candidate.name?.split(" ").map((n: string) => n[0]).join("")}
               </div>
               <div>
                 <h1 className="text-4xl font-semibold">{candidate.name}</h1>
-                <p className="text-xl text-gray-600">{candidate.title}</p>
-                <p className="text-sm text-gray-500">{candidate.email} • {candidate.phone}</p>
+                <p className="text-2xl text-gray-600">{candidate.title}</p>
+                <p className="text-gray-500">{candidate.email} • {candidate.phone}</p>
               </div>
             </div>
           </div>
@@ -75,35 +82,30 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* LEFT COLUMN */}
+        {/* Left Column - Main Content */}
         <div className="lg:col-span-7 space-y-8">
           {/* Contact Info */}
           <Card>
-            <CardHeader>
-              <CardTitle>Contact Information</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-6 text-sm">
-              <div><strong>Phone:</strong> {candidate.phone}</div>
-              <div><strong>Email:</strong> {candidate.email}</div>
-              <div><strong>Location:</strong> {candidate.location || "Orlando, FL"}</div>
-              <div><strong>Title:</strong> {candidate.title}</div>
+            <CardHeader><CardTitle>Contact Information</CardTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 gap-y-4 text-sm">
+              <div><strong>Phone</strong><p>{candidate.phone}</p></div>
+              <div><strong>Email</strong><p>{candidate.email}</p></div>
+              <div><strong>Location</strong><p>{candidate.location || "Orlando, FL"}</p></div>
+              <div><strong>Title</strong><p>{candidate.title}</p></div>
             </CardContent>
           </Card>
 
           {/* Pipeline Stage */}
           <Card>
-            <CardHeader>
-              <CardTitle>Pipeline Stage</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Pipeline Stage</CardTitle></CardHeader>
             <CardContent>
-              <div className="flex gap-2 mb-6">
-                {["Identified", "Submitted", "Interviewing", "Offer Out", "Accepted"].map((stage) => (
-                  <Badge key={stage} variant={stage === "Interviewing" ? "default" : "secondary"} className="px-4 py-2">
-                    {stage}
+              <div className="flex flex-wrap gap-2 mb-6">
+                {["Identified", "Submitted", "Interviewing", "Offer Out", "Accepted"].map((s) => (
+                  <Badge key={s} variant={s === "Interviewing" ? "default" : "secondary"} className="px-4 py-1.5">
+                    {s}
                   </Badge>
                 ))}
               </div>
-
               <div className="flex gap-3">
                 <Button variant="outline">Move Back</Button>
                 <Button>Advance to Offer Out</Button>
@@ -112,15 +114,13 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
             </CardContent>
           </Card>
 
-          {/* Notes & Activity Log */}
+          {/* Notes & Activity */}
           <Card>
-            <CardHeader>
-              <CardTitle>Notes & Activity Log</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Notes & Activity Log</CardTitle></CardHeader>
             <CardContent>
-              <div className="flex gap-3 mb-6">
+              <div className="flex gap-3 mb-4">
                 <Select value={noteType} onValueChange={setNoteType}>
-                  <SelectTrigger className="w-48">
+                  <SelectTrigger className="w-52">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -130,100 +130,39 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
                     <SelectItem value="Email Sent">Email Sent</SelectItem>
                   </SelectContent>
                 </Select>
-
                 <Textarea
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
                   placeholder="Add note detail here..."
-                  className="flex-1"
+                  className="flex-1 min-h-[80px]"
                 />
                 <Button onClick={handleAddNote} disabled={!newNote.trim()}>
-                  <Plus className="h-4 w-4 mr-2" /> Log
+                  <Plus className="mr-2 h-4 w-4" /> Log
                 </Button>
               </div>
 
-{notesLoading ? (
-                <Loader2 className="animate-spin mx-auto" />
-              ) : notes && notes.length > 0 ? (
-                <div className="space-y-4">
-                  {notes.map((note: any, index: number) => (
-                    <div key={note.id || index} className="border-l-4 border-blue-200 pl-4 py-2">
-                      <div className="text-xs text-gray-500">
-                        {note.createdAt ? new Date(note.createdAt).toLocaleDateString() : 'Recent'}
-                      </div>
-                      <p className="text-sm">{note.description || note.title || note.noteText || 'Note'}</p>
-                    </div>
-                  ))}
-                </div>
+              {notesLoading ? (
+                <div className="flex justify-center py-12"><Loader2 className="animate-spin" /></div>
               ) : (
-                <p className="text-gray-500 text-center py-4">No activity yet</p>
+                <EventTimeline events={notes} />
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* RIGHT SIDEBAR */}
+        {/* Right Sidebar */}
         <div className="lg:col-span-5 space-y-8">
-          {/* Resume */}
           <Card className="sticky top-6">
             <CardHeader>
-              <CardTitle className="flex justify-between">
-                Resume
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">View</Button>
-                  <Button variant="outline" size="sm">Refresh</Button>
-                </div>
-              </CardTitle>
-            </CardHeader>
-<CardContent>
-              {candidate.resumeUrl ? (
-                <div className="p-4 bg-gray-50 rounded-lg text-center">
-                  <p className="text-sm text-gray-600">Resume available</p>
-                  <Button variant="outline" size="sm" className="mt-2">
-                    View Resume
-                  </Button>
-                </div>
-              ) : (
-                <div className="p-8 text-center text-gray-500">
-                  No resume uploaded
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Professional Summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Professional Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="prose text-sm">
-              {candidate.summary || "Results-driven professional with strong experience in the industry..."}
-            </CardContent>
-          </Card>
-
-          {/* Experience, Education, Skills */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Experience</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6 text-sm">
-              {/* Add experience items here from candidate.experience */}
-            </CardContent>
-          </Card>
-
-          {/* Skills */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Skills</CardTitle>
+              <CardTitle>Resume</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {candidate.skills?.map((skill: string) => (
-                  <Badge key={skill} variant="secondary">{skill}</Badge>
-                ))}
-              </div>
+              <ResumeViewer url={candidate.resumeUrl} candidateId={candidate.id} fileName={candidate.resumeFileName} />
+              <ResumeUpload candidateId={candidate.id} />
             </CardContent>
           </Card>
+
+          {/* Summary, Experience, Skills can be added here later */}
         </div>
       </div>
     </div>
