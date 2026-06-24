@@ -29,14 +29,15 @@ async function fetchSessionInfo() {
 }
 
 // Debug UI - show when debug info is loaded
-function DebugPanel({ session, leadsData, debugInfo }: { session: any, leadsData: any, debugInfo: any }) {
+function DebugPanel({ session, leadsData, debugInfo, rawLeads }: { session: any, leadsData: any, debugInfo: any, rawLeads?: any }) {
   return (
     <div className="p-4 bg-yellow-50 border border-yellow-300 rounded-lg text-sm">
       <h3 className="font-bold text-yellow-800 mb-2">🔧 Debug Info</h3>
       <div className="grid gap-2 text-xs">
         <div><strong>Session:</strong> {JSON.stringify(session)}</div>
-        <div><strong>Leads Data:</strong> {JSON.stringify(leadsData)}</div>
-        <div><strong>Debug Info:</strong> {JSON.stringify(debugInfo)}</div>
+        <div><strong>Leads Data Raw:</strong> {JSON.stringify(rawLeads)}</div>
+        <div><strong>Leads Array:</strong> {leadsData?.leads?.length || 0} items</div>
+        <div><strong>First Lead:</strong> {leadsData?.leads?.[0] ? JSON.stringify(leadsData.leads[0]) : 'none'}</div>
       </div>
     </div>
   );
@@ -181,8 +182,8 @@ export default function CandidatesPage() {
 
 return (
     <div className="p-6 space-y-6">
-      {/* DEBUG PANEL - Show session and leads data for troubleshooting */}
-      {debugInfo && <DebugPanel session={debugInfo} leadsData={leadsData} debugInfo={debugInfo} />}
+{/* DEBUG PANEL - Show session and leads data for troubleshooting */}
+      {debugInfo && <DebugPanel session={debugInfo} leadsData={leadsData} debugInfo={debugInfo} rawLeads={leadsDataRaw} />}
 
       {/* HEADER */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
