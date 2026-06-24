@@ -41,8 +41,15 @@ export default function CandidatesPage() {
     fetchSessionInfo().then(setDebugInfo);
   }, []);
   
-  // Use TanStack Query hooks
+// Use TanStack Query hooks
+  console.log('[CandidatesPage] Calling useLeads hook...');
   const { data: leadsDataRaw, isLoading, error, refetch } = useLeads();
+  console.log('[CandidatesPage] After useLeads:', { 
+    isLoading, 
+    error: error?.message, 
+    leadsRaw: leadsDataRaw?.leads?.length,
+    raw: leadsDataRaw 
+  });
   const createLeadMutation = useCreateLead();
   const updateLeadMutation = useUpdateLead();
 
