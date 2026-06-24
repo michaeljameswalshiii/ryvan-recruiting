@@ -8,9 +8,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Loader2, Plus, Mail, Phone, MapPin, Calendar } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { ResumeViewer } from "@/components/candidate/ResumeViewer";
-import { ResumeUpload } from "@/components/candidate/ResumeUpload";
-import EventTimeline from "@/components/EventTimeline";
 import { toast } from "sonner";
 
 interface CandidateDetailClientProps {
@@ -178,13 +175,19 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
                 </div>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <ResumeViewer 
-                url={candidate.resumeUrl} 
-                fileName={candidate.resumeFileName} 
-                candidateId={candidate.id} 
-              />
-              <ResumeUpload candidateId={candidate.id} />
+<CardContent>
+              {candidate.resumeUrl ? (
+                <div className="p-4 bg-gray-50 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">Resume available</p>
+                  <Button variant="outline" size="sm" className="mt-2">
+                    View Resume
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-8 text-center text-gray-500">
+                  No resume uploaded
+                </div>
+              )}
             </CardContent>
           </Card>
 
