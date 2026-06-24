@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Loader2, Plus, Mail, MapPin, Phone } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Mail, MapPin } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { ResumeUpload } from "@/components/candidate/ResumeUpload";
@@ -24,7 +24,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
   const [newNote, setNewNote] = useState("");
   const [noteType, setNoteType] = useState("Conversation");
 
-  // Fetch activity notes
+  // Fetch notes / activity
   useEffect(() => {
     const fetchNotes = async () => {
       try {
@@ -47,7 +47,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
     try {
       toast.success("Note logged successfully!");
       setNewNote("");
-      // TODO: Add real API call here later
+      // TODO: Connect to real API later
     } catch (err) {
       toast.error("Failed to log note");
     }
@@ -77,7 +77,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
         </div>
 
         <div className="flex gap-3">
-          <Button variant="outline">Edit</Button>
+          <Button variant="outline">Edit Candidate</Button>
           <Button className="bg-blue-600 hover:bg-blue-700">
             <Mail className="mr-2 h-4 w-4" /> Send Email
           </Button>
@@ -199,7 +199,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
               <CardTitle>Professional Summary</CardTitle>
             </CardHeader>
             <CardContent className="prose text-sm leading-relaxed">
-              {candidate.summary || "Results-driven Preconstruction Manager with 12+ years of experience in commercial construction estimating..."}
+              {candidate.summary || "Results-driven Preconstruction Manager with 12+ years of experience in commercial construction estimating, bid management, and project planning."}
             </CardContent>
           </Card>
         </div>
