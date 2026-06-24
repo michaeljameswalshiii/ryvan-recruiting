@@ -22,22 +22,27 @@ export default async function CandidateDetailPage({ params }: Props) {
 
 // Map Lead to compatible format for client component
   // Note: DynamoDB uses snake_case, client component expects camelCase
+  // Defensive: ensure all values are strings or arrays, never objects
   const candidateData = {
-    id: candidate.id || "",
-    name: candidate.name || "",
-    email: candidate.email || "",
-    phone: candidate.phone || "",
-    title: candidate.title || "",
-    location: candidate.location || "Orlando, FL",
-    status: candidate.status || "Identified",
-    source: candidate.source || "",
-    createdAt: candidate.created_at || "",
+    id: (candidate.id || "") as string,
+    name: (candidate.name || "") as string,
+    email: (candidate.email || "") as string,
+    phone: (candidate.phone || "") as string,
+    title: (candidate.title || "") as string,
+    location: (candidate.location || "Orlando, FL") as string,
+    status: (candidate.status || "Identified") as string,
+    source: (candidate.source || "") as string,
+    createdAt: (candidate.created_at || "") as string,
     // Additional fields from Lead (map snake_case to camelCase)
-    linkedin: candidate.linkedin_url || "",
-    resumeUrl: candidate.resume_url || "",
-    resumeFileName: candidate.resume_file_name || "",
-    // All parsed fields
-    skills: typeof candidate.skills === 'string' ? candidate.skills.split(',').map(s => s.trim()).filter(Boolean) : (candidate.skills || []),
+    linkedin: (candidate.linkedin_url || "") as string,
+    resumeUrl: (candidate.resume_url || "") as string,
+    resumeFileName: (candidate.resume_file_name || "") as string,
+    // All parsed fields - ensure array
+    skills: Array.isArray(candidate.skills) 
+      ? candidate.skills.filter((s: any) => typeof s === 'string') 
+      : typeof candidate.skills === 'string' 
+        ? candidate.skills.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : [],
   };
 
   return <CandidateDetailClient candidate={candidateData} />;
