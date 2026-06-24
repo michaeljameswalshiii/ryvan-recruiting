@@ -6,10 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Loader2, Plus, Mail } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Mail, FileText, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { ResumeViewer } from "@/components/candidate/ResumeViewer";
-import { ResumeUpload } from "@/components/candidate/ResumeUpload";
 import { toast } from "sonner";
 
 interface CandidateDetailClientProps {
@@ -160,15 +158,29 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
           </Card>
         </div>
 
-        {/* Right Sidebar */}
+{/* Right Sidebar */}
         <div className="lg:col-span-5 space-y-8">
           <Card className="sticky top-6">
             <CardHeader>
               <CardTitle>Resume</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResumeViewer url={candidate.resumeUrl} candidateId={candidate.id} fileName={candidate.resumeFileName} />
-              <ResumeUpload candidateId={candidate.id} />
+              {candidate.resumeUrl ? (
+                <div className="flex flex-col items-center justify-center py-8">
+                  <FileText className="h-16 w-16 text-gray-400 mb-4" />
+                  <p className="text-sm text-gray-600 mb-4">Resume: {candidate.resumeFileName || 'Uploaded'}</p>
+                  <Button asChild>
+                    <a href={candidate.resumeUrl} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      View Resume
+                    </a>
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center py-8">
+                  <p className="text-gray-500">No resume uploaded</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
