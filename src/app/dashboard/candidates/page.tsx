@@ -68,11 +68,19 @@ export default function CandidatesPage() {
   const createLeadMutation = useCreateLead();
   const updateLeadMutation = useUpdateLead();
 
-  // Force it to always be a valid object with leads array
-  const leadsData: { leads?: any[]; stats?: any } = leadsDataRaw && typeof leadsDataRaw === 'object' ? leadsDataRaw : { leads: [] };
-
-  // Convert data to leads array
-  const leadsArray = Array.isArray(leadsData?.leads) ? leadsData.leads : [];
+  // Handle both API response formats: { leads: [...] } or direct [...]
+  // Also handle when leadsDataRaw itself IS the array (the actual bug!)
+  let leadsArray: any[] = [];
+  if (Array.isArray(leadsDataRaw)) {
+    // API returns array directly
+    leadsArray = leadsDataRaw;
+  } else if (leadsDataRaw && typeof leadsDataRaw === 'object' && Array.isArray((leadsDataRaw as any).leads)) {
+    // API returns { leads: [...] }
+    leadsArray = (leadsDataRaw as any).leads;
+  } else {
+    // Default to empty array
+    leadsArray = [];
+  }
   
   // Search and filter
   const filteredLeads = leadsArray.filter((lead: any) => {
@@ -183,7 +191,7 @@ export default function CandidatesPage() {
 return (
     <div className="p-6 space-y-6">
 {/* DEBUG PANEL - Show session and leads data for troubleshooting */}
-      {debugInfo && <DebugPanel session={debugInfo} leadsData={leadsData} debugInfo={debugInfo} rawLeads={leadsDataRaw} />}
+      {debugInfo && <DebugPanel session={debugInfo} leadsData={{ leads: leadsArray }} debugInfo={debugInfo} rawLeads={leadsDataRaw} />}
 
       {/* HEADER */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
