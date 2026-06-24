@@ -70,11 +70,30 @@ function getClient(): DynamoDBClient {
 // ============================================================================
 
 function isConfigured(): boolean {
-  return !!(
-    process.env.AWS_REGION &&
-    process.env.AWS_ACCESS_KEY_ID &&
-    process.env.AWS_SECRET_ACCESS_KEY
-  );
+  const hasRegion = !!process.env.AWS_REGION;
+  const hasAccessKey = !!process.env.AWS_ACCESS_KEY_ID;
+  const hasSecretKey = !!process.env.AWS_SECRET_ACCESS_KEY;
+  
+  if (!hasRegion || !hasAccessKey || !hasSecretKey) {
+    console.error('❌ AWS credentials missing:');
+    console.error('  AWS_REGION:', hasRegion ? '✓' : '✗ MISSING');
+    console.error('  AWS_ACCESS_KEY_ID:', hasAccessKey ? '✓' : '✗ MISSING');
+    console.error('  AWS_SECRET_ACCESS_KEY:', hasSecretKey ? '✓' : '✗ MISSING');
+    console.error('');
+    console.error('Please set these environment variables in Vercel:');
+    console.error('  - AWS_REGION (e.g., us-east-1)');
+    console.error('  - AWS_ACCESS_KEY_ID');
+    console.error('  - AWS_SECRET_ACCESS_KEY');
+    console.error('');
+    console.error('Also set table names:');
+    console.error('  - DYNAMODB_TENANTS_TABLE');
+    console.error('  - DYNAMODB_PROFILES_TABLE');
+    console.error('  - DYNAMODB_CLIENTS_TABLE');
+    console.error('  - DYNAMODB_LEADS_TABLE');
+    console.error('  - DYNAMODB_JOBS_TABLE');
+  }
+  
+  return hasRegion && hasAccessKey && hasSecretKey;
 }
 
 /**

@@ -19,7 +19,13 @@ export default function ContactsPage() {
       // Use a safe default tenant for now (same pattern that worked before)
       const tenantId = "default-tenant";
 
+console.log('[ContactsPage] Loading clients for tenant:', tenantId);
+      console.log('[ContactsPage] AWS_REGION:', process.env.AWS_REGION);
+      console.log('[ContactsPage] AWS_ACCESS_KEY_ID set:', !!process.env.AWS_ACCESS_KEY_ID);
+      console.log('[ContactsPage] DYNAMODB_CLIENTS_TABLE:', process.env.DYNAMODB_CLIENTS_TABLE);
+      
       const allClients = await getAllClients(tenantId);
+      console.log('[ContactsPage] Loaded clients count:', allClients?.length || 0);
       setClients(allClients || []);
     } catch (err: any) {
       console.error("Failed to load contacts:", err);
