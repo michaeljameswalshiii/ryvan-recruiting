@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import CandidateDetailClient from "@/components/candidate/CandidateDetailClient"; // ← Default import (this is the important fix)
+import CandidateDetailClient from "@/components/candidate/CandidateDetailClient"; // ← Correct default import
 
 import { getLeadById } from "@/lib/db/repositories/lead-repository";
 import { getSessionTenantId } from "@/lib/server-auth";
@@ -21,7 +21,6 @@ export default async function CandidateDetailPage({ params }: Props) {
     notFound();
   }
 
-  // Pass clean data to the client component
   const candidateData = {
     id: candidate.id || "",
     name: candidate.name || "",
@@ -29,8 +28,6 @@ export default async function CandidateDetailPage({ params }: Props) {
     phone: candidate.phone || "",
     title: candidate.title || "",
     location: candidate.location || "Orlando, FL",
-    resumeUrl: candidate.resumeUrl || "",
-    resumeFileName: candidate.resumeFileName || "",
   };
 
   return <CandidateDetailClient candidate={candidateData} />;
