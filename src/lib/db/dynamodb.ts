@@ -51,9 +51,10 @@ function getClient(): DynamoDBClient {
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
 
-    console.log('🔧 Initializing DynamoDBClient with region:', region);
+console.log('🔧 Initializing DynamoDBClient with region:', region);
     console.log('🔑 AccessKeyId present:', !!accessKeyId, 'length:', accessKeyId?.length);
     console.log('🔑 SecretAccessKey present:', !!secretAccessKey, 'length:', secretAccessKey?.length);
+    console.log('🗄️ Clients table:', clientsTable);
 
     // Validate credentials before creating client
     if (!accessKeyId || !secretAccessKey) {
