@@ -69,6 +69,31 @@
 ---
 
 ## Future Automated Tests (Nice to Have)
+
+(Expanded from before, tailored to the Paul Kiedis-style detail pages)Pre-change:Branch created
+Tenant isolation confirmed
+Event recording planned
+
+Companies CRUDList → Create → Edit → Delete → Drill to detail
+
+Contacts CRUD (linked to Company)Create from Company or global list
+Detail page (timeline + sidebar like Paul Kiedis)
+Edit / Change company / Delete
+
+Jobs + CandidatesCreate Job (Company link)
+Link/Unlink Candidates
+Candidate detail with linked Jobs
+All bidirectional navigation works
+
+Cross-EntityCompany detail shows Contacts + Open Jobs
+No orphans on delete
+Search/filters across linked entities
+
+TechnicalNo hook errors
+All pages load in Preview
+Events appear in timelines
+
+
 - Playwright / Cypress E2E tests
 - Unit tests for repositories
 - Resume parsing test suite with sample files
