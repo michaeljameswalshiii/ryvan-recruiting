@@ -48,15 +48,32 @@ let _client: DynamoDBClient | null = null;
 function getClient(): DynamoDBClient {
   if (!_client) {
     const region = process.env.AWS_REGION || 'us-east-1';
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
 
-    console.log('🔧 Initializing DynamoDBClient with region:', region); // ← Debug
+    console.log('🔧 Initializing DynamoDBClient with region:', region);
+    console.log('🔑 AccessKeyId present:', !!accessKeyId, 'length:', accessKeyId?.length);
+    console.log('🔑 SecretAccessKey present:', !!secretAccessKey, 'length:', secretAccessKey?.length);
+
+    // Validate credentials before creating client
+    if (!accessKeyId || !secretAccessKey) {
+      const errorMsg = '❌ AWS credentials missing or empty!' + 
+        `\n  AWS_ACCESS_KEY_ID: ${accessKeyId ? 'present' : 'MISSING'}` +
+        `\n  AWS_SECRET_ACCESS_KEY: ${secretAccessKey ? 'present' : 'MISSING'}`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    if (accessKeyId.length < 16) {
+      console.error('❌ AWS_ACCESS_KEY_ID appears too short (invalid):', accessKeyId.substring(0, 4) + '...');
+    }
 
     // Explicit credentials from env vars (required on Vercel)
     _client = new DynamoDBClient({
       region,
       credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+        accessKeyId,
+        secretAccessKey,
       },
     });
 
