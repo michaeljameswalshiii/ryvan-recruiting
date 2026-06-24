@@ -1,28 +1,16 @@
 'use client';
 
-import React, { useState, useEffect, useRef, ChangeEvent } from "react";
+import React, { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-
-// FIXED IMPORTS
-import EventTimeline from "@/components/candidate/EventTimeline";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, Loader2, Plus, Mail, MapPin, Phone } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { ResumeUpload } from "@/components/candidate/ResumeUpload";
-import { LinkJobModal } from "@/components/candidate/LinkJobModal";
-import { SendEmailModal } from "@/components/email/send-email-modal";
-
-import { ArrowLeft, Loader2, Plus, Mail, MapPin, Phone, Calendar } from "lucide-react";
-import { useRouter } from "next/navigation";
+import EventTimeline from "@/components/candidate/EventTimeline";
 import { toast } from "sonner";
 
 interface CandidateDetailClientProps {
@@ -57,7 +45,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
     try {
-      // Add your note API call here later
+      // TODO: Connect to your real note API later
       toast.success("Note logged successfully!");
       setNewNote("");
     } catch (err) {
@@ -73,14 +61,15 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
           <Button variant="ghost" onClick={() => router.back()} className="text-lg">
             ← Back to Candidates
           </Button>
-          <div className="flex items-center gap-4">
-            <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white text-4xl font-bold shadow">
+
+          <div className="flex items-center gap-5">
+            <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-4xl font-bold">
               {candidate.name?.split(" ").map((n: string) => n[0]).join("")}
             </div>
             <div>
               <h1 className="text-4xl font-semibold tracking-tight">{candidate.name}</h1>
               <p className="text-2xl text-gray-600">{candidate.title}</p>
-              <p className="text-gray-500 flex items-center gap-2 mt-1">
+              <p className="text-gray-500 flex items-center gap-2">
                 <Mail className="h-4 w-4" /> {candidate.email}
               </p>
             </div>
@@ -88,7 +77,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
         </div>
 
         <div className="flex gap-3">
-          <Button variant="outline">Edit Candidate</Button>
+          <Button variant="outline">Edit</Button>
           <Button className="bg-blue-600 hover:bg-blue-700">
             <Mail className="mr-2 h-4 w-4" /> Send Email
           </Button>
@@ -96,9 +85,9 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* LEFT COLUMN - Main Content */}
+        {/* LEFT COLUMN */}
         <div className="lg:col-span-7 space-y-8">
-          {/* Contact Info */}
+          {/* Contact Information */}
           <Card>
             <CardHeader>
               <CardTitle>Contact Information</CardTitle>
@@ -106,7 +95,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
             <CardContent className="grid grid-cols-2 gap-6 text-sm">
               <div>
                 <p className="text-gray-500">Phone</p>
-                <p className="font-medium">{candidate.phone || "727.768.7845"}</p>
+                <p className="font-medium">{candidate.phone || "(727) 768-7845"}</p>
               </div>
               <div>
                 <p className="text-gray-500">Location</p>
@@ -132,7 +121,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
                   <Badge 
                     key={stage} 
                     variant={stage === "Interviewing" ? "default" : "secondary"}
-                    className="px-5 py-2 text-sm"
+                    className="px-5 py-2 text-sm font-medium"
                   >
                     {stage}
                   </Badge>
@@ -140,7 +129,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
               </div>
               <div className="flex gap-3">
                 <Button variant="outline">Move Back</Button>
-                <Button className="bg-blue-600">Advance to Offer Out</Button>
+                <Button>Advance to Offer Out</Button>
                 <Button variant="destructive">Reject</Button>
               </div>
             </CardContent>
@@ -169,7 +158,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
                   placeholder="Add note detail here..."
-                  className="flex-1"
+                  className="flex-1 min-h-[80px]"
                 />
                 <Button onClick={handleAddNote} disabled={!newNote.trim()}>
                   <Plus className="mr-2 h-4 w-4" /> Log
@@ -209,8 +198,8 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
             <CardHeader>
               <CardTitle>Professional Summary</CardTitle>
             </CardHeader>
-            <CardContent className="prose text-sm leading-relaxed">
-              {candidate.summary || "Results-driven Preconstruction Manager with 12+ years of experience..."}
+            <CardContent className="prose text-sm">
+              {candidate.summary || "Results-driven Preconstruction Manager with 12+ years of experience in commercial construction..."}
             </CardContent>
           </Card>
         </div>
