@@ -4,10 +4,12 @@ import { getLeadById } from "@/lib/db/repositories/lead-repository";
 import { getSessionTenantId } from "@/lib/server-auth";
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function CandidateDetailPage({ params }: Props) {
+  const { id } = await params;
+  
   // Get tenant from session
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
@@ -15,7 +17,7 @@ export default async function CandidateDetailPage({ params }: Props) {
   }
 
   // Get candidate directly from repository (server-side)
-  const candidate = await getLeadById(tenantId, params.id);
+  const candidate = await getLeadById(tenantId, id);
   if (!candidate) {
     notFound();
   }

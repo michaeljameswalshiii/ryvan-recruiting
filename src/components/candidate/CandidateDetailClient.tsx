@@ -21,11 +21,26 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
   const [newNote, setNewNote] = useState("");
   const [noteType, setNoteType] = useState("Conversation");
 
-  // Fetch activity/notes
+  // Safely access candidate properties with fallbacks
+  const safeCandidate = candidate || {};
+  const candidateId = safeCandidate.id || '';
+  const candidateName = safeCandidate.name || '';
+  const candidateEmail = safeCandidate.email || '';
+  const candidatePhone = safeCandidate.phone || '';
+  const candidateTitle = safeCandidate.title || '';
+  const candidateLocation = safeCandidate.location || '';
+  const candidateResumeUrl = safeCandidate.resumeUrl || '';
+  const candidateResumeFileName = safeCandidate.resumeFileName || '';
+
+  // Fetch activity/notes - only if we have a valid ID
   useEffect(() => {
+    if (!candidateId) {
+      setNotesLoading(false);
+      return;
+    }
     const fetchNotes = async () => {
       try {
-        const res = await fetch(`/api/candidate/${candidate.id}/events?t=${Date.now()}`);
+        const res = await fetch(`/api/candidate/${candidateId}/events?t=${Date.now()}`);
         if (res.ok) {
           const data = await res.json();
           setNotes(Array.isArray(data) ? data : (data.events || []));
@@ -37,7 +52,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
       }
     };
     fetchNotes();
-  }, [candidate.id]);
+  }, [candidateId]);
 
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
@@ -59,14 +74,14 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
             <ArrowLeft className="mr-2 h-5 w-5" /> Back to Candidates
           </Button>
           <div>
-            <div className="flex items-center gap-4">
+<div className="flex items-center gap-4">
               <div className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center text-white text-4xl font-bold">
-                {candidate.name?.split(" ").map((n: string) => n[0]).join("")}
+                {candidateName ? candidateName.split(" ").map((n: string) => n[0]).join("") : "?"}
               </div>
               <div>
-                <h1 className="text-4xl font-semibold">{candidate.name}</h1>
-                <p className="text-2xl text-gray-600">{candidate.title}</p>
-                <p className="text-gray-500">{candidate.email} • {candidate.phone}</p>
+                <h1 className="text-4xl font-semibold">{candidateName || "Unknown"}</h1>
+                <p className="text-2xl text-gray-600">{candidateTitle || "No Title"}</p>
+                <p className="text-gray-500">{candidateEmail || "No Email"}{candidatePhone ? ` • ${candidatePhone}` : ''}</p>
               </div>
             </div>
           </div>
@@ -82,13 +97,13 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
         {/* Left Column - Main Content */}
         <div className="lg:col-span-7 space-y-8">
           {/* Contact Info */}
-          <Card>
+<Card>
             <CardHeader><CardTitle>Contact Information</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 gap-y-4 text-sm">
-              <div><strong>Phone</strong><p>{candidate.phone}</p></div>
-              <div><strong>Email</strong><p>{candidate.email}</p></div>
-              <div><strong>Location</strong><p>{candidate.location || "Orlando, FL"}</p></div>
-              <div><strong>Title</strong><p>{candidate.title}</p></div>
+              <div><strong>Phone</strong><p>{candidatePhone || "No Phone"}</p></div>
+              <div><strong>Email</strong><p>{candidateEmail || "No Email"}</p></div>
+              <div><strong>Location</strong><p>{candidateLocation || "Orlando, FL"}</p></div>
+              <div><strong>Title</strong><p>{candidateTitle || "No Title"}</p></div>
             </CardContent>
           </Card>
 
@@ -164,13 +179,13 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
             <CardHeader>
               <CardTitle>Resume</CardTitle>
             </CardHeader>
-            <CardContent>
-              {candidate.resumeUrl ? (
+<CardContent>
+              {candidateResumeUrl ? (
                 <div className="flex flex-col items-center justify-center py-8">
                   <FileText className="h-16 w-16 text-gray-400 mb-4" />
-                  <p className="text-sm text-gray-600 mb-4">Resume: {candidate.resumeFileName || 'Uploaded'}</p>
+                  <p className="text-sm text-gray-600 mb-4">Resume: {candidateResumeFileName || 'Uploaded'}</p>
                   <Button asChild>
-                    <a href={candidate.resumeUrl} target="_blank" rel="noopener noreferrer">
+                    <a href={candidateResumeUrl} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="mr-2 h-4 w-4" />
                       View Resume
                     </a>
