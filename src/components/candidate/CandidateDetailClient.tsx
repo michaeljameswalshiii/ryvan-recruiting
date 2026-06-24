@@ -1,16 +1,28 @@
 'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, ChangeEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Loader2, Plus, Mail, MapPin, Phone, Calendar } from "lucide-react";
-import { useRouter } from "next/navigation";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+
+// FIXED IMPORTS
+import EventTimeline from "@/components/candidate/EventTimeline";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { ResumeUpload } from "@/components/candidate/ResumeUpload";
-import EventTimeline from "@/components/candidate/EventTimeline";
+import { LinkJobModal } from "@/components/candidate/LinkJobModal";
+import { SendEmailModal } from "@/components/email/send-email-modal";
+
+import { ArrowLeft, Loader2, Plus, Mail, MapPin, Phone, Calendar } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 interface CandidateDetailClientProps {
