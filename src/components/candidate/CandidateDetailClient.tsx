@@ -10,7 +10,7 @@ import { ArrowLeft, Loader2, Plus, Mail, MapPin, Phone } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { ResumeUpload } from "@/components/candidate/ResumeUpload";
-import { EventTimeline } from "@/components/candidate/EventTimeline";
+import EventTimeline from "@/components/candidate/EventTimeline";
 import { toast } from "sonner";
 
 interface CandidateDetailClientProps {
@@ -24,7 +24,7 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
   const [newNote, setNewNote] = useState("");
   const [noteType, setNoteType] = useState("Conversation");
 
-  // Fetch notes/activity
+  // Fetch activity notes
   useEffect(() => {
     const fetchNotes = async () => {
       try {
@@ -45,9 +45,9 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
     try {
-      // TODO: Connect to your real note API later
       toast.success("Note logged successfully!");
       setNewNote("");
+      // TODO: Add real API call here later
     } catch (err) {
       toast.error("Failed to log note");
     }
@@ -63,13 +63,13 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
           </Button>
 
           <div className="flex items-center gap-5">
-            <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-4xl font-bold">
+            <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-4xl font-bold shadow-md">
               {candidate.name?.split(" ").map((n: string) => n[0]).join("")}
             </div>
             <div>
               <h1 className="text-4xl font-semibold tracking-tight">{candidate.name}</h1>
               <p className="text-2xl text-gray-600">{candidate.title}</p>
-              <p className="text-gray-500 flex items-center gap-2">
+              <p className="text-gray-500 flex items-center gap-2 mt-1">
                 <Mail className="h-4 w-4" /> {candidate.email}
               </p>
             </div>
@@ -165,12 +165,12 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
                 </Button>
               </div>
 
-{notesLoading ? (
+              {notesLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin" />
                 </div>
               ) : (
-                <EventTimeline candidateId={candidate.id} initialEvents={notes} />
+                <EventTimeline events={notes} />
               )}
             </CardContent>
           </Card>
@@ -198,8 +198,8 @@ export default function CandidateDetailClient({ candidate }: CandidateDetailClie
             <CardHeader>
               <CardTitle>Professional Summary</CardTitle>
             </CardHeader>
-            <CardContent className="prose text-sm">
-              {candidate.summary || "Results-driven Preconstruction Manager with 12+ years of experience in commercial construction..."}
+            <CardContent className="prose text-sm leading-relaxed">
+              {candidate.summary || "Results-driven Preconstruction Manager with 12+ years of experience in commercial construction estimating..."}
             </CardContent>
           </Card>
         </div>
