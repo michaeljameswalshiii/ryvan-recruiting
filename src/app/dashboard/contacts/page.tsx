@@ -1,31 +1,51 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Plus, Users, RefreshCw } from 'lucide-react';
-import { useClients, clientKeys } from '@/lib/hooks/query-client';
-import { useQueryClient } from '@tanstack/react-query';
 
 export default function ContactsPage() {
-  const queryClient = useQueryClient();
-  
-  // Use TanStack Query hook - properly fetches data via server action
-  const { data: clients = [], isLoading, error, refetch } = useClients();
+  const [clients, setClients] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
-    refetch();
+  const fetchClients = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Use API route (same pattern as jobs page)
+      const response = await fetch('/api/data/clients');
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setClients(data.clients || []);
+} catch (err: unknown) {
+      console.error('Failed to load contacts:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Failed to load contacts';
+      setError(errorMsg);
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  useEffect(() => {
+    fetchClients();
+  }, []);
 
   // Loading state
   if (isLoading) {
     return <div className="p-12 text-center">Loading contacts...</div>;
   }
 
-  // Error state
+// Error state
   if (error) {
     const isDev = process.env.NODE_ENV === 'development';
-    const errorMessage = error?.message || 'Unknown error';
+    const errorMessage = error || 'Unknown error';
     
     return (
       <div className="p-12 text-center space-y-6">
@@ -33,7 +53,7 @@ export default function ContactsPage() {
         {isDev && (
           <p className="text-sm text-muted-foreground">Error: {errorMessage}</p>
         )}
-        <Button onClick={handleRefresh} variant="outline">
+        <Button onClick={fetchClients} variant="outline">
           <RefreshCw className="mr-2 h-4 w-4" /> Retry
         </Button>
       </div>
@@ -49,7 +69,7 @@ export default function ContactsPage() {
           </h1>
         </div>
         <div className="flex gap-2">
-          <Button onClick={handleRefresh} variant="outline" size="sm">
+          <Button onClick={fetchClients} variant="outline" size="sm">
             <RefreshCw className="h-4 w-4 mr-2" /> Refresh
           </Button>
           <Button asChild>
