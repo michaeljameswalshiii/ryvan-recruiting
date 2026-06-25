@@ -62,19 +62,26 @@ function generateId(): string {
 /**
  * Get all clients for a tenant
  * NOTE: Cache disabled for now - causes issues with Vercel serverless
+ * Gracefully handles DynamoDB errors (missing credentials, table not found, etc.)
  */
 export async function getAllClients(tenantId: string): Promise<Client[]> {
-  // Directly query DynamoDB without caching
-  // (Vercel's in-memory cache doesn't work across instances)
-  
-  // Query from DynamoDB
-  const result = await queryItems<Client>(
-    clientsTable,
-    'tenant_id = :tenantId',
-    { ':tenantId': tenantId }
-  );
-  
-  return result.items || [];
+  try {
+    // Directly query DynamoDB without caching
+    // (Vercel's in-memory cache doesn't work across instances)
+    
+    // Query from DynamoDB
+    const result = await queryItems<Client>(
+      clientsTable,
+      'tenant_id = :tenantId',
+      { ':tenantId': tenantId }
+    );
+    
+    return result.items || [];
+  } catch (error: any) {
+    // Gracefully handle errors (missing credentials, table not found, etc.)
+    console.error('[getAllClients] Error fetching clients:', error?.message, error?.stack);
+    return [];
+  }
 }
 
 /**
