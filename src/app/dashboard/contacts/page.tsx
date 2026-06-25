@@ -25,10 +25,32 @@ export default function ContactsPage() {
     return <div className="p-12 text-center">Loading contacts...</div>;
   }
 
-  if (error) {
+if (error) {
+    // Check for credential-related errors
+    const isCredentialError = error.message?.includes(' credential') || 
+                        error.message?.includes('DynamoDB') ||
+                        error.message?.includes('AWS') ||
+                        error.message?.includes('table') ||
+                        error.message?.includes('NotFoundException') ||
+                        error.message?.includes('Missing');
+    
     return (
       <div className="p-12 text-center space-y-6">
-        <p className="text-red-600 text-lg">Failed to load contacts: {error.message}</p>
+        <p className="text-red-600 text-lg">
+          {isCredentialError ? 'Credential is missing or table not set up' : `Failed to load contacts: ${error.message}`}
+        </p>
+        {isCredentialError && (
+          <div className="text-sm text-gray-500 max-w-md mx-auto">
+            <p className="mb-4">This is usually due to missing AWS credentials or DynamoDB table configuration on Vercel.</p>
+            <p className="mb-2">Check Vercel Environment Variables for:</p>
+            <ul className="list-disc list-inside text-left bg-gray-100 p-4 rounded-lg">
+              <li>AWS_ACCESS_KEY_ID</li>
+              <li>AWS_SECRET_ACCESS_KEY</li>
+              <li>AWS_REGION</li>
+              <li>DYNAMODB_*_TABLE</li>
+            </ul>
+          </div>
+        )}
         <Button onClick={() => refetch()} variant="outline">
           <RefreshCw className="mr-2 h-4 w-4" /> Retry
         </Button>
@@ -62,10 +84,21 @@ export default function ContactsPage() {
         />
       </div>
 
-      {filteredClients.length === 0 ? (
-        <div className="text-center py-20 border rounded-2xl bg-muted/30">
-          <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-xl font-medium">No contacts yet</h3>
+{filteredClients.length === 0 ? (
+        <div className="p-12 text-center text-gray-500 border rounded-2xl bg-muted/30">
+          {clients.length === 0 ? (
+            <>
+              <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-xl font-medium">No contacts yet</h3>
+              <p className="mt-2 text-sm">Add your first contact to get started</p>
+            </>
+          ) : (
+            <>
+              <Search className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-xl font-medium">No contacts found</h3>
+              <p className="mt-2 text-sm">No contacts match your search "{searchQuery}"</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid gap-4">
