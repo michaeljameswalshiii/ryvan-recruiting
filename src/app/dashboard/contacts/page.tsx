@@ -1,53 +1,39 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Plus, Users, RefreshCw } from 'lucide-react';
-import { getAllClients } from "@/lib/db/repositories/client-repository";
+import { useClients, clientKeys } from '@/lib/hooks/query-client';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function ContactsPage() {
-  const [clients, setClients] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  
+  // Use TanStack Query hook - properly fetches data via server action
+  const { data: clients = [], isLoading, error, refetch } = useClients();
 
-  const loadContacts = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Use a safe default tenant for now (same pattern that worked before)
-      const tenantId = "default-tenant";
-
-console.log('[ContactsPage] Loading clients for tenant:', tenantId);
-      console.log('[ContactsPage] AWS_REGION:', process.env.AWS_REGION);
-      console.log('[ContactsPage] AWS_ACCESS_KEY_ID set:', !!process.env.AWS_ACCESS_KEY_ID);
-      console.log('[ContactsPage] DYNAMODB_CLIENTS_TABLE:', process.env.DYNAMODB_CLIENTS_TABLE);
-      
-      const allClients = await getAllClients(tenantId);
-      console.log('[ContactsPage] Loaded clients count:', allClients?.length || 0);
-      setClients(allClients || []);
-    } catch (err: any) {
-      console.error("Failed to load contacts:", err);
-      setError("Credential is missing or table not set up. Check Vercel Logs.");
-    } finally {
-      setLoading(false);
-    }
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
+    refetch();
   };
 
-  useEffect(() => {
-    loadContacts();
-  }, []);
-
-  if (loading) {
+  // Loading state
+  if (isLoading) {
     return <div className="p-12 text-center">Loading contacts...</div>;
   }
 
+  // Error state
   if (error) {
+    const isDev = process.env.NODE_ENV === 'development';
+    const errorMessage = error?.message || 'Unknown error';
+    
     return (
       <div className="p-12 text-center space-y-6">
-        <p className="text-red-600 text-lg">{error}</p>
-        <Button onClick={loadContacts} variant="outline">
+        <p className="text-red-600 text-lg">Failed to load contacts</p>
+        {isDev && (
+          <p className="text-sm text-muted-foreground">Error: {errorMessage}</p>
+        )}
+        <Button onClick={handleRefresh} variant="outline">
           <RefreshCw className="mr-2 h-4 w-4" /> Retry
         </Button>
       </div>
@@ -62,11 +48,16 @@ console.log('[ContactsPage] Loading clients for tenant:', tenantId);
             <Users className="h-8 w-8" /> Contacts
           </h1>
         </div>
-        <Button asChild>
-          <Link href="/dashboard/contacts/new">
-            <Plus className="h-4 w-4 mr-2" /> New Contact
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleRefresh} variant="outline" size="sm">
+            <RefreshCw className="h-4 w-4 mr-2" /> Refresh
+          </Button>
+          <Button asChild>
+            <Link href="/dashboard/contacts/new">
+              <Plus className="h-4 w-4 mr-2" /> New Contact
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {clients.length === 0 ? (
