@@ -1,16 +1,39 @@
-name: Deploy to Production
+# Deploy to Vercel from GitHub Actions
+name: Deploy to Vercel
 
 on:
   push:
     branches:
       - master
+      - main
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to Vercel
+permissions:
+  contents: read
+  deployments: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  deploy:
+  deploy-production:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
 
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v25
@@ -19,3 +42,4 @@ jobs:
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--prod'
+          working-directory: ./
