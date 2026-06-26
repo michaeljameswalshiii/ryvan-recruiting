@@ -48,21 +48,24 @@ let _client: DynamoDBClient | null = null;
 function getClient(): DynamoDBClient {
   if (!_client) {
     const region = process.env.AWS_REGION || 'us-east-1';
-    const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+    
+    // === ROBUST AWS CREDENTIALS LOADING ===
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.MY_AWS_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.MY_AWS_SECRET_ACCESS_KEY;
 
-console.log('🔧 Initializing DynamoDBClient with region:', region);
-    console.log('🔑 AccessKeyId present:', !!accessKeyId, 'length:', accessKeyId?.length);
-    console.log('🔑 SecretAccessKey present:', !!secretAccessKey, 'length:', secretAccessKey?.length);
+console.log('🔧 DynamoDB Init:', {
+  hasAccessKey: !!accessKeyId,
+  hasSecretKey: !!secretAccessKey,
+  region,
+  envKeys: Object.keys(process.env).filter(k => k.includes('AWS'))
+});
     console.log('🗄️ Clients table:', clientsTable);
 
     // Validate credentials before creating client
     if (!accessKeyId || !secretAccessKey) {
-      const errorMsg = '❌ AWS credentials missing or empty!' + 
-        `\n  AWS_ACCESS_KEY_ID: ${accessKeyId ? 'present' : 'MISSING'}` +
-        `\n  AWS_SECRET_ACCESS_KEY: ${secretAccessKey ? 'present' : 'MISSING'}`;
-      console.error(errorMsg);
-      throw new Error(errorMsg);
+      console.error('❌ AWS credentials STILL missing after fallback');
+      // Graceful fallback so page doesn't crash
+      throw new Error('AWS credentials not configured. Check Vercel env vars.');
     }
 
     if (accessKeyId.length < 16) {
@@ -78,7 +81,7 @@ console.log('🔧 Initializing DynamoDBClient with region:', region);
       },
     });
 
-    console.log('✅ DynamoDBClient initialized successfully with credentials');
+    console.log('✅ DynamoDBClient initialized successfully');
   }
   return _client;
 }
