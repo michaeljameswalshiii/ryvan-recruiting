@@ -40,7 +40,6 @@ const navItems = [
   { href: "/dashboard/contact-info", label: "Contact Info", icon: Info },
   { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
   { href: "/dashboard/issues", label: "Issues", icon: AlertCircle },
-  { href: "/dashboard/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
   { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
