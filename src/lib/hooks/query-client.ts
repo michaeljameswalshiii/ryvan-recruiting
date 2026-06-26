@@ -6,6 +6,13 @@
  * @clientOnly
  */
 
+// === TEMP DEBUG FOR AWS ISSUE ===
+console.log('🔧 useClients Hook - Env Check:', {
+  hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID || !!process.env.MY_AWS_ACCESS_KEY_ID,
+  hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY || !!process.env.MY_AWS_SECRET_ACCESS_KEY,
+  region: process.env.AWS_REGION,
+});
+
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
