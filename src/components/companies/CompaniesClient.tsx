@@ -11,7 +11,12 @@ export function CompaniesClient() {
   const router = useRouter();
   const { data: clients = [], isLoading, error, refetch } = useClients();
   const createClientMutation = useCreateClient();
-  
+
+  // DEBUG: Log when data changes
+  console.log('[CompaniesClient] clients:', JSON.stringify(clients));
+  console.log('[CompaniesClient] isLoading:', isLoading);
+  console.log('[CompaniesClient] error:', error);
+
   const [showForm, setShowForm] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newCompanyIndustry, setNewCompanyIndustry] = useState('');

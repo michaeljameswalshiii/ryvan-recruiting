@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Plus, RefreshCw, User, Mail, Phone, Building2 } from 'lucide-react';
@@ -9,6 +9,14 @@ import { useClients, useAddContact } from '@/lib/hooks/query-client';
 export function ContactsClient() {
   const router = useRouter();
   const { data: clients = [], isLoading, error, refetch } = useClients();
+  
+  // DEBUG: Log what's happening
+  useEffect(() => {
+    console.log('[ContactsClient] isLoading:', isLoading);
+    console.log('[ContactsClient] error:', error);
+    console.log('[ContactsClient] clients:', clients);
+    console.log('[ContactsClient] clients length:', clients?.length);
+  }, [isLoading, error, clients]);
   const addContactMutation = useAddContact();
   
   const [showForm, setShowForm] = useState(false);
