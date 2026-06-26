@@ -1,4 +1,4 @@
-﻿import { DashboardNav } from "@/components/dashboard/nav";
+﻿import Sidebar from "@/components/Sidebar";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { getSession } from "@/lib/server-auth";
 import { redirect } from "next/navigation";
@@ -44,9 +44,9 @@ export default async function DashboardLayout({
 
 return (
     <DragDropProvider>
-      <div className="min-h-screen bg-background">
-        <DashboardNav session={tenantInfo} />
-        <div className="pl-64">
+      <div className="min-h-screen bg-gray-50">
+        <Sidebar />
+        <div className="ml-72">
           <DashboardHeader user={tenantInfo} />
           <main className="p-6">{children}</main>
         </div>

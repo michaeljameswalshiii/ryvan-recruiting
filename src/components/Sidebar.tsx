@@ -1,92 +1,128 @@
-﻿"use client";
+﻿﻿'use client';
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Home, Users, Building2, User, Briefcase, BarChart3, Bot, AlertCircle, Settings, LogOut } from "lucide-react";
-import { useTheme } from "@/components/ThemeProvider";
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useRef, useState, useEffect } from 'react';
+import { 
+  LayoutDashboard, Users, Building2, UserRound, Briefcase, 
+  AlertTriangle, Pipeline, BarChart3, Mail, Settings, Bug,
+  ChevronUp, ChevronDown
+} from 'lucide-react';
 
-const themeOptions = [
-  { value: "white", label: "Light", icon: "⬜" },
-  { value: "gray", label: "Gray", icon: "⬛" },
-  { value: "black", label: "Dark", icon: "🌙" },
-] as const;
+const menuItems = [
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Candidates', href: '/dashboard/candidates', icon: Users },
+  { name: 'Companies', href: '/dashboard/companies', icon: Building2 },
+  { name: 'Contacts', href: '/dashboard/contacts', icon: UserRound },
+  { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase },
+  { name: 'Issues', href: '/dashboard/issues', icon: AlertTriangle },
+  { name: 'Pipeline', href: '/dashboard/pipeline', icon: Pipeline },
+  { name: 'Reporting', href: '/dashboard/reporting', icon: BarChart3 },
+  { name: 'Email', href: '/dashboard/email', icon: Mail },
+  { name: 'Debug', href: '/dashboard/debug-env', icon: Bug },
+  { name: 'Settings', href: '/dashboard/settings', icon: Settings },
+];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { theme, setTheme } = useTheme();
+  const navRef = useRef<HTMLDivElement>(null);
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
 
-  const navItems = [
-    { href: "/dashboard", label: "Dashboard", icon: Home },
-    { href: "/dashboard/candidates", label: "Candidates", icon: Users },
-    { href: "/dashboard/companies", label: "Companies", icon: Building2 },
-    { href: "/dashboard/contacts", label: "Contacts", icon: User },
-    { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
-    { href: "/dashboard/issues", label: "Issues", icon: AlertCircle },
-    { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
-    { href: "/dashboard/ai", label: "AI Apollo", icon: Bot },
-  ];
+  const checkScroll = () => {
+    if (navRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = navRef.current;
+      setCanScrollUp(scrollTop > 0);
+      setCanScrollDown(scrollTop + clientHeight < scrollHeight);
+    }
+  };
+
+  useEffect(() => {
+    checkScroll();
+    window.addEventListener('resize', checkScroll);
+    return () => window.removeEventListener('resize', checkScroll);
+  }, []);
+
+  const scrollMenu = (direction: 'up' | 'down') => {
+    if (navRef.current) {
+      const scrollAmount = 150;
+      navRef.current.scrollBy({
+        top: direction === 'down' ? scrollAmount : -scrollAmount,
+        behavior: 'smooth'
+      });
+      setTimeout(checkScroll, 100);
+    }
+  };
 
   return (
-    <div className="w-64 border-r border-border bg-card flex flex-col h-screen flex-shrink-0">
-      {/* Header with Logo + Theme Toggle */}
-      <div className="p-5 border-b border-border">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight">RyVan Recruiting</h1>
-        </div>
-
-        {/* Prominent Theme Toggle */}
-        <div className="flex bg-muted p-1 rounded-2xl">
-          {themeOptions.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => setTheme(option.value)}
-              className={`flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-medium transition-all ${
-                theme === option.value
-                  ? "bg-background shadow-sm text-foreground"
-                  : "hover:bg-background/70 text-muted-foreground"
-              }`}
-            >
-              <span className="text-lg">{option.icon}</span>
-              <span>{option.label}</span>
-            </button>
-          ))}
+    <div className="w-72 min-w-[280px] bg-white border-r border-gray-200 h-screen flex flex-col fixed left-0 top-0 shadow-sm z-50">
+      {/* Logo / Header */}
+      <div className="p-6 border-b">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
+            R
+          </div>
+          <div>
+            <div className="font-semibold text-xl tracking-tight">RyVan Recruiting</div>
+            <div className="text-xs text-gray-500">Turnkey Optimization</div>
+          </div>
         </div>
       </div>
 
+      {/* Scroll Up Button */}
+      {canScrollUp && (
+        <button
+          onClick={() => scrollMenu('up')}
+          className="absolute top-20 left-1/2 -translate-x-1/2 z-10 bg-white border border-gray-200 rounded-full p-1 shadow-md hover:bg-gray-100"
+          style={{ left: '50%' }}
+        >
+          <ChevronUp className="h-4 w-4" />
+        </button>
+      )}
+
       {/* Navigation */}
-      <nav className="flex-1 p-3 overflow-y-auto">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl mb-1 text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <item.icon className="w-5 h-5" />
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav 
+        ref={navRef}
+        className="flex-1 p-3 overflow-y-auto max-h-[calc(100vh-180px)]"
+        onScroll={checkScroll}
+      >
+        <div className="space-y-1">
+          {menuItems.map((item) => {
+            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                  isActive 
+                    ? 'bg-blue-50 text-blue-700' 
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <item.icon className="h-5 w-5" />
+                {item.name}
+              </Link>
+            );
+          })}
+        </div>
       </nav>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-border mt-auto">
-        <Link
-          href="/settings"
-          className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium hover:bg-muted text-muted-foreground hover:text-foreground mb-1"
+      {/* Scroll Down Button */}
+      {canScrollDown && (
+        <button
+          onClick={() => scrollMenu('down')}
+          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 bg-white border border-gray-200 rounded-full p-1 shadow-md hover:bg-gray-100"
+          style={{ left: '50%' }}
         >
-          <Settings className="w-5 h-5" />
-          Settings
-        </Link>
-        <button className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium hover:bg-muted text-muted-foreground hover:text-foreground w-full">
-          <LogOut className="w-5 h-5" />
-          Sign out
+          <ChevronDown className="h-4 w-4" />
         </button>
+      )}
+
+      {/* Footer */}
+      <div className="p-4 border-t mt-auto">
+        <div className="text-xs text-gray-500 text-center">
+          © 2026 RyVan Recruiting
+        </div>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useRef, useState, useEffect } from "react";
 import {
   Users,
   Building2,
@@ -17,6 +18,9 @@ import {
   Mail,
   Kanban,
   AlertCircle,
+  Bug,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { logout } from "@/lib/api/auth-client";
 import { useTheme } from "@/components/ThemeProvider";
@@ -39,6 +43,7 @@ const navItems = [
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
   { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
   { href: "/dashboard/settings", label: "Email", icon: Mail },
+  { href: "/dashboard/debug-env", label: "Debug", icon: Bug },
   { href: "/admin/dynamodb", label: "DynamoDB Viewer", icon: Database },
 ];
 
@@ -56,6 +61,34 @@ export function DashboardNav({ session }: DashboardNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
+  const navRef = useRef<HTMLDivElement>(null);
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+
+  const checkScroll = () => {
+    if (navRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = navRef.current;
+      setCanScrollUp(scrollTop > 0);
+      setCanScrollDown(scrollTop + clientHeight < scrollHeight);
+    }
+  };
+
+  useEffect(() => {
+    checkScroll();
+    window.addEventListener('resize', checkScroll);
+    return () => window.removeEventListener('resize', checkScroll);
+  }, []);
+
+  const scrollMenu = (direction: 'up' | 'down') => {
+    if (navRef.current) {
+      const scrollAmount = 200;
+      navRef.current.scrollBy({
+        top: direction === 'down' ? scrollAmount : -scrollAmount,
+        behavior: 'smooth'
+      });
+      setTimeout(checkScroll, 100);
+    }
+  };
 
   const handleSignOut = async () => {
     await logout();
@@ -83,7 +116,21 @@ export function DashboardNav({ session }: DashboardNavProps) {
         </div>
       </div>
 
-      <div className="flex-1 p-4 space-y-1">
+      {/* Scroll buttons */}
+      {canScrollUp && (
+        <button
+          onClick={() => scrollMenu('up')}
+          className="absolute top-20 left-1/2 -translate-x-1/2 z-10 bg-background border border-border rounded-full p-1 shadow-md hover:bg-accent"
+        >
+          <ChevronUp className="h-4 w-4" />
+        </button>
+      )}
+
+      <div 
+        ref={navRef}
+        className="flex-1 p-4 space-y-1 overflow-y-auto max-h-[calc(100vh-200px)]"
+        onScroll={checkScroll}
+      >
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
@@ -103,6 +150,15 @@ export function DashboardNav({ session }: DashboardNavProps) {
           );
         })}
       </div>
+
+      {canScrollDown && (
+        <button
+          onClick={() => scrollMenu('down')}
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 bg-background border border-border rounded-full p-1 shadow-md hover:bg-accent"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </button>
+      )}
 
       <div className="p-4 border-t border-border space-y-1">
         <Link
