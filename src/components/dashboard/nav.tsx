@@ -21,6 +21,7 @@ import {
   Bug,
   ChevronUp,
   ChevronDown,
+  Info,
 } from "lucide-react";
 import { logout } from "@/lib/api/auth-client";
 import { useTheme } from "@/components/ThemeProvider";
@@ -36,6 +37,7 @@ const navItems = [
   { href: "/dashboard/candidates", label: "Candidates", icon: Users },
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
   { href: "/dashboard/contacts", label: "Contacts", icon: User },
+  { href: "/dashboard/contact-info", label: "Contact Info", icon: Info },
   { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
   { href: "/dashboard/issues", label: "Issues", icon: AlertCircle },
   { href: "/dashboard/pipeline", label: "Pipeline", icon: Kanban },
