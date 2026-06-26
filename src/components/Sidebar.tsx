@@ -15,11 +15,17 @@ const menuItems = [
   { name: 'Companies', href: '/dashboard/companies', icon: Building2 },
   { name: 'Contacts', href: '/dashboard/contacts', icon: UserRound },
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase },
-  { name: 'Issues', href: '/dashboard/issues', icon: AlertTriangle },
   { name: 'Pipeline', href: '/dashboard/pipeline', icon: Pipeline },
   { name: 'Reporting', href: '/dashboard/reporting', icon: BarChart3 },
   { name: 'Email', href: '/dashboard/email', icon: Mail },
-  { name: 'Debug', href: '/dashboard/debug-env', icon: Bug },
+];
+
+const debugItems = [
+  { name: 'Debug Env', href: '/dashboard/debug-env', icon: Bug },
+  { name: 'AI Apollo', href: '/dashboard/ai-apollo', icon: Bug },
+  { name: 'AI Assistant', href: '/dashboard/ai-assistant', icon: Bug },
+  { name: 'Issues', href: '/dashboard/issues', icon: Bug },
+  { name: 'Usage', href: '/dashboard/usage', icon: Bug },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
 
@@ -80,10 +86,10 @@ export default function Sidebar() {
         </button>
       )}
 
-      {/* Navigation */}
+{/* Navigation */}
       <nav 
         ref={navRef}
-        className="flex-1 p-3 overflow-y-auto max-h-[calc(100vh-180px)]"
+        className="flex-1 p-3 overflow-y-auto scrollbar-thin"
         onScroll={checkScroll}
       >
         <div className="space-y-1">
@@ -104,6 +110,32 @@ export default function Sidebar() {
               </Link>
             );
           })}
+        </div>
+        
+        {/* Debug Section */}
+        <div className="mt-6 pt-4 border-t border-gray-200">
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 mb-2">
+            Debug / Admin
+          </div>
+          <div className="space-y-1">
+            {debugItems.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                    isActive 
+                      ? 'bg-orange-50 text-orange-700' 
+                      : 'text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.name}
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </nav>
 
