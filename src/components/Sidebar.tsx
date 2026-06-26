@@ -6,7 +6,7 @@ import { useRef, useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Users, Building2, UserRound, Briefcase, 
   AlertTriangle, Pipeline, BarChart3, Mail, Settings, Bug,
-  ChevronUp, ChevronDown
+  ChevronUp, ChevronDown, Info
 } from 'lucide-react';
 
 const menuItems = [
@@ -14,7 +14,7 @@ const menuItems = [
   { name: 'Candidates', href: '/dashboard/candidates', icon: Users },
   { name: 'Companies', href: '/dashboard/companies', icon: Building2 },
   { name: 'Contacts', href: '/dashboard/contacts', icon: UserRound },
-  { name: 'Contact Info', href: '/dashboard/contact-info', icon: UserRound },
+{ name: 'Contact Info', href: '/dashboard/contact-info', icon: Info },
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase },
   { name: 'Pipeline', href: '/dashboard/pipeline', icon: Pipeline },
   { name: 'Reporting', href: '/dashboard/reporting', icon: BarChart3 },
