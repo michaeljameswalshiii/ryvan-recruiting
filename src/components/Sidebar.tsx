@@ -27,7 +27,6 @@ const menuItems = [
   { name: 'Contacts', href: '/dashboard/contacts', icon: UserRound },
   { name: 'Contact Info', href: '/dashboard/contact-info', icon: Info },
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase },
-{ name: 'Pipeline', href: '/dashboard/pipeline', icon: Kanban },
   { name: 'Reporting', href: '/dashboard/reporting', icon: BarChart3 },
   { name: 'Email', href: '/dashboard/email', icon: Mail },
 ];
