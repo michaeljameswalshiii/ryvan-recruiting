@@ -4,9 +4,20 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRef, useState, useEffect } from 'react';
 import { 
-  LayoutDashboard, Users, Building2, UserRound, Briefcase, 
-  AlertTriangle, Pipeline, BarChart3, Mail, Settings, Bug,
-  ChevronUp, ChevronDown, Info
+  LayoutDashboard, 
+  Users, 
+  Building2, 
+  UserRound, 
+  Briefcase, 
+  AlertTriangle, 
+  Kanban, 
+  BarChart3, 
+  Mail, 
+  Settings, 
+  Bug,
+  ChevronUp, 
+  ChevronDown, 
+  Info
 } from 'lucide-react';
 
 const menuItems = [
@@ -16,7 +27,7 @@ const menuItems = [
   { name: 'Contacts', href: '/dashboard/contacts', icon: UserRound },
   { name: 'Contact Info', href: '/dashboard/contact-info', icon: Info },
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase },
-  { name: 'Pipeline', href: '/dashboard/pipeline', icon: Pipeline },
+{ name: 'Pipeline', href: '/dashboard/pipeline', icon: Kanban },
   { name: 'Reporting', href: '/dashboard/reporting', icon: BarChart3 },
   { name: 'Email', href: '/dashboard/email', icon: Mail },
 ];
