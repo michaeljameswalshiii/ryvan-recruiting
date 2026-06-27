@@ -4,6 +4,9 @@ import { getSession } from "@/lib/server-auth";
 import { redirect } from "next/navigation";
 import { DragDropProvider } from "@/components/providers/dnd-provider";
 
+// Force dynamic rendering - this layout uses cookies via getSession()
+export const dynamic = 'force-dynamic';
+
 /**
  * Dashboard Layout - Server-side auth enforcement
  * 

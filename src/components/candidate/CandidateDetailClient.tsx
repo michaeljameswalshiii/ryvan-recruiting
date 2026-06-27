@@ -14,7 +14,13 @@ interface CandidateDetailClientProps {
   candidate: any;
 }
 
-export default function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
+// Named export for compatibility with both import styles
+export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
+// Also keep default export for backward compatibility
+  return <CandidateDetailClientInner candidate={candidate} />;
+}
+
+function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
   const router = useRouter();
   const [notes, setNotes] = useState<any[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);

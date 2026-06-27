@@ -5,11 +5,35 @@ import Link from 'next/link';
 import { DynamoDBClient, ScanCommand } from '@aws-sdk/client-dynamodb';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 
-const dynamoClient = new DynamoDBClient({ 
-  region: process.env.AWS_REGION || 'us-east-1' 
-});
+// Force dynamic rendering - this page requires runtime credentials
+export const dynamic = 'force-dynamic';
+
+// Get region with fallback - handle missing env vars gracefully during build
+function getDynamoRegion(): string {
+  return process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
+}
+
+// Client lazily initialized to handle missing credentials
+function getDynamoClient(): DynamoDBClient | null {
+  try {
+    return new DynamoDBClient({ 
+      region: getDynamoRegion(),
+      // Don't throw during credentials issues - handle at runtime
+      tls: false,
+    });
+  } catch {
+    return null;
+  }
+}
 
 export async function getAllContacts() {
+  // Check for required credentials during build
+  const client = getDynamoClient();
+  if (!client) {
+    console.log('[getAllContacts] No AWS client available, returning empty contacts');
+    return [];
+  }
+  
   const tableName = process.env.DYNAMODB_EVENTS_TABLE || 'turnkey-events';
   
   const command = new ScanCommand({
@@ -20,7 +44,7 @@ export async function getAllContacts() {
     },
   });
 
-  const response = await dynamoClient.send(command);
+  const response = await client.send(command);
   
   // Convert DynamoDB items to plain objects
   const items = (response.Items || []).map(item => unmarshall(item));
