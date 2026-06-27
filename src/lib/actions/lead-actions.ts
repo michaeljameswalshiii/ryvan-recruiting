@@ -15,19 +15,16 @@ import { z } from 'zod';
 
 /**
  * Get all leads for the current tenant
+ * FIX: Removed incorrect default tenant fallback - session MUST have tenantId
  */
 export async function getLeads() {
-  let tenantId = await getSessionTenantId();
+  const tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
 
-  // If no tenantId but user is logged in, use default tenant
-  if (!tenantId && userId) {
-    tenantId = `tenant-${userId}`;
-  }
-
+  // FIX: No fallback - if no tenantId, user needs to log in properly
   if (!tenantId) {
-    // Not logged in - return empty array (not an error)
-    return { leads: [] };
+    console.log('[getLeads] No tenantId in session, userId:', userId);
+    return { leads: [], error: 'No tenant found. Please log in again.' };
   }
 
 try {
@@ -41,18 +38,19 @@ try {
 
 /**
  * Create a new lead
+ * FIX: Removed default tenant fallback
  */
 export async function createLead(formData: FormData) {
-  let tenantId = await getSessionTenantId();
+  const tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
   
   if (!userId) {
     return { error: 'Unauthorized' };
   }
 
-  // If no tenantId but user is logged in, create/use default tenant
+  // FIX: No fallback - must have proper tenant in session
   if (!tenantId) {
-    tenantId = `tenant-${userId}`;
+    return { error: 'No tenant found. Please log in again.' };
   }
 
 const rawData = {
@@ -90,18 +88,15 @@ const rawData = {
 
 /**
  * Update an existing lead
+ * FIX: Removed default tenant fallback
  */
 export async function updateLeadAction(leadId: string, formData: FormData) {
-  let tenantId = await getSessionTenantId();
+  const tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
   
-  // If no tenantId but user is logged in, use default tenant
-  if (!tenantId && userId) {
-    tenantId = `tenant-${userId}`;
-  }
-  
+  // FIX: No fallback - must have proper tenant in session
   if (!tenantId) {
-    return { error: 'Unauthorized' };
+    return { error: 'No tenant found. Please log in again.' };
   }
 
   const rawData = {
@@ -154,22 +149,19 @@ export async function deleteLeadAction(leadId: string) {
 /**
  * Update lead status and record STATUS_CHANGE event
  * Used by drag-and-drop to move candidates between stages
+ * FIX: Removed default tenant fallback
  */
 export async function updateLeadStatus(leadId: string, newStatus: string, oldStatus: string) {
-  let tenantId = await getSessionTenantId();
+  const tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
   
   if (!userId) {
     return { error: 'Unauthorized' };
   }
 
-  // If no tenantId but user is logged in, use default tenant
+  // FIX: No fallback - must have proper tenant in session
   if (!tenantId) {
-    tenantId = `tenant-${userId}`;
-  }
-  
-  if (!tenantId) {
-    return { error: 'Unauthorized' };
+    return { error: 'No tenant found. Please log in again.' };
   }
 
 try {
