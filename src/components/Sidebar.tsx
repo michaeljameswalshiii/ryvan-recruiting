@@ -17,7 +17,8 @@ import {
   Bug,
   ChevronUp, 
   ChevronDown, 
-  Info
+  Info,
+  Database
 } from 'lucide-react';
 
 const menuItems = [
@@ -38,6 +39,7 @@ const debugItems = [
   { name: 'Issues', href: '/dashboard/issues', icon: Bug },
   { name: 'Usage', href: '/dashboard/usage', icon: Bug },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
+  { name: 'DynamoDB Admin', href: '/admin/dynamodb', icon: Database },
 ];
 
 export default function Sidebar() {
