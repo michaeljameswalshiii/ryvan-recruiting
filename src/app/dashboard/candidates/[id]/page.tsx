@@ -1,6 +1,6 @@
 ﻿import { notFound } from "next/navigation";
-// CandidateDetailClient is a default export, not named export
-import CandidateDetailClient from "@/components/candidate/CandidateDetailClient";
+// CandidateDetailClient is a named export
+import { CandidateDetailClient } from "@/components/candidate/CandidateDetailClient";
 import { getLeadById } from "@/lib/db/repositories/lead-repository";
 import { getSessionTenantId } from "@/lib/server-auth";
 

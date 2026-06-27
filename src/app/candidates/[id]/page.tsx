@@ -9,7 +9,7 @@ import { redirect } from "next/navigation";
 import { getSessionTenantId } from "@/lib/server-auth";
 import { getLeadById } from "@/lib/db/repositories/lead-repository";
 import { getStageLabel, getStageColor } from "@/lib/schemas/lead";
-import CandidateDetailClient from "@/components/candidate/CandidateDetailClient";
+import { CandidateDetailClient } from "@/components/candidate/CandidateDetailClient";
 
 interface PageProps {
   params: Promise<{ id: string }>;
