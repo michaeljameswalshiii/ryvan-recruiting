@@ -21,6 +21,19 @@ const profilesTable = process.env.DYNAMODB_PROFILES_TABLE || 'turnkey-profiles';
 const cognitoConfigured = !!(process.env.COGNITO_CLIENT_ID || process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID) &&
   !!(process.env.COGNITO_USER_POOL_ID || process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID);
 
+// Demo user for testing (bypasses DynamoDB when AWS creds not configured)
+const DEMO_USER = {
+  email: 'waving1@gmail.com',
+  password: 'Nassau#94',
+  userId: 'demo-user-001',
+  tenantId: 'demo-tenant-001'
+};
+
+// Check if AWS credentials are available
+const awsCredentialsConfigured = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+
+console.log('[LOGIN] Auth config - Cognito:', cognitoConfigured, 'AWS Creds:', awsCredentialsConfigured);
+
 /**
  * Simple DynamoDB-based authentication (fallback)
  */
@@ -86,12 +99,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, password } = validated.data;
+const { email, password } = validated.data;
 
     let session: any;
     
-    // Try Cognito if configured, otherwise use simple auth
-    if (cognitoConfigured) {
+    // Check demo user first when AWS credentials not configured
+    if (!awsCredentialsConfigured) {
+      console.log('[LOGIN] AWS credentials not configured, checking demo user');
+      if (email === DEMO_USER.email && password === DEMO_USER.password) {
+        console.log('[LOGIN] Demo user authenticated successfully');
+        session = {
+          userId: DEMO_USER.userId,
+          email: DEMO_USER.email,
+          tenantId: DEMO_USER.tenantId,
+        };
+      } else {
+        // Demo user doesn't match - check if it's the correct demo credentials
+        console.log('[LOGIN] Demo user check failed for:', email);
+        return NextResponse.json(
+          { error: 'Invalid credentials' },
+          { status: 401 }
+        );
+      }
+} else if (cognitoConfigured && awsCredentialsConfigured) {
+      // Try Cognito if configured AND credentials available
       try {
         // Dynamic import to avoid issues when Cognito not configured
         const { authenticateUser } = await import('@/lib/server-auth');
@@ -102,6 +133,7 @@ export async function POST(request: NextRequest) {
         session = await authenticateSimple(email, password);
       }
     } else {
+      // Use simple DynamoDB auth
       console.log('[LOGIN] Using simple DynamoDB auth for:', email);
       session = await authenticateSimple(email, password);
     }
