@@ -40,23 +40,16 @@ export function LoginForm() {
 
 const onSubmit = async (data: LoginFormData) => {
     console.log('[LOGIN FORM] Submitting:', data.email);
-    alert('Starting login for: ' + data.email);
     try {
       setIsLoading(true);
       setError(null);
-      alert('Calling login API...');
-      // Use secure server-side auth with httpOnly cookies
       const result = await login(data.email, data.password);
-      alert('Login result: ' + JSON.stringify(result));
       console.log('[LOGIN FORM] Success:', result);
       router.push("/dashboard");
     } catch (err: unknown) {
       console.error('[LOGIN FORM] Error:', err);
-      alert('Login error: ' + (err instanceof Error ? err.message : 'Unknown'));
-      // More detailed error handling
       const errorMessage = err instanceof Error ? err.message : "Invalid credentials";
       
-      // Check for specific Cognito errors
       if (errorMessage.includes("User does not exist") || errorMessage.includes("UserNotFoundException")) {
         setError("No account found with this email. Please create an account first.");
       } else if (errorMessage.includes("Incorrect username or password")) {
