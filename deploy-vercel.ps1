@@ -1,5 +1,9 @@
 # Deploy to Vercel script
 Set-Location -Path "C:\Users\micha\Desktop\turnkey-optimization"
 
-# Deploy to Vercel (it will use the project already linked)
+# First re-link to the correct project
+# This will guide user through linking process if not already linked
+npx vercel link --yes
+
+# Deploy to Vercel default project
 vercel deploy --prod --yes

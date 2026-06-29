@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useClient } from "@/lib/hooks/query-client";
+import { useClient, useDeleteClient } from "@/lib/hooks/query-client";
 import { useLeads } from "@/lib/hooks/query-lead";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -233,6 +233,7 @@ const [activeTab, setActiveTab] = useState("overview");
               </a>
             </Button>
           )}
+          <CompanyDeleteButton companyId={company.id} companyName={company.name} />
         </div>
       </div>
 
@@ -721,6 +722,43 @@ function ContactsTab({ company, leads, onEmailClick }: { company: any; leads: an
         </div>
       )}
     </div>
+  );
+}
+
+// Company Delete Button Component
+function CompanyDeleteButton({ companyId, companyName }: { companyId: string; companyName: string }) {
+  const router = useRouter();
+  const deleteMutation = useDeleteClient();
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const handleDelete = async () => {
+    try {
+      await deleteMutation.mutateAsync(companyId);
+      toast.success('Company deleted successfully');
+      router.push('/dashboard/companies');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete company');
+    }
+  };
+
+  if (showConfirm) {
+    return (
+      <div className="flex gap-2">
+        <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleteMutation.isPending}>
+          {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setShowConfirm(false)}>
+          Cancel
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Button variant="outline" size="sm" onClick={() => setShowConfirm(true)} className="text-destructive hover:text-destructive">
+      <Trash2 className="mr-2 h-4 w-4" />
+      Delete
+    </Button>
   );
 }
 

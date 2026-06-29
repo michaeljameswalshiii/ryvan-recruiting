@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Loader2, Plus, Mail, FileText, ExternalLink } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Mail, FileText, ExternalLink, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -25,7 +25,9 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
   const [notes, setNotes] = useState<any[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [newNote, setNewNote] = useState("");
-  const [noteType, setNoteType] = useState("Conversation");
+const [noteType, setNoteType] = useState("Conversation");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Safely access candidate properties with fallbacks
   const safeCandidate = candidate || {};
@@ -60,7 +62,7 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
     fetchNotes();
   }, [candidateId]);
 
-  const handleAddNote = async () => {
+const handleAddNote = async () => {
     if (!newNote.trim()) return;
     try {
       // TODO: Call your note API
@@ -68,6 +70,30 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
       setNewNote("");
     } catch (err) {
       toast.error("Failed to log note");
+    }
+  };
+
+  // Handle candidate deletion
+  const handleDeleteCandidate = async () => {
+    if (!candidateId) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/candidate/${candidateId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        toast.success('Candidate deleted successfully');
+        router.push('/dashboard/candidates');
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to delete candidate');
+      }
+    } catch (err) {
+      console.error('Error deleting candidate:', err);
+      toast.error('Failed to delete candidate');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -93,9 +119,24 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
           </div>
         </div>
 
-        <div className="flex gap-3">
-          <Button variant="outline">Edit</Button>
+<div className="flex gap-3">
+          <Button variant="outline" onClick={() => router.push(`/dashboard/candidates/${candidateId}/edit`)}>Edit</Button>
           <Button>Send Email</Button>
+          {showDeleteConfirm ? (
+            <>
+              <Button variant="destructive" onClick={handleDeleteCandidate} disabled={isDeleting}>
+                {isDeleting ? 'Deleting...' : 'Confirm Delete'}
+              </Button>
+              <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" onClick={() => setShowDeleteConfirm(true)}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </Button>
+          )}
         </div>
       </div>
 

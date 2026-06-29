@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { ArrowLeft, Briefcase, Building2, MapPin, DollarSign, Calendar, Loader2, UserPlus, Trash2 } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft, Briefcase, Building2, MapPin, DollarSign, Calendar, Loader2, UserPlus, Trash2, Pencil } from "lucide-react";
 import { useJob, useLinkCandidateToJob, useUnlinkCandidateFromJob, useUpdateCandidateStageInJob, useUpdateJob } from "@/lib/hooks/query-job";
 import EventTimeline from "@/components/EventTimeline";
 import { Badge } from "@/components/ui/badge";
@@ -121,7 +121,7 @@ export default function JobDetailPage() {
             <p className="text-sm text-gray-600">{job.companyName || "Unknown Company"}</p>
           </div>
 
-          <div className="flex items-center gap-2">
+<div className="flex items-center gap-2">
             <Badge variant="secondary">{job.status || "OPEN"}</Badge>
             <select
               value={job.status || "OPEN"}
@@ -135,6 +135,13 @@ export default function JobDetailPage() {
                 </option>
               ))}
             </select>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/dashboard/jobs/${job.id}/edit`}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit
+              </Link>
+            </Button>
+            <JobDeleteButton jobId={job.id} jobTitle={job.title} />
           </div>
         </div>
       </div>
@@ -270,7 +277,7 @@ export default function JobDetailPage() {
             </div>
           </div>
 
-          <div>
+<div>
             <div className="bg-white border rounded-xl p-6">
               <h2 className="font-semibold mb-4">Job Activity</h2>
               <EventTimeline entityType="company" entityId={job.companyId || ""} tenantId={(job.tenantId as string) || "default"} />
@@ -279,5 +286,52 @@ export default function JobDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Job Delete Button Component
+function JobDeleteButton({ jobId, jobTitle }: { jobId: string; jobTitle: string }) {
+  const router = useRouter();
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        router.push('/dashboard/jobs');
+      } else {
+        alert('Failed to delete job');
+      }
+    } catch (err) {
+      console.error('Error deleting job:', err);
+      alert('Failed to delete job');
+    } finally {
+      setIsDeleting(false);
+      setShowConfirm(false);
+    }
+  };
+
+  if (showConfirm) {
+    return (
+      <div className="flex gap-2">
+        <Button variant="destructive" size="sm" onClick={handleDelete} disabled={isDeleting}>
+          {isDeleting ? 'Deleting...' : 'Confirm'}
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setShowConfirm(false)}>
+          Cancel
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Button variant="outline" size="sm" onClick={() => setShowConfirm(true)} className="text-red-600 hover:text-red-700">
+      <Trash2 className="h-4 w-4 mr-2" />
+      Delete
+    </Button>
   );
 }

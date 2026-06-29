@@ -7,8 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { toast } from 'sonner';
-import { ArrowLeft, Phone, Mail, Edit, MapPin, Link as LinkIcon, Users, Plus } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, Edit, MapPin, Link as LinkIcon, Users, Plus, Trash2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRemoveContact, useClients, clientKeys } from '@/lib/hooks/query-client';
 import { logContactActivity, getContactActivities, updateContactActivity, deleteContactActivity } from '@/lib/actions/contact-actions';
 import ActivityModal from './ActivityModal';
 import ActivityItem from './ActivityItem';
@@ -66,7 +67,7 @@ export default function ContactDetailClient({ contact: rawContact, companyJobs: 
     onError: (err: any) => toast.error(err?.message || 'Failed to save activity'),
   });
 
-  const deleteMutation = useMutation({
+const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteContactActivity({ contactId: contact.id, activityId: id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contact-activities', contact.id] });
@@ -74,6 +75,32 @@ export default function ContactDetailClient({ contact: rawContact, companyJobs: 
     },
     onError: (err: any) => toast.error(err?.message || 'Failed to delete activity'),
   });
+
+  // Contact delete mutation
+  const removeContactMutation = useRemoveContact();
+
+  // Delete contact handler
+  const handleDeleteContact = async () => {
+    if (!companyId || !contact.id) {
+      toast.error('Cannot delete: missing company or contact ID');
+      return;
+    }
+    
+    const confirmed = window.confirm(`Are you sure you want to delete ${contact.name}? This action cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      await removeContactMutation.mutateAsync({
+        clientId: companyId,
+        contactId: contact.id,
+        contactName: contact.name,
+      });
+      toast.success('Contact deleted successfully');
+      router.push('/dashboard/contacts');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete contact');
+    }
+  };
 
   const openCreate = () => {
     setEditingActivity(null);
@@ -116,7 +143,7 @@ export default function ContactDetailClient({ contact: rawContact, companyJobs: 
           </div>
         </div>
 
-        {/* Action Buttons */}
+{/* Action Buttons */}
         <div className="flex flex-wrap gap-3">
           <Button size="lg" variant="outline">
             <Phone className="mr-2 h-5 w-5" /> Call
@@ -126,6 +153,15 @@ export default function ContactDetailClient({ contact: rawContact, companyJobs: 
           </Button>
           <Button size="lg" variant="default" onClick={openEdit}>
             <Edit className="mr-2 h-5 w-5" /> Edit Contact
+          </Button>
+          <Button 
+            size="lg" 
+            variant="destructive"
+            onClick={handleDeleteContact}
+            disabled={removeContactMutation.isPending}
+          >
+            <Trash2 className="mr-2 h-5 w-5" /> 
+            {removeContactMutation.isPending ? 'Deleting...' : 'Delete Contact'}
           </Button>
         </div>
       </div>
