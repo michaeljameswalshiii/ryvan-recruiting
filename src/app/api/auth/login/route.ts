@@ -25,7 +25,16 @@ const cognitoConfigured = !!(process.env.COGNITO_CLIENT_ID || process.env.NEXT_P
  * Simple DynamoDB-based authentication (fallback)
  */
 async function authenticateSimple(email: string, password: string) {
-  const client = new DynamoDBClient({ region });
+  // Configure DynamoDB client with credentials from environment
+  const client = new DynamoDBClient({
+    region,
+    credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
+      ? {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        }
+      : undefined,
+  });
   
   const scanResult = await client.send(new ScanCommand({
     TableName: profilesTable,
