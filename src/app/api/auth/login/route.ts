@@ -88,18 +88,21 @@ async function authenticateSimple(email: string, password: string) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    console.log('[LOGIN] Request body:', JSON.stringify(body));
     
     // Validate input with Zod
     const validated = loginSchema.safeParse(body);
     
     if (!validated.success) {
+      console.log('[LOGIN] Validation failed:', validated.error);
       return NextResponse.json(
-        { error: 'Invalid credentials' },
+        { error: 'Invalid credentials', details: validated.error },
         { status: 400 }
       );
     }
 
-const { email, password } = validated.data;
+    const { email, password } = validated.data;
+    console.log('[LOGIN] Email:', email, 'Password length:', password?.length);
 
     let session: any;
     
