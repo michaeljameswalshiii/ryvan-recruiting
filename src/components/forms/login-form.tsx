@@ -40,12 +40,14 @@ export function LoginForm() {
   });
 
 const onSubmit = async (data: LoginFormData) => {
+    // Use alert for debugging since console might not show
+    alert('[LOGIN FORM] Submitting: ' + data.email);
     console.log('[LOGIN FORM] Submitting:', data.email);
     try {
       setIsLoading(true);
       setError(null);
       
-      // Make request manually to get status code
+      alert('[LOGIN FORM] Making fetch request...');
       console.log('[LOGIN FORM] Making fetch request...');
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -54,24 +56,30 @@ const onSubmit = async (data: LoginFormData) => {
         body: JSON.stringify({ email: data.email, password: data.password }),
       });
       
+      alert('[LOGIN FORM] Response status: ' + response.status);
       console.log('[LOGIN FORM] Response status:', response.status);
       const result = await response.json();
+      alert('[LOGIN FORM] Response: ' + JSON.stringify(result));
       console.log('[LOGIN FORM] Response JSON:', JSON.stringify(result));
       
       if (!response.ok) {
+        alert('[LOGIN FORM] Error: ' + result.error);
         setError(result.error || 'Login failed');
         setIsLoading(false);
         return;
       }
       
+      alert('[LOGIN FORM] Success, redirecting...');
       console.log('[LOGIN FORM] Success user:', result.user);
       console.log('[LOGIN FORM] Redirecting to dashboard...');
       // Use direct window.location for reliable redirect
       setTimeout(() => {
+        alert('[LOGIN FORM] Doing redirect now...');
         console.log('[LOGIN FORM] Doing redirect now...');
         window.location.replace('/dashboard');
       }, 100);
     } catch (err: unknown) {
+      alert('[LOGIN FORM] Catch Error: ' + err);
       console.error('[LOGIN FORM] Catch Error:', err);
       const errorMessage = err instanceof Error ? err.message : "Invalid credentials";
       setError(errorMessage);
