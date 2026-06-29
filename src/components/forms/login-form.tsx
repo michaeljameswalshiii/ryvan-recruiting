@@ -1,4 +1,5 @@
-﻿"use client";
+﻿
+"use client";
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -45,7 +46,9 @@ const onSubmit = async (data: LoginFormData) => {
       setError(null);
       const result = await login(data.email, data.password);
       console.log('[LOGIN FORM] Success:', result);
-      router.push("/dashboard");
+      console.log('[LOGIN FORM] Redirecting to dashboard...');
+      // Use window.location for reliable redirect after login
+      window.location.href = '/dashboard';
     } catch (err: unknown) {
       console.error('[LOGIN FORM] Error:', err);
       const errorMessage = err instanceof Error ? err.message : "Invalid credentials";
