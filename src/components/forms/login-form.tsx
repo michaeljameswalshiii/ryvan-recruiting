@@ -44,31 +44,37 @@ const onSubmit = async (data: LoginFormData) => {
     try {
       setIsLoading(true);
       setError(null);
-      const result = await login(data.email, data.password);
-      console.log('[LOGIN FORM] Success result:', JSON.stringify(result));
+      
+      // Make request manually to get status code
+      console.log('[LOGIN FORM] Making fetch request...');
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: data.email, password: data.password }),
+      });
+      
+      console.log('[LOGIN FORM] Response status:', response.status);
+      const result = await response.json();
+      console.log('[LOGIN FORM] Response JSON:', JSON.stringify(result));
+      
+      if (!response.ok) {
+        setError(result.error || 'Login failed');
+        setIsLoading(false);
+        return;
+      }
+      
       console.log('[LOGIN FORM] Success user:', result.user);
       console.log('[LOGIN FORM] Redirecting to dashboard...');
       // Use direct window.location for reliable redirect
-      // Add small delay to ensure cookie is set
       setTimeout(() => {
         console.log('[LOGIN FORM] Doing redirect now...');
         window.location.replace('/dashboard');
       }, 100);
     } catch (err: unknown) {
-      console.error('[LOGIN FORM] Error:', err);
+      console.error('[LOGIN FORM] Catch Error:', err);
       const errorMessage = err instanceof Error ? err.message : "Invalid credentials";
-      
-      if (errorMessage.includes("User does not exist") || errorMessage.includes("UserNotFoundException")) {
-        setError("No account found with this email. Please create an account first.");
-      } else if (errorMessage.includes("Incorrect username or password")) {
-        setError("Incorrect email or password. Please try again.");
-      } else if (errorMessage.includes("Not authorized")) {
-        setError("Invalid credentials. Please check your email and password.");
-      } else if (errorMessage.includes("AWS not configured")) {
-        setError("System configuration error. Please contact support.");
-      } else {
-        setError(errorMessage);
-      }
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
