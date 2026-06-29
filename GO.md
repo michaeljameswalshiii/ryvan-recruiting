@@ -1,63 +1,81 @@
 # GO.md - Developer Guidelines
 
 ## Purpose
-This file documents best practices and workflows to ensure consistent, high-quality development across sessions. All AI agents should reference this file before making code decisions.
+This file documents best practices and workflows for the TurnkeyOptimization project.
+
+## Current Deployment
+
+**Live URL**: https://turnkey-optimization.vercel.app
+
+**Login Credentials**:
+- Email: waving1@gmail.com
+- Password: Nassau#94
+
+**Vercel Project**: michaeljameswalshiiis-projects/turnkey-optimization
 
 ## Core Principles
 
 ### 1. Read Before Acting
-- Before any task, analyze the full repo context including:
-  - All MD files in the root directory (TODO.md, Project_Goals.md, EVENTS_ARCHITECTURE.md, etc.)
-  - Relevant source files for the specific change
-  - Existing patterns in the codebase
-- Review environment_details for project structure overview
+- Before any task, analyze the full repo context
+- Review environment_details for project structure
+- List and read relevant MD files in root
 
-### 2. Understand Project Goals
-- Reference `Project_Goals.md` for the north star vision
-- Reference `EVENTS_ARCHITECTURE.md` for event handling patterns
-- Reference `TODO.md` for active tasks
-
-### 3. Multi-Agent Approach
-- For complex features, use multiple agents in parallel
-- Always run at least 2-3 agents for critical code
-- Use Chairman/Reviewer pattern for merge decisions
-
-### 4. Code Quality Standards
+### 2. Code Quality Standards
 - TypeScript strict mode on all new code
 - Proper error handling required
 - Tenant isolation mandatory on every change
-- Add/update tests or manual verification steps
-- Temperature 0.0-0.3 for deterministic code generation
 
-### 5. Branching & Commit Rules
-- Feature branches: prefix with `m2.7/` or `blackbox/`
-- Human review before merging to main
-- Descriptive commit messages
+### 3. Deployment Workflow
+- Make surgical, focused edits
+- Push to GitHub: `git add -A; git commit -m "description"; git push origin master`
+- Deploy: `npx vercel --prod --yes`
+- Or trigger from Vercel dashboard
 
-## Workflow Steps
+## Key Endpoints
 
-### Before Making Changes
-1. List and read relevant MD files
-2. Read the specific source files to modify
-3. Understand existing patterns
-4. Create a plan and confirm with user
+### Authentication
+- Login: `/api/auth/login` (uses DynamoDB fallback when Cognito not configured)
+- Logout: `/api/auth/logout`
+- Session: `/api/auth/session`
 
-### During Development
-1. Make surgical, focused edits
-2. Test locally when possible
-3. commit frequently with descriptive messages
+### API Routes
+- Candidates: `/api/candidate/[id]` (GET, PUT, DELETE)
+- Jobs: `/api/job/[id]`
+- Companies: `/api/company/[id]`
 
-### After Changes
-1. Verify build passes (`npm run build`)
-2. Test the specific functionality
-3. Push and notify user of results
+### Dashboard Pages
+- Candidates: `/dashboard/candidates`
+- Jobs: `/dashboard/jobs`
+- Companies: `/dashboard/companies`
+- Pipeline: `/dashboard/pipeline`
+
+## Edit/Delete Functionality
+- Candidates: Detail page has Edit (navigates to `/edit` route) and Delete (with confirmation)
+- Jobs: Detail page has Edit and Delete
+- Companies: Detail page has Edit and Delete
+- Contacts: Available in contact-info
+
+## Development Commands
+
+```bash
+# Local development
+npm run dev
+
+# Build for production
+npm run build
+
+# Deploy to Vercel
+npx vercel --prod --yes
+
+# Set user password (local only)
+node set-password.js email@domain.com password
+```
 
 ## Key References
-- `Project_Goals.md` - Vision and target users
-- `EVENTS_ARCHITECTURE.md` - Event logging patterns
 - `TODO.md` - Active tasks
-- `TURNKEY_OPTIMIZATION_PLAN.md` - Feature roadmap
+- `Project_Goals.md` - Vision
+- `FIX_BUILD_TODO.md` - Build fixes
 
 ---
 
-*Last Updated*: May 2025
+*Last Updated*: June 2025

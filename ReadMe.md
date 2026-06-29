@@ -2,7 +2,11 @@
 
 Modern AI-powered recruiting CRM.
 
-**See `PROJECT_CONTEXT.md` for full goals and rules.**
+## Live Deployment
+
+**URL**: https://turnkey-optimization.vercel.app
+
+**Login**: waving1@gmail.com / Nassau#94
 
 ## Quick Start
 ```bash
