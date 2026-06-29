@@ -5,9 +5,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Eye, EyeClosed, Loader2 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -19,13 +18,13 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
-  // Check for registration success from URL param (set by signup form)
+  // Check for registration success from URL param
   const registered = searchParams.get("registered");
 
   const {
@@ -36,71 +35,40 @@ export function LoginForm() {
     resolver: zodResolver(loginSchema),
   });
 
-  // Auto-login on mount for debugging
-  useEffect(() => {
-    // Auto-login after mount - simulates form submission
-    const doAutoLogin = async () => {
-      console.log('[AUTO LOGIN] Starting...');
-      try {
-        setIsLoading(true);
-        const response = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email: 'waving1@gmail.com', password: 'Nassau#94' }),
-        });
-        console.log('[AUTO LOGIN] Status:', response.status);
-        const result = await response.json();
-        console.log('[AUTO LOGIN] Result:', result);
-        
-        if (response.ok) {
-          window.location.replace('/dashboard');
-        }
-      } catch (err) {
-        console.error('[AUTO LOGIN] Error:', err);
-      }
-    };
-    
-    // Small delay to ensure form is ready
-    const timer = setTimeout(doAutoLogin, 500);
-    return () => clearTimeout(timer);
-  }, []);
-
   const onSubmit = async (data: LoginFormData) => {
-    console.log('[LOGIN FORM] Submitting:', data.email);
+    console.log('[LOGIN] Starting login for:', data.email);
+    setIsLoading(true);
+    setError(null);
+    
     try {
-      setIsLoading(true);
-      setError(null);
-      
-      console.log('[LOGIN FORM] Making fetch request...');
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email: data.email, password: data.password }),
+        body: JSON.stringify(data),
       });
       
-      console.log('[LOGIN FORM] Response status:', response.status);
+      console.log('[LOGIN] Response status:', response.status);
       const result = await response.json();
-      console.log('[LOGIN FORM] Response JSON:', JSON.stringify(result));
+      console.log('[LOGIN] Response:', result);
       
       if (!response.ok) {
+        console.log('[LOGIN] Error:', result.error);
         setError(result.error || 'Login failed');
         setIsLoading(false);
         return;
       }
       
-      console.log('[LOGIN FORM] Success user:', result.user);
+      console.log('[LOGIN] Success! Redirecting...');
+      setSuccess(true);
       
-      // Use direct window.location for reliable redirect
+      // Small delay then redirect
       setTimeout(() => {
-        console.log('[LOGIN FORM] Doing redirect now...');
-        window.location.replace('/dashboard');
-      }, 100);
-    } catch (err: unknown) {
-      console.error('[LOGIN FORM] Catch Error:', err);
-      const errorMessage = err instanceof Error ? err.message : "Invalid credentials";
-      setError(errorMessage);
+        window.location.href = '/dashboard';
+      }, 500);
+    } catch (err) {
+      console.error('[LOGIN] Catch error:', err);
+      setError("Login failed");
     } finally {
       setIsLoading(false);
     }
@@ -110,13 +78,19 @@ export function LoginForm() {
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       {registered === "true" && (
         <div className="bg-green-100 text-green-800 text-sm p-3 rounded-md">
-          Account created! Please sign in to continue.
+          Account created! Please sign in.
         </div>
       )}
 
       {error && (
-        <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">
+        <div className="bg-red-100 text-red-800 text-sm p-3 rounded-md">
           {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="bg-green-100 text-green-800 text-sm p-3 rounded-md">
+          Login successful! Redirecting...
         </div>
       )}
 
@@ -127,10 +101,10 @@ export function LoginForm() {
           type="email"
           placeholder="name@company.com"
           {...register("email")}
-          className={errors.email ? "border-destructive" : ""}
+          className={errors.email ? "border-red-500" : ""}
         />
         {errors.email && (
-          <p className="text-sm text-destructive">{errors.email.message}</p>
+          <p className="text-sm text-red-500">{errors.email.message}</p>
         )}
       </div>
 
@@ -142,35 +116,31 @@ export function LoginForm() {
             type={showPassword ? "text" : "password"}
             placeholder="••••••••"
             {...register("password")}
-            className={errors.password ? "border-destructive pr-10" : "pr-10"}
+            className={errors.password ? "border-red-500 pr-10" : "pr-10"}
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
           >
-            {showPassword ? (
-              <EyeClosed className="h-4 w-4" />
-            ) : (
-              <Eye className="h-4 w-4" />
-            )}
+            {showPassword ? <EyeClosed className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
         {errors.password && (
-          <p className="text-sm text-destructive">{errors.password.message}</p>
+          <p className="text-sm text-red-500">{errors.password.message}</p>
         )}
       </div>
 
       <button
         type="submit"
-        className="w-full h-10 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md disabled:opacity-50"
+        className="w-full h-10 bg-blue-600 text-white rounded-md disabled:opacity-50"
         disabled={isLoading}
       >
         {isLoading ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin inline" />
+          <span className="flex items-center justify-center">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             Signing in...
-          </>
+          </span>
         ) : (
           "Sign in"
         )}
