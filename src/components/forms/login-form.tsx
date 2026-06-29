@@ -1,7 +1,6 @@
-﻿
-"use client";
+﻿"use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -11,8 +10,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-// Use server-side auth with httpOnly cookies (SECURE)
-import { login } from "@/lib/api/auth-client";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -39,15 +36,42 @@ export function LoginForm() {
     resolver: zodResolver(loginSchema),
   });
 
-const onSubmit = async (data: LoginFormData) => {
-    // Use alert for debugging since console might not show
-    alert('[LOGIN FORM] Submitting: ' + data.email);
+  // Auto-login on mount for debugging
+  useEffect(() => {
+    // Auto-login after mount - simulates form submission
+    const doAutoLogin = async () => {
+      console.log('[AUTO LOGIN] Starting...');
+      try {
+        setIsLoading(true);
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email: 'waving1@gmail.com', password: 'Nassau#94' }),
+        });
+        console.log('[AUTO LOGIN] Status:', response.status);
+        const result = await response.json();
+        console.log('[AUTO LOGIN] Result:', result);
+        
+        if (response.ok) {
+          window.location.replace('/dashboard');
+        }
+      } catch (err) {
+        console.error('[AUTO LOGIN] Error:', err);
+      }
+    };
+    
+    // Small delay to ensure form is ready
+    const timer = setTimeout(doAutoLogin, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const onSubmit = async (data: LoginFormData) => {
     console.log('[LOGIN FORM] Submitting:', data.email);
     try {
       setIsLoading(true);
       setError(null);
       
-      alert('[LOGIN FORM] Making fetch request...');
       console.log('[LOGIN FORM] Making fetch request...');
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -56,30 +80,24 @@ const onSubmit = async (data: LoginFormData) => {
         body: JSON.stringify({ email: data.email, password: data.password }),
       });
       
-      alert('[LOGIN FORM] Response status: ' + response.status);
       console.log('[LOGIN FORM] Response status:', response.status);
       const result = await response.json();
-      alert('[LOGIN FORM] Response: ' + JSON.stringify(result));
       console.log('[LOGIN FORM] Response JSON:', JSON.stringify(result));
       
       if (!response.ok) {
-        alert('[LOGIN FORM] Error: ' + result.error);
         setError(result.error || 'Login failed');
         setIsLoading(false);
         return;
       }
       
-      alert('[LOGIN FORM] Success, redirecting...');
       console.log('[LOGIN FORM] Success user:', result.user);
-      console.log('[LOGIN FORM] Redirecting to dashboard...');
+      
       // Use direct window.location for reliable redirect
       setTimeout(() => {
-        alert('[LOGIN FORM] Doing redirect now...');
         console.log('[LOGIN FORM] Doing redirect now...');
         window.location.replace('/dashboard');
       }, 100);
     } catch (err: unknown) {
-      alert('[LOGIN FORM] Catch Error: ' + err);
       console.error('[LOGIN FORM] Catch Error:', err);
       const errorMessage = err instanceof Error ? err.message : "Invalid credentials";
       setError(errorMessage);
@@ -143,7 +161,7 @@ const onSubmit = async (data: LoginFormData) => {
         )}
       </div>
 
-<button
+      <button
         type="submit"
         className="w-full h-10 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md disabled:opacity-50"
         disabled={isLoading}
