@@ -27,6 +27,30 @@ const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || '
 const userPoolId = process.env.COGNITO_USER_POOL_ID || process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || '';
 const clientId = process.env.COGNITO_CLIENT_ID || process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || '';
 
+// Credentials for server-side AWS calls (required on Vercel)
+const awsAccessKeyId = process.env.AWS_ACCESS_KEY_ID;
+const awsSecretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+
+// Debug logging for credentials (remove in production)
+function debugCredentials() {
+  console.log('[DEBUG] AWS Access Key ID set:', !!awsAccessKeyId, awsAccessKeyId ? `${awsAccessKeyId.substring(0, 4)}...` : 'undefined');
+  console.log('[DEBUG] AWS Secret Access Key set:', !!awsSecretAccessKey, awsSecretAccessKey ? '***hidden***' : 'undefined');
+}
+
+function getAwsCredentials() {
+  debugCredentials();
+  
+  if (awsAccessKeyId && awsSecretAccessKey) {
+    return {
+      accessKeyId: awsAccessKeyId,
+      secretAccessKey: awsSecretAccessKey,
+    };
+  }
+  
+  console.log('[DEBUG] getAwsCredentials() returning undefined - credentials not found');
+  return undefined;
+}
+
 // Cookie name
 const SESSION_COOKIE = 'turnkey-session';
 
@@ -148,7 +172,7 @@ export async function validateSession(accessToken: string): Promise<boolean> {
   }
   
   try {
-    const client = new CognitoIdentityProviderClient({ region });
+    const client = new CognitoIdentityProviderClient({ region, credentials: getAwsCredentials() });
     const command = new GetUserCommand({ AccessToken: accessToken });
     await client.send(command);
     return true;
@@ -167,7 +191,7 @@ export async function refreshSession(refreshToken: string): Promise<{ AccessToke
   }
   
   try {
-    const client = new CognitoIdentityProviderClient({ region });
+    const client = new CognitoIdentityProviderClient({ region, credentials: getAwsCredentials() });
     const authCommand = new InitiateAuthCommand({
       AuthFlow: 'REFRESH_TOKEN_AUTH',
       ClientId: clientId,
@@ -238,7 +262,7 @@ export async function authenticateUser(email: string, password: string): Promise
     throw new Error('Email and password required');
   }
   
-  const client = new CognitoIdentityProviderClient({ region });
+const client = new CognitoIdentityProviderClient({ region, credentials: getAwsCredentials() });
   
   // Initiate auth with USER_PASSWORD_AUTH
   const authCommand = new InitiateAuthCommand({
@@ -294,11 +318,11 @@ export async function authenticateUser(email: string, password: string): Promise
     }
   }
   
-  // Get tenant from profile
+// Get tenant from profile
   let tenantId = '';
   if (userId) {
     try {
-      const dynamoClient = new DynamoDBClient({ region });
+      const dynamoClient = new DynamoDBClient({ region, credentials: getAwsCredentials() });
       const profilesTable = process.env.DYNAMODB_PROFILES_TABLE || 'turnkey-profiles';
       
       const profileCommand = new GetItemCommand({
@@ -329,7 +353,7 @@ export async function signOutFromCognito(accessToken: string): Promise<void> {
   }
   
   try {
-    const client = new CognitoIdentityProviderClient({ region });
+    const client = new CognitoIdentityProviderClient({ region, credentials: getAwsCredentials() });
     const command = new GlobalSignOutCommand({ AccessToken: accessToken });
     await client.send(command);
   } catch (err) {
@@ -364,7 +388,7 @@ export async function registerUser(
     throw new Error('All fields required');
   }
   
-  const cognitoClient = new CognitoIdentityProviderClient({ region });
+const cognitoClient = new CognitoIdentityProviderClient({ region, credentials: getAwsCredentials() });
   
   // Sign up with Cognito
   const signUpCommand = new SignUpCommand({
@@ -393,7 +417,7 @@ export async function registerUser(
   const tenantId = `tenant-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   
   // Create tenant in DynamoDB
-  const dynamoClient = new DynamoDBClient({ region });
+  const dynamoClient = new DynamoDBClient({ region, credentials: getAwsCredentials() });
   const tenantsTable = process.env.DYNAMODB_TENANTS_TABLE || 'turnkey-tenants';
   
   await dynamoClient.send(new PutItemCommand({
