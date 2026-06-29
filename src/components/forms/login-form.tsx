@@ -45,10 +45,15 @@ const onSubmit = async (data: LoginFormData) => {
       setIsLoading(true);
       setError(null);
       const result = await login(data.email, data.password);
-      console.log('[LOGIN FORM] Success:', result);
+      console.log('[LOGIN FORM] Success result:', JSON.stringify(result));
+      console.log('[LOGIN FORM] Success user:', result.user);
       console.log('[LOGIN FORM] Redirecting to dashboard...');
-      // Use window.location for reliable redirect after login
-      window.location.href = '/dashboard';
+      // Use direct window.location for reliable redirect
+      // Add small delay to ensure cookie is set
+      setTimeout(() => {
+        console.log('[LOGIN FORM] Doing redirect now...');
+        window.location.replace('/dashboard');
+      }, 100);
     } catch (err: unknown) {
       console.error('[LOGIN FORM] Error:', err);
       const errorMessage = err instanceof Error ? err.message : "Invalid credentials";
