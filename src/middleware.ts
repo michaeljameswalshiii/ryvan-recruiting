@@ -177,24 +177,35 @@ export async function middleware(request: NextRequest) {
     });
   }
 
-  // === PROTECTED ROUTES (Dashboard) - Require auth ===
+// === PROTECTED ROUTES (Dashboard) - Require auth ===
   if (isProtectedRoute(pathname)) {
     const session = getSession(request);
     
-    // No session - redirect to login
-    if (!session?.accessToken) {
+    // No session at all - redirect to login
+    if (!session?.userId) {
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
+      console.log(`[Middleware] No session for ${pathname}, redirecting to login`);
       return NextResponse.redirect(loginUrl);
     }
 
-    // Validate token
-    const isValid = await validateSessionToken(session.accessToken, session.refreshToken);
-    
-    if (!isValid) {
-      const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('redirect', pathname);
-      return NextResponse.redirect(loginUrl);
+    // If we have accessToken, validate with Cognito
+    // If no accessToken (demo/simple auth), allow through - dashboard layout will validate server-side
+    // IMPORTANT: Skip validation if no accessToken exists (simple auth mode)
+    if (session.accessToken && session.accessToken.length > 0) {
+      console.log(`[Middleware] Validating Cognito token for ${pathname}...`);
+      const isValid = await validateSessionToken(session.accessToken, session.refreshToken);
+      
+      if (!isValid) {
+        const loginUrl = new URL('/login', request.url);
+        loginUrl.searchParams.set('redirect', pathname);
+        console.log(`[Middleware] Token invalid for ${pathname}, redirecting to login`);
+        return NextResponse.redirect(loginUrl);
+      }
+      console.log(`[Middleware] Token valid, allowing ${pathname}`);
+    } else {
+      // No accessToken - demo/simple auth mode, skip Cognito validation
+      console.log(`[Middleware] No accessToken (simple auth), allowing ${pathname}`);
     }
 
     // Inject headers

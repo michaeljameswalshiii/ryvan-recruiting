@@ -97,11 +97,14 @@ export const SESSION_COOKIE_NAME = SESSION_COOKIE;
 
 /**
  * Get cookie options (for route handlers)
+ * Uses secure cookies in production, with proper settings for Vercel deployment
  */
 export function getCookieOptions() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction,
     sameSite: 'lax' as const,
     maxAge: 60 * 60 * 24 * 7, // 7 days
     path: '/',
