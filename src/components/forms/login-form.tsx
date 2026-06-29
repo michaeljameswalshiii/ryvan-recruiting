@@ -128,16 +128,20 @@ const onSubmit = async (data: LoginFormData) => {
         )}
       </div>
 
-      <Button type="submit" className="w-full" disabled={isLoading}>
+<button
+        type="submit"
+        className="w-full h-10 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md disabled:opacity-50"
+        disabled={isLoading}
+      >
         {isLoading ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 className="mr-2 h-4 w-4 animate-spin inline" />
             Signing in...
           </>
         ) : (
           "Sign in"
         )}
-      </Button>
+      </button>
     </form>
   );
 }
