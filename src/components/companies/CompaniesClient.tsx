@@ -189,19 +189,24 @@ const { data: clients = [], isLoading, error, refetch } = useClients();
             <tbody className="divide-y">
               {clients.map((company: any) => (
                 <tr key={company.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
+<td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
                         <Building2 className="h-5 w-5 text-blue-600" />
                       </div>
                       <div>
-                        <div className="font-medium">{company.name}</div>
+                        <Link 
+                          href={`/dashboard/companies/${company.id}`}
+                          className="font-medium text-blue-600 hover:underline"
+                        >
+                          {company.name}
+                        </Link>
                         {company.website && (
                           <a 
                             href={company.website} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="text-sm text-blue-600 hover:underline"
+                            className="text-sm text-blue-600 hover:underline block"
                           >
                             {company.website.replace(/^https?:\/\//, '')}
                           </a>
