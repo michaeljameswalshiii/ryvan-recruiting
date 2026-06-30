@@ -91,15 +91,16 @@ export async function createPipeline(formData: FormData) {
     console.log('[PIPELINE-ACTION] Using fallback tenantId:', tenantId);
   }
 
-  // Get all form fields
+// Get all form fields
   const name = formData.get('name');
   const email = formData.get('email');
   const company = formData.get('company');
+  const clientId = formData.get('clientId');
   const phone = formData.get('phone');
   const notes = formData.get('notes');
   const stage = formData.get('stage') || 'new';
   
-  console.log('[PIPELINE-ACTION] Raw input:', { name, email, company, phone, notes, stage });
+  console.log('[PIPELINE-ACTION] Raw input:', { name, email, company, clientId, phone, notes, stage });
 
   // Build raw data - ensure strings, not null
   const rawData = {
@@ -107,6 +108,7 @@ export async function createPipeline(formData: FormData) {
     email: String(email || ''),
     phone: String(phone || ''),
     company: String(company || ''),
+    clientId: clientId ? String(clientId) : undefined,
     title: '',
     stage: String(stage),
     source: '',
@@ -152,11 +154,12 @@ export async function updatePipelineAction(pipelineId: string, formData: FormDat
     return { error: 'Unauthorized' };
   }
 
-  const rawData = {
+const rawData = {
     name: formData.get('name') as string || undefined,
     email: formData.get('email') as string || undefined,
     phone: formData.get('phone') as string || undefined,
     company: formData.get('company') as string || undefined,
+    clientId: formData.get('clientId') as string || undefined,
     title: formData.get('title') as string || undefined,
     stage: formData.get('stage') as string || undefined,
     source: formData.get('source') as string || undefined,

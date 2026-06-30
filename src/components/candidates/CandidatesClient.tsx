@@ -252,7 +252,7 @@ export function CandidatesClient() {
                       ? new Date(candidate.created_at).toLocaleDateString()
                       : '-'}
                   </td>
-                  <td className="px-4 py-3">
+<td className="px-4 py-3">
                     <div className="flex gap-2">
                       <Button 
                         variant="ghost" 
@@ -260,6 +260,13 @@ export function CandidatesClient() {
                         onClick={() => router.push(`/dashboard/candidates/${candidate.id}`)}
                       >
                         View
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => router.push(`/dashboard/candidates/${candidate.id}/edit`)}
+                      >
+                        Edit
                       </Button>
                       <Button 
                         variant="ghost" 

@@ -13,6 +13,8 @@ export const pipelineSchema = z.object({
   email: z.string().max(100).optional().or(z.literal('')),
   phone: z.string().optional().or(z.literal('')),
   company: z.string().max(100).optional().or(z.literal('')),
+  // Reference to client/company for contact info
+  clientId: z.string().uuid().optional(),
   title: z.string().max(100).optional().or(z.literal('')),
   // Support both UI stages and schema-only stages
   stage: z.enum(['new', 'contacted', 'qualified', 'proposal', 'closed', 'screening', 'interview', 'offer', 'hired', 'rejected']).default('new'),

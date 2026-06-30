@@ -58,6 +58,21 @@ export async function POST(request: NextRequest) {
 
     // Parse and validate body
     const body = await request.json();
+    
+    // Validation: Reject empty email values
+    // DynamoDB doesn't allow empty strings for secondary index keys (email-index)
+    if (body.email !== undefined && body.email !== null && body.email.trim() === '') {
+      return NextResponse.json(
+        { error: 'Email cannot be empty. Leave the email field blank to skip.' },
+        { status: 400 }
+      );
+    }
+
+    // Clean up the email field - don't send empty strings to DynamoDB
+    if (body.email === '') {
+      delete body.email;
+    }
+
     const validated = createClientSchema.safeParse(body);
     
     if (!validated.success) {

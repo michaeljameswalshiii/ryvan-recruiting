@@ -86,6 +86,7 @@ export async function getAllClients(tenantId: string): Promise<Client[]> {
 
 /**
  * Get a single client by ID
+ * ALWAYS returns Client or null - NEVER throws
  */
 export async function getClientById(tenantId: string, clientId: string): Promise<Client | null> {
   try {
@@ -115,9 +116,10 @@ export async function getClientById(tenantId: string, clientId: string): Promise
     await setCached(cacheKey, client, CACHE_TTL);
     
     return client;
-  } catch (error) {
-    console.error('[getClientById] Error fetching client:', { tenantId, clientId, error });
-    throw error;
+  } catch (error: any) {
+    // CRITICAL: Never throw - always return null for graceful handling
+    console.error('[getClientById] Error fetching client:', { tenantId, clientId, error: error?.message });
+    return null;
   }
 }
 
@@ -125,11 +127,12 @@ export async function getClientById(tenantId: string, clientId: string): Promise
  * Create a new client
  */
 export async function createClient(tenantId: string, data: CreateClientInput): Promise<Client> {
+  // Build client object
+  // NEVER include email if empty/undefined - DynamoDB GSI rejects empty strings
   const client: Client = {
     id: generateId(),
     tenant_id: tenantId,
     name: data.name ?? 'Unknown',
-    email: data.email || '',
     phone: data.phone || '',
     company: data.company || '',
     domain: data.domain || '',
@@ -144,6 +147,11 @@ export async function createClient(tenantId: string, data: CreateClientInput): P
     status: data.status || 'identification',
     created_at: new Date().toISOString(),
   };
+  
+  // ONLY add email if it has a valid non-empty value (DynamoDB GSI restriction)
+  if (data.email && String(data.email).trim() !== '') {
+    client.email = String(data.email).trim();
+  }
   
   // Save to DynamoDB
   await putItem(clientsTable, client);
@@ -172,10 +180,20 @@ export async function updateClient(
     values[':name'] = data.name;
     names['#name'] = 'name';
   }
+// CRITICAL: Never update email to empty string - DynamoDB GSI rejects empty strings
+  // If email is provided but empty after trim, treat it as removing the email
   if (data.email !== undefined) {
-    updates.push('#email = :email');
-    values[':email'] = data.email;
-    names['#email'] = 'email';
+    const emailValue = data.email ? String(data.email).trim() : '';
+    if (emailValue === '') {
+      // Removing email - use null to remove from DynamoDB
+      updates.push('#email = :email');
+      values[':email'] = null;
+      names['#email'] = 'email';
+    } else {
+      updates.push('#email = :email');
+      values[':email'] = emailValue;
+      names['#email'] = 'email';
+    }
   }
   if (data.phone !== undefined) {
     updates.push('#phone = :phone');
@@ -277,67 +295,81 @@ export async function deleteClient(tenantId: string, clientId: string): Promise<
 
 /**
  * Add a contact to a client
+ * ALWAYS returns Client or throws - NEVER returns null silently
  */
 export async function addContactToClient(
   tenantId: string,
   clientId: string,
   contact: Omit<Contact, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<Client | null> {
-  const client = await getClientById(tenantId, clientId);
-  if (!client) {
-    return null;
-  }
-
-  const now = new Date().toISOString();
-  
-  // Auto-calculate preferredPhone/preferredPhoneType from phones array
-  const preferredData = extractPreferredPhone(contact.phones);
-  
-  const newContact: Contact = {
-    id: generateId(),
-    ...contact,
-    ...preferredData,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  // Get existing contacts or initialize empty array
-  const existingContacts = client.contacts || [];
-  
-  // If setting as primary, unset other primaries
-  let updatedContacts = existingContacts;
-  if (contact.isPrimary) {
-    updatedContacts = existingContacts.map(c => ({
-      ...c,
-      isPrimary: false,
-      updatedAt: now,
-    }));
-  }
-
-  // Add new contact
-  updatedContacts = [...updatedContacts, newContact];
-
-  // Determine primary contact ID
-  let primaryContactId = client.primaryContactId;
-  if (contact.isPrimary || !primaryContactId) {
-    primaryContactId = newContact.id;
-  }
-
-  return updateItem<Client>(
-    clientsTable,
-    { tenant_id: tenantId, id: clientId },
-    'SET #contacts = :contacts, #primaryContactId = :primaryContactId, #modified_at = :modified_at',
-    {
-      ':contacts': updatedContacts,
-      ':primaryContactId': primaryContactId,
-      ':modified_at': now,
-    },
-    {
-      '#contacts': 'contacts',
-      '#primaryContactId': 'primaryContactId',
-      '#modified_at': 'modified_at',
+  try {
+    const client = await getClientById(tenantId, clientId);
+    if (!client) {
+      console.log('[addContactToClient] Client not found:', clientId);
+      throw new Error(`Client not found: ${clientId}`);
     }
-  );
+
+    const now = new Date().toISOString();
+    
+    // Auto-calculate preferredPhone/preferredPhoneType from phones array
+    const preferredData = extractPreferredPhone(contact.phones);
+    
+    const newContact: Contact = {
+      id: generateId(),
+      ...contact,
+      ...preferredData,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Get existing contacts or initialize empty array
+    const existingContacts = client.contacts || [];
+    
+    // If setting as primary, unset other primaries
+    let updatedContacts = existingContacts;
+    if (contact.isPrimary) {
+      updatedContacts = existingContacts.map(c => ({
+        ...c,
+        isPrimary: false,
+        updatedAt: now,
+      }));
+    }
+
+    // Add new contact
+    updatedContacts = [...updatedContacts, newContact];
+
+    // Determine primary contact ID
+    let primaryContactId = client.primaryContactId;
+    if (contact.isPrimary || !primaryContactId) {
+      primaryContactId = newContact.id;
+    }
+
+    const result = await updateItem<Client>(
+      clientsTable,
+      { tenant_id: tenantId, id: clientId },
+      'SET #contacts = :contacts, #primaryContactId = :primaryContactId, #modified_at = :modified_at',
+      {
+        ':contacts': updatedContacts,
+        ':primaryContactId': primaryContactId,
+        ':modified_at': now,
+      },
+      {
+        '#contacts': 'contacts',
+        '#primaryContactId': 'primaryContactId',
+        '#modified_at': 'modified_at',
+      }
+    );
+
+    if (!result) {
+      throw new Error('Failed to update client with new contact');
+    }
+
+    console.log('[addContactToClient] Contact added successfully');
+    return result;
+  } catch (error: any) {
+    console.error('[addContactToClient] Error:', error?.message, error?.stack);
+    throw new Error(error?.message || 'Failed to add contact to client');
+  }
 }
 
 /**

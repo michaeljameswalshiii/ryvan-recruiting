@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { IdBadge } from '@/components/ui/id-badge';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,7 @@ interface JobListViewProps {
 }
 
 export function JobListView({ jobs }: JobListViewProps) {
+  const router = useRouter();
   const deleteJob = useDeleteJob();
 
   const handleDelete = (jobId: string, jobTitle: string) => {
@@ -95,16 +97,32 @@ export function JobListView({ jobs }: JobListViewProps) {
 <td className="p-4">
                 <IdBadge id={job.id} />
               </td>
-              <td className="p-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDelete(job.id, job.title)}
-                  disabled={deleteJob.isPending}
-                  className="text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+<td className="p-4">
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
+                  >
+                    View
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => router.push(`/dashboard/jobs/${job.id}?edit=true`)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(job.id, job.title)}
+                    disabled={deleteJob.isPending}
+                    className="text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </td>
             </tr>
           ))}

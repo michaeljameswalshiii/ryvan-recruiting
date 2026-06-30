@@ -4,13 +4,29 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Plus, RefreshCw, Building2, Mail, Phone } from 'lucide-react';
-import { useClients, useCreateClient } from '@/lib/hooks/query-client';
+import { useClients, useCreateClient, useDeleteClient } from '@/lib/hooks/query-client';
 import Link from 'next/link';
 
 export function CompaniesClient() {
   const router = useRouter();
-  const { data: clients = [], isLoading, error, refetch } = useClients();
+const { data: clients = [], isLoading, error, refetch } = useClients();
   const createClientMutation = useCreateClient();
+  const deleteClientMutation = useDeleteClient();
+
+  const handleDeleteCompany = async (companyId: string, companyName: string) => {
+    if (!confirm(`Are you sure you want to delete ${companyName}? This will also delete all associated contacts and jobs.`)) {
+      return;
+    }
+    
+    try {
+      await deleteClientMutation.mutateAsync(companyId);
+      refetch();
+      alert('Company deleted successfully!');
+    } catch (err: any) {
+      console.error('Delete company error:', err);
+      alert(`Failed to delete company: ${err?.message || 'Unknown error'}`);
+    }
+  };
 
   // DEBUG: Log when data changes
   console.log('[CompaniesClient] clients:', JSON.stringify(clients));
@@ -210,14 +226,31 @@ export function CompaniesClient() {
                   <td className="px-4 py-3 text-gray-600">
                     {company.contacts?.length || 0} contact{(company.contacts?.length || 0) !== 1 ? 's' : ''}
                   </td>
-                  <td className="px-4 py-3">
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => router.push(`/dashboard/companies/${company.id}`)}
-                    >
-                      View
-                    </Button>
+<td className="px-4 py-3">
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => router.push(`/dashboard/companies/${company.id}`)}
+                      >
+                        View
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => router.push(`/dashboard/companies/${company.id}/edit`)}
+                      >
+                        Edit
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => handleDeleteCompany(company.id, company.name)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

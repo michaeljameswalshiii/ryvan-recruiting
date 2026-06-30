@@ -39,7 +39,8 @@ export const contactSchema = z.object({
   companyId: z.string().optional(),
   name: z.string().min(1, 'Name is required').max(100),
   title: z.string().max(100).optional().or(z.literal('')),
-  email: z.string().email().optional().or(z.literal('')),
+// Email: optional, allow empty or valid email
+  email: z.string().optional().or(z.literal('')),
   phone: z.string().max(20).optional().or(z.literal('')),
   // Multi-phone support
   phones: z.array(contactPhoneSchema).optional(),

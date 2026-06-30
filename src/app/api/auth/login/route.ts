@@ -22,11 +22,12 @@ const cognitoConfigured = !!(process.env.COGNITO_CLIENT_ID || process.env.NEXT_P
   !!(process.env.COGNITO_USER_POOL_ID || process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID);
 
 // Demo user for testing (bypasses DynamoDB when AWS creds not configured)
+// FIX: Use tenant-2024-001 to match RyVan's tenant
 const DEMO_USER = {
   email: 'waving1@gmail.com',
   password: 'Nassau#94',
-  userId: 'demo-user-001',
-  tenantId: 'demo-tenant-001'
+  userId: 'profile-waving1@gmail.com',
+  tenantId: 'tenant-2024-001'
 };
 
 // Check if AWS credentials are available

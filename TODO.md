@@ -1,13 +1,21 @@
-- [x] Confirm active dashboard nav component and root cause (uses `src/components/dashboard/nav.tsx`)
-- [x] Add Issues nav item to active dashboard nav
-- [x] Ensure `/dashboard/issues` route exists (placeholder page)
-- [x] Wait for latest Vercel deploy completion and confirm alias is updated
-- [ ] Verify live UI shows Issues in left nav (authenticated session)
-- [x] Implement ContactDetailClient job-create enhancement Step 1 (imports)
-- [x] Implement ContactDetailClient job-create enhancement Step 2 (state + hooks)
-- [x] Implement ContactDetailClient job-create enhancement Step 3 (Open Jobs card button action)
-- [x] Implement ContactDetailClient job-create enhancement Step 4 (SimpleDialog UI)
-- [x] Implement ContactDetailClient job-create enhancement Step 5 (handleCreateJob)
-- [ ] Run `npm run build` after ContactDetailClient changes
-- [ ] Test contact detail page and Add Job flow; capture any console/runtime errors
-- [ ] Redeploy to Vercel and verify production behavior
+# TODO: Add CRUD to Contact Info Page
+
+## Task
+Add add/edit/delete functionality to `/dashboard/contact-info` page
+
+## Implementation Plan
+
+### 1. Convert contact-info page to client component
+- Add 'use client' directive
+- Import hooks: useClients, useAddContact, useUpdateContact, useRemoveContact
+
+### 2. Copy CRUD from ContactsClient.tsx
+- Copy the inline form for adding contacts
+- Copy edit/delete actions per row
+
+### 3. Deploy to Vercel
+
+## Progress
+- [x] Analyzed existing code
+- [x] Update contact-info/page.tsx with CRUD
+- [x] Deploy to Vercel

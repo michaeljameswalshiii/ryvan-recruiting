@@ -110,7 +110,9 @@ export async function getJobs(includeStats = false) {
   let tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
   
+  // DEBUG: Log the raw cookie session
   console.log('[getJobs] Session - tenantId:', tenantId, 'userId:', userId);
+  console.log('[getJobs] DEBUG - After fallback would be:', !tenantId && userId ? `tenant-${userId}` : 'no fallback');
 
   // If no tenantId but user is logged in, use default tenant
   if (!tenantId && userId) {

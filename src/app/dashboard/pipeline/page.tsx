@@ -13,12 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 // Use TanStack Query hooks - server actions for DB access
 import { usePipeline, useCreatePipeline, useUpdatePipeline, pipelineKeys } from "@/lib/hooks/query-pipeline";
 import { leadKeys } from "@/lib/hooks/query-lead";
-import { clientKeys } from "@/lib/hooks/query-client";
+import { clientKeys, useClients } from "@/lib/hooks/query-client";
 import { BackToDashboard } from "@/components/ui/BackToDashboard";
 
 interface Lead {
@@ -27,6 +28,7 @@ interface Lead {
   email: string;
   company?: string;
   phone?: string;
+  clientId?: string;
   status: "new" | "contacted" | "qualified" | "proposal" | "closed";
   notes?: string;
   created_at: string;
@@ -45,8 +47,9 @@ export default function PipelinePage() {
   const [draggedLead, setDraggedLead] = useState<string | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
-  // Use TanStack Query hooks - fetches from DB via server actions
+// Use TanStack Query hooks - fetches from DB via server actions
   const { data: pipelineItems = [], isLoading, error } = usePipeline();
+  const { data: clients = [] } = useClients();
   const createPipelineMutation = useCreatePipeline();
   const updatePipelineMutation = useUpdatePipeline();
 
@@ -54,6 +57,7 @@ export default function PipelinePage() {
   const [newLeadName, setNewLeadName] = useState("");
   const [newLeadEmail, setNewLeadEmail] = useState("");
   const [newLeadCompany, setNewLeadCompany] = useState("");
+  const [newLeadClientId, setNewLeadClientId] = useState("");
   const [newLeadPhone, setNewLeadPhone] = useState("");
   const [newLeadNotes, setNewLeadNotes] = useState("");
 
@@ -65,11 +69,27 @@ export default function PipelinePage() {
     email: item.email || "",
     company: item.company || "",
     phone: item.phone || "",
+    clientId: item.clientId || "",
     // Use stage field (new, contacted, qualified, proposal, closed)
     status: (item.stage as Lead["status"]) || (item.status as Lead["status"]) || "new",
     notes: item.notes || "",
     created_at: item.created_at || new Date().toISOString(),
   }));
+
+  // Helper to get client contact info for a lead
+  const getClientContactInfo = (clientId?: string) => {
+    if (!clientId) return null;
+    const client = clients.find((c: any) => c.id === clientId);
+    if (!client) return null;
+    // Get primary contact from contacts array
+    const primaryContact = client.contacts?.find((contact: any) => contact.isPrimary) || client.contacts?.[0];
+    return {
+      clientName: client.name,
+      contactName: primaryContact?.name || "",
+      contactEmail: primaryContact?.email || "",
+      contactPhone: primaryContact?.phone || primaryContact?.phones?.[0]?.number || "",
+    };
+  };
 
   const getLeadsByStatus = (status: string) => {
     return leads.filter((lead) => lead.status === status);
@@ -106,7 +126,7 @@ const handleAddLead = async () => {
     }
 
     try {
-      // Build FormData for server action - use 'stage' for pipeline
+// Build FormData for server action - use 'stage' for pipeline
       const formData = new FormData();
       formData.set("name", newLeadName);
       formData.set("email", newLeadEmail);
@@ -114,6 +134,10 @@ const handleAddLead = async () => {
       formData.set("phone", newLeadPhone || "");
       formData.set("notes", newLeadNotes || "");
       formData.set("stage", "new");
+      // Pass clientId if a client is selected
+      if (newLeadClientId) {
+        formData.set("clientId", newLeadClientId);
+      }
 
       console.log('[PIPELINE-PAGE] Adding lead:', { name: newLeadName, email: newLeadEmail, company: newLeadCompany });
 
@@ -132,10 +156,11 @@ const handleAddLead = async () => {
     }
   };
 
-  const resetForm = () => {
+const resetForm = () => {
     setNewLeadName("");
     setNewLeadEmail("");
     setNewLeadCompany("");
+    setNewLeadClientId("");
     setNewLeadPhone("");
     setNewLeadNotes("");
   };
@@ -231,7 +256,7 @@ return (
         </div>
       </div>
 
-      {/* Add Lead Dialog */}
+{/* Add Lead Dialog */}
       <SimpleDialog
         open={isAddDialogOpen}
         onOpenChange={setIsAddDialogOpen}
@@ -272,7 +297,22 @@ return (
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="company">Company</Label>
+            <Label htmlFor="clientId">Company (optional)</Label>
+            <Select value={newLeadClientId} onValueChange={setNewLeadClientId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a company..." />
+              </SelectTrigger>
+              <SelectContent>
+                {clients.map((client: any) => (
+                  <SelectItem key={client.id} value={client.id}>
+                    {client.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="company">Or enter company manually</Label>
             <Input
               id="company"
               value={newLeadCompany}
@@ -321,8 +361,10 @@ return (
               </span>
             </div>
 
-            <div className="space-y-3 min-h-[400px] p-2 rounded-lg bg-muted/50">
-              {getLeadsByStatus(column.id).map((lead) => (
+<div className="space-y-3 min-h-[400px] p-2 rounded-lg bg-muted/50">
+              {getLeadsByStatus(column.id).map((lead) => {
+                const clientInfo = getClientContactInfo(lead.clientId);
+                return (
                 <div
                   key={lead.id}
                   draggable
@@ -336,28 +378,52 @@ return (
                     </button>
                   </div>
 
-                  {lead.company && (
+                  {clientInfo ? (
+                    // Show linked client info
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
+                      <Building2 className="h-3 w-3" />
+                      {clientInfo.clientName}
+                    </div>
+                  ) : lead.company ? (
+                    // Show manual company
                     <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
                       <Building2 className="h-3 w-3" />
                       {lead.company}
                     </div>
-                  )}
+                  ) : null}
 
                   <div className="flex flex-wrap gap-2 text-sm">
-                    <a
-                      href={`mailto:${lead.email}`}
-                      className="flex items-center gap-1 text-muted-foreground hover:text-primary"
-                    >
-                      <Mail className="h-3 w-3" />
-                    </a>
-                    {lead.phone && (
+                    {/* Use client contact info if available, otherwise use lead fields */}
+                    {clientInfo?.contactEmail ? (
+                      <a
+                        href={`mailto:${clientInfo.contactEmail}`}
+                        className="flex items-center gap-1 text-muted-foreground hover:text-primary"
+                      >
+                        <Mail className="h-3 w-3" />
+                      </a>
+                    ) : lead.email ? (
+                      <a
+                        href={`mailto:${lead.email}`}
+                        className="flex items-center gap-1 text-muted-foreground hover:text-primary"
+                      >
+                        <Mail className="h-3 w-3" />
+                      </a>
+                    ) : null}
+                    {clientInfo?.contactPhone ? (
+                      <a
+                        href={`tel:${clientInfo.contactPhone}`}
+                        className="flex items-center gap-1 text-muted-foreground hover:text-primary"
+                      >
+                        <Phone className="h-3 w-3" />
+                      </a>
+                    ) : lead.phone ? (
                       <a
                         href={`tel:${lead.phone}`}
                         className="flex items-center gap-1 text-muted-foreground hover:text-primary"
                       >
                         <Phone className="h-3 w-3" />
                       </a>
-                    )}
+                    ) : null}
                   </div>
 
                   {lead.notes && (
@@ -370,7 +436,7 @@ return (
                     {new Date(lead.created_at).toLocaleDateString()}
                   </p>
                 </div>
-              ))}
+              )})}
 
               {getLeadsByStatus(column.id).length === 0 && (
                 <div className="p-4 text-center text-sm text-muted-foreground">

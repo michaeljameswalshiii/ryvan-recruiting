@@ -122,13 +122,14 @@ export async function getPipelineById(tenantId: string, pipelineId: string): Pro
 export async function createPipelineItem(tenantId: string, data: CreatePipelineInput): Promise<Pipeline> {
   const validated = data;
   
-  const pipeline: Pipeline = {
+const pipeline: Pipeline = {
     id: generateId(),
     tenant_id: tenantId,
     name: validated.name,
     email: validated.email || '',
     phone: validated.phone || '',
     company: validated.company || '',
+    clientId: validated.clientId,
     title: validated.title || '',
     stage: validated.stage || 'new',
     source: validated.source || '',
@@ -190,10 +191,15 @@ export async function updatePipelineItem(
     values[':phone'] = data.phone;
     names['#phone'] = 'phone';
   }
-  if (data.company !== undefined) {
+if (data.company !== undefined) {
     updates.push('#company = :company');
     values[':company'] = data.company;
     names['#company'] = 'company';
+  }
+  if (data.clientId !== undefined) {
+    updates.push('#clientId = :clientId');
+    values[':clientId'] = data.clientId;
+    names['#clientId'] = 'clientId';
   }
   if (data.title !== undefined) {
     updates.push('#title = :title');

@@ -133,9 +133,14 @@ export async function createClient(formData: FormData) {
     tenantId = `tenant-${userId}`;
   }
 
-const rawData = {
+// CRITICAL: Strip empty email to prevent DynamoDB GSI error
+  // DynamoDB won't accept empty string for secondary index key (email-index)
+  const rawEmail = formData.get('email') as string || '';
+  const cleanEmail = rawEmail.trim() === '' ? undefined : rawEmail.trim();
+
+  const rawData = {
     name: formData.get('name') as string,
-    email: formData.get('email') as string || '',
+    email: cleanEmail,
     phone: formData.get('phone') as string || '',
     company: formData.get('company') as string || '',
     domain: formData.get('domain') as string || '',
@@ -278,7 +283,8 @@ export async function updateClientStatusAction(clientId: string, status: string)
 
 import { addContactToClient, updateClientContact, removeClientContact } from '../db/repositories/client-repository';
 import { createContactSchema } from '../schemas/client';
-import { recordContactAddedToCompany, recordContactUpdatedForCompany, recordContactRemovedFromCompany, recordPrimaryContactSetForCompany } from '../events/company-events';
+// Import events but wrap in try/catch to prevent breaking if events module fails
+// import { recordContactAddedToCompany, recordContactUpdatedForCompany, recordContactRemovedFromCompany, recordPrimaryContactSetForCompany } from '../events/company-events';
 
 /**
  * Add a contact to a client
@@ -294,7 +300,7 @@ export async function addContactAction(clientId: string, contactData: {
   isPrimary?: boolean;
   notes?: string;
 }) {
-let tenantId = await getSessionTenantId();
+  let tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
   
   // FIX: Add tenant fallback logic for non-admin users who don't have tenantId in session
@@ -303,6 +309,7 @@ let tenantId = await getSessionTenantId();
   }
   
   if (!tenantId || !userId) {
+    console.log('[addContactAction] Unauthorized - no tenant or user');
     return { error: 'Unauthorized: No tenant or user context' };
   }
 
@@ -326,6 +333,7 @@ let tenantId = await getSessionTenantId();
   });
 
   if (!validated.success) {
+    console.log('[addContactAction] Validation failed:', validated.error.flatten().fieldErrors);
     return {
       error: 'Invalid input',
       details: validated.error.flatten().fieldErrors,
@@ -333,22 +341,54 @@ let tenantId = await getSessionTenantId();
   }
 
   try {
-    const client = await addContactToClient(tenantId, clientId, validated.data);
+    console.log('[addContactAction] Step 1 - Received:', { tenantId, clientId, contactData });
     
-    if (!client) {
+    // Validate client exists first - wrapped in try/catch!
+    let existingClient;
+    try {
+      existingClient = await getClientById(tenantId, clientId);
+    } catch (dbErr: any) {
+      console.error('[addContactAction] getClientById threw:', dbErr?.message);
+      return { error: dbErr?.message || 'Failed to find client' };
+    }
+    
+    if (!existingClient) {
+      console.log('[addContactAction] Step 2 - Client NOT found:', clientId);
       return { error: 'Client not found' };
     }
-
-    // Record event
-    await recordContactAddedToCompany(clientId, contactData.name, userId);
+    console.log('[addContactAction] Step 2 - Client found:', existingClient.name);
     
-    if (contactData.isPrimary) {
-      await recordPrimaryContactSetForCompany(clientId, contactData.name, userId);
+    console.log('[addContactAction] Step 3 - Calling addContactToClient with validated data:', JSON.stringify(validated.data));
+    
+    // Call addContactToClient wrapped in try/catch!
+    let client;
+    try {
+      client = await addContactToClient(tenantId, clientId, validated.data);
+    } catch (dbErr: any) {
+      console.error('[addContactAction] addContactToClient threw:', dbErr?.message, dbErr?.stack);
+      return { error: dbErr?.message || 'Failed to add contact to client' };
+    }
+    
+    if (!client) {
+      console.log('[addContactAction] Step 4 - addContactToClient returned null');
+      return { error: 'Failed to add contact to client' };
     }
 
-    return { success: true, client };
+console.log('[addContactAction] Step 4 - Contact added successfully');
+
+    // TEMPORARILY SKIP EVENT RECORDING to diagnose - uncomment later
+    // await recordContactAddedToCompany(clientId, contactData.name, userId);
+    
+    // if (contactData.isPrimary) {
+    //   await recordPrimaryContactSetForCompany(clientId, contactData.name, userId);
+    // }
+
+    // CRITICAL: Don't return client object - may have circular refs or non-serializable data
+    return { success: true, contactName: contactData.name };
   } catch (error: any) {
-    return { error: error.message || 'Failed to add contact' };
+    console.error('[addContactAction] CATCH Error:', error?.message, error?.stack, JSON.stringify(error));
+    // NEVER throw from server action - always return error object
+    return { error: error?.message || 'Failed to add contact' };
   }
 }
 
@@ -375,6 +415,7 @@ export async function updateContactAction(clientId: string, contactId: string, c
   }
   
   if (!tenantId || !userId) {
+    console.log('[updateContactAction] Unauthorized - no tenant or user');
     return { error: 'Unauthorized: No tenant or user context' };
   }
 
@@ -396,24 +437,33 @@ export async function updateContactAction(clientId: string, contactId: string, c
     ...(phones && { phones }),
   };
 
+// Update contact - wrapped in try/catch!
+  let client;
   try {
-    const client = await updateClientContact(tenantId, clientId, contactId, updateData);
-    
-    if (!client) {
-      return { error: 'Client or contact not found' };
-    }
-
-    // Record event
-    await recordContactUpdatedForCompany(clientId, contactData.name || 'Contact', 'details updated', userId);
-    
-    if (contactData.isPrimary) {
-      await recordPrimaryContactSetForCompany(clientId, contactData.name || 'Contact', userId);
-    }
-
-    return { success: true, client };
-  } catch (error: any) {
-    return { error: error.message || 'Failed to update contact' };
+    client = await updateClientContact(tenantId, clientId, contactId, updateData);
+  } catch (dbErr: any) {
+    console.error('[updateContactAction] updateClientContact threw:', dbErr?.message);
+    return { error: dbErr?.message || 'Failed to update contact' };
   }
+  
+  if (!client) {
+    return { error: 'Client or contact not found' };
+  }
+
+  console.log('[updateContactAction] Contact updated successfully');
+
+  // TEMPORARILY SKIP EVENT RECORDING - events module commented out
+  // try {
+  //   await recordContactUpdatedForCompany(clientId, contactData.name || 'Contact', 'details updated', userId);
+  //   if (contactData.isPrimary) {
+  //     await recordPrimaryContactSetForCompany(clientId, contactData.name || 'Contact', userId);
+  //   }
+  // } catch (eventErr: any) {
+  //   console.log('[updateContactAction] Event recording skipped:', eventErr?.message);
+  // }
+
+  // CRITICAL: Don't return client object - may have circular refs
+  return { success: true, contactId };
 }
 
 /**
@@ -430,21 +480,32 @@ export async function removeContactAction(clientId: string, contactId: string, c
   }
   
   if (!tenantId || !userId) {
+    console.log('[removeContactAction] Unauthorized - no tenant or user');
     return { error: 'Unauthorized: No tenant or user context' };
   }
 
+  // Remove contact - wrapped in try/catch!
+  let client;
   try {
-    const client = await removeClientContact(tenantId, clientId, contactId);
-    
-    if (!client) {
-      return { error: 'Client or contact not found' };
-    }
-
-    // Record event
-    await recordContactRemovedFromCompany(clientId, contactName, userId);
-
-    return { success: true, client };
-  } catch (error: any) {
-    return { error: error.message || 'Failed to remove contact' };
+    client = await removeClientContact(tenantId, clientId, contactId);
+  } catch (dbErr: any) {
+    console.error('[removeContactAction] removeClientContact threw:', dbErr?.message);
+    return { error: dbErr?.message || 'Failed to remove contact' };
   }
+  
+if (!client) {
+    return { error: 'Client or contact not found' };
+  }
+
+  console.log('[removeContactAction] Contact removed successfully');
+
+  // TEMPORARILY SKIP EVENT RECORDING - events module commented out
+  // try {
+  //   await recordContactRemovedFromCompany(clientId, contactName, userId);
+  // } catch (eventErr: any) {
+  //   console.log('[removeContactAction] Event recording skipped:', eventErr?.message);
+  // }
+
+  // CRITICAL: Don't return client object - may have circular refs
+  return { success: true, contactId };
 }

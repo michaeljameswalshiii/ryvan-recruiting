@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Plus, RefreshCw, User, Mail, Phone, Building2 } from 'lucide-react';
-import { useClients, useAddContact } from '@/lib/hooks/query-client';
+import { useClients, useAddContact, useRemoveContact } from '@/lib/hooks/query-client';
 
 export function ContactsClient() {
   const router = useRouter();
@@ -17,7 +17,23 @@ export function ContactsClient() {
     console.log('[ContactsClient] clients:', clients);
     console.log('[ContactsClient] clients length:', clients?.length);
   }, [isLoading, error, clients]);
-  const addContactMutation = useAddContact();
+const addContactMutation = useAddContact();
+  const removeContactMutation = useRemoveContact();
+
+  const handleDeleteContact = async (companyId: string, contactId: string, contactName: string) => {
+    if (!confirm(`Are you sure you want to delete ${contactName}?`)) {
+      return;
+    }
+    
+    try {
+      await removeContactMutation.mutateAsync({ clientId: companyId, contactId, contactName });
+      refetch();
+      alert('Contact deleted successfully!');
+    } catch (err: any) {
+      console.error('Delete contact error:', err);
+      alert(`Failed to delete contact: ${err?.message || 'Unknown error'}`);
+    }
+  };
   
   const [showForm, setShowForm] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState('');
@@ -250,14 +266,31 @@ export function ContactsClient() {
                   <td className="px-4 py-3 text-gray-600">
                     {item.contact.phones?.[0]?.number || item.contact.phone || '-'}
                   </td>
-                  <td className="px-4 py-3">
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => handleViewContact(item.companyId, item.contact.id)}
-                    >
-                      View
-                    </Button>
+<td className="px-4 py-3">
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleViewContact(item.companyId, item.contact.id)}
+                      >
+                        View
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => router.push(`/dashboard/contacts/${item.contact.id}/edit?companyId=${item.companyId}`)}
+                      >
+                        Edit
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => handleDeleteContact(item.companyId, item.contact.id, item.contact.name)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
