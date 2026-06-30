@@ -303,6 +303,8 @@ export async function addContactToClient(
   contact: Omit<Contact, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<Client | null> {
   try {
+    console.log('[addContactToClient] Starting with tenant:', tenantId, 'client:', clientId);
+
     const client = await getClientById(tenantId, clientId);
     if (!client) {
       console.log('[addContactToClient] Client not found:', clientId);
@@ -311,12 +313,21 @@ export async function addContactToClient(
 
     const now = new Date().toISOString();
     
+    // CRITICAL: Sanitize contact data to avoid DynamoDB GSI error
+    // Ensure no empty strings for email (used in email-index GSI)
+    const cleanContact = {
+      ...contact,
+      email: contact.email && String(contact.email).trim() !== '' 
+        ? String(contact.email).trim().toLowerCase() 
+        : undefined,
+    };
+    
     // Auto-calculate preferredPhone/preferredPhoneType from phones array
-    const preferredData = extractPreferredPhone(contact.phones);
+    const preferredData = extractPreferredPhone(cleanContact.phones);
     
     const newContact: Contact = {
       id: generateId(),
-      ...contact,
+      ...cleanContact,
       ...preferredData,
       createdAt: now,
       updatedAt: now,
