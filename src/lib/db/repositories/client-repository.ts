@@ -311,7 +311,7 @@ export async function addContactToClient(
       throw new Error(`Client not found: ${clientId}`);
     }
 
-    const now = new Date().toISOString();
+const now = new Date().toISOString();
     
     // CRITICAL: Sanitize contact data to avoid DynamoDB GSI error
     // Ensure no empty strings for email (used in email-index GSI)
@@ -320,7 +320,17 @@ export async function addContactToClient(
       email: contact.email && String(contact.email).trim() !== '' 
         ? String(contact.email).trim().toLowerCase() 
         : undefined,
+      phone: contact.phone?.trim() || undefined,
     };
+    
+    // Remove undefined keys to avoid DynamoDB errors
+    Object.keys(cleanContact).forEach(key => {
+      if (cleanContact[key as keyof typeof cleanContact] === undefined) {
+        delete (cleanContact as any)[key];
+      }
+    });
+    
+    console.log('[addContactToClient] Clean contact:', JSON.stringify(cleanContact));
     
     // Auto-calculate preferredPhone/preferredPhoneType from phones array
     const preferredData = extractPreferredPhone(cleanContact.phones);
