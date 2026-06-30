@@ -7,6 +7,7 @@
 
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { getSessionTenantId, getSessionUserId } from '../server-auth';
 import { getAllClients, createClient as createClientRepo, getClientById, updateClient, deleteClient } from '../db/repositories/client-repository';
 import { createClientSchema, updateClientSchema } from '../schemas/client';
@@ -302,93 +303,65 @@ export async function addContactAction(clientId: string, contactData: {
 }) {
   let tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
-  
-  // FIX: Add tenant fallback logic for non-admin users who don't have tenantId in session
-  if (!tenantId && userId) {
-    tenantId = `tenant-${userId}`;
-  }
-  
+
+  if (!tenantId && userId) tenantId = `tenant-${userId}`;
+
   if (!tenantId || !userId) {
-    console.log('[addContactAction] Unauthorized - no tenant or user');
     return { error: 'Unauthorized: No tenant or user context' };
   }
 
-  // Flatten phones to include in validation
-  // For contacts without phones array, create one from the phone field
-  let phones = contactData.phones;
-  if (!phones && contactData.phone) {
-    // Create a single phone entry from the legacy phone field
-    phones = [{
-      id: crypto.randomUUID(),
-      number: contactData.phone,
-      type: 'work',
-      isPreferred: true,
-    }];
-  }
+  // CRITICAL: Sanitize email to prevent DynamoDB GSI error
+  // DynamoDB won't accept empty string for secondary index key (email-index)
+  const cleanEmail = contactData.email && String(contactData.email).trim() !== '' 
+    ? String(contactData.email).trim().toLowerCase() 
+    : undefined;
 
-  const validated = createContactSchema.safeParse({
+  // Handle phones - create from phone field if not provided
+  const processedPhones = contactData.phones || (contactData.phone ? [{
+    id: crypto.randomUUID(),
+    number: contactData.phone,
+    type: 'work',
+    isPreferred: true,
+  }] : []);
+
+  const validatedData = {
     ...contactData,
-    phones,
+    email: cleanEmail,
+    phones: processedPhones,
     isPrimary: contactData.isPrimary || false,
-  });
+  };
+
+  const validated = createContactSchema.safeParse(validatedData);
 
   if (!validated.success) {
-    console.log('[addContactAction] Validation failed:', validated.error.flatten().fieldErrors);
-    return {
-      error: 'Invalid input',
-      details: validated.error.flatten().fieldErrors,
-    };
+    return { error: 'Invalid input', details: validated.error.flatten().fieldErrors };
   }
 
   try {
-    console.log('[addContactAction] Step 1 - Received:', { tenantId, clientId, contactData });
-    
-    // Validate client exists first - wrapped in try/catch!
-    let existingClient;
-    try {
-      existingClient = await getClientById(tenantId, clientId);
-    } catch (dbErr: any) {
-      console.error('[addContactAction] getClientById threw:', dbErr?.message);
-      return { error: dbErr?.message || 'Failed to find client' };
-    }
-    
+    console.log('[addContactAction] Creating contact for client:', clientId, 'tenant:', tenantId);
+
+    // Validate client exists first
+    const existingClient = await getClientById(tenantId, clientId);
     if (!existingClient) {
-      console.log('[addContactAction] Step 2 - Client NOT found:', clientId);
       return { error: 'Client not found' };
     }
-    console.log('[addContactAction] Step 2 - Client found:', existingClient.name);
-    
-    console.log('[addContactAction] Step 3 - Calling addContactToClient with validated data:', JSON.stringify(validated.data));
-    
-    // Call addContactToClient wrapped in try/catch!
-    let client;
-    try {
-      client = await addContactToClient(tenantId, clientId, validated.data);
-    } catch (dbErr: any) {
-      console.error('[addContactAction] addContactToClient threw:', dbErr?.message, dbErr?.stack);
-      return { error: dbErr?.message || 'Failed to add contact to client' };
-    }
-    
-    if (!client) {
-      console.log('[addContactAction] Step 4 - addContactToClient returned null');
-      return { error: 'Failed to add contact to client' };
-    }
 
-console.log('[addContactAction] Step 4 - Contact added successfully');
+    // Add the contact
+    const client = await addContactToClient(tenantId, clientId, validated.data);
 
-    // TEMPORARILY SKIP EVENT RECORDING to diagnose - uncomment later
-    // await recordContactAddedToCompany(clientId, contactData.name, userId);
+    if (!client) return { error: 'Failed to add contact to client' };
+
+    console.log('[addContactAction] Success - contact added');
     
-    // if (contactData.isPrimary) {
-    //   await recordPrimaryContactSetForCompany(clientId, contactData.name, userId);
-    // }
+    // Revalidate the contact-info page to refresh UI
+    revalidatePath('/dashboard/contact-info');
 
-    // CRITICAL: Don't return client object - may have circular refs or non-serializable data
+    // CRITICAL: Return simple serializable data - NOT the full client object
+    // The client object may have circular references that cause "UnknownError"
     return { success: true, contactName: contactData.name };
   } catch (error: any) {
-    console.error('[addContactAction] CATCH Error:', error?.message, error?.stack, JSON.stringify(error));
-    // NEVER throw from server action - always return error object
-    return { error: error?.message || 'Failed to add contact' };
+    console.error('[addContactAction] Full error:', error);
+    return { error: error.message || 'Failed to add contact' };
   }
 }
 
