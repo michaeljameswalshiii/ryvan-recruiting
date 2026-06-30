@@ -217,52 +217,18 @@ export function useAddContact() {
       isPrimary?: boolean;
       notes?: string;
     }}) => {
-try {
-        console.log('[useAddContact] Calling addContactAction with:', { clientId, contactData: JSON.stringify(contactData) });
-        
-        let result;
-        let actionErr: any = null;
-        
-        try {
-          // Call the server action directly - wrap in try/catch to handle serialization issues
-          result = await addContactAction(clientId, contactData);
-        } catch (err: any) {
-          actionErr = err;
-          console.error('[useAddContact] Server action threw:', err?.message, err);
-        }
-        
-        // Handle case where action threw
-        if (actionErr) {
-          const msg = actionErr?.message || String(actionErr) || 'Failed to add contact - server error';
-          console.log('[useAddContact] Throwing from action error:', msg);
-          throw new Error(msg);
-        }
-        
-        console.log('[useAddContact] Result received:', JSON.stringify(result));
-        
-        // Check for error in result - could be error string or error property
-        const errorMsg = result?.error;
-        if (errorMsg) {
-          console.log('[useAddContact] Error in result:', errorMsg);
-          throw new Error(errorMsg);
-        }
-        
-        // If no error but also no success, something is wrong
-        if (!result?.success) {
-          console.log('[useAddContact] No success flag in result:', result);
-          // Try to extract any message from result
-          const msg = result?.message || result?.error || 'Unexpected response from server';
-          throw new Error(msg);
-        }
-        
-        return result;
-      } catch (err: any) {
-        console.error('[useAddContact] Caught error:', err?.message, err?.stack);
-        // CRITICAL: Always have a message
-        const errMsg = err?.message || String(err) || 'Failed to add contact';
-        console.log('[useAddContact] Final error message:', errMsg);
-        throw new Error(errMsg);
+      console.log('[useAddContact] Calling addContactAction with:', { clientId, contactData });
+      
+      const result = await addContactAction(clientId, contactData);
+      console.log('[useAddContact] Result received:', result);
+      
+      // CRITICAL: Check for error property and throw to expose real message
+      if (result.error) {
+        console.log('[useAddContact] Error in result - throwing:', result.error);
+        throw new Error(result.error);
       }
+      
+      return result;
     },
     onSuccess: (_, variables) => {
       toast.success('Contact added successfully');
@@ -271,7 +237,7 @@ try {
     },
     onError: (error) => {
       console.log('[useAddContact] onError called with:', error);
-      const msg = error instanceof Error ? error.message : 'Please try again';
+      const msg = error instanceof Error ? error.message : 'Failed to add contact';
       toast.error('Failed to add contact', { description: msg });
     },
   });
