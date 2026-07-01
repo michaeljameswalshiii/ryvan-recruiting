@@ -202,14 +202,19 @@ export async function queryItems<T>(
 
 /**
  * Put a single item
+ * CRITICAL: removeUndefinedValues to prevent DynamoDB GSI errors with empty strings
  */
 export async function putItem<T>(table: string, item: T): Promise<T> {
   const client = getClient();
+  
+  console.log('[putItem] Input item:', JSON.stringify(item));
   
   const command = new PutItemCommand({
     TableName: table,
     Item: marshall(item, { removeUndefinedValues: true }),
   });
+  
+  console.log('[putItem] Marshalled item:', JSON.stringify(command.input.Item));
   
   await client.send(command);
   
