@@ -295,102 +295,40 @@ export async function deleteClient(tenantId: string, clientId: string): Promise<
 
 /**
  * Add a contact to a client
- * ALWAYS returns Client or throws - NEVER returns null silently
+ * Bulletproof version - sanitizes right before PutItem
  */
-export async function addContactToClient(
-  tenantId: string,
-  clientId: string,
-  contact: Omit<Contact, 'id' | 'createdAt' | 'updatedAt'>
-): Promise<Client | null> {
-  try {
-    console.log('[addContactToClient] Starting with tenant:', tenantId, 'client:', clientId);
+export async function addContactToClient(tenantId: string, clientId: string, contact: any) {
+  console.log('[addContactToClient] Input:', { tenantId, clientId, contact });
 
-    const client = await getClientById(tenantId, clientId);
-    if (!client) {
-      console.log('[addContactToClient] Client not found:', clientId);
-      throw new Error(`Client not found: ${clientId}`);
-    }
+  // CRITICAL: Sanitize right before DB write
+  const cleanContact = {
+    ...contact,
+    email: contact.email && String(contact.email).trim() !== '' 
+      ? String(contact.email).trim().toLowerCase() 
+      : undefined,
+  };
 
-const now = new Date().toISOString();
-    
-    // CRITICAL: Sanitize contact data to avoid DynamoDB GSI error
-    // Ensure no empty strings for email (used in email-index GSI)
-    const cleanContact = {
-      ...contact,
-      email: contact.email && String(contact.email).trim() !== '' 
-        ? String(contact.email).trim().toLowerCase() 
-        : undefined,
-      phone: contact.phone?.trim() || undefined,
-    };
-    
-    // Remove undefined keys to avoid DynamoDB errors
-    Object.keys(cleanContact).forEach(key => {
-      if (cleanContact[key as keyof typeof cleanContact] === undefined) {
-        delete (cleanContact as any)[key];
-      }
-    });
-    
-    console.log('[addContactToClient] Clean contact:', JSON.stringify(cleanContact));
-    
-    // Auto-calculate preferredPhone/preferredPhoneType from phones array
-    const preferredData = extractPreferredPhone(cleanContact.phones);
-    
-    const newContact: Contact = {
-      id: generateId(),
+  // Remove undefined keys
+  Object.keys(cleanContact).forEach(key => {
+    if (cleanContact[key] === undefined) delete cleanContact[key];
+  });
+
+  const params = {
+    TableName: process.env.NEXT_PUBLIC_CLIENTS_TABLE!,
+    Item: {
       ...cleanContact,
-      ...preferredData,
-      createdAt: now,
-      updatedAt: now,
-    };
+      tenant_id: tenantId,
+      clientId,
+      PK: `CONTACT#${crypto.randomUUID()}`,
+      SK: `COMPANY#${clientId}`,
+      type: 'CONTACT',
+      createdAt: new Date().toISOString(),
+    },
+  };
 
-    // Get existing contacts or initialize empty array
-    const existingContacts = client.contacts || [];
-    
-    // If setting as primary, unset other primaries
-    let updatedContacts = existingContacts;
-    if (contact.isPrimary) {
-      updatedContacts = existingContacts.map(c => ({
-        ...c,
-        isPrimary: false,
-        updatedAt: now,
-      }));
-    }
+  console.log('[addContactToClient] Putting item:', JSON.stringify(params));
 
-    // Add new contact
-    updatedContacts = [...updatedContacts, newContact];
-
-    // Determine primary contact ID
-    let primaryContactId = client.primaryContactId;
-    if (contact.isPrimary || !primaryContactId) {
-      primaryContactId = newContact.id;
-    }
-
-    const result = await updateItem<Client>(
-      clientsTable,
-      { tenant_id: tenantId, id: clientId },
-      'SET #contacts = :contacts, #primaryContactId = :primaryContactId, #modified_at = :modified_at',
-      {
-        ':contacts': updatedContacts,
-        ':primaryContactId': primaryContactId,
-        ':modified_at': now,
-      },
-      {
-        '#contacts': 'contacts',
-        '#primaryContactId': 'primaryContactId',
-        '#modified_at': 'modified_at',
-      }
-    );
-
-    if (!result) {
-      throw new Error('Failed to update client with new contact');
-    }
-
-    console.log('[addContactToClient] Contact added successfully');
-    return result;
-  } catch (error: any) {
-    console.error('[addContactToClient] Error:', error?.message, error?.stack);
-    throw new Error(error?.message || 'Failed to add contact to client');
-  }
+  return await putItem(params);
 }
 
 /**
