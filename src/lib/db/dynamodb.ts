@@ -17,6 +17,7 @@ import {
   ScanCommand,
   ListTablesCommand,
 } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 
 // ============================================================================
@@ -44,7 +45,9 @@ const issuesTable = process.env.DYNAMODB_ISSUES_TABLE || 'turnkey-issues';
 // ============================================================================
 
 let _client: DynamoDBClient | null = null;
+let _docClient: DynamoDBDocumentClient | null = null;
 
+// Get raw DynamoDBClient for commands
 function getClient(): DynamoDBClient {
   if (!_client) {
     const region = process.env.AWS_REGION || 'us-east-1';
@@ -64,7 +67,6 @@ console.log('🔧 DynamoDB Init:', {
     // Validate credentials before creating client
     if (!accessKeyId || !secretAccessKey) {
       console.error('❌ AWS credentials STILL missing after fallback');
-      // Graceful fallback so page doesn't crash
       throw new Error('AWS credentials not configured. Check Vercel env vars.');
     }
 
@@ -84,6 +86,19 @@ console.log('🔧 DynamoDB Init:', {
     console.log('✅ DynamoDBClient initialized successfully');
   }
   return _client;
+}
+
+// Get DynamoDBDocumentClient with global removeUndefinedValues
+export function getDocClient(): DynamoDBDocumentClient {
+  if (!_docClient) {
+    _docClient = DynamoDBDocumentClient.from(getClient(), {
+      marshallOptions: {
+        removeUndefinedValues: true,  // <--- KEY FIX: Global removal of undefined values
+      },
+    });
+    console.log('✅ DynamoDBDocumentClient initialized with removeUndefinedValues');
+  }
+  return _docClient;
 }
 
 // ============================================================================
