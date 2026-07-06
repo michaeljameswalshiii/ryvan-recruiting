@@ -2,7 +2,7 @@
  * TanStack Query Hooks for Client Data
  * Provides reactive data fetching with caching, loading states, and error handling
  * Includes toast notifications for user feedback
- * 
+ *
  * @clientOnly
  */
 
@@ -22,11 +22,11 @@ if (typeof window !== 'undefined') {
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { 
-  getClients, 
-  getClientByIdAction, 
-  createClient, 
-  updateClientAction, 
+import {
+  getClients,
+  getClientByIdAction,
+  createClient,
+  updateClientAction,
   updateClientStatusAction,
   deleteClientAction,
   addContactAction,
@@ -95,7 +95,7 @@ export function useCreateClient() {
       }
       return result;
     },
-onSuccess: () => {
+    onSuccess: () => {
       toast.success('Client created successfully');
       // Invalidate client queries
       queryClient.invalidateQueries({ queryKey: clientKeys.lists(), refetchType: 'all' });
@@ -208,26 +208,54 @@ export function useAddContact() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ clientId, contactData }: { clientId: string; contactData: {
-      name: string;
-      title?: string;
-      email?: string;
-      phone?: string;
-      phones?: { id: string; type: string; number: string; isPreferred: boolean }[];
-      isPrimary?: boolean;
-      notes?: string;
-    }}) => {
+    mutationFn: async ({
+      clientId,
+      contactData,
+    }: {
+      clientId: string;
+      contactData: {
+        name: string;
+        title?: string;
+        email?: string;
+        phone?: string;
+        phones?: { id: string; type: string; number: string; isPreferred: boolean }[];
+        isPrimary?: boolean;
+        notes?: string;
+      };
+    }) => {
       console.log('[useAddContact] Calling addContactAction with:', { clientId, contactData });
-      
-      const result = await addContactAction(clientId, contactData);
+
+      // Prevent undefined values from being passed to lower layers.
+      // GraphQL/Apollo-style variable marshallers can throw if variables contain `undefined`
+      // nested inside objects/arrays.
+      const sanitizedContactData = {
+        name: contactData.name?.trim(),
+        title: contactData.title?.trim() ? contactData.title.trim() : undefined,
+        email: contactData.email?.trim() ? contactData.email.trim() : undefined,
+        phone: contactData.phone?.trim() ? contactData.phone.trim() : undefined,
+        isPrimary: contactData.isPrimary ?? false,
+        notes: contactData.notes?.trim() ? contactData.notes.trim() : undefined,
+        phones: Array.isArray(contactData.phones)
+          ? contactData.phones
+              .map((p) => ({
+                id: p?.id,
+                type: p?.type?.trim(),
+                number: p?.number?.trim(),
+                isPreferred: !!p?.isPreferred,
+              }))
+              .filter((p) => p.id && p.type && p.number)
+          : undefined,
+      };
+
+      const result = await addContactAction(clientId, sanitizedContactData);
       console.log('[useAddContact] Result received:', result);
-      
+
       // CRITICAL: Check for error property and throw to expose real message
       if (result.error) {
         console.log('[useAddContact] Error in result - throwing:', result.error);
         throw new Error(result.error);
       }
-      
+
       return result;
     },
     onSuccess: (_, variables) => {
@@ -250,16 +278,43 @@ export function useUpdateContact() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ clientId, contactId, contactData }: { clientId: string; contactId: string; contactData: {
-      name?: string;
-      title?: string;
-      email?: string;
-      phone?: string;
-      phones?: { id: string; type: string; number: string; isPreferred: boolean }[];
-      isPrimary?: boolean;
-      notes?: string;
-    }}) => {
-      const result = await updateContactAction(clientId, contactId, contactData);
+    mutationFn: async ({
+      clientId,
+      contactId,
+      contactData,
+    }: {
+      clientId: string;
+      contactId: string;
+      contactData: {
+        name?: string;
+        title?: string;
+        email?: string;
+        phone?: string;
+        phones?: { id: string; type: string; number: string; isPreferred: boolean }[];
+        isPrimary?: boolean;
+        notes?: string;
+      };
+    }) => {
+      const sanitizedContactData = {
+        name: contactData.name?.trim() ? contactData.name.trim() : undefined,
+        title: contactData.title?.trim() ? contactData.title.trim() : undefined,
+        email: contactData.email?.trim() ? contactData.email.trim() : undefined,
+        phone: contactData.phone?.trim() ? contactData.phone.trim() : undefined,
+        isPrimary: contactData.isPrimary ?? undefined,
+        notes: contactData.notes?.trim() ? contactData.notes.trim() : undefined,
+        phones: Array.isArray(contactData.phones)
+          ? contactData.phones
+              .map((p) => ({
+                id: p?.id,
+                type: p?.type?.trim(),
+                number: p?.number?.trim(),
+                isPreferred: !!p?.isPreferred,
+              }))
+              .filter((p) => p.id && p.type && p.number)
+          : undefined,
+      };
+
+      const result = await updateContactAction(clientId, contactId, sanitizedContactData);
       if (result.error) {
         throw new Error(result.error);
       }
@@ -285,7 +340,15 @@ export function useRemoveContact() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ clientId, contactId, contactName }: { clientId: string; contactId: string; contactName?: string }) => {
+    mutationFn: async ({
+      clientId,
+      contactId,
+      contactName,
+    }: {
+      clientId: string;
+      contactId: string;
+      contactName?: string;
+    }) => {
       const result = await removeContactAction(clientId, contactId, contactName);
       if (result.error) {
         throw new Error(result.error);
