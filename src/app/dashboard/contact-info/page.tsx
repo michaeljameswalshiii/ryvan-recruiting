@@ -46,7 +46,7 @@ export default function ContactInfoPage() {
   return (
     <div className="p-6">
       <h1 className="text-3xl font-bold">Contact Info</h1>
-      <p>Loaded {clients.length} companies • contacts</p>
+      <p>Loaded {clients.length} companies</p>
       <Button onClick={fetchClients} className="mt-4">
         Refresh
       </Button>
