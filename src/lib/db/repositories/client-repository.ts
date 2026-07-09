@@ -14,8 +14,33 @@ const docClient = DynamoDBDocumentClient.from(client);
 const TABLE_NAME = process.env.DYNAMODB_TABLE || 'TurnkeyOptimization';
 
 /**
+ * Get all clients for a tenant
+ */
+export async function getAllClients(tenantId: string) {
+  if (!tenantId) {
+    console.log('[getAllClients] No tenantId provided');
+    return [];
+  }
+
+  try {
+    const result = await docClient.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'tenant_id = :tenantId',
+      ExpressionAttributeValues: {
+        ':tenantId': tenantId
+      }
+    }));
+
+    console.log(`[getAllClients] Found ${result.Items?.length || 0} clients for tenant ${tenantId}`);
+    return result.Items || [];
+  } catch (error: any) {
+    console.error('[getAllClients] Error:', error);
+    throw error;
+  }
+}
+
+/**
  * Add a contact to a client
- * Returns the updated client or throws on failure
  */
 export async function addContactToClient(tenantId: string, clientId: string, contactData: any) {
   if (!tenantId || !clientId) {
@@ -32,7 +57,6 @@ export async function addContactToClient(tenantId: string, clientId: string, con
   };
 
   try {
-    // Get current client
     const getResult = await docClient.send(new GetCommand({
       TableName: TABLE_NAME,
       Key: { tenant_id: tenantId, id: clientId }
@@ -44,11 +68,9 @@ export async function addContactToClient(tenantId: string, clientId: string, con
       throw new Error(`Client not found: ${clientId}`);
     }
 
-    // Add contact to contacts array
     const contacts = Array.isArray(client.contacts) ? [...client.contacts] : [];
     contacts.push(contact);
 
-    // Update client
     const updateResult = await docClient.send(new UpdateCommand({
       TableName: TABLE_NAME,
       Key: { tenant_id: tenantId, id: clientId },
@@ -68,25 +90,7 @@ export async function addContactToClient(tenantId: string, clientId: string, con
   }
 }
 
-// Add your other repository functions here (getAllClients, createClient, etc.)
-// Example stub for getAllClients
-export async function getAllClients(tenantId: string) {
-  try {
-    const result = await docClient.send(new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: 'tenant_id = :tenantId',
-      ExpressionAttributeValues: {
-        ':tenantId': tenantId
-      }
-    }));
-    return result.Items || [];
-  } catch (error: any) {
-    console.error('[getAllClients] Error:', error);
-    throw error;
-  }
-}
-
-// Add the rest of your functions (createClient, updateClient, etc.) here
+// Add your other functions (createClient, updateClient, etc.) here as needed
 // ...
 
 // DO NOT add circular exports at the bottom
