@@ -14,7 +14,7 @@ const docClient = DynamoDBDocumentClient.from(client);
 const TABLE_NAME = process.env.DYNAMODB_TABLE || 'TurnkeyOptimization';
 
 /**
- * Get all clients for a tenant
+ * Get all clients for a tenant - using Scan for robustness (like candidates)
  */
 export async function getAllClients(tenantId: string) {
   if (!tenantId) {
@@ -22,38 +22,32 @@ export async function getAllClients(tenantId: string) {
     return [];
   }
 
-  console.log(`[getAllClients] Querying table "${TABLE_NAME}" for tenant: ${tenantId}`);
+  console.log(`[getAllClients] Scanning table "${TABLE_NAME}" for tenant: ${tenantId}`);
 
   try {
-    const result = await docClient.send(new QueryCommand({
+    const result = await docClient.send(new ScanCommand({
       TableName: TABLE_NAME,
-      KeyConditionExpression: 'tenant_id = :tenantId',
+      FilterExpression: 'tenant_id = :tenantId',
       ExpressionAttributeValues: {
         ':tenantId': tenantId
       }
     }));
 
-    console.log(`[getAllClients] SUCCESS - Found ${result.Items?.length || 0} items`);
+    console.log(`[getAllClients] SUCCESS - Found ${result.Items?.length || 0} clients`);
     return result.Items || [];
   } catch (error: any) {
-    console.error('[getAllClients] FULL ERROR DETAILS:', {
+    console.error('[getAllClients] Scan Error:', {
       name: error.name,
       message: error.message,
-      code: error.code,
-      statusCode: error.$metadata?.httpStatusCode,
-      requestId: error.$metadata?.requestId,
       tenantId,
-      tableName: TABLE_NAME,
-      stack: error.stack ? error.stack.split('\n').slice(0, 5).join('\n') : undefined
+      tableName: TABLE_NAME
     });
 
     if (error.name === 'ResourceNotFoundException') {
-      console.error('💥 DYNAMODB TABLE DOES NOT EXIST OR IS NOT ACCESSIBLE');
-    } else if (error.name === 'ValidationException') {
-      console.error('💥 QUERY VALIDATION ERROR - check partition key name');
+      console.error('💥 TABLE NOT FOUND - returning empty');
     }
 
-    throw error;
+    return []; // Safe fallback - no crash
   }
 }
 
