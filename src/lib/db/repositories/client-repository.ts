@@ -22,6 +22,8 @@ export async function getAllClients(tenantId: string) {
     return [];
   }
 
+  console.log(`[getAllClients] Querying table "${TABLE_NAME}" for tenant: ${tenantId}`);
+
   try {
     const result = await docClient.send(new QueryCommand({
       TableName: TABLE_NAME,
@@ -31,10 +33,26 @@ export async function getAllClients(tenantId: string) {
       }
     }));
 
-    console.log(`[getAllClients] Found ${result.Items?.length || 0} clients for tenant ${tenantId}`);
+    console.log(`[getAllClients] SUCCESS - Found ${result.Items?.length || 0} items`);
     return result.Items || [];
   } catch (error: any) {
-    console.error('[getAllClients] Error:', error);
+    console.error('[getAllClients] FULL ERROR DETAILS:', {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      statusCode: error.$metadata?.httpStatusCode,
+      requestId: error.$metadata?.requestId,
+      tenantId,
+      tableName: TABLE_NAME,
+      stack: error.stack
+    });
+
+    if (error.name === 'ResourceNotFoundException') {
+      console.error('💥 DYNAMODB TABLE DOES NOT EXIST OR IS NOT ACCESSIBLE');
+    } else if (error.name === 'ValidationException') {
+      console.error('💥 QUERY VALIDATION ERROR - check partition key name');
+    }
+
     throw error;
   }
 }
@@ -91,6 +109,3 @@ export async function addContactToClient(tenantId: string, clientId: string, con
 }
 
 // Add your other functions (createClient, updateClient, etc.) here as needed
-// ...
-
-// DO NOT add circular exports at the bottom
