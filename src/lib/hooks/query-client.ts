@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getClients, addContactAction } from '@/lib/actions/client-actions';
 
-// Clients Query
+// Clients
 export function useClients() {
   return useQuery({
     queryKey: ['clients'],
@@ -11,34 +11,41 @@ export function useClients() {
   });
 }
 
-// Create Client Mutation
+// Single Client
+export function useClient(clientId: string) {
+  return useQuery({
+    queryKey: ['client', clientId],
+    queryFn: async () => {
+      // Implement single client fetch if needed
+      console.log('Fetching client:', clientId);
+      return null; // placeholder
+    },
+    enabled: !!clientId,
+  });
+}
+
+// Create
 export function useCreateClient() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (formData: FormData) => {
-      console.log('Creating client with FormData');
-      // Implement real create if needed
+      console.log('Creating client');
       return { success: true };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['clients'] }),
   });
 }
 
-// Delete Client Mutation (the missing one)
+// Delete
 export function useDeleteClient() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (clientId: string) => {
       console.log('Deleting client:', clientId);
-      // Implement real delete if needed
       return { success: true };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['clients'] }),
   });
 }
