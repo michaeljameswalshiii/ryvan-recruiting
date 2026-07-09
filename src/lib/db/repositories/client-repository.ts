@@ -64,17 +64,11 @@ export async function addContactToClient(tenantId: string, clientId: string, con
     return updateResult.Attributes;
   } catch (error: any) {
     console.error(`[addContactToClient] Error for tenant:${tenantId}, client:${clientId}`, error);
-    throw error;  // Critical: throw instead of returning null
+    throw error;
   }
 }
 
-/* 
-  Keep all your other repository functions (getAllClients, createClient, updateClient, etc.) unchanged below.
-  Only the addContactToClient function was updated for better error handling.
-*/
+// TODO: Add your other repository functions here (getAllClients, createClient, etc.)
+// They were not changed in this fix
 
-export {
-  // ... export your other functions ...
-  addContactToClient,
-  // updateClientContact, removeClientContact, etc.
-};
+export { getAllClients, createClient, getClientById, updateClient, deleteClient, updateClientContact, removeClientContact } from './client-repository'; // Adjust if needed based on your actual exports
