@@ -44,11 +44,11 @@ export async function addContactToClient(tenantId: string, clientId: string, con
       throw new Error(`Client not found: ${clientId}`);
     }
 
-    // Add contact to contacts array (or create if doesn't exist)
+    // Add contact to contacts array
     const contacts = Array.isArray(client.contacts) ? [...client.contacts] : [];
     contacts.push(contact);
 
-    // Update client with new contacts array
+    // Update client
     const updateResult = await docClient.send(new UpdateCommand({
       TableName: TABLE_NAME,
       Key: { tenant_id: tenantId, id: clientId },
@@ -68,7 +68,25 @@ export async function addContactToClient(tenantId: string, clientId: string, con
   }
 }
 
-// TODO: Add your other repository functions here (getAllClients, createClient, etc.)
-// They were not changed in this fix
+// Add your other repository functions here (getAllClients, createClient, etc.)
+// Example stub for getAllClients
+export async function getAllClients(tenantId: string) {
+  try {
+    const result = await docClient.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'tenant_id = :tenantId',
+      ExpressionAttributeValues: {
+        ':tenantId': tenantId
+      }
+    }));
+    return result.Items || [];
+  } catch (error: any) {
+    console.error('[getAllClients] Error:', error);
+    throw error;
+  }
+}
 
-export { getAllClients, createClient, getClientById, updateClient, deleteClient, updateClientContact, removeClientContact } from './client-repository'; // Adjust if needed based on your actual exports
+// Add the rest of your functions (createClient, updateClient, etc.) here
+// ...
+
+// DO NOT add circular exports at the bottom
