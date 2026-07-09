@@ -9,7 +9,11 @@ import Link from 'next/link';
 
 export function CompaniesClient() {
   const router = useRouter();
-const { data: clients = [], isLoading, error, refetch } = useClients();
+  const { data, isLoading, error, refetch } = useClients();
+  
+  // Safe array fallback
+  const clients = Array.isArray(data) ? data : (data?.clients || []);
+
   const createClientMutation = useCreateClient();
   const deleteClientMutation = useDeleteClient();
 
@@ -28,8 +32,7 @@ const { data: clients = [], isLoading, error, refetch } = useClients();
     }
   };
 
-  // DEBUG: Log when data changes
-  console.log('[CompaniesClient] clients:', JSON.stringify(clients));
+  console.log('[CompaniesClient] clients:', clients.length, 'items');
   console.log('[CompaniesClient] isLoading:', isLoading);
   console.log('[CompaniesClient] error:', error);
 
@@ -189,7 +192,7 @@ const { data: clients = [], isLoading, error, refetch } = useClients();
             <tbody className="divide-y">
               {clients.map((company: any) => (
                 <tr key={company.id} className="hover:bg-gray-50">
-<td className="px-4 py-3">
+                  <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
                         <Building2 className="h-5 w-5 text-blue-600" />
@@ -231,7 +234,7 @@ const { data: clients = [], isLoading, error, refetch } = useClients();
                   <td className="px-4 py-3 text-gray-600">
                     {company.contacts?.length || 0} contact{(company.contacts?.length || 0) !== 1 ? 's' : ''}
                   </td>
-<td className="px-4 py-3">
+                  <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <Button 
                         variant="ghost" 
