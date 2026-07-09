@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
 
-const TABLE_NAME = process.env.DYNAMODB_TABLE || 'TurnkeyOptimization';
+const TABLE_NAME = 'turnkey-clients'; // Correct table from your DynamoDB Viewer
 
 /**
  * Get all contacts by pulling from companies (matches your data model)
