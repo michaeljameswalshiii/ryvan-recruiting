@@ -1,3 +1,20 @@
+/**
+ * Client Server Actions
+ * Server-side CRUD operations for clients using httpOnly cookies
+ * 
+ * @serverOnly
+ */
+
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { getSessionTenantId, getSessionUserId } from '@/lib/server-auth';
+import { getAllClients, addContactToClient } from '@/lib/db/repositories/client-repository';
+// Add other imports as needed for your other functions
+
+/**
+ * Get all clients for the current tenant
+ */
 export async function getClients() {
   let tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
@@ -24,3 +41,14 @@ export async function getClients() {
     return { error: error.message || 'Failed to get clients' };
   }
 }
+
+// Add your other actions (createClient, addContactAction, etc.) below
+// ... 
+
+export async function addContactAction(clientId: string, contactData: any) {
+  // Your improved version
+  const result = await addContactToClient(/* tenantId logic */, clientId, contactData);
+  // ... 
+}
+
+// ... rest of your file
