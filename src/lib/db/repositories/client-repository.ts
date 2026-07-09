@@ -14,39 +14,31 @@ const docClient = DynamoDBDocumentClient.from(client);
 const TABLE_NAME = process.env.DYNAMODB_TABLE || 'TurnkeyOptimization';
 
 /**
- * Get all contacts by pulling from companies (correct structure for your data model)
+ * Get all contacts by pulling from companies (matches your data model)
  */
 export async function getAllClients(tenantId: string) {
-  if (!tenantId) {
-    console.log('[getAllClients] No tenantId provided');
-    return [];
-  }
-
-  console.log(`[getAllClients] Fetching companies for tenant: ${tenantId}`);
+  console.log(`[getAllClients] Scanning companies for tenant: ${tenantId || 'all'}`);
 
   try {
-    const result = await docClient.send(new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: 'tenant_id = :tenantId',
-      ExpressionAttributeValues: {
-        ':tenantId': tenantId
-      }
+    const result = await docClient.send(new ScanCommand({
+      TableName: TABLE_NAME
     }));
 
     const companies = result.Items || [];
-    console.log(`[getAllClients] Found ${companies.length} companies`);
+    console.log(`[getAllClients] Found ${companies.length} companies in table`);
 
-    // Flatten all contacts from all companies
+    // Flatten contacts from all companies
     const allContacts = companies.flatMap(company => {
       const contacts = Array.isArray(company.contacts) ? company.contacts : [];
       return contacts.map(contact => ({
         ...contact,
         companyId: company.id,
-        companyName: company.name || company.title || 'Unknown Company'
+        companyName: company.name || company.title || 'Unknown Company',
+        tenantId: company.tenant_id || tenantId
       }));
     });
 
-    console.log(`[getAllClients] Flattened ${allContacts.length} contacts from companies`);
+    console.log(`[getAllClients] Flattened ${allContacts.length} contacts`);
     return allContacts;
   } catch (error: any) {
     console.error('[getAllClients] Error:', error);
