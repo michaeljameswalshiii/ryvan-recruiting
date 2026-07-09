@@ -14,7 +14,7 @@ const docClient = DynamoDBDocumentClient.from(client);
 const TABLE_NAME = process.env.DYNAMODB_TABLE || 'TurnkeyOptimization';
 
 /**
- * Get all clients for a tenant - using Scan for robustness (like candidates)
+ * Get all contacts by pulling from companies (correct structure for your data model)
  */
 export async function getAllClients(tenantId: string) {
   if (!tenantId) {
@@ -22,32 +22,35 @@ export async function getAllClients(tenantId: string) {
     return [];
   }
 
-  console.log(`[getAllClients] Scanning table "${TABLE_NAME}" for tenant: ${tenantId}`);
+  console.log(`[getAllClients] Fetching companies for tenant: ${tenantId}`);
 
   try {
-    const result = await docClient.send(new ScanCommand({
+    const result = await docClient.send(new QueryCommand({
       TableName: TABLE_NAME,
-      FilterExpression: 'tenant_id = :tenantId',
+      KeyConditionExpression: 'tenant_id = :tenantId',
       ExpressionAttributeValues: {
         ':tenantId': tenantId
       }
     }));
 
-    console.log(`[getAllClients] SUCCESS - Found ${result.Items?.length || 0} clients`);
-    return result.Items || [];
-  } catch (error: any) {
-    console.error('[getAllClients] Scan Error:', {
-      name: error.name,
-      message: error.message,
-      tenantId,
-      tableName: TABLE_NAME
+    const companies = result.Items || [];
+    console.log(`[getAllClients] Found ${companies.length} companies`);
+
+    // Flatten all contacts from all companies
+    const allContacts = companies.flatMap(company => {
+      const contacts = Array.isArray(company.contacts) ? company.contacts : [];
+      return contacts.map(contact => ({
+        ...contact,
+        companyId: company.id,
+        companyName: company.name || company.title || 'Unknown Company'
+      }));
     });
 
-    if (error.name === 'ResourceNotFoundException') {
-      console.error('💥 TABLE NOT FOUND - returning empty');
-    }
-
-    return []; // Safe fallback - no crash
+    console.log(`[getAllClients] Flattened ${allContacts.length} contacts from companies`);
+    return allContacts;
+  } catch (error: any) {
+    console.error('[getAllClients] Error:', error);
+    return [];
   }
 }
 
