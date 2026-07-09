@@ -5,7 +5,7 @@ import { getSessionTenantId, getSessionUserId } from '@/lib/server-auth';
 import { getAllClients, addContactToClient } from '@/lib/db/repositories/client-repository';
 
 /**
- * Get all clients for the current tenant (real data)
+ *  Get all clients for the current tenant (real data)
  */
 export async function getClients() {
   console.log('=== USING getClients from client-actions.ts ==='); // Confirmation log
