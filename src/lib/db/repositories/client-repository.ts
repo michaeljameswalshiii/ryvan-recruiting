@@ -1,56 +1,109 @@
-'use client';
+/**
+ * Client Repository
+ * Low-level DynamoDB operations for clients and contacts
+ */
 
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { getClients } from '@/lib/actions/client-actions';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, GetCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { v4 as uuidv4 } from 'uuid';
 
-export default function ContactInfoPage() {
-  const [clients, setClients] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+// Initialize DynamoDB client
+const client = new DynamoDBClient({ region: process.env.AWS_REGION });
+const docClient = DynamoDBDocumentClient.from(client);
 
-  const fetchClients = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const result = await getClients();
-      setClients(result.clients || []);
-      console.log('[ContactInfo] Loaded', result.clients?.length || 0, 'clients');
-    } catch (err: any) {
-      console.error('[ContactInfo] Fetch error:', err);
-      setError(err.message || 'Failed to load contacts');
-      setClients([]); // Fallback
-    } finally {
-      setIsLoading(false);
+const TABLE_NAME = process.env.DYNAMODB_TABLE || 'TurnkeyOptimization';
+
+/**
+ * Get all clients for a tenant
+ */
+export async function getAllClients(tenantId: string) {
+  if (!tenantId) {
+    console.log('[getAllClients] No tenantId provided');
+    return [];
+  }
+
+  console.log(`[getAllClients] Querying table "${TABLE_NAME}" for tenant: ${tenantId}`);
+
+  try {
+    const result = await docClient.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'tenant_id = :tenantId',
+      ExpressionAttributeValues: {
+        ':tenantId': tenantId
+      }
+    }));
+
+    console.log(`[getAllClients] SUCCESS - Found ${result.Items?.length || 0} items`);
+    return result.Items || [];
+  } catch (error: any) {
+    console.error('[getAllClients] FULL ERROR DETAILS:', {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      statusCode: error.$metadata?.httpStatusCode,
+      requestId: error.$metadata?.requestId,
+      tenantId,
+      tableName: TABLE_NAME,
+      stack: error.stack ? error.stack.split('\n').slice(0, 5).join('\n') : undefined
+    });
+
+    if (error.name === 'ResourceNotFoundException') {
+      console.error('💥 DYNAMODB TABLE DOES NOT EXIST OR IS NOT ACCESSIBLE');
+    } else if (error.name === 'ValidationException') {
+      console.error('💥 QUERY VALIDATION ERROR - check partition key name');
     }
+
+    throw error;
+  }
+}
+
+/**
+ * Add a contact to a client
+ */
+export async function addContactToClient(tenantId: string, clientId: string, contactData: any) {
+  if (!tenantId || !clientId) {
+    throw new Error('Missing tenantId or clientId');
+  }
+
+  const contactId = contactData.id || uuidv4();
+
+  const contact = {
+    id: contactId,
+    ...contactData,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 
-  useEffect(() => {
-    fetchClients();
-  }, []);
+  try {
+    const getResult = await docClient.send(new GetCommand({
+      TableName: TABLE_NAME,
+      Key: { tenant_id: tenantId, id: clientId }
+    }));
 
-  if (isLoading) return <div className="p-6">Loading contacts...</div>;
+    const client = getResult.Item;
 
-  return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold mb-4">Contact Info</h1>
-      
-      {error && (
-        <div className="bg-red-50 border border-red-200 p-4 rounded-md mb-6">
-          <p className="text-red-600">Note: {error}</p>
-          <p className="text-sm text-gray-600 mt-1">This is expected if the DynamoDB table is not yet created.</p>
-        </div>
-      )}
+    if (!client) {
+      throw new Error(`Client not found: ${clientId}`);
+    }
 
-      <p className="mb-4">Loaded {clients.length} clients</p>
+    const contacts = Array.isArray(client.contacts) ? [...client.contacts] : [];
+    contacts.push(contact);
 
-      <Button onClick={fetchClients} className="mt-4">
-        Refresh
-      </Button>
+    const updateResult = await docClient.send(new UpdateCommand({
+      TableName: TABLE_NAME,
+      Key: { tenant_id: tenantId, id: clientId },
+      UpdateExpression: 'SET contacts = :contacts, updatedAt = :updatedAt',
+      ExpressionAttributeValues: {
+        ':contacts': contacts,
+        ':updatedAt': new Date().toISOString()
+      },
+      ReturnValues: 'ALL_NEW'
+    }));
 
-      {clients.length === 0 && !error && (
-        <p className="text-gray-500 mt-8">No clients yet. Create some in the database.</p>
-      )}
-    </div>
-  );
+    console.log(`[addContactToClient] Success - added contact ${contactId} to client ${clientId}`);
+    return updateResult.Attributes;
+  } catch (error: any) {
+    console.error(`[addContactToClient] Error for tenant:${tenantId}, client:${clientId}`, error);
+    throw error;
+  }
 }
