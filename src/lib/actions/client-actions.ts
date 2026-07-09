@@ -1,34 +1,24 @@
-'use server';
-
-import { getSessionTenantId, getSessionUserId } from '@/lib/server-auth';
-import { getAllClients, addContactToClient } from '@/lib/db/repositories/client-repository';
-import { revalidatePath } from 'next/cache';
-
-/**
- * Get all clients (static test data for now)
- */
 export async function getClients() {
-  console.log('[getClients] Returning static test data');
-  return { 
-    clients: [
-      { id: 'test1', name: 'Test Company 1', contacts: [] },
-      { id: 'test2', name: 'Test Company 2', contacts: [] }
-    ] 
-  };
-}
-
-export async function addContactAction(clientId: string, contactData: any) {
   try {
     const tenantId = await getSessionTenantId();
+    const userId = await getSessionUserId();
+
+    console.log('[getClients] tenantId:', tenantId, 'userId:', userId);
+
     if (!tenantId) {
-      return { error: 'No tenant found. Please log in again.' };
+      if (userId) {
+        const fallbackTenant = `tenant-${userId}`;
+        console.log('[getClients] Using fallback:', fallbackTenant);
+        const clients = await getAllClients(fallbackTenant);
+        return { clients };
+      }
+      return { clients: [] };
     }
 
-    const result = await addContactToClient(tenantId, clientId, contactData);
-    revalidatePath('/dashboard/contact-info');
-    return { success: true, result };
+    const clients = await getAllClients(tenantId);
+    return { clients };
   } catch (error: any) {
-    console.error('[addContactAction] Error:', error);
-    return { error: error.message || 'Failed to add contact' };
+    console.error('[getClients] Critical error:', error);
+    return { clients: [], error: error.message };
   }
 }
