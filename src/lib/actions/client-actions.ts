@@ -8,6 +8,8 @@ import { getAllClients, addContactToClient } from '@/lib/db/repositories/client-
  * Get all clients for the current tenant (real data)
  */
 export async function getClients() {
+  console.log('=== USING getClients from client-actions.ts ==='); // Confirmation log
+
   try {
     let tenantId = await getSessionTenantId();
     const userId = await getSessionUserId();
