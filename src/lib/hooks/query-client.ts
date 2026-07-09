@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getClients, addContactAction } from '@/lib/actions/client-actions';
 
-// Clients
+// Clients Query
 export function useClients() {
   return useQuery({
     queryKey: ['clients'],
@@ -11,14 +11,13 @@ export function useClients() {
   });
 }
 
-// Single Client
+// Single Client (for detail pages)
 export function useClient(clientId: string) {
   return useQuery({
     queryKey: ['client', clientId],
     queryFn: async () => {
-      // Implement single client fetch if needed
-      console.log('Fetching client:', clientId);
-      return null; // placeholder
+      console.log('Fetching single client:', clientId);
+      return null; // placeholder - implement if needed
     },
     enabled: !!clientId,
   });
