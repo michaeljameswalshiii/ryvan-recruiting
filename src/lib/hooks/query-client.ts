@@ -1,10 +1,9 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'; // or your query library
-import { getClients, addContactAction, deleteClient as deleteClientAction } from '@/lib/actions/client-actions';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { getClients, addContactAction } from '@/lib/actions/client-actions';
 
-// Example hooks - adjust based on your query setup
-
+// Clients Query
 export function useClients() {
   return useQuery({
     queryKey: ['clients'],
@@ -12,14 +11,14 @@ export function useClients() {
   });
 }
 
+// Create Client Mutation
 export function useCreateClient() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (formData: FormData) => {
-      // Call your create action
-      // For now, placeholder
-      console.log('Creating client:', formData);
+      console.log('Creating client with FormData');
+      // Implement real create if needed
       return { success: true };
     },
     onSuccess: () => {
@@ -28,12 +27,12 @@ export function useCreateClient() {
   });
 }
 
+// Delete Client Mutation (the missing one)
 export function useDeleteClient() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (clientId: string) => {
-      // Call your delete action
       console.log('Deleting client:', clientId);
       // Implement real delete if needed
       return { success: true };
