@@ -5,58 +5,50 @@ import { useClients } from '@/lib/hooks/query-client';
 import { Button } from '@/components/ui/button';
 
 export default function ContactInfoPage() {
-  const { data: clients = [], isLoading, error, refetch } = useClients();
+  const { data: clientsData, isLoading, error, refetch } = useClients();
 
-  if (isLoading) return <div className="p-6">Loading contacts...</div>;
-  if (error) return (
-    <div className="p-6 text-center">
-      <p className="text-red-600 mb-4">Error loading contacts</p>
-      <Button onClick={() => refetch()}>Try Again</Button>
-    </div>
-  );
+  const clients = Array.isArray(clientsData) ? clientsData : 
+                 (clientsData?.clients ? clientsData.clients : 
+                 (clientsData ? [clientsData] : []));
 
-  // Simple flattening - match what was working before
-  const contacts = clients.flatMap((company: any) => 
-    (company.contacts || []).map((contact: any) => ({
-      ...contact,
-      company: company.name || company.companyName
-    }))
-  );
+  if (isLoading) return <div className="p-8">Loading...</div>;
+  if (error) return <div className="p-8 text-red-600">Error loading data. <Button onClick={() => refetch()}>Retry</Button></div>;
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Contact Info</h1>
+    <div className="p-8">
+      <div className="flex justify-between mb-8">
+        <h1 className="text-4xl font-bold">Contact Info</h1>
         <Button onClick={() => refetch()}>Refresh</Button>
       </div>
 
-      <p className="mb-6">Companies: {clients.length} | Contacts: {contacts.length}</p>
+      <p className="mb-6">Companies loaded: {clients.length}</p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {contacts.length > 0 ? (
-          contacts.map((contact: any) => (
-            <div key={contact.id} className="border rounded-xl p-6 hover:shadow-md transition-all bg-card">
-              <Link 
-                href={`/dashboard/contact-info/${contact.id}`}
-                className="block"
-              >
-                <h3 className="text-xl font-semibold hover:text-blue-600">{contact.name}</h3>
-                <p className="text-muted-foreground">{contact.title}</p>
-                
-                <div className="mt-4 space-y-2 text-sm">
-                  <p><span className="text-muted-foreground">Email:</span> {contact.email}</p>
-                  <p><span className="text-muted-foreground">Phone:</span> {contact.phone}</p>
-                  <p><span className="text-muted-foreground">Company:</span> {contact.company}</p>
-                </div>
-              </Link>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {clients.map((company: any) => (
+          <div key={company.id} className="border rounded-2xl p-6 bg-card">
+            <h3 className="font-semibold text-lg">{company.name || company.companyName}</h3>
+            <p className="text-sm text-muted-foreground">ID: {company.id}</p>
+            
+            <div className="mt-4">
+              <p className="text-sm">Contacts: {company.contacts?.length || 0}</p>
             </div>
-          ))
-        ) : (
-          <div className="col-span-full text-center py-12">
-            <p>No contacts found in companies.</p>
-            <p className="text-sm text-muted-foreground mt-2">Try refreshing or check your data.</p>
+
+            {company.contacts && company.contacts.length > 0 && (
+              <div className="mt-6 space-y-4">
+                {company.contacts.map((contact: any) => (
+                  <Link
+                    key={contact.id}
+                    href={`/dashboard/contact-info/${contact.id}`}
+                    className="block p-4 border rounded-xl hover:bg-muted transition-colors"
+                  >
+                    <strong>{contact.name}</strong> — {contact.title}<br />
+                    {contact.email}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        ))}
       </div>
     </div>
   );
