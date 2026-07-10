@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 import { getClients } from '@/lib/actions/client-actions';
 
 export default function ContactInfoPage() {
@@ -35,37 +36,34 @@ export default function ContactInfoPage() {
       {contacts.length === 0 ? (
         <p>No contacts found.</p>
       ) : (
-        <div className="overflow-x-auto border rounded-lg">
-          <table className="w-full min-w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left px-6 py-3 text-sm font-medium">Name</th>
-                <th className="text-left px-6 py-3 text-sm font-medium">Title</th>
-                <th className="text-left px-6 py-3 text-sm font-medium">Email</th>
-                <th className="text-left px-6 py-3 text-sm font-medium">Phone</th>
-                <th className="text-left px-6 py-3 text-sm font-medium">Company</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {contacts.map((contact, index) => (
-                <tr key={contact.id || index} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium">{contact.name}</td>
-                  <td className="px-6 py-4 text-gray-600">{contact.title || '-'}</td>
-                  <td className="px-6 py-4">
-                    {contact.email ? (
-                      <a href={`mailto:${contact.email}`} className="text-blue-600 hover:underline">{contact.email}</a>
-                    ) : '-'}
-                  </td>
-                  <td className="px-6 py-4">{contact.phone || '-'}</td>
-                  <td className="px-6 py-4 text-gray-600">{contact.companyName || '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {contacts.map((contact, index) => (
+            <Link 
+              key={contact.id || index} 
+              href={`/dashboard/contact-info/${contact.id}`} // Detail page link
+              className="block border rounded-lg p-6 bg-white shadow-sm hover:shadow-md hover:border-blue-300 transition-all"
+            >
+              <div className="font-semibold text-xl mb-1">{contact.name}</div>
+              {contact.title && <div className="text-sm text-gray-600 mb-3">{contact.title}</div>}
+              
+              <div className="space-y-1 text-sm">
+                {contact.email && <div>✉️ {contact.email}</div>}
+                {contact.phone && <div>☎️ {contact.phone}</div>}
+              </div>
+
+              {contact.companyName && (
+                <div className="mt-4 pt-4 border-t text-xs text-gray-500">
+                  Company: {contact.companyName}
+                </div>
+              )}
+            </Link>
+          ))}
         </div>
       )}
 
-      <Button onClick={fetchContacts} className="mt-6">Refresh</Button>
+      <Button onClick={fetchContacts} className="mt-8">
+        Refresh
+      </Button>
     </div>
   );
 }
