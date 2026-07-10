@@ -15,11 +15,11 @@ export default function ContactInfoPage() {
     try {
       const result = await getClients();
       setClients(result.clients || []);
-      console.log('[ContactInfo] Loaded', result.clients?.length || 0, 'clients');
+      console.log('[ContactInfo] Loaded', result.clients?.length || 0, 'contacts');
     } catch (err: any) {
       console.error('[ContactInfo] Fetch error:', err);
       setError(err.message || 'Failed to load contacts');
-      setClients([]); // Fallback
+      setClients([]);
     } finally {
       setIsLoading(false);
     }
@@ -47,13 +47,21 @@ export default function ContactInfoPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {clients.map((contact: any, index: number) => (
-            <div key={contact.id || index} className="border p-6 rounded-lg bg-white shadow-sm">
-              <h3 className="font-semibold text-lg">{contact.name}</h3>
-              <p className="text-gray-600">{contact.title}</p>
-              {contact.email && <p className="text-blue-600">{contact.email}</p>}
-              {contact.phone && <p className="text-gray-600">{contact.phone}</p>}
+            <div key={contact.id || index} className="border p-6 rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
+              <div className="font-semibold text-xl mb-1">{contact.name}</div>
+              {contact.title && <div className="text-sm text-gray-600 mb-3">{contact.title}</div>}
+              
+              <div className="space-y-2 text-sm">
+                {contact.email && (
+                  <div>✉️ <a href={`mailto:${contact.email}`} className="text-blue-600 hover:underline">{contact.email}</a></div>
+                )}
+                {contact.phone && <div>☎️ {contact.phone}</div>}
+              </div>
+
               {contact.companyName && (
-                <p className="text-sm text-gray-500 mt-2">Company: {contact.companyName}</p>
+                <div className="mt-4 pt-4 border-t text-xs text-gray-500">
+                  Company: {contact.companyName}
+                </div>
               )}
             </div>
           ))}
