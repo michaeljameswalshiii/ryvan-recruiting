@@ -25,44 +25,47 @@ export default function ContactInfoPage() {
     fetchContacts();
   }, []);
 
-  if (isLoading) return <div className="p-6">Loading contacts...</div>;
+  if (isLoading) return <div className="p-6">Loading...</div>;
 
   return (
     <div className="p-6">
       <h1 className="text-3xl font-bold mb-2">Contact Info</h1>
-      <p className="mb-6 text-gray-600">Loaded {contacts.length} contacts</p>
+      <p className="mb-6">Loaded {contacts.length} contacts</p>
 
       {contacts.length === 0 ? (
         <p>No contacts found.</p>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {contacts.map((contact, index) => (
-            <div key={contact.id || index} className="border rounded-lg p-5 bg-white shadow-sm">
-              {/* Individual Name as main title */}
-              <h3 className="font-semibold text-xl mb-1">{contact.name || 'No Name'}</h3>
-              
-              {contact.title && <p className="text-sm text-gray-600 mb-3">{contact.title}</p>}
-
-              {contact.email && (
-                <p className="text-sm mb-1">
-                  ✉️ <a href={`mailto:${contact.email}`} className="text-blue-600 hover:underline">{contact.email}</a>
-                </p>
-              )}
-              {contact.phone && <p className="text-sm mb-3">☎️ {contact.phone}</p>}
-
-              {contact.companyName && (
-                <p className="text-xs text-gray-500 mt-3 pt-3 border-t">
-                  Company: {contact.companyName}
-                </p>
-              )}
-            </div>
-          ))}
+        <div className="overflow-x-auto border rounded-lg">
+          <table className="w-full min-w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="text-left px-6 py-3 text-sm font-medium">Name</th>
+                <th className="text-left px-6 py-3 text-sm font-medium">Title</th>
+                <th className="text-left px-6 py-3 text-sm font-medium">Email</th>
+                <th className="text-left px-6 py-3 text-sm font-medium">Phone</th>
+                <th className="text-left px-6 py-3 text-sm font-medium">Company</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {contacts.map((contact, index) => (
+                <tr key={contact.id || index} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 font-medium">{contact.name}</td>
+                  <td className="px-6 py-4 text-gray-600">{contact.title || '-'}</td>
+                  <td className="px-6 py-4">
+                    {contact.email ? (
+                      <a href={`mailto:${contact.email}`} className="text-blue-600 hover:underline">{contact.email}</a>
+                    ) : '-'}
+                  </td>
+                  <td className="px-6 py-4">{contact.phone || '-'}</td>
+                  <td className="px-6 py-4 text-gray-600">{contact.companyName || '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      <Button onClick={fetchContacts} className="mt-8">
-        Refresh
-      </Button>
+      <Button onClick={fetchContacts} className="mt-6">Refresh</Button>
     </div>
   );
 }
