@@ -7,9 +7,9 @@ import { Button } from '@/components/ui/button';
 export default function ContactInfoPage() {
   const { data: clientsData, isLoading, error, refetch } = useClients();
 
-  // Extra safe handling
-  const clients = Array.isArray(clientsData) ? clientsData : 
-                 (clientsData && typeof clientsData === 'object' ? [clientsData] : []);
+  // Handle the actual shape { clients: [...] }
+  const rawClients = clientsData?.clients || clientsData || [];
+  const clients = Array.isArray(rawClients) ? rawClients : [];
 
   if (isLoading) {
     return <div className="p-8 text-center text-lg">Loading contacts...</div>;
@@ -24,14 +24,15 @@ export default function ContactInfoPage() {
     );
   }
 
-  // Safe flattening
-  const contacts = clients.flatMap((company: any) => {
-    if (!company || !Array.isArray(company.contacts)) return [];
-    return company.contacts.map((contact: any) => ({
-      ...contact,
-      companyName: company.name || company.companyName || 'Unknown'
-    }));
-  });
+  // Flatten contacts
+  const contacts = clients.flatMap((company: any) =>
+    Array.isArray(company?.contacts)
+      ? company.contacts.map((contact: any) => ({
+          ...contact,
+          companyName: company.name || company.companyName || 'Unknown'
+        }))
+      : []
+  );
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -45,18 +46,15 @@ export default function ContactInfoPage() {
         <Button onClick={() => refetch()}>Refresh Data</Button>
       </div>
 
-      {/* Debug Box */}
-      <div className="mb-8 p-6 bg-yellow-50 border border-yellow-200 rounded-2xl text-sm overflow-auto max-h-60">
-        <strong>Debug Info:</strong><br />
-        clientsData type: {typeof clientsData}<br />
-        clients length: {clients.length}<br />
-        First item: {JSON.stringify(clients[0], null, 2).slice(0, 300)}...
+      {/* Debug - you can remove this later */}
+      <div className="mb-8 p-6 bg-green-50 border border-green-200 rounded-2xl text-sm">
+        <strong>Debug:</strong> clientsData type = {typeof clientsData}, companies = {clients.length}
       </div>
 
       {contacts.length === 0 ? (
         <div className="text-center py-20 bg-card border rounded-3xl">
           <p className="text-xl text-muted-foreground">No contacts found.</p>
-          <p className="mt-2 text-sm">See the debug box above for clues.</p>
+          <p className="mt-2">Companies exist but may have empty contacts arrays.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
