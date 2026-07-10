@@ -5,92 +5,59 @@ import { useClients } from '@/lib/hooks/query-client';
 import { Button } from '@/components/ui/button';
 
 export default function ContactInfoPage() {
-  const { data: clientsData, isLoading, error, refetch } = useClients();
+  const { data: clients = [], isLoading, error, refetch } = useClients();
 
-  // Handle the actual shape { clients: [...] }
-  const rawClients = clientsData?.clients || clientsData || [];
-  const clients = Array.isArray(rawClients) ? rawClients : [];
+  if (isLoading) return <div className="p-6">Loading contacts...</div>;
+  if (error) return (
+    <div className="p-6 text-center">
+      <p className="text-red-600 mb-4">Error loading contacts</p>
+      <Button onClick={() => refetch()}>Try Again</Button>
+    </div>
+  );
 
-  if (isLoading) {
-    return <div className="p-8 text-center text-lg">Loading contacts...</div>;
-  }
-
-  if (error) {
-    return (
-      <div className="p-8 text-center">
-        <p className="text-red-600 mb-4">Error loading contacts</p>
-        <Button onClick={() => refetch()}>Try Again</Button>
-      </div>
-    );
-  }
-
-  // Flatten contacts
-  const contacts = clients.flatMap((company: any) =>
-    Array.isArray(company?.contacts)
-      ? company.contacts.map((contact: any) => ({
-          ...contact,
-          companyName: company.name || company.companyName || 'Unknown'
-        }))
-      : []
+  // Simple flattening - match what was working before
+  const contacts = clients.flatMap((company: any) => 
+    (company.contacts || []).map((contact: any) => ({
+      ...contact,
+      company: company.name || company.companyName
+    }))
   );
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-10">
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight">Contact Info</h1>
-          <p className="text-muted-foreground mt-2">
-            {contacts.length} contacts from {clients.length} companies
-          </p>
-        </div>
-        <Button onClick={() => refetch()}>Refresh Data</Button>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Contact Info</h1>
+        <Button onClick={() => refetch()}>Refresh</Button>
       </div>
 
-      {/* Debug - you can remove this later */}
-      <div className="mb-8 p-6 bg-green-50 border border-green-200 rounded-2xl text-sm">
-        <strong>Debug:</strong> clientsData type = {typeof clientsData}, companies = {clients.length}
-      </div>
+      <p className="mb-6">Companies: {clients.length} | Contacts: {contacts.length}</p>
 
-      {contacts.length === 0 ? (
-        <div className="text-center py-20 bg-card border rounded-3xl">
-          <p className="text-xl text-muted-foreground">No contacts found.</p>
-          <p className="mt-2">Companies exist but may have empty contacts arrays.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {contacts.map((contact: any) => (
-            <div
-              key={contact.id}
-              className="group bg-card border rounded-3xl overflow-hidden hover:shadow-md transition-all duration-200"
-            >
-              <Link
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {contacts.length > 0 ? (
+          contacts.map((contact: any) => (
+            <div key={contact.id} className="border rounded-xl p-6 hover:shadow-md transition-all bg-card">
+              <Link 
                 href={`/dashboard/contact-info/${contact.id}`}
-                className="block p-8 hover:bg-muted/50 transition-colors"
+                className="block"
               >
-                <h3 className="text-2xl font-semibold group-hover:text-primary transition-colors">
-                  {contact.name}
-                </h3>
-                <p className="text-muted-foreground mt-1">{contact.title}</p>
-
-                <div className="mt-8 space-y-3 text-sm">
-                  <div className="flex gap-3">
-                    <span className="text-muted-foreground w-16">Email</span>
-                    <span className="font-medium truncate">{contact.email}</span>
-                  </div>
-                  <div className="flex gap-3">
-                    <span className="text-muted-foreground w-16">Phone</span>
-                    <span className="font-medium">{contact.phone || '—'}</span>
-                  </div>
-                  <div className="flex gap-3">
-                    <span className="text-muted-foreground w-16">Company</span>
-                    <span className="font-medium">{contact.companyName}</span>
-                  </div>
+                <h3 className="text-xl font-semibold hover:text-blue-600">{contact.name}</h3>
+                <p className="text-muted-foreground">{contact.title}</p>
+                
+                <div className="mt-4 space-y-2 text-sm">
+                  <p><span className="text-muted-foreground">Email:</span> {contact.email}</p>
+                  <p><span className="text-muted-foreground">Phone:</span> {contact.phone}</p>
+                  <p><span className="text-muted-foreground">Company:</span> {contact.company}</p>
                 </div>
               </Link>
             </div>
-          ))}
-        </div>
-      )}
+          ))
+        ) : (
+          <div className="col-span-full text-center py-12">
+            <p>No contacts found in companies.</p>
+            <p className="text-sm text-muted-foreground mt-2">Try refreshing or check your data.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
