@@ -13,19 +13,16 @@ import { JobListView } from '@/components/jobs/JobListView';
 
 export default function JobsPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'pipeline'>('list');
   
   const { data: jobsDataRaw, isLoading, error, refetch } = useJobs(true);
   const createJobMutation = useCreateJob();
   const { data: companies = [] } = useClients();
 
-  // Safe jobs data
-  const jobsArray = Array.isArray(jobsDataRaw?.jobs) ? jobsDataRaw.jobs : 
-                   Array.isArray(jobsDataRaw) ? jobsDataRaw : [];
+  const jobsArray = Array.isArray(jobsDataRaw?.jobs) ? jobsDataRaw.jobs : Array.isArray(jobsDataRaw) ? jobsDataRaw : [];
   
   const jobs = jobsArray.map((item: any) => ({
     id: item.id || item.PK,
-    title: item.title || "Untitled",
+    title: item.title || "Untitled Job",
     companyName: item.companyName || "Unknown",
     status: item.status || "Open",
     candidates: Array.isArray(item.candidates) ? item.candidates : [],
@@ -33,7 +30,6 @@ export default function JobsPage() {
 
   const activeJobs = jobs.filter(j => String(j.status || '').toLowerCase() !== 'closed');
 
-  // Form state
   const [newJobTitle, setNewJobTitle] = useState("");
   const [newJobDescription, setNewJobDescription] = useState("");
   const [newJobLocation, setNewJobLocation] = useState("");
@@ -60,7 +56,6 @@ export default function JobsPage() {
         status: "Open"
       });
 
-      // Reset form
       setNewJobTitle("");
       setNewJobDescription("");
       setNewJobLocation("");
@@ -69,8 +64,7 @@ export default function JobsPage() {
       setNewJobCompanyId("");
       setNewJobCompanyName("");
       setIsAddDialogOpen(false);
-
-      refetch(); // Refresh the list
+      refetch();
     } catch (err: any) {
       console.error("Add job error:", err);
       alert(`Failed to add job: ${err?.message || 'Unknown error'}`);
@@ -97,22 +91,8 @@ export default function JobsPage() {
         </div>
       </div>
 
-      <div className="flex gap-3">
-        <Button variant={viewMode === 'list' ? 'default' : 'outline'} onClick={() => setViewMode('list')}>
-          List View
-        </Button>
-        <Button variant={viewMode === 'pipeline' ? 'default' : 'outline'} onClick={() => setViewMode('pipeline')}>
-          Pipeline View
-        </Button>
-      </div>
+      <JobListView jobs={activeJobs} />
 
-      {viewMode === 'list' ? (
-        <JobListView jobs={activeJobs} />
-      ) : (
-        <JobPipelineView stages={[]} jobs={activeJobs} />
-      )}
-
-      {/* Add Job Dialog */}
       <SimpleDialog
         open={isAddDialogOpen}
         onOpenChange={setIsAddDialogOpen}
@@ -152,10 +132,6 @@ export default function JobsPage() {
           <div>
             <Label>Description</Label>
             <Textarea value={newJobDescription} onChange={(e) => setNewJobDescription(e.target.value)} />
-          </div>
-          <div>
-            <Label>Location</Label>
-            <Input value={newJobLocation} onChange={(e) => setNewJobLocation(e.target.value)} placeholder="Remote / City, State" />
           </div>
         </div>
       </SimpleDialog>
