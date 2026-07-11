@@ -16,8 +16,10 @@ export default function ContactDetailPage() {
   const [formData, setFormData] = useState<any>({});
 
   useEffect(() => {
+    if (!clientsData) return;
+
     const rawData = Array.isArray(clientsData) ? clientsData : (clientsData?.clients || []);
-    const found = rawData.find((item: any) => item.id === id);
+    const found = rawData.find((item: any) => String(item.id) === String(id));
     
     if (found) {
       const contactData = {
@@ -27,16 +29,25 @@ export default function ContactDetailPage() {
       };
       setContact(contactData);
       setFormData(contactData);
+      console.log('Found contact:', contactData); // for debugging
+    } else {
+      console.log('Contact not found for ID:', id);
     }
   }, [id, clientsData]);
 
   const handleSave = () => {
-    // TODO: Call repository updateContact
-    alert('Changes saved! (full save coming next)');
+    alert('Changes saved! (full update coming next)');
     setIsEditing(false);
   };
 
-  if (!contact) return <div className="p-8">Contact not found or still loading...</div>;
+  if (!contact) {
+    return (
+      <div className="p-8">
+        <Link href="/dashboard/contact-info" className="text-blue-600 hover:underline">← Back</Link>
+        <p className="mt-8">Contact not found for ID: {id}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -57,30 +68,10 @@ export default function ContactDetailPage() {
       <div className="bg-card border rounded-3xl p-10">
         {isEditing ? (
           <div className="space-y-6">
-            <input 
-              type="text" 
-              value={formData.name} 
-              onChange={(e) => setFormData({...formData, name: e.target.value})} 
-              className="w-full p-4 border rounded-xl text-2xl font-semibold" 
-            />
-            <input 
-              type="text" 
-              value={formData.title} 
-              onChange={(e) => setFormData({...formData, title: e.target.value})} 
-              className="w-full p-4 border rounded-xl" 
-            />
-            <input 
-              type="email" 
-              value={formData.email} 
-              onChange={(e) => setFormData({...formData, email: e.target.value})} 
-              className="w-full p-4 border rounded-xl" 
-            />
-            <input 
-              type="tel" 
-              value={formData.phone} 
-              onChange={(e) => setFormData({...formData, phone: e.target.value})} 
-              className="w-full p-4 border rounded-xl" 
-            />
+            <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-4 border rounded-xl text-2xl font-semibold" />
+            <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full p-4 border rounded-xl" />
+            <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-4 border rounded-xl" />
+            <input type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-4 border rounded-xl" />
             <Button onClick={handleSave} className="mt-6">Save Changes</Button>
           </div>
         ) : (
