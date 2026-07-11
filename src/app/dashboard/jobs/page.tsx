@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { Plus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { SimpleDialog } from '@/components/ui/simple-dialog';
 import { useJobs, useCreateJob } from '@/lib/hooks/query-job';
 import { useClients } from '@/lib/hooks/query-client';
 import { JobListView } from '@/components/jobs/JobListView';
@@ -21,6 +24,7 @@ export default function JobsPage() {
     title: item.title || "Untitled Job",
     companyName: item.companyName || "Unknown",
     status: item.status || "Open",
+    candidates: Array.isArray(item.candidates) ? item.candidates : [],
   }));
 
   const activeJobs = jobs.filter(j => String(j.status || '').toLowerCase() !== 'closed');
