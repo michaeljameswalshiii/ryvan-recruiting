@@ -17,14 +17,32 @@ export default function ContactDetailPage() {
   const [formData, setFormData] = useState<any>({});
 
   useEffect(() => {
-    const rawData = Array.isArray(clientsData) ? clientsData : (clientsData?.clients || []);
-    const found = rawData.find((item: any) => String(item.id) === String(id));
-    
-    if (found) {
+    if (!clientsData) return;
+
+    const companies = Array.isArray(clientsData) 
+      ? clientsData 
+      : (clientsData?.clients || []);
+
+    // Search through all companies' contacts
+    let foundContact: any = null;
+    let foundCompany: any = null;
+
+    for (const company of companies) {
+      const companyContacts = Array.isArray(company.contacts) ? company.contacts : [];
+      const match = companyContacts.find((c: any) => String(c.id) === String(id));
+      
+      if (match) {
+        foundContact = match;
+        foundCompany = company;
+        break;
+      }
+    }
+
+    if (foundContact) {
       const contactData = {
-        ...found,
-        name: found.name || found.companyName || 'Unnamed',
-        companyName: found.company?.name || found.clientCompany || '—'
+        ...foundContact,
+        companyName: foundCompany?.name || foundCompany?.companyName || '—',
+        clientId: foundCompany?.id || foundCompany?.PK
       };
       setContact(contactData);
       setFormData(contactData);
@@ -32,11 +50,23 @@ export default function ContactDetailPage() {
   }, [id, clientsData]);
 
   const handleSave = () => {
-    alert('Changes saved!');
+    alert('Changes saved! (Update logic coming soon)');
     setIsEditing(false);
   };
 
-  if (!contact) return <div className="p-8">Contact not found...</div>;
+  if (!contact) {
+    return (
+      <div className="p-8 max-w-7xl mx-auto">
+        <Link href="/dashboard/contact-info" className="text-blue-600 hover:underline mb-8 inline-block">
+          ← Back to Contacts
+        </Link>
+        <div className="text-center py-20">
+          <h2 className="text-2xl font-semibold">Contact not found...</h2>
+          <p className="text-muted-foreground mt-2">The contact ID may be invalid or deleted.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -46,15 +76,17 @@ export default function ContactDetailPage() {
 
       {/* Header */}
       <div className="flex items-start gap-6 mb-10">
-        <div className="w-24 h-24 bg-green-600 text-white rounded-full flex items-center justify-center text-5xl font-bold">
+        <div className="w-24 h-24 bg-blue-600 text-white rounded-full flex items-center justify-center text-5xl font-bold">
           {contact.name?.[0] || '?'}
         </div>
         <div className="flex-1 pt-2">
           <div className="flex items-center gap-3">
             <h1 className="text-5xl font-bold">{contact.name}</h1>
-            <span className="bg-green-100 text-green-700 px-4 py-1 rounded-full text-sm">Primary</span>
+            <span className="bg-green-100 text-green-700 px-4 py-1 rounded-full text-sm">Active</span>
           </div>
-          <p className="text-2xl text-muted-foreground mt-1">{contact.title} • {contact.companyName}</p>
+          <p className="text-2xl text-muted-foreground mt-1">
+            {contact.title} • {contact.companyName}
+          </p>
         </div>
         <div className="flex gap-3 pt-4">
           <Button>Call</Button>
@@ -63,7 +95,7 @@ export default function ContactDetailPage() {
         </div>
       </div>
 
-      {/* Contact Bar */}
+      {/* Contact Info Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 bg-card border rounded-2xl p-8 mb-12">
         <div>
           <p className="text-xs text-muted-foreground">EMAIL</p>
@@ -82,30 +114,19 @@ export default function ContactDetailPage() {
       {/* Tabs */}
       <div className="border-b mb-10">
         <div className="flex gap-10 text-lg">
-          <button 
-            onClick={() => setActiveTab('overview')}
-            className={`pb-4 border-b-2 font-medium ${activeTab === 'overview' ? 'border-blue-600 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            Overview
-          </button>
-          <button 
-            onClick={() => setActiveTab('timeline')}
-            className={`pb-4 border-b-2 font-medium ${activeTab === 'timeline' ? 'border-blue-600 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            Timeline
-          </button>
-          <button 
-            onClick={() => setActiveTab('jobs')}
-            className={`pb-4 border-b-2 font-medium ${activeTab === 'jobs' ? 'border-blue-600 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            Open Jobs
-          </button>
-          <button 
-            onClick={() => setActiveTab('company')}
-            className={`pb-4 border-b-2 font-medium ${activeTab === 'company' ? 'border-blue-600 text-blue-600' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            Company
-          </button>
+          {['overview', 'timeline', 'jobs', 'company'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`pb-4 border-b-2 font-medium capitalize ${
+                activeTab === tab 
+                  ? 'border-blue-600 text-blue-600' 
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -114,33 +135,59 @@ export default function ContactDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 bg-card border rounded-3xl p-8">
             <h3 className="font-semibold mb-6">Activity & Notes</h3>
-            <p className="text-muted-foreground">Activity log coming soon...</p>
+            <p className="text-muted-foreground">Activity timeline coming soon...</p>
           </div>
           <div className="bg-card border rounded-3xl p-8">
             <h3 className="font-semibold mb-6">Quick Stats</h3>
             <div className="space-y-4 text-sm">
-              <div className="flex justify-between"><span>Last contacted</span><span>Jun 8, 2026</span></div>
-              <div className="flex justify-between"><span>Candidates submitted</span><span>3</span></div>
+              <div className="flex justify-between"><span>Last contacted</span><span>Recently</span></div>
+              <div className="flex justify-between"><span>Company</span><span>{contact.companyName}</span></div>
             </div>
           </div>
         </div>
       )}
 
       {activeTab === 'timeline' && <div className="bg-card border rounded-3xl p-8 text-muted-foreground">Timeline coming soon...</div>}
-      {activeTab === 'jobs' && <div className="bg-card border rounded-3xl p-8 text-muted-foreground">Open Jobs for {contact.companyName} coming soon...</div>}
+      {activeTab === 'jobs' && <div className="bg-card border rounded-3xl p-8 text-muted-foreground">Open Jobs coming soon...</div>}
       {activeTab === 'company' && <div className="bg-card border rounded-3xl p-8 text-muted-foreground">Company details coming soon...</div>}
 
-      {/* Edit Modal */}
+      {/* Simple Edit Modal */}
       {isEditing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-3xl p-10 w-full max-w-md">
-            <h3 className="text-2xl font-semibold mb-8">Edit Contact</h3>
-            <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-4 border rounded-xl mb-4" />
-            <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full p-4 border rounded-xl mb-4" />
-            <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-4 border rounded-xl mb-4" />
-            <input type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-4 border rounded-xl mb-4" />
-            <Button onClick={handleSave} className="w-full mt-6">Save Changes</Button>
-            <Button variant="outline" onClick={() => setIsEditing(false)} className="w-full mt-3">Cancel</Button>
+          <div className="bg-white rounded-3xl p-8 w-full max-w-md">
+            <h3 className="text-2xl font-semibold mb-6">Edit Contact</h3>
+            <input 
+              type="text" 
+              value={formData.name || ''} 
+              onChange={e => setFormData({...formData, name: e.target.value})} 
+              className="w-full p-3 border rounded-xl mb-4" 
+              placeholder="Name" 
+            />
+            <input 
+              type="text" 
+              value={formData.title || ''} 
+              onChange={e => setFormData({...formData, title: e.target.value})} 
+              className="w-full p-3 border rounded-xl mb-4" 
+              placeholder="Title" 
+            />
+            <input 
+              type="email" 
+              value={formData.email || ''} 
+              onChange={e => setFormData({...formData, email: e.target.value})} 
+              className="w-full p-3 border rounded-xl mb-4" 
+              placeholder="Email" 
+            />
+            <input 
+              type="tel" 
+              value={formData.phone || ''} 
+              onChange={e => setFormData({...formData, phone: e.target.value})} 
+              className="w-full p-3 border rounded-xl mb-4" 
+              placeholder="Phone" 
+            />
+            <div className="flex gap-3 mt-6">
+              <Button onClick={handleSave} className="flex-1">Save Changes</Button>
+              <Button variant="outline" onClick={() => setIsEditing(false)} className="flex-1">Cancel</Button>
+            </div>
           </div>
         </div>
       )}
