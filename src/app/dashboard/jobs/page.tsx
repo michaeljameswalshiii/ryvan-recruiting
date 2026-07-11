@@ -16,16 +16,19 @@ export default function JobsPage() {
   const createJobMutation = useCreateJob();
   const { data: companies = [] } = useClients();
 
-  const jobsArray = Array.isArray(jobsDataRaw?.jobs) ? jobsDataRaw.jobs : Array.isArray(jobsDataRaw) ? jobsDataRaw : [];
+  // Force jobs to always be an array
+  const jobsArray = Array.isArray(jobsDataRaw?.jobs) ? jobsDataRaw.jobs : 
+                   Array.isArray(jobsDataRaw) ? jobsDataRaw : [];
   
   const jobs = jobsArray.map((item: any) => ({
     id: item.id || item.PK,
     title: item.title || "Untitled Job",
     companyName: item.companyName || "Unknown",
     status: item.status || "Open",
+    candidates: Array.isArray(item.candidates) ? item.candidates : [],
   }));
 
-  const activeJobs = jobs.filter(j => String(j.status || '').toLowerCase() !== 'closed');
+  const activeJobs = Array.isArray(jobs) ? jobs.filter(j => String(j.status || '').toLowerCase() !== 'closed') : [];
 
   const [newJobTitle, setNewJobTitle] = useState("");
   const [newJobCompanyId, setNewJobCompanyId] = useState("");
@@ -78,7 +81,7 @@ export default function JobsPage() {
 
       <JobListView jobs={activeJobs} />
 
-      {/* Simple Add Modal */}
+      {/* Add Job Dialog */}
       {isAddDialogOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white p-8 rounded-2xl w-full max-w-md">
