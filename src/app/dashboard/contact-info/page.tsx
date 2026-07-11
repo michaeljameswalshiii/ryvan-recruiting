@@ -7,12 +7,12 @@ import { Button } from '@/components/ui/button';
 export default function ContactInfoPage() {
   const { data: clientsData, isLoading, error, refetch } = useClients();
 
-  // Use the loaded records directly as contacts (based on your Companies page data)
   const rawData = Array.isArray(clientsData) ? clientsData : (clientsData?.clients || []);
   const contacts = rawData.map((item: any) => ({
     ...item,
-    name: item.name || item.companyName || 'Unnamed Contact',
-    companyName: '—' // These records are the contacts
+    name: item.name || item.companyName || 'Unnamed',
+    // Try multiple possible company fields
+    companyName: item.company?.name || item.companyName || item.clientCompany || item.company || '—'
   }));
 
   if (isLoading) return <div className="p-8">Loading contacts...</div>;
