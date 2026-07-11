@@ -7,10 +7,9 @@ import { Button } from '@/components/ui/button';
 export default function ContactInfoPage() {
   const { data: clientsData, isLoading, error, refetch } = useClients();
 
-  // Handle possible data shapes
   const clients = Array.isArray(clientsData) ? clientsData : (clientsData?.clients || []);
 
-  if (isLoading) return <div className="p-8 text-center">Loading contacts...</div>;
+  if (isLoading) return <div className="p-8">Loading contacts...</div>;
   if (error) return (
     <div className="p-8 text-center">
       <p className="text-red-600">Error loading contacts</p>
@@ -18,7 +17,6 @@ export default function ContactInfoPage() {
     </div>
   );
 
-  // Flat list of contacts
   const contacts = clients.flatMap((company: any) =>
     Array.isArray(company?.contacts) 
       ? company.contacts.map((contact: any) => ({
@@ -30,40 +28,51 @@ export default function ContactInfoPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-10">
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight">Contact Info</h1>
-          <p className="text-muted-foreground mt-2">{contacts.length} contacts</p>
-        </div>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-4xl font-bold">Contact Info</h1>
         <Button onClick={() => refetch()}>Refresh</Button>
       </div>
+
+      <p className="mb-6 text-lg">Total Contacts: {contacts.length}</p>
 
       {contacts.length === 0 ? (
         <div className="text-center py-20 bg-card border rounded-3xl">
           <p className="text-xl">No contacts found.</p>
-          <p className="text-sm text-muted-foreground mt-4">Companies exist but contacts arrays are empty.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {contacts.map((contact: any) => (
-            <div
-              key={contact.id}
-              className="group bg-card border rounded-3xl p-8 hover:shadow-lg transition-all"
-            >
-              <Link href={`/dashboard/contact-info/${contact.id}`} className="block">
-                <h3 className="text-2xl font-semibold group-hover:text-primary transition-colors">
-                  {contact.name}
-                </h3>
-                <p className="text-muted-foreground mt-1">{contact.title}</p>
-
-                <div className="mt-8 space-y-3 text-sm">
-                  <div><span className="text-muted-foreground">Email:</span> {contact.email}</div>
-                  <div><span className="text-muted-foreground">Phone:</span> {contact.phone || '—'}</div>
-                  <div><span className="text-muted-foreground">Company:</span> {contact.companyName}</div>
-                </div>
-              </Link>
-            </div>
-          ))}
+        <div className="bg-card border rounded-2xl overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="text-left p-6 font-semibold">Name</th>
+                <th className="text-left p-6 font-semibold">Title</th>
+                <th className="text-left p-6 font-semibold">Email</th>
+                <th className="text-left p-6 font-semibold">Phone</th>
+                <th className="text-left p-6 font-semibold">Company</th>
+                <th className="p-6 w-24"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {contacts.map((contact: any) => (
+                <tr key={contact.id} className="border-b hover:bg-muted/50 transition-colors">
+                  <td className="p-6 font-medium">
+                    <Link href={`/dashboard/contact-info/${contact.id}`} className="hover:underline">
+                      {contact.name}
+                    </Link>
+                  </td>
+                  <td className="p-6 text-muted-foreground">{contact.title}</td>
+                  <td className="p-6 text-muted-foreground">{contact.email}</td>
+                  <td className="p-6 text-muted-foreground">{contact.phone || '—'}</td>
+                  <td className="p-6 text-muted-foreground">{contact.companyName}</td>
+                  <td className="p-6 text-right">
+                    <Link href={`/dashboard/contact-info/${contact.id}`} className="text-blue-600 hover:underline text-sm">
+                      View
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
