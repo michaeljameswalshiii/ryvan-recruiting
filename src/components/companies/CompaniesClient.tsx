@@ -11,12 +11,7 @@ export function CompaniesClient() {
   const router = useRouter();
   const { data, isLoading, error, refetch } = useClients();
   
-  const rawData = Array.isArray(data) ? data : (data?.clients || []);
-
-  // Filter for likely company records (has no email or has company-like fields)
-  const companies = rawData.filter((item: any) => {
-    return !item.email || item.name?.includes('Chick-fil-A') || item.type === 'company' || item.industry;
-  });
+  const companies = Array.isArray(data) ? data : (data?.clients || []);
 
   const createClientMutation = useCreateClient();
   const deleteClientMutation = useDeleteClient();
