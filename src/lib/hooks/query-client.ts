@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getClients, addContactAction } from '@/lib/actions/client-actions';
 
-// Clients Query
+// Clients Query (for list pages)
 export function useClients() {
   return useQuery({
     queryKey: ['clients'],
@@ -11,19 +11,32 @@ export function useClients() {
   });
 }
 
-// Single Client (for detail pages)
+// Single Client (for detail pages) - FIXED
 export function useClient(clientId: string) {
   return useQuery({
     queryKey: ['client', clientId],
     queryFn: async () => {
       console.log('Fetching single client:', clientId);
-      return null; // placeholder - implement if needed
+      
+      // Reuse the existing getClients action and find by ID
+      const allData = await getClients();
+      const companies = Array.isArray(allData) 
+        ? allData 
+        : (allData?.clients || []);
+      
+      const found = companies.find((c: any) => 
+        String(c.id) === String(clientId) || 
+        String(c.PK) === String(clientId)
+      );
+      
+      console.log('Found company:', found ? found.name : 'Not found');
+      return found || null;
     },
     enabled: !!clientId,
   });
 }
 
-// Create
+// Create Client
 export function useCreateClient() {
   const queryClient = useQueryClient();
 
@@ -36,7 +49,7 @@ export function useCreateClient() {
   });
 }
 
-// Delete
+// Delete Client
 export function useDeleteClient() {
   const queryClient = useQueryClient();
 
