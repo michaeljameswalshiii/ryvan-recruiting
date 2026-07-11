@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useClients } from '@/lib/hooks/query-client';
 import { Button } from '@/components/ui/button';
-import { Mail, Phone, MapPin, Linkedin } from 'lucide-react';
+import { Mail, Phone, Linkedin } from 'lucide-react';
 
 export default function ContactDetailPage() {
   const params = useParams();
@@ -47,7 +47,7 @@ export default function ContactDetailPage() {
       {/* Header */}
       <div className="flex items-start gap-6 mb-10">
         <div className="w-24 h-24 bg-green-600 text-white rounded-full flex items-center justify-center text-5xl font-bold">
-          {contact.name?.substring(0,1) || 'P'}
+          {contact.name?.[0] || 'P'}
         </div>
         <div className="flex-1 pt-2">
           <div className="flex items-center gap-3">
@@ -63,19 +63,15 @@ export default function ContactDetailPage() {
         </div>
       </div>
 
-      {/* Contact Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-8 bg-card border rounded-2xl p-8 mb-12">
+      {/* Contact Bar - No Location */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-8 bg-card border rounded-2xl p-8 mb-12">
         <div>
           <p className="text-xs text-muted-foreground">EMAIL</p>
-          <p className="font-medium">{contact.email || '—'}</p>
+          <p className="font-medium break-all">{contact.email || '—'}</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">PHONE</p>
           <p className="font-medium">{contact.phone || '—'}</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">LOCATION</p>
-          <p className="font-medium">{contact.location || '—'}</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">LINKEDIN</p>
@@ -93,34 +89,31 @@ export default function ContactDetailPage() {
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* Overview Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2">
-          <div className="bg-card border rounded-3xl p-8">
-            <h3 className="font-semibold mb-6">Activity & Notes</h3>
-            <p className="text-muted-foreground">Activity log coming soon...</p>
-          </div>
+        {/* Activity & Notes */}
+        <div className="lg:col-span-2 bg-card border rounded-3xl p-8">
+          <h3 className="font-semibold mb-6">Activity & Notes</h3>
+          <div className="text-muted-foreground">Activity log coming soon (real data from DB can be added here).</div>
         </div>
 
-        <div className="space-y-8">
-          <div className="bg-card border rounded-3xl p-8">
-            <h3 className="font-semibold mb-6">Quick Stats</h3>
-            <div className="space-y-4 text-sm">
-              <div className="flex justify-between"><span>Last contacted</span><span>Jun 8, 2026</span></div>
-              <div className="flex justify-between"><span>Candidates submitted</span><span>3</span></div>
-            </div>
-          </div>
+        {/* Open Jobs / Quick Stats */}
+        <div className="bg-card border rounded-3xl p-8">
+          <h3 className="font-semibold mb-6">Open Jobs</h3>
+          <p className="text-muted-foreground">Jobs linked to {contact.companyName} will appear here.</p>
         </div>
       </div>
 
       {isEditing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-3xl p-10 max-w-md w-full">
+          <div className="bg-white rounded-3xl p-10 w-full max-w-md">
             <h3 className="text-2xl font-semibold mb-8">Edit Contact</h3>
-            <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-4 border rounded-xl mb-4" />
-            <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full p-4 border rounded-xl mb-4" />
-            <Button onClick={handleSave} className="w-full">Save Changes</Button>
-            <Button variant="outline" onClick={() => setIsEditing(false)} className="w-full mt-4">Cancel</Button>
+            <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-4 border rounded-xl mb-4" placeholder="Name" />
+            <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full p-4 border rounded-xl mb-4" placeholder="Title" />
+            <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-4 border rounded-xl mb-4" placeholder="Email" />
+            <input type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-4 border rounded-xl mb-4" placeholder="Phone" />
+            <Button onClick={handleSave} className="w-full mt-6">Save Changes</Button>
+            <Button variant="outline" onClick={() => setIsEditing(false)} className="w-full mt-3">Cancel</Button>
           </div>
         </div>
       )}
