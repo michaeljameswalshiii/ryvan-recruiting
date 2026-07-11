@@ -5,7 +5,6 @@ import { Plus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { SimpleDialog } from '@/components/ui/simple-dialog';
 import { useJobs, useCreateJob } from '@/lib/hooks/query-job';
 import { useClients } from '@/lib/hooks/query-client';
 import { JobListView } from '@/components/jobs/JobListView';
@@ -24,7 +23,6 @@ export default function JobsPage() {
     title: item.title || "Untitled Job",
     companyName: item.companyName || "Unknown",
     status: item.status || "Open",
-    candidates: Array.isArray(item.candidates) ? item.candidates : [],
   }));
 
   const activeJobs = jobs.filter(j => String(j.status || '').toLowerCase() !== 'closed');
@@ -80,7 +78,7 @@ export default function JobsPage() {
 
       <JobListView jobs={activeJobs} />
 
-      {/* Add Job Dialog */}
+      {/* Simple Add Modal */}
       {isAddDialogOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white p-8 rounded-2xl w-full max-w-md">
@@ -89,11 +87,7 @@ export default function JobsPage() {
             <div className="space-y-4">
               <div>
                 <Label>Job Title *</Label>
-                <Input 
-                  value={newJobTitle} 
-                  onChange={(e) => setNewJobTitle(e.target.value)} 
-                  placeholder="Senior Software Engineer" 
-                />
+                <Input value={newJobTitle} onChange={(e) => setNewJobTitle(e.target.value)} placeholder="Senior Software Engineer" />
               </div>
               <div>
                 <Label>Company *</Label>
