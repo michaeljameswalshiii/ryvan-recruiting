@@ -3,137 +3,95 @@
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useClients } from '@/lib/hooks/query-client';
 import { Button } from '@/components/ui/button';
-import { Mail, Phone, MapPin, Linkedin, Calendar } from 'lucide-react';
 
 export default function ContactDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
+  const { data: clientsData } = useClients();
   const [contact, setContact] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState<any>({});
 
   useEffect(() => {
-    // Placeholder data - replace with real fetch
-    setContact({
-      id,
-      name: "Paul Kiedis",
-      title: "Director of Operations",
-      company: "Chick-fil-A — West Boca",
-      email: "paul@cfawestboca.com",
-      phone: "561-555-0192",
-      location: "Boca Raton, FL",
-      linkedin: "linkedin.com/in/paulkiedis",
-      source: "Manual",
-      addedDate: "Jun 4, 2026"
-    });
-  }, [id]);
+    const rawData = Array.isArray(clientsData) ? clientsData : (clientsData?.clients || []);
+    const found = rawData.find((item: any) => item.id === id);
+    
+    if (found) {
+      const contactData = {
+        ...found,
+        name: found.name || found.companyName || 'Unnamed',
+        companyName: found.company?.name || found.clientCompany || '—'
+      };
+      setContact(contactData);
+      setFormData(contactData);
+    }
+  }, [id, clientsData]);
 
-  if (!contact) return <div className="p-8">Loading contact...</div>;
+  const handleSave = () => {
+    // TODO: Call repository updateContact
+    alert('Changes saved! (full save coming next)');
+    setIsEditing(false);
+  };
+
+  if (!contact) return <div className="p-8">Contact not found or still loading...</div>;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      <Link href="/dashboard/contact-info" className="text-blue-600 hover:underline mb-6 inline-block">
+    <div className="p-8 max-w-4xl mx-auto">
+      <Link href="/dashboard/contact-info" className="text-blue-600 hover:underline mb-8 inline-block">
         ← Back to Contacts
       </Link>
 
-      {/* Header */}
-      <div className="flex items-start gap-6 mb-10">
-        <div className="w-20 h-20 bg-green-600 text-white rounded-full flex items-center justify-center text-4xl font-bold">
-          PK
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-4xl font-bold">{contact.name}</h1>
+          <p className="text-2xl text-muted-foreground">{contact.title || '—'}</p>
         </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-4xl font-bold">{contact.name}</h1>
-            <span className="bg-green-100 text-green-700 text-sm px-3 py-1 rounded-full">Primary</span>
-          </div>
-          <p className="text-xl text-muted-foreground">{contact.title} • {contact.company}</p>
-        </div>
-        <div className="flex gap-3">
-          <Button>Call</Button>
-          <Button variant="outline">Edit</Button>
-          <Button>Send Email</Button>
-        </div>
+        <Button onClick={() => setIsEditing(!isEditing)}>
+          {isEditing ? 'Cancel' : 'Edit Contact'}
+        </Button>
       </div>
 
-      {/* Contact Info Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-10 bg-card border rounded-2xl p-6">
-        <div>
-          <p className="text-sm text-muted-foreground">EMAIL</p>
-          <p className="font-medium">{contact.email}</p>
-        </div>
-        <div>
-          <p className="text-sm text-muted-foreground">PHONE</p>
-          <p className="font-medium">{contact.phone}</p>
-        </div>
-        <div>
-          <p className="text-sm text-muted-foreground">LOCATION</p>
-          <p className="font-medium">{contact.location}</p>
-        </div>
-        <div>
-          <p className="text-sm text-muted-foreground">LINKEDIN</p>
-          <a href={`https://${contact.linkedin}`} target="_blank" className="text-blue-600 hover:underline">View Profile</a>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="border-b mb-8">
-        <div className="flex gap-8">
-          {['Overview', 'Timeline', 'Open Jobs', 'Company'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab.toLowerCase())}
-              className={`pb-4 border-b-2 font-medium ${activeTab === tab.toLowerCase() ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Overview Tab Content */}
-      {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Activity & Notes */}
-          <div className="lg:col-span-2 bg-card border rounded-2xl p-8">
-            <h3 className="font-semibold mb-6">Activity & Notes</h3>
-            <div className="space-y-6">
-              {/* Example activity items - replace with real data later */}
-              <div className="flex gap-4">
-                <div className="text-sm text-muted-foreground w-24">Jun 8, 2026</div>
-                <div>
-                  <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs">Submittal</span>
-                  <p className="mt-1">Submitted Jessica Lane for Asst. Director role...</p>
-                </div>
-              </div>
-            </div>
+      <div className="bg-card border rounded-3xl p-10">
+        {isEditing ? (
+          <div className="space-y-6">
+            <input 
+              type="text" 
+              value={formData.name} 
+              onChange={(e) => setFormData({...formData, name: e.target.value})} 
+              className="w-full p-4 border rounded-xl text-2xl font-semibold" 
+            />
+            <input 
+              type="text" 
+              value={formData.title} 
+              onChange={(e) => setFormData({...formData, title: e.target.value})} 
+              className="w-full p-4 border rounded-xl" 
+            />
+            <input 
+              type="email" 
+              value={formData.email} 
+              onChange={(e) => setFormData({...formData, email: e.target.value})} 
+              className="w-full p-4 border rounded-xl" 
+            />
+            <input 
+              type="tel" 
+              value={formData.phone} 
+              onChange={(e) => setFormData({...formData, phone: e.target.value})} 
+              className="w-full p-4 border rounded-xl" 
+            />
+            <Button onClick={handleSave} className="mt-6">Save Changes</Button>
           </div>
-
-          {/* Sidebar */}
-          <div className="space-y-8">
-            {/* Open Jobs */}
-            <div className="bg-card border rounded-2xl p-8">
-              <div className="flex justify-between mb-6">
-                <h3 className="font-semibold">Open Jobs</h3>
-                <Button size="sm">+ Add Job</Button>
-              </div>
-              <div className="text-sm text-muted-foreground">No open jobs yet.</div>
-            </div>
-
-            {/* Quick Stats */}
-            <div className="bg-card border rounded-2xl p-8">
-              <h3 className="font-semibold mb-6">Quick Stats</h3>
-              <div className="space-y-4 text-sm">
-                <div className="flex justify-between"><span>Open jobs</span><span>2</span></div>
-                <div className="flex justify-between"><span>Candidates submitted</span><span>3</span></div>
-                <div className="flex justify-between"><span>Last contacted</span><span>Jun 8, 2026</span></div>
-              </div>
-            </div>
+        ) : (
+          <div className="space-y-8 text-lg">
+            <div><span className="text-muted-foreground">Title:</span> {contact.title || '—'}</div>
+            <div><span className="text-muted-foreground">Email:</span> {contact.email || '—'}</div>
+            <div><span className="text-muted-foreground">Phone:</span> {contact.phone || '—'}</div>
+            <div><span className="text-muted-foreground">Company:</span> {contact.companyName}</div>
           </div>
-        </div>
-      )}
-
-      {/* Add more tabs later */}
+        )}
+      </div>
     </div>
   );
 }
