@@ -11,6 +11,7 @@ export function CompaniesClient() {
   const router = useRouter();
   const { data, isLoading, error, refetch } = useClients();
   
+  // Ensure we have companies (filter or use the main data)
   const companies = Array.isArray(data) ? data : (data?.clients || []);
 
   const createClientMutation = useCreateClient();
