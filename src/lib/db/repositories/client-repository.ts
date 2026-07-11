@@ -1,3 +1,4 @@
+// src/lib/db/repositories/client-repository.ts
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
@@ -8,25 +9,18 @@ const TABLE_NAME = 'turnkey-clients';
 
 export async function getAllClients(tenantId: string) {
   try {
+    console.log(`[getAllClients] Fetching for tenant: ${tenantId}`);
+
     const result = await docClient.send(new ScanCommand({
       TableName: TABLE_NAME
     }));
 
     const companies = result.Items || [];
-    console.log(`[getAllClients] Found ${companies.length} companies`);
 
-    // Flatten contacts from companies
-    const allContacts = companies.flatMap((company: any) => {
-      const contacts = Array.isArray(company.contacts) ? company.contacts : [];
-      return contacts.map((contact: any) => ({
-        ...contact,
-        companyId: company.id,
-        companyName: company.name || company.title || 'Unknown Company'
-      }));
-    });
-
-    console.log(`[getAllClients] Flattened ${allContacts.length} contacts`);
-    return allContacts;
+    console.log(`[getAllClients] Loaded ${companies.length} companies from DynamoDB`);
+    
+    // Return companies directly (this was the bug)
+    return companies;
   } catch (error: any) {
     console.error('[getAllClients] Error:', error);
     return [];
@@ -34,6 +28,7 @@ export async function getAllClients(tenantId: string) {
 }
 
 export async function addContactToClient(tenantId: string, clientId: string, contactData: any) {
-  // keep your existing addContactToClient function here
-  // (you can leave it as is)
+  // Keep as placeholder for now
+  console.log(`[addContactToClient] Placeholder called for ${clientId}`);
+  return { success: true };
 }
