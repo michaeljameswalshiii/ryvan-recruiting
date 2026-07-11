@@ -1,139 +1,74 @@
 'use client';
 
-import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useClients } from '@/lib/hooks/query-client';
 import { Button } from '@/components/ui/button';
-import { Mail, Phone, MapPin, Linkedin, Calendar } from 'lucide-react';
 
-export default function ContactDetailPage() {
-  const params = useParams();
-  const id = params.id as string;
+export default function ContactInfoPage() {
+  const { data: clientsData, isLoading, error, refetch } = useClients();
 
-  const [contact, setContact] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const rawData = Array.isArray(clientsData) ? clientsData : (clientsData?.clients || []);
+  const contacts = rawData.map((item: any) => ({
+    ...item,
+    name: item.name || item.companyName || 'Unnamed',
+    companyName: item.company?.name || item.clientCompany || '—'
+  }));
 
-  useEffect(() => {
-    // Placeholder data - replace with real fetch
-    setContact({
-      id,
-      name: "Paul Kiedis",
-      title: "Director of Operations",
-      company: "Chick-fil-A — West Boca",
-      email: "paul@cfawestboca.com",
-      phone: "561-555-0192",
-      location: "Boca Raton, FL",
-      linkedin: "linkedin.com/in/paulkiedis",
-      source: "Manual",
-      addedDate: "Jun 4, 2026"
-    });
-  }, [id]);
-
-  if (!contact) return <div className="p-8">Loading contact...</div>;
+  if (isLoading) return <div className="p-8">Loading contacts...</div>;
+  if (error) return (
+    <div className="p-8 text-center">
+      <p className="text-red-600">Error loading contacts</p>
+      <Button onClick={() => refetch()}>Try Again</Button>
+    </div>
+  );
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <Link href="/dashboard/contact-info" className="text-blue-600 hover:underline mb-6 inline-block">
-        ← Back to Contacts
-      </Link>
-
-      {/* Header */}
-      <div className="flex items-start gap-6 mb-10">
-        <div className="w-20 h-20 bg-green-600 text-white rounded-full flex items-center justify-center text-4xl font-bold">
-          PK
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-4xl font-bold">{contact.name}</h1>
-            <span className="bg-green-100 text-green-700 text-sm px-3 py-1 rounded-full">Primary</span>
-          </div>
-          <p className="text-xl text-muted-foreground">{contact.title} • {contact.company}</p>
-        </div>
-        <div className="flex gap-3">
-          <Button>Call</Button>
-          <Button variant="outline">Edit</Button>
-          <Button>Send Email</Button>
-        </div>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-4xl font-bold">Contact Info</h1>
+        <Button onClick={() => refetch()}>Refresh</Button>
       </div>
 
-      {/* Contact Info Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-10 bg-card border rounded-2xl p-6">
-        <div>
-          <p className="text-sm text-muted-foreground">EMAIL</p>
-          <p className="font-medium">{contact.email}</p>
-        </div>
-        <div>
-          <p className="text-sm text-muted-foreground">PHONE</p>
-          <p className="font-medium">{contact.phone}</p>
-        </div>
-        <div>
-          <p className="text-sm text-muted-foreground">LOCATION</p>
-          <p className="font-medium">{contact.location}</p>
-        </div>
-        <div>
-          <p className="text-sm text-muted-foreground">LINKEDIN</p>
-          <a href={`https://${contact.linkedin}`} target="_blank" className="text-blue-600 hover:underline">View Profile</a>
-        </div>
-      </div>
+      <p className="mb-8 text-lg">Total Contacts: {contacts.length}</p>
 
-      {/* Tabs */}
-      <div className="border-b mb-8">
-        <div className="flex gap-8">
-          {['Overview', 'Timeline', 'Open Jobs', 'Company'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab.toLowerCase())}
-              className={`pb-4 border-b-2 font-medium ${activeTab === tab.toLowerCase() ? 'border-blue-600 text-blue-600' : 'border-transparent'}`}
-            >
-              {tab}
-            </button>
-          ))}
+      {contacts.length === 0 ? (
+        <div className="text-center py-20 bg-card border rounded-3xl">
+          <p className="text-xl">No contacts found.</p>
         </div>
-      </div>
-
-      {/* Overview Tab Content */}
-      {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Activity & Notes */}
-          <div className="lg:col-span-2 bg-card border rounded-2xl p-8">
-            <h3 className="font-semibold mb-6">Activity & Notes</h3>
-            <div className="space-y-6">
-              {/* Example activity items - replace with real data later */}
-              <div className="flex gap-4">
-                <div className="text-sm text-muted-foreground w-24">Jun 8, 2026</div>
-                <div>
-                  <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs">Submittal</span>
-                  <p className="mt-1">Submitted Jessica Lane for Asst. Director role...</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-8">
-            {/* Open Jobs */}
-            <div className="bg-card border rounded-2xl p-8">
-              <div className="flex justify-between mb-6">
-                <h3 className="font-semibold">Open Jobs</h3>
-                <Button size="sm">+ Add Job</Button>
-              </div>
-              <div className="text-sm text-muted-foreground">No open jobs yet.</div>
-            </div>
-
-            {/* Quick Stats */}
-            <div className="bg-card border rounded-2xl p-8">
-              <h3 className="font-semibold mb-6">Quick Stats</h3>
-              <div className="space-y-4 text-sm">
-                <div className="flex justify-between"><span>Open jobs</span><span>2</span></div>
-                <div className="flex justify-between"><span>Candidates submitted</span><span>3</span></div>
-                <div className="flex justify-between"><span>Last contacted</span><span>Jun 8, 2026</span></div>
-              </div>
-            </div>
-          </div>
+      ) : (
+        <div className="bg-card border rounded-2xl overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="text-left p-6 font-semibold">Name</th>
+                <th className="text-left p-6 font-semibold">Title</th>
+                <th className="text-left p-6 font-semibold">Email</th>
+                <th className="text-left p-6 font-semibold">Phone</th>
+                <th className="text-left p-6 font-semibold">Company</th>
+                <th className="p-6 w-24"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {contacts.map((contact: any) => (
+                <tr key={contact.id} className="border-b hover:bg-muted/50 transition-colors">
+                  <td className="p-6 font-medium">
+                    <Link href={`/dashboard/contact-info/${contact.id}`} className="hover:underline">
+                      {contact.name}
+                    </Link>
+                  </td>
+                  <td className="p-6 text-muted-foreground">{contact.title || '—'}</td>
+                  <td className="p-6 text-muted-foreground">{contact.email || '—'}</td>
+                  <td className="p-6 text-muted-foreground">{contact.phone || '—'}</td>
+                  <td className="p-6 text-muted-foreground">{contact.companyName}</td>
+                  <td className="p-6">
+                    <Link href={`/dashboard/contact-info/${contact.id}`} className="text-blue-600 hover:underline">View</Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
-
-      {/* Add more tabs later */}
     </div>
   );
 }
