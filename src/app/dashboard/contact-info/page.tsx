@@ -3,16 +3,14 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useClients } from '@/lib/hooks/query-client';
-import { useAddContact, useUpdateContact, useRemoveContact } from '@/lib/hooks/contact-mutations';
+import { useAddContact, useRemoveContact } from '@/lib/hooks/contact-mutations';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Plus } from 'lucide-react';
 
 export default function ContactInfoPage() {
   const { data: clientsData, isLoading, error, refetch } = useClients();
   
-  // Extract companies, then flatten their contacts
   const companies = Array.isArray(clientsData) 
     ? clientsData 
     : (clientsData?.clients || []);
@@ -27,13 +25,12 @@ export default function ContactInfoPage() {
   });
 
   const addContact = useAddContact();
-  const updateContact = useUpdateContact();
   const removeContact = useRemoveContact();
 
+  const [showAddForm, setShowAddForm] = useState(false);
   const [newContact, setNewContact] = useState({ 
     name: '', title: '', email: '', phone: '', clientId: '' 
   });
-  const [editingContact, setEditingContact] = useState<any>(null);
 
   const handleAdd = async () => {
     if (!newContact.clientId || !newContact.name) {
@@ -45,6 +42,7 @@ export default function ContactInfoPage() {
       contactData: newContact 
     });
     setNewContact({ name: '', title: '', email: '', phone: '', clientId: '' });
+    setShowAddForm(false);
     refetch();
   };
 
@@ -65,47 +63,77 @@ export default function ContactInfoPage() {
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-4xl font-bold">Contact Info</h1>
-        <Button onClick={() => refetch()}>Refresh</Button>
+        <div>
+          <h1 className="text-4xl font-bold">Contact Info</h1>
+          <p className="text-muted-foreground">Total Contacts: {contacts.length}</p>
+        </div>
+        
+        <Button onClick={() => setShowAddForm(!showAddForm)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Contact
+        </Button>
       </div>
 
-      <p className="mb-8 text-lg">Total Contacts: {contacts.length}</p>
-
-      {/* Quick Add Form */}
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Add New Contact</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-6 gap-4">
-          <div className="md:col-span-2">
-            <Label>Company/Client ID</Label>
-            <Input 
-              value={newContact.clientId} 
-              onChange={(e) => setNewContact({...newContact, clientId: e.target.value})} 
-              placeholder="company-id-here" 
-            />
-          </div>
-          <div>
-            <Label>Name</Label>
-            <Input value={newContact.name} onChange={(e) => setNewContact({...newContact, name: e.target.value})} />
-          </div>
-          <div>
-            <Label>Title</Label>
-            <Input value={newContact.title} onChange={(e) => setNewContact({...newContact, title: e.target.value})} />
-          </div>
-          <div>
-            <Label>Email</Label>
-            <Input value={newContact.email} onChange={(e) => setNewContact({...newContact, email: e.target.value})} />
-          </div>
-          <div>
-            <Label>Phone</Label>
-            <Input value={newContact.phone} onChange={(e) => setNewContact({...newContact, phone: e.target.value})} />
-          </div>
-          <div className="flex items-end">
-            <Button onClick={handleAdd} className="w-full">Add Contact</Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Add Form (toggleable) */}
+      {showAddForm && (
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Add New Contact</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+              <label className="text-sm">Company/Client ID</label>
+              <input 
+                type="text"
+                value={newContact.clientId}
+                onChange={(e) => setNewContact({...newContact, clientId: e.target.value})}
+                className="w-full border rounded p-2"
+                placeholder="company-id"
+              />
+            </div>
+            <div>
+              <label className="text-sm">Name</label>
+              <input 
+                type="text"
+                value={newContact.name}
+                onChange={(e) => setNewContact({...newContact, name: e.target.value})}
+                className="w-full border rounded p-2"
+              />
+            </div>
+            <div>
+              <label className="text-sm">Title</label>
+              <input 
+                type="text"
+                value={newContact.title}
+                onChange={(e) => setNewContact({...newContact, title: e.target.value})}
+                className="w-full border rounded p-2"
+              />
+            </div>
+            <div>
+              <label className="text-sm">Email</label>
+              <input 
+                type="email"
+                value={newContact.email}
+                onChange={(e) => setNewContact({...newContact, email: e.target.value})}
+                className="w-full border rounded p-2"
+              />
+            </div>
+            <div>
+              <label className="text-sm">Phone</label>
+              <input 
+                type="tel"
+                value={newContact.phone}
+                onChange={(e) => setNewContact({...newContact, phone: e.target.value})}
+                className="w-full border rounded p-2"
+              />
+            </div>
+            <div className="md:col-span-5 flex gap-3">
+              <Button onClick={handleAdd}>Add Contact</Button>
+              <Button variant="outline" onClick={() => setShowAddForm(false)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Contacts Table */}
       <Card>
@@ -114,8 +142,8 @@ export default function ContactInfoPage() {
         </CardHeader>
         <CardContent>
           {contacts.length === 0 ? (
-            <div className="text-center py-20 text-muted-foreground">
-              No contacts found yet. Add one above.
+            <div className="text-center py-12 text-muted-foreground">
+              No contacts yet. Click "Add Contact" above.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -138,14 +166,11 @@ export default function ContactInfoPage() {
                           {contact.name}
                         </Link>
                       </td>
-                      <td className="p-4">{contact.title || '—'}</td>
-                      <td className="p-4">{contact.email || '—'}</td>
-                      <td className="p-4">{contact.phone || '—'}</td>
-                      <td className="p-4">{contact.companyName}</td>
+                      <td className="p-4 text-muted-foreground">{contact.title || '—'}</td>
+                      <td className="p-4 text-muted-foreground">{contact.email || '—'}</td>
+                      <td className="p-4 text-muted-foreground">{contact.phone || '—'}</td>
+                      <td className="p-4 text-muted-foreground">{contact.companyName}</td>
                       <td className="p-4 space-x-2">
-                        <Button variant="outline" size="sm" onClick={() => setEditingContact(contact)}>
-                          Edit
-                        </Button>
                         <Button 
                           variant="destructive" 
                           size="sm" 
