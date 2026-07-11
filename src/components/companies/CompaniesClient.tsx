@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Plus, RefreshCw, Building2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useClients, useCreateClient, useDeleteClient } from '@/lib/hooks/query-client';
 import Link from 'next/link';
 
@@ -31,9 +31,9 @@ export function CompaniesClient() {
       setNewCompanyName('');
       setNewCompanyIndustry('');
       refetch();
-      alert('Company created successfully!');
+      alert('Company created!');
     } catch (err) {
-      alert('Failed to create company');
+      alert('Failed to create');
     }
   };
 
@@ -42,14 +42,14 @@ export function CompaniesClient() {
     try {
       await deleteClientMutation.mutateAsync(companyId);
       refetch();
-      alert('Company deleted!');
+      alert('Deleted!');
     } catch (err) {
-      alert('Failed to delete company');
+      alert('Failed to delete');
     }
   };
 
-  if (isLoading) return <div className="p-8">Loading companies...</div>;
-  if (error) return <div className="p-8 text-red-600">Error loading companies.</div>;
+  if (isLoading) return <div className="p-8">Loading...</div>;
+  if (error) return <div className="p-8 text-red-600">Error.</div>;
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -66,26 +66,14 @@ export function CompaniesClient() {
       {showForm && (
         <div className="bg-white border rounded-lg p-6 mb-8 max-w-md">
           <h3 className="text-lg font-semibold mb-4">Add New Company</h3>
-          <input
-            type="text"
-            value={newCompanyName}
-            onChange={(e) => setNewCompanyName(e.target.value)}
-            className="w-full p-3 border rounded mb-4"
-            placeholder="Company Name"
-          />
-          <input
-            type="text"
-            value={newCompanyIndustry}
-            onChange={(e) => setNewCompanyIndustry(e.target.value)}
-            className="w-full p-3 border rounded mb-4"
-            placeholder="Industry (optional)"
-          />
+          <input type="text" value={newCompanyName} onChange={(e) => setNewCompanyName(e.target.value)} className="w-full p-3 border rounded mb-4" placeholder="Company Name" />
+          <input type="text" value={newCompanyIndustry} onChange={(e) => setNewCompanyIndustry(e.target.value)} className="w-full p-3 border rounded mb-4" placeholder="Industry" />
           <Button onClick={handleCreateCompany}>Create Company</Button>
         </div>
       )}
 
       {companies.length === 0 ? (
-        <div className="text-center py-20">No companies yet. Add one above.</div>
+        <div className="text-center py-20">No companies yet.</div>
       ) : (
         <div className="bg-white border rounded-2xl overflow-hidden">
           <table className="w-full">
