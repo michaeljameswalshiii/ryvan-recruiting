@@ -116,12 +116,6 @@ async function getEventTenantId(): Promise<string> {
 
 /**
  * Record an event for a job
- * 
- * @param jobId - The job ID
- * @param eventType - Type of event
- * @param details - Event details (title, description, metadata)
- * @param createdBy - User email or ID who created the event
- * @returns Result with success status and event ID
  */
 export async function recordJobEvent(
   jobId: string,
@@ -167,7 +161,7 @@ export async function recordJobEvent(
 }
 
 /**
- * Get all events for a job with optional filtering and pagination
+ * Get all events for a job — GSI-based for tenant isolation + reliability
  */
 export async function getJobEvents(
   jobId: string,
@@ -179,17 +173,18 @@ export async function getJobEvents(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
   try {
-    const { limit, cursor, eventTypes } = options || {};
-    
-    let queryExpr = 'PK = :pk AND begins_with(SK, :skPrefix)';
+    const { limit = 50, cursor, eventTypes } = options || {};
+    const tenantId = await getEventTenantId();
+
+    let queryExpr = 'GSI1PK = :gsi1pk AND begins_with(GSI1SK, :skPrefix)';
     const exprValues: Record<string, string> = {
-      ':pk': `ENTITY#job#${jobId}`,   // ✅ FIXED - was JOB#
+      ':gsi1pk': `TENANT#${tenantId}`,
       ':skPrefix': 'EVENT#',
     };
 
     if (cursor) {
-      queryExpr += ' AND SK < :cursorSK';
-      exprValues[':cursorSK'] = cursor.timestamp;
+      queryExpr += ' AND GSI1SK < :cursorSK';
+      exprValues[':cursorSK'] = `EVENT#${cursor.timestamp}`;
     }
 
     const events = await queryItems<any>(
@@ -198,25 +193,29 @@ export async function getJobEvents(
       exprValues
     );
 
-    // Sort by timestamp descending
-    const sortedEvents = events.sort((a, b) => 
-      b.SK.localeCompare(a.SK)
+    // Filter to this specific job (client-side after GSI scan)
+    let filtered = events.filter((e: any) => 
+      e.entityId === jobId && e.entityType === 'job'
     );
 
-    // Filter by event types if provided
-    let filteredEvents = sortedEvents;
+    // Additional event type filter
     if (eventTypes && eventTypes.length > 0) {
-      filteredEvents = sortedEvents.filter(event => 
-        eventTypes.includes(event.eventType as JobEventType)
+      filtered = filtered.filter((e: any) => 
+        eventTypes.includes(e.eventType as JobEventType)
       );
     }
 
-    const fetchLimit = (limit || 50) + 1;
-    const paginatedEvents = filteredEvents.slice(0, fetchLimit);
-    const hasMore = paginatedEvents.length > (limit || 50);
+    // Sort descending by timestamp
+    const sortedEvents = filtered.sort((a: any, b: any) => 
+      b.SK.localeCompare(a.SK)
+    );
+
+    const fetchLimit = limit + 1;
+    const paginatedEvents = sortedEvents.slice(0, fetchLimit);
+    const hasMore = paginatedEvents.length > limit;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const eventResults: any[] = paginatedEvents.slice(0, limit).map(event => ({
+    const eventResults: any[] = paginatedEvents.slice(0, limit).map((event: any) => ({
       id: event.SK.replace('EVENT#', ''),
       entityId: event.entityId,
       entityType: 'job',
@@ -243,7 +242,7 @@ export async function getJobEvents(
       events: eventResults,
       hasMore,
       nextCursor,
-      totalCount: filteredEvents.length,
+      totalCount: sortedEvents.length,
     };
   } catch (error) {
     console.error('[JOB_EVENTS] Failed to get events:', error);
@@ -254,7 +253,9 @@ export async function getJobEvents(
   }
 }
 
-/* ... (the rest of the helper functions remain unchanged) */
+// ============================================================================
+// Helper Record Functions (unchanged)
+// ============================================================================
 
 export async function recordJobCreated(
   jobId: string,
@@ -268,10 +269,7 @@ export async function recordJobCreated(
     {
       title: 'Job Created',
       description: `${jobTitle} at ${companyName}`,
-      metadata: {
-        jobTitle,
-        companyName,
-      },
+      metadata: { jobTitle, companyName },
     },
     createdBy
   );
@@ -290,10 +288,7 @@ export async function recordJobUpdated(
     {
       title: 'Job Updated',
       description: `Changed: ${changeDescriptions}`,
-      metadata: {
-        jobTitle,
-        changes,
-      },
+      metadata: { jobTitle, changes },
     },
     createdBy
   );
@@ -312,11 +307,7 @@ export async function recordJobStatusChanged(
     {
       title: 'Job Status Changed',
       description: `${oldStatus} → ${newStatus}`,
-      metadata: {
-        jobTitle,
-        oldStatus,
-        newStatus,
-      },
+      metadata: { jobTitle, oldStatus, newStatus },
     },
     createdBy
   );
@@ -336,12 +327,7 @@ export async function recordCandidateLinked(
     {
       title: 'Candidate Linked',
       description: `${candidateName} → ${stage}`,
-      metadata: {
-        jobTitle,
-        candidateId,
-        candidateName,
-        stage,
-      },
+      metadata: { jobTitle, candidateId, candidateName, stage },
     },
     createdBy
   );
@@ -360,11 +346,7 @@ export async function recordCandidateUnlinked(
     {
       title: 'Candidate Unlinked',
       description: `${candidateName} removed from job`,
-      metadata: {
-        jobTitle,
-        candidateId,
-        candidateName,
-      },
+      metadata: { jobTitle, candidateId, candidateName },
     },
     createdBy
   );
@@ -385,13 +367,7 @@ export async function recordCandidateStageChanged(
     {
       title: 'Candidate Stage Changed',
       description: `${candidateName}: ${oldStage} → ${newStage}`,
-      metadata: {
-        jobTitle,
-        candidateId,
-        candidateName,
-        oldStage,
-        newStage,
-      },
+      metadata: { jobTitle, candidateId, candidateName, oldStage, newStage },
     },
     createdBy
   );
