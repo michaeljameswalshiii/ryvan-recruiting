@@ -1,9 +1,7 @@
 'use server';
 
-import { putItem, eventsTable } from '../db/dynamodb';
+import { putItem, queryItems, eventsTable } from '../db/dynamodb';
 import type { EventDetails, RecordEventResponse } from './types';
-import { DynamoDBClient, QueryCommand } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
 export type JobEventType =
   | 'JOB_CREATED'
@@ -68,21 +66,12 @@ export async function getJobEvents(
   console.log(`[getJobEvents] START for job ${jobId}`);
 
   try {
-    const client = new DynamoDBClient({ region: 'us-east-1' });
-    const docClient = DynamoDBDocumentClient.from(client);
-
-    const command = new QueryCommand({
-      TableName: eventsTable,
-      KeyConditionExpression: 'PK = :pk',
-      ExpressionAttributeValues: {
-        ':pk': `ENTITY#job#${jobId}`,
-      },
-      Limit: options?.limit || 50,
-      ScanIndexForward: false,
-    });
-
-    const response = await docClient.send(command);
-    const rawEvents = response.Items || [];
+    const rawEvents = await queryItems(
+      eventsTable,
+      'PK = :pk',
+      { ':pk': `ENTITY#job#${jobId}` },
+      { Limit: options?.limit || 50, ScanIndexForward: false }
+    ) || [];
 
     console.log(`[getJobEvents] Raw DB items: ${rawEvents.length}`);
 
