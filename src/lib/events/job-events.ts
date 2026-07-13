@@ -98,7 +98,7 @@ export async function recordJobEvent(
   }
 }
 
-// FIXED + SAFE getJobEvents
+// FIXED: Direct PK query + safe array handling
 export async function getJobEvents(
   jobId: string,
   options?: { limit?: number; cursor?: PaginationCursor; eventTypes?: JobEventType[] }
@@ -151,7 +151,7 @@ export async function getJobEvents(
   }
 }
 
-// Helper for UI
+// Helper for the notes API route
 export async function addNoteToJob(jobId: string, noteText: string, createdBy: string) {
   return recordJobEvent(jobId, 'NOTE', {
     title: 'Note Added',
