@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { addNoteToJob } from '../../../../../lib/events/job-events';   // Correct relative path
+import { addNoteToJob } from '@/lib/events/job-events';
 
 type RouteParams = Promise<{ id: string }>;
 
@@ -22,6 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
       );
     }
 
+    // Parse the request body
     const body = await request.json();
     const { noteText, noteType = 'general', createdBy = 'system' } = body;
 
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
       );
     }
 
+    // Use the job events service to add note
     const result = await addNoteToJob(jobId, noteText.trim(), createdBy);
 
     if (!result.success) {
@@ -41,6 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
       );
     }
 
+    // Revalidate the job page
     revalidatePath(`/dashboard/jobs/${jobId}`);
 
     return NextResponse.json({
