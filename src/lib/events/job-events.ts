@@ -2,7 +2,8 @@
 
 import { putItem, eventsTable } from '../db/dynamodb';
 import type { EventDetails, RecordEventResponse } from './types';
-import { DynamoDBClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBClient, QueryCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
 export type JobEventType =
   | 'JOB_CREATED'
@@ -68,6 +69,7 @@ export async function getJobEvents(
 
   try {
     const client = new DynamoDBClient({ region: 'us-east-1' });
+    const docClient = DynamoDBDocumentClient.from(client);
 
     const command = new QueryCommand({
       TableName: eventsTable,
@@ -79,7 +81,7 @@ export async function getJobEvents(
       ScanIndexForward: false,
     });
 
-    const response = await client.send(command);
+    const response = await docClient.send(command);
     const rawEvents = response.Items || [];
 
     console.log(`[getJobEvents] Raw DB items: ${rawEvents.length}`);
