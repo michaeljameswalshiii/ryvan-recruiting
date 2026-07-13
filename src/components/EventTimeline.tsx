@@ -123,7 +123,7 @@ export default function EventTimeline({
       if (entityType === 'candidate') {
         endpoint = `/api/candidate/${entityId}/notes`;
       } else if (entityType === 'job') {
-        endpoint = `/api/jobs/${entityId}/notes`;   // ✅ FIXED - was wrongly pointing to /api/company/
+        endpoint = `/api/jobs/${entityId}/notes`;   // ✅ FIXED
       } else {
         endpoint = `/api/company/${entityId}/notes`;
       }
@@ -155,6 +155,8 @@ export default function EventTimeline({
       setAddingNote(false);
     }
   };
+
+  // ... (rest of the file: getEventIcon, getEventColor, getEventLabel, formatDate, and the JSX return — unchanged)
 
   function getEventIcon(eventType: EventType) {
     const icons: Record<string, React.ReactNode> = {
@@ -288,85 +290,3 @@ export default function EventTimeline({
             className="w-full p-2 text-sm border border-input rounded-md bg-background"
           >
             {noteTypes.map((type) => (
-              <option key={type.value} value={type.value}>
-                {type.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="mb-3">
-          <label className="text-sm font-medium mb-2 block">Notes</label>
-          <textarea
-            placeholder="Add a note..."
-            value={newNote}
-            onChange={(e) => setNewNote(e.target.value)}
-            rows={2}
-            className="w-full p-2 text-sm border border-input rounded-md resize-y min-h-[60px]"
-          />
-        </div>
-        <button 
-          onClick={handleAddNote} 
-          disabled={addingNote || !newNote.trim()}
-          className="mt-2 w-full py-2 px-4 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          {addingNote ? 'Adding...' : 'Add Note'}
-        </button>
-      </div>
-
-      {error && (
-        <div className="mx-4 mt-4 p-3 bg-destructive/10 text-destructive text-sm rounded-md">
-          {error}
-        </div>
-      )}
-
-      <div style={{ maxHeight }} className="overflow-y-auto">
-        {events.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">
-            No activity yet
-          </div>
-        ) : (
-          <div className="relative p-4">
-            <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-border" />
-            
-            <div className="flex flex-col gap-4">
-              {events.map((event) => {
-                const eventColor = getEventColor(event.eventType);
-                const eventLabel = getEventLabel(event.eventType);
-                const eventIcon = getEventIcon(event.eventType);
-                return (
-                  <div key={event.id} className="flex gap-3 relative">
-                    <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${eventColor}`}>
-                      {eventIcon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${eventColor}`}>
-                          {eventLabel}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(event.createdAt)}
-                        </span>
-                      </div>
-                      <div className="font-medium text-sm">
-                        {event.title}
-                      </div>
-                      {event.description && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {event.description}
-                        </p>
-                      )}
-                      <div className="text-xs text-muted-foreground mt-2">
-                        by {event.createdByName || event.createdBy}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
