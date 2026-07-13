@@ -98,7 +98,7 @@ export async function recordJobEvent(
   }
 }
 
-// FIXED: Direct PK query + safe array handling
+// FIXED: Handle queryItems return shape {items: [...]}
 export async function getJobEvents(
   jobId: string,
   options?: { limit?: number; cursor?: PaginationCursor; eventTypes?: JobEventType[] }
@@ -109,7 +109,7 @@ export async function getJobEvents(
 
     console.log(`[getJobEvents] DIRECT QUERY for job ${jobId}, tenant ${tenantId}`);
 
-    const rawEvents = await queryItems(
+    const rawResponse = await queryItems(
       eventsTable,
       'PK = :pk AND begins_with(SK, :prefix)',
       {
@@ -119,7 +119,7 @@ export async function getJobEvents(
       { ScanIndexForward: false }
     );
 
-    const events = Array.isArray(rawEvents) ? rawEvents : [];
+    const events = Array.isArray(rawResponse) ? rawResponse : (rawResponse?.items || []);
 
     console.log(`[getJobEvents] Raw DB items found: ${events.length}`);
 
@@ -151,7 +151,7 @@ export async function getJobEvents(
   }
 }
 
-// Helper for the notes API route
+// Helper for UI
 export async function addNoteToJob(jobId: string, noteText: string, createdBy: string) {
   return recordJobEvent(jobId, 'NOTE', {
     title: 'Note Added',
