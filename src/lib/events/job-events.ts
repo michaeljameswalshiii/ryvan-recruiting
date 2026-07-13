@@ -1,6 +1,6 @@
 /**
  * Job Events Service
- * Records and retrieves job events from DynamoDB
+ * Records and retrieves job events from DynamoDB (aligned with candidate-events.ts)
  * 
  * @serverOnly
  */
@@ -101,11 +101,12 @@ export async function recordJobEvent(
 export async function getJobEvents(
   jobId: string,
   options?: { limit?: number; cursor?: PaginationCursor; eventTypes?: JobEventType[] }
-) {
+): Promise<any> {
   try {
     const { limit = 50 } = options || {};
     const tenantId = await getEventTenantId();
 
+    // Use GSI for tenant-wide query + client-side filter for reliability
     const events = await queryItems(
       eventsTable,
       'GSI1PK = :gsi1pk AND begins_with(GSI1SK, :prefix)',
@@ -115,7 +116,10 @@ export async function getJobEvents(
       }
     );
 
-    let filtered = events.filter((e: any) => e.entityId === jobId && e.entityType === 'job');
+    // Filter for this specific job
+    let filtered = events.filter((e: any) => 
+      e.entityId === jobId && e.entityType === 'job'
+    );
 
     const sorted = filtered.sort((a: any, b: any) => b.SK.localeCompare(a.SK));
     const limited = sorted.slice(0, limit);
@@ -132,7 +136,11 @@ export async function getJobEvents(
       createdBy: e.createdBy,
     }));
 
-    return { events: eventResults, hasMore: sorted.length > limit };
+    return { 
+      events: eventResults, 
+      hasMore: sorted.length > limit,
+      totalCount: sorted.length 
+    };
   } catch (error) {
     logEvent('error', 'Failed to get job events', { error: String(error) });
     return { events: [] };
