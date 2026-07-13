@@ -1,7 +1,8 @@
 'use server';
 
-import { putItem, queryItems, eventsTable } from '../db/dynamodb';
-import type { EventDetails, RecordEventResponse, PaginationCursor } from './types';
+import { putItem, eventsTable } from '../db/dynamodb';
+import type { EventDetails, RecordEventResponse } from './types';
+import { DynamoDBClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 export type JobEventType =
   | 'JOB_CREATED'
@@ -66,18 +67,24 @@ export async function getJobEvents(
   console.log(`[getJobEvents] START for job ${jobId}`);
 
   try {
-    const rawEvents = await queryItems(
-      eventsTable,
-      'PK = :pk',
-      { ':pk': `ENTITY#job#${jobId}` },
-      { Limit: options?.limit || 50, ScanIndexForward: false }
-    );
+    const client = new DynamoDBClient({ region: 'us-east-1' });
 
-    const eventsArray = Array.isArray(rawEvents) ? rawEvents : [];
+    const command = new QueryCommand({
+      TableName: eventsTable,
+      KeyConditionExpression: 'PK = :pk',
+      ExpressionAttributeValues: {
+        ':pk': `ENTITY#job#${jobId}`,
+      },
+      Limit: options?.limit || 50,
+      ScanIndexForward: false,
+    });
 
-    console.log(`[getJobEvents] Raw DB items: ${eventsArray.length}`);
+    const response = await client.send(command);
+    const rawEvents = response.Items || [];
 
-    const mapped = eventsArray.map((e: any) => ({
+    console.log(`[getJobEvents] Raw DB items: ${rawEvents.length}`);
+
+    const mapped = rawEvents.map((e: any) => ({
       id: (e.SK || '').replace('EVENT#', ''),
       entityId: e.entityId,
       entityType: 'job',
