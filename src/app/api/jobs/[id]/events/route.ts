@@ -21,27 +21,20 @@ export async function GET(request: NextRequest, { params }: { params: RouteParam
       );
     }
 
-    // Get query params
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50');
 
-    // Fetch events using job events service
     const result = await getJobEvents(jobId, { limit });
 
-    if (!result) {
-      return NextResponse.json(
-        { events: [] },
-        { status: 200 }
-      );
-    }
-
     return NextResponse.json({
-      events: result.events || [],
+      events: result?.events || [],
+      hasMore: result?.hasMore || false,
+      totalCount: result?.totalCount || 0,
     });
   } catch (error) {
     console.error('[API] Failed to fetch job events:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch events' },
+      { events: [] },
       { status: 500 }
     );
   }
