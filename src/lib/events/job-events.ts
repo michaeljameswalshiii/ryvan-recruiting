@@ -66,25 +66,16 @@ export async function getJobEvents(
   console.log(`[getJobEvents] START for job ${jobId}`);
 
   try {
-    const tenantId = await getEventTenantId();
-    console.log(`[getJobEvents] Using tenant: ${tenantId}`);
-
     const rawEvents = await queryItems(
       eventsTable,
-      'GSI1PK = :gsi1pk',
-      { ':gsi1pk': `TENANT#${tenantId}` },
-      { IndexName: 'GSI1', Limit: options?.limit || 50, ScanIndexForward: false }
+      'PK = :pk',
+      { ':pk': `ENTITY#job#${jobId}` },
+      { Limit: options?.limit || 50, ScanIndexForward: false }
     );
 
     console.log(`[getJobEvents] Raw DB items: ${rawEvents.length}`);
 
-    let filtered = rawEvents.filter((e: any) => e.entityId === jobId && e.entityType === 'job');
-    console.log(`[getJobEvents] After filter: ${filtered.length}`);
-
-    const sorted = filtered.sort((a: any, b: any) => (b.SK || '').localeCompare(a.SK || ''));
-    const limited = sorted.slice(0, options?.limit || 50);
-
-    const mapped = limited.map((e: any) => ({
+    const mapped = rawEvents.map((e: any) => ({
       id: (e.SK || '').replace('EVENT#', ''),
       entityId: e.entityId,
       entityType: 'job',
@@ -97,7 +88,7 @@ export async function getJobEvents(
     }));
 
     console.log(`[getJobEvents] FINAL returning ${mapped.length} events`);
-    return { events: mapped, hasMore: sorted.length > (options?.limit || 50) };
+    return { events: mapped, hasMore: false };
   } catch (error) {
     console.error(`[getJobEvents] ERROR:`, error);
     return { events: [] };
