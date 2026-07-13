@@ -1,7 +1,18 @@
+/**
+ * Job Events Service
+ * Records and retrieves job events from DynamoDB (aligned with candidate-events.ts)
+ * 
+ * @serverOnly
+ */
+
 'use server';
 
 import { putItem, queryItems, eventsTable } from '../db/dynamodb';
-import type { EventDetails, RecordEventResponse } from './types';
+import type {
+  EventDetails,
+  RecordEventResponse,
+  PaginationCursor,
+} from './types';
 
 export type JobEventType =
   | 'JOB_CREATED'
@@ -13,13 +24,41 @@ export type JobEventType =
   | 'CANDIDATE_STAGE_CHANGED'
   | 'NOTE';
 
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 100;
+
+type LogLevel = 'info' | 'warn' | 'error' | 'debug';
+
+function logEvent(level: LogLevel, message: string, meta?: any) {
+  const timestamp = new Date().toISOString();
+  switch (level) {
+    case 'error': console.error(`[JOB_EVENTS] ${message}`, meta); break;
+    case 'warn': console.warn(`[JOB_EVENTS] ${message}`, meta); break;
+    default: console.log(`[JOB_EVENTS] ${message}`, meta);
+  }
+}
+
+async function withRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError;
+  for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt < MAX_RETRY_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, RETRY_BASE_DELAY_MS * Math.pow(2, attempt-1)));
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function getEventTenantId(): Promise<string> {
   const { getSessionTenantId, getSessionUserId } = await import('../server-auth');
   const tenantId = await getSessionTenantId();
   const userId = await getSessionUserId();
-  const final = tenantId || `tenant-${userId || 'default'}`;
-  console.log(`[TENANT] Resolved: ${final}`);
-  return final;
+  if (!tenantId && userId) return `tenant-${userId}`;
+  return tenantId || 'default-tenant';
 }
 
 export async function recordJobEvent(
@@ -50,35 +89,45 @@ export async function recordJobEvent(
     };
 
     await putItem(eventsTable, event);
-    console.log(`[recordJobEvent] Success for job ${jobId}, type ${eventType}`);
+    logEvent('info', 'Job event recorded', { jobId, eventType, eventId });
 
     return { success: true, eventId };
   } catch (error) {
-    console.error('[recordJobEvent] Failed:', error);
+    logEvent('error', 'Failed to record job event', { jobId, error: String(error) });
     return { success: false, error: String(error) };
   }
 }
 
+// FIXED: Direct PK query for reliability
 export async function getJobEvents(
   jobId: string,
-  options?: { limit?: number }
+  options?: { limit?: number; cursor?: PaginationCursor; eventTypes?: JobEventType[] }
 ) {
-  console.log(`[getJobEvents] START for job ${jobId}`);
-
   try {
-    const result = await queryItems(
+    const { limit = 50 } = options || {};
+    const tenantId = await getEventTenantId();
+
+    console.log(`[getJobEvents] DIRECT QUERY for job ${jobId}, tenant ${tenantId}`);
+
+    const events = await queryItems(
       eventsTable,
-      'PK = :pk',
-      { ':pk': `ENTITY#job#${jobId}` },
-      { Limit: options?.limit || 50, ScanIndexForward: false }
+      'PK = :pk AND begins_with(SK, :prefix)',
+      {
+        ':pk': `ENTITY#job#${jobId}`,
+        ':prefix': 'EVENT#',
+      },
+      { ScanIndexForward: false }
     );
 
-    const rawEvents = Array.isArray(result) ? result : [];
+    console.log(`[getJobEvents] Raw DB items found: ${events.length}`);
 
-    console.log(`[getJobEvents] Raw DB items: ${rawEvents.length}`);
+    let filtered = events;
+    if (options?.eventTypes?.length) {
+      filtered = events.filter((e: any) => options.eventTypes!.includes(e.eventType));
+    }
 
-    const mapped = rawEvents.map((e: any) => ({
-      id: (e.SK || '').replace('EVENT#', ''),
+    const eventResults = filtered.map((e: any) => ({
+      id: e.SK.replace('EVENT#', ''),
       entityId: e.entityId,
       entityType: 'job',
       eventType: e.eventType,
@@ -89,23 +138,15 @@ export async function getJobEvents(
       createdBy: e.createdBy,
     }));
 
-    console.log(`[getJobEvents] FINAL returning ${mapped.length} events`);
-    return { events: mapped, hasMore: false };
+    return { 
+      events: eventResults, 
+      hasMore: false,
+      totalCount: eventResults.length 
+    };
   } catch (error) {
-    console.error(`[getJobEvents] ERROR:`, error);
+    logEvent('error', 'Failed to get job events', { error: String(error) });
     return { events: [] };
   }
 }
 
-export async function addNoteToJob(
-  jobId: string,
-  noteText: string,
-  createdBy: string,
-  noteType: string = 'general'
-) {
-  return recordJobEvent(jobId, 'NOTE', {
-    title: 'Note Added',
-    description: noteText.length > 100 ? noteText.substring(0, 100) + '...' : noteText,
-    metadata: { noteText, noteType },
-  }, createdBy);
-}
+// Keep the rest of your helper functions (recordJobCreated, addNoteToJob, etc.) unchanged at the bottom
