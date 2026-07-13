@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -11,6 +11,7 @@ import {
   Briefcase,
   FileText,
   CheckCircle2,
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +19,12 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { APPLICATION_STAGES } from '@/lib/schemas/lead';
-import { ResumeUpload } from '@/components/candidate/ResumeUpload';
+import {
+  clearResumeDraft,
+  loadResumeDraft,
+  mapParsedResumeToForm,
+  parseResumeFile,
+} from '@/lib/candidates/resume-parse-client';
 
 const sourceOptions = [
   { value: 'manual', label: 'Manual Entry' },
@@ -35,80 +41,114 @@ const statusOptions = APPLICATION_STAGES.map((stage) => ({
   label: stage.label,
 }));
 
-function skillsToNotes(skills: unknown): string {
-  if (!skills) return '';
-  if (Array.isArray(skills)) return skills.filter(Boolean).join(', ');
-  if (typeof skills === 'string') return skills;
-  return '';
-}
+const emptyForm = {
+  name: '',
+  email: '',
+  phone: '',
+  location: '',
+  title: '',
+  status: 'sourced',
+  source: 'manual',
+  notes: '',
+  linkedin_url: '',
+  resume_url: '',
+  summary: '',
+  skills: '',
+};
 
 export default function NewCandidatePage() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [loading, setLoading] = useState(false);
+  const [parsing, setParsing] = useState(false);
   const [parsedFromResume, setParsedFromResume] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [resumeFileName, setResumeFileName] = useState('');
+  const [formData, setFormData] = useState(emptyForm);
 
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    location: '',
-    title: '',
-    status: 'sourced',
-    source: 'manual',
-    notes: '',
-    linkedin_url: '',
-    resume_url: '',
-    summary: '',
-    skills: '' as string,
-  });
+  // Load draft from Candidates list resume upload
+  useEffect(() => {
+    const draft = loadResumeDraft();
+    if (draft?.form) {
+      setFormData((prev) => ({
+        ...prev,
+        ...draft.form,
+        status: prev.status,
+        source: draft.form.source || 'resume',
+      }));
+      setResumeFileName(draft.fileName || draft.form.resume_file_name || '');
+      setParsedFromResume(true);
+
+      const pending = (window as any).__turnkeyPendingResumeFile;
+      if (pending instanceof File) {
+        setUploadedFile(pending);
+      }
+
+      clearResumeDraft();
+      toast.success('Resume data loaded — review and create the candidate');
+    }
+  }, []);
 
   const handleChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const applyParsedResume = (parsed: any, file?: File | null, resumeUrl?: string) => {
-    if (!parsed) return;
+  const handleResumeFile = async (file: File | null | undefined) => {
+    if (!file) return;
 
-    const skillsText = skillsToNotes(parsed.skills);
-    const summary = typeof parsed.summary === 'string' ? parsed.summary : '';
-    const notesParts = [
-      summary ? `Summary:\n${summary}` : '',
-      skillsText ? `Skills: ${skillsText}` : '',
-    ].filter(Boolean);
+    const lower = file.name.toLowerCase();
+    const ok =
+      lower.endsWith('.pdf') ||
+      lower.endsWith('.doc') ||
+      lower.endsWith('.docx') ||
+      file.type.includes('pdf') ||
+      file.type.includes('word') ||
+      file.type.includes('officedocument');
 
-    setFormData((prev) => ({
-      ...prev,
-      name: parsed.name || prev.name,
-      title: parsed.title || prev.title,
-      email: parsed.email || prev.email,
-      phone: parsed.phone || prev.phone,
-      location: parsed.location || parsed.fullAddress || prev.location,
-      linkedin_url: parsed.linkedin || parsed.linkedin_url || prev.linkedin_url,
-      summary: summary || prev.summary,
-      skills: skillsText || prev.skills,
-      notes: notesParts.length ? notesParts.join('\n\n') : prev.notes,
-      resume_url: resumeUrl || prev.resume_url,
-      source: prev.source === 'manual' ? 'resume' : prev.source,
-    }));
-
-    if (file) {
-      setUploadedFile(file);
-      setResumeFileName(file.name);
-    } else if (parsed._file instanceof File) {
-      setUploadedFile(parsed._file);
-      setResumeFileName(parsed._file.name);
-    } else if (typeof resumeUrl === 'string' && resumeUrl) {
-      setResumeFileName(resumeUrl);
+    if (!ok) {
+      toast.error('Please upload a PDF or Word file (.pdf, .doc, .docx)');
+      return;
     }
 
-    setParsedFromResume(true);
-  };
+    setParsing(true);
+    setResumeFileName(file.name);
 
-  const handleResumeParsed = (resumeUrl: string, parsedData?: any) => {
-    const file = parsedData?._file instanceof File ? parsedData._file : null;
-    applyParsedResume(parsedData, file, resumeUrl || parsedData?._resumeUrl || parsedData?._fileKey);
+    try {
+      const { resume, resumeUrl, fileKey } = await parseResumeFile(file);
+      const mapped = mapParsedResumeToForm(resume, {
+        resumeUrl: fileKey || resumeUrl || '',
+        fileName: file.name,
+      });
+
+      setFormData((prev) => ({
+        ...prev,
+        ...mapped,
+        status: prev.status,
+        // keep user-edited fields only if parse left them empty
+        name: mapped.name || prev.name,
+        title: mapped.title || prev.title,
+        email: mapped.email || prev.email,
+        phone: mapped.phone || prev.phone,
+        location: mapped.location || prev.location,
+        linkedin_url: mapped.linkedin_url || prev.linkedin_url,
+        summary: mapped.summary || prev.summary,
+        skills: mapped.skills || prev.skills,
+        notes: mapped.notes || prev.notes,
+        resume_url: mapped.resume_url || prev.resume_url,
+        source: 'resume',
+      }));
+
+      setUploadedFile(file);
+      setParsedFromResume(true);
+      toast.success('Resume parsed — form fields updated');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Failed to parse resume');
+    } finally {
+      setParsing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const uploadResumeToS3 = async (candidateId: string): Promise<string | null> => {
@@ -119,17 +159,13 @@ export default function NewCandidatePage() {
     formDataObj.append('candidateId', candidateId);
 
     try {
-      // Prefer parse-resume which can also store to S3 when candidateId is set
       const res = await fetch('/api/parse-resume', {
         method: 'POST',
         body: formDataObj,
       });
       const data = await res.json();
-      if (data.fileKey || data.resumeUrl) {
-        return data.fileKey || data.resumeUrl;
-      }
+      if (data.fileKey || data.resumeUrl) return data.fileKey || data.resumeUrl;
 
-      // Fallback dedicated upload endpoint
       const uploadRes = await fetch('/api/upload-resume', {
         method: 'POST',
         body: formDataObj,
@@ -199,16 +235,16 @@ export default function NewCandidatePage() {
               resume_file_name: resumeFileName || uploadedFile.name,
             }),
           }).catch(() => null);
-          toast.success('Resume uploaded successfully!');
+          toast.success('Resume saved to candidate');
         }
       }
 
-      toast.success('Candidate created successfully');
-      if (candidateId) {
-        router.push(`/dashboard/candidates/${candidateId}`);
-      } else {
-        router.push('/dashboard/candidates');
+      if (typeof window !== 'undefined') {
+        delete (window as any).__turnkeyPendingResumeFile;
       }
+
+      toast.success('Candidate created successfully');
+      router.push(candidateId ? `/dashboard/candidates/${candidateId}` : '/dashboard/candidates');
     } catch (error: any) {
       console.error('Failed to create candidate:', error);
       toast.error(error.message || 'Failed to create candidate');
@@ -228,39 +264,64 @@ export default function NewCandidatePage() {
         <div>
           <h1 className="text-2xl font-bold">Add New Candidate</h1>
           <p className="text-sm text-muted-foreground">
-            Upload a resume to auto-fill, or enter details manually
+            Upload a resume to auto-fill fields, then create the candidate
           </p>
         </div>
       </div>
 
-      {/* Resume Upload — primary create path */}
-      <Card className="mb-8 border-blue-200 bg-blue-50/40">
+      {/* Simple always-working resume upload (native file input) */}
+      <Card className="mb-8 border-2 border-blue-200 bg-blue-50/50">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Upload Resume to Auto-Fill
+          <CardTitle className="flex items-center gap-2 text-blue-950">
+            <Upload className="h-5 w-5" />
+            Upload Resume (auto-fills form)
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Drop a PDF/DOCX (or paste a Google Doc link). We&apos;ll parse name, title, email,
-            phone, location, LinkedIn, skills, and summary into the form below.
+            Choose a PDF or Word document. Parsing fills name, email, phone, title, location,
+            LinkedIn, skills, and summary below.
           </p>
 
-          <ResumeUpload
-            buttonText="Parse Resume & Fill Form"
-            onSuccess={handleResumeParsed}
-            onError={(msg) => toast.error(msg)}
+          <input
+            ref={fileInputRef}
+            id="resume-file-input"
+            type="file"
+            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            className="hidden"
+            disabled={parsing}
+            onChange={(e) => handleResumeFile(e.target.files?.[0])}
           />
+
+          <div className="flex flex-wrap gap-3 items-center">
+            <Button
+              type="button"
+              disabled={parsing}
+              onClick={() => fileInputRef.current?.click()}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {parsing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Parsing resume...
+                </>
+              ) : (
+                <>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Choose Resume File
+                </>
+              )}
+            </Button>
+            {resumeFileName && (
+              <span className="text-sm text-muted-foreground">File: {resumeFileName}</span>
+            )}
+          </div>
 
           {parsedFromResume && (
             <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
               <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium">Resume parsed — review the fields below, then create.</p>
-                {resumeFileName && (
-                  <p className="text-xs mt-1 opacity-80">File: {resumeFileName}</p>
-                )}
+                <p className="font-medium">Resume data applied — review the form and click Create.</p>
               </div>
             </div>
           )}
@@ -284,54 +345,47 @@ export default function NewCandidatePage() {
                   </Label>
                   <Input
                     id="name"
-                    placeholder="Full name"
                     value={formData.name}
                     onChange={(e) => handleChange('name', e.target.value)}
                     required
                     className="mt-1"
+                    placeholder="Full name"
                   />
                 </div>
-
                 <div>
                   <Label htmlFor="title">Title</Label>
                   <Input
                     id="title"
-                    placeholder="e.g., Software Engineer"
                     value={formData.title}
                     onChange={(e) => handleChange('title', e.target.value)}
                     className="mt-1"
+                    placeholder="e.g., Software Engineer"
                   />
                 </div>
-
                 <div>
                   <Label htmlFor="location">Location</Label>
                   <Input
                     id="location"
-                    placeholder="e.g., San Francisco, CA"
                     value={formData.location}
                     onChange={(e) => handleChange('location', e.target.value)}
                     className="mt-1"
                   />
                 </div>
-
                 <div>
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
                     type="email"
-                    placeholder="email@example.com"
                     value={formData.email}
                     onChange={(e) => handleChange('email', e.target.value)}
                     className="mt-1"
                   />
                 </div>
-
                 <div>
                   <Label htmlFor="phone">Phone</Label>
                   <Input
                     id="phone"
                     type="tel"
-                    placeholder="(555) 123-4567"
                     value={formData.phone}
                     onChange={(e) => handleChange('phone', e.target.value)}
                     className="mt-1"
@@ -365,7 +419,6 @@ export default function NewCandidatePage() {
                     ))}
                   </select>
                 </div>
-
                 <div>
                   <Label htmlFor="source">Source</Label>
                   <select
@@ -393,61 +446,42 @@ export default function NewCandidatePage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <Label htmlFor="linkedin_url">LinkedIn URL</Label>
-                  <Input
-                    id="linkedin_url"
-                    placeholder="https://linkedin.com/in/..."
-                    value={formData.linkedin_url}
-                    onChange={(e) => handleChange('linkedin_url', e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <Label htmlFor="skills">Skills</Label>
-                  <Input
-                    id="skills"
-                    placeholder="Comma-separated skills from resume"
-                    value={formData.skills}
-                    onChange={(e) => handleChange('skills', e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <Label htmlFor="summary">Summary</Label>
-                  <textarea
-                    id="summary"
-                    placeholder="Professional summary from resume"
-                    value={formData.summary}
-                    onChange={(e) => handleChange('summary', e.target.value)}
-                    className="mt-1 min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <Label htmlFor="resume_url">Resume URL / S3 key</Label>
-                  <Input
-                    id="resume_url"
-                    placeholder="Filled after parse/upload, or paste a URL"
-                    value={formData.resume_url}
-                    onChange={(e) => handleChange('resume_url', e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <Label htmlFor="notes">Notes</Label>
-                  <textarea
-                    id="notes"
-                    placeholder="Add any notes about this candidate..."
-                    value={formData.notes}
-                    onChange={(e) => handleChange('notes', e.target.value)}
-                    className="mt-1 min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  />
-                </div>
+              <div>
+                <Label htmlFor="linkedin_url">LinkedIn URL</Label>
+                <Input
+                  id="linkedin_url"
+                  value={formData.linkedin_url}
+                  onChange={(e) => handleChange('linkedin_url', e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="skills">Skills</Label>
+                <Input
+                  id="skills"
+                  value={formData.skills}
+                  onChange={(e) => handleChange('skills', e.target.value)}
+                  className="mt-1"
+                  placeholder="Comma-separated"
+                />
+              </div>
+              <div>
+                <Label htmlFor="summary">Summary</Label>
+                <textarea
+                  id="summary"
+                  value={formData.summary}
+                  onChange={(e) => handleChange('summary', e.target.value)}
+                  className="mt-1 min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <Label htmlFor="notes">Notes</Label>
+                <textarea
+                  id="notes"
+                  value={formData.notes}
+                  onChange={(e) => handleChange('notes', e.target.value)}
+                  className="mt-1 min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
               </div>
             </CardContent>
           </Card>
@@ -458,7 +492,7 @@ export default function NewCandidatePage() {
                 Cancel
               </Button>
             </Link>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || parsing}>
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
