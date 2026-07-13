@@ -19,38 +19,45 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-// === TEMPORARY TEST ENDPOINT - REMOVE AFTER TESTING ===
+// === DIAGNOSTIC TEST POST - REMOVE LATER ===
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const jobId = params.id;
-  console.log(`[Events API TEST] POST request for job ${jobId}`);
+  console.log(`[TEST POST] Started for job ${jobId}`);
 
   try {
-    const body = await request.json();
-    const { noteText = "Test note from API", createdBy = "test-user" } = body;
+    const body = await request.json().catch(() => ({}));
+    const noteText = body.noteText || "Default test note";
+    const createdBy = body.createdBy || "test-user";
+
+    console.log(`[TEST POST] Calling recordJobEvent with:`, { jobId, noteText, createdBy });
 
     const result = await recordJobEvent(
       jobId,
       'NOTE',
       { 
-        title: 'Note Added', 
-        description: noteText,
-        metadata: { source: 'manual-test' } 
+        title: 'Test Note', 
+        description: noteText, 
+        metadata: { source: 'diagnostic' } 
       },
       createdBy
     );
 
-    console.log(`[Events API TEST] Record result:`, result);
+    console.log(`[TEST POST] recordJobEvent returned:`, result);
 
-    // Refresh events
-    const freshEvents = await getJobEvents(jobId, { limit: 10 });
+    const fresh = await getJobEvents(jobId, { limit: 5 });
+    console.log(`[TEST POST] Fresh events count:`, fresh.events?.length || 0);
 
     return NextResponse.json({ 
       success: true, 
-      recordResult: result, 
-      eventsNow: freshEvents.events 
+      record: result, 
+      events: fresh.events 
     });
-  } catch (error) {
-    console.error(`[Events API TEST] Error:`, error);
-    return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
+  } catch (error: any) {
+    console.error(`[TEST POST] CRITICAL ERROR:`, {
+      message: error.message,
+      stack: error.stack ? error.stack.substring(0, 500) : null,
+      name: error.name
+    });
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
