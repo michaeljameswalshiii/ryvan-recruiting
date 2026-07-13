@@ -98,7 +98,7 @@ export async function recordJobEvent(
   }
 }
 
-// FIXED: Direct PK query for reliability
+// FIXED + SAFE getJobEvents
 export async function getJobEvents(
   jobId: string,
   options?: { limit?: number; cursor?: PaginationCursor; eventTypes?: JobEventType[] }
@@ -109,7 +109,7 @@ export async function getJobEvents(
 
     console.log(`[getJobEvents] DIRECT QUERY for job ${jobId}, tenant ${tenantId}`);
 
-    const events = await queryItems(
+    const rawEvents = await queryItems(
       eventsTable,
       'PK = :pk AND begins_with(SK, :prefix)',
       {
@@ -118,6 +118,8 @@ export async function getJobEvents(
       },
       { ScanIndexForward: false }
     );
+
+    const events = Array.isArray(rawEvents) ? rawEvents : [];
 
     console.log(`[getJobEvents] Raw DB items found: ${events.length}`);
 
@@ -148,6 +150,7 @@ export async function getJobEvents(
     return { events: [] };
   }
 }
+
 // Helper for UI
 export async function addNoteToJob(jobId: string, noteText: string, createdBy: string) {
   return recordJobEvent(jobId, 'NOTE', {
@@ -156,5 +159,3 @@ export async function addNoteToJob(jobId: string, noteText: string, createdBy: s
     metadata: { source: 'ui' }
   }, createdBy);
 }
-
-// Keep the rest of your helper functions (recordJobCreated, addNoteToJob, etc.) unchanged at the bottom
