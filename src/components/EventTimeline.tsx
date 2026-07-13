@@ -123,7 +123,7 @@ export default function EventTimeline({
       if (entityType === 'candidate') {
         endpoint = `/api/candidate/${entityId}/notes`;
       } else if (entityType === 'job') {
-        endpoint = `/api/jobs/${entityId}/notes`;   // ✅ FIXED - this was the bug
+        endpoint = `/api/jobs/${entityId}/notes`;   // ✅ FIXED
       } else {
         endpoint = `/api/company/${entityId}/notes`;
       }
@@ -219,4 +219,154 @@ export default function EventTimeline({
       INTERVIEW_SCHEDULED: 'Interview',
       INTERVIEW_COMPLETED: 'Interview Done',
       CANDIDATE_CREATED: 'Added',
-      CANDIDATE_VIEWED:
+      CANDIDATE_VIEWED: 'Viewed',
+      RESUME_UPLOADED: 'Resume',
+      COMPANY_CREATED: 'Added',
+      CONTACT_ADDED: 'Contact Added',
+      CONTACT_REMOVED: 'Contact Removed',
+      DEAL_CREATED: 'Deal',
+      DEAL_STAGE_CHANGED: 'Deal Stage',
+      DEAL_WON: 'Deal Won',
+      DEAL_LOST: 'Deal Lost',
+      MEETING_SCHEDULED: 'Meeting',
+      CALL_COMPLETED: 'Call Done',
+    };
+    return labels[eventType] || 'Event';
+  }
+
+  function formatDate(dateString: string) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    let relativeTime = '';
+    if (diffMins < 1) relativeTime = 'just now';
+    else if (diffMins < 60) relativeTime = `${diffMins}m ago`;
+    else if (diffHours < 24) relativeTime = `${diffHours}h ago`;
+    else if (diffDays < 7) relativeTime = `${diffDays}d ago`;
+
+    const formatted = date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+
+    return relativeTime ? `${formatted} (${relativeTime})` : formatted;
+  }
+
+  if (loading) {
+    return (
+      <div className="border border-border rounded-lg p-4 bg-background">
+        <h3 className="text-lg font-semibold mb-4">Category</h3>
+        <div className="flex items-center justify-center py-8 text-muted-foreground">
+          Loading events...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-border rounded-lg bg-background overflow-hidden">
+      <div className="border-b border-border p-4">
+        <h3 className="text-lg font-semibold">Category</h3>
+        <p className="text-sm text-muted-foreground">
+          {events.length} event{events.length !== 1 ? 's' : ''} • Chronological
+        </p>
+      </div>
+
+      <div className="border-b border-border p-4">
+        <div className="mb-3">
+          <label className="text-sm font-medium mb-2 block">Note Type</label>
+          <select
+            value={noteType}
+            onChange={(e) => setNoteType(e.target.value)}
+            className="w-full p-2 text-sm border border-input rounded-md bg-background"
+          >
+            {noteTypes.map((type) => (
+              <option key={type.value} value={type.value}>
+                {type.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="mb-3">
+          <label className="text-sm font-medium mb-2 block">Notes</label>
+          <textarea
+            placeholder="Add a note..."
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            rows={2}
+            className="w-full p-2 text-sm border border-input rounded-md resize-y min-h-[60px]"
+          />
+        </div>
+        <button 
+          onClick={handleAddNote} 
+          disabled={addingNote || !newNote.trim()}
+          className="mt-2 w-full py-2 px-4 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-primary text-primary-foreground hover:bg-primary/90"
+        >
+          {addingNote ? 'Adding...' : 'Add Note'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="mx-4 mt-4 p-3 bg-destructive/10 text-destructive text-sm rounded-md">
+          {error}
+        </div>
+      )}
+
+      <div style={{ maxHeight }} className="overflow-y-auto">
+        {events.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">
+            No activity yet
+          </div>
+        ) : (
+          <div className="relative p-4">
+            <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-border" />
+            
+            <div className="flex flex-col gap-4">
+              {events.map((event) => {
+                const eventColor = getEventColor(event.eventType);
+                const eventLabel = getEventLabel(event.eventType);
+                const eventIcon = getEventIcon(event.eventType);
+                return (
+                  <div key={event.id} className="flex gap-3 relative">
+                    <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${eventColor}`}>
+                      {eventIcon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${eventColor}`}>
+                          {eventLabel}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(event.createdAt)}
+                        </span>
+                      </div>
+                      <div className="font-medium text-sm">
+                        {event.title}
+                      </div>
+                      {event.description && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {event.description}
+                        </p>
+                      )}
+                      <div className="text-xs text-muted-foreground mt-2">
+                        by {event.createdByName || event.createdBy}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
