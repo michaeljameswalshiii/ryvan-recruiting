@@ -5,8 +5,8 @@
 
 "use client";
 
-import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useClient, useDeleteClient } from "@/lib/hooks/query-client";
@@ -18,6 +18,7 @@ import { ContactModal } from "@/components/company";
 import { useRemoveContact } from "@/lib/hooks/query-client";
 import { Building2, MapPin, Users, Globe, Linkedin, Mail, Phone, ArrowLeft, FileText, Clock, Briefcase, User, StickyNote, Plus, Star, Edit2, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { SendEmailModal } from "@/components/email/send-email-modal";
 
 // Dynamic import for EventTimeline to avoid SSR issues
 const CompanyEventTimeline = dynamic(() => 
@@ -33,26 +34,33 @@ const tabs = [
   { id: "contacts", label: "Contacts", icon: User },
 ];
 
-// Import SendEmailModal
-import { SendEmailModal } from "@/components/email/send-email-modal";
+const validTabIds = new Set(tabs.map((tab) => tab.id));
 
 export default function CompanyDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const clientId = params.id as string;
-  
-  // Guard: Redirect "new" to the proper new company page
-  if (clientId === 'new') {
-    router.replace('/dashboard/companies/new');
-    return (
-      <div className="p-8">
-        <div className="animate-pulse">Redirecting...</div>
-      </div>
-    );
-  }
-  
-const [activeTab, setActiveTab] = useState("overview");
-  
+
+  // Hooks must run unconditionally (redirect "new" via effect below)
+  const tabFromUrl = searchParams.get("tab");
+  // Default to Contacts so company pages land on people at the account
+  const initialTab = tabFromUrl && validTabIds.has(tabFromUrl) ? tabFromUrl : "contacts";
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  // Keep tab state in sync when URL changes (e.g. in-app links with ?tab=contacts)
+  useEffect(() => {
+    if (tabFromUrl && validTabIds.has(tabFromUrl) && tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [tabFromUrl, activeTab]);
+
+  useEffect(() => {
+    if (clientId === "new") {
+      router.replace("/dashboard/companies/new");
+    }
+  }, [clientId, router]);
+
   // Send Email Modal state
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<{
@@ -60,6 +68,36 @@ const [activeTab, setActiveTab] = useState("overview");
     name: string;
     email: string;
   } | null>(null);
+
+  // Fetch company data
+  const { data: company, isLoading, error } = useClient(clientId);
+  const { data: allLeads = [] } = useLeads();
+
+  // Filter leads for this company
+  const companyLeads = useMemo(
+    () =>
+      allLeads.filter(
+        (lead: any) => lead.company?.toLowerCase() === company?.name?.toLowerCase()
+      ),
+    [allLeads, company?.name]
+  );
+
+  // Keep URL in sync when switching tabs so links can open Contacts directly
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    const next = new URLSearchParams(searchParams.toString());
+    if (tabId === "contacts") {
+      // Contacts is the default landing tab — keep the bare company URL clean
+      next.delete("tab");
+    } else {
+      next.set("tab", tabId);
+    }
+    const qs = next.toString();
+    router.replace(
+      qs ? `/dashboard/companies/${clientId}?${qs}` : `/dashboard/companies/${clientId}`,
+      { scroll: false }
+    );
+  };
 
   // Handle send email click from contacts
   const handleEmailClick = (contact: any) => {
@@ -73,45 +111,39 @@ const [activeTab, setActiveTab] = useState("overview");
 
   // Handle send email with tracking
   const handleSendEmail = async (subject: string, body: string) => {
-    if (!selectedContact) return;
-    
+    if (!selectedContact || !company?.id) return;
+
     try {
       // Log the activity to the company's activity timeline
-      const response = await fetch(`/api/company/${company.id}/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch(`/api/companies/${company.id}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          eventType: 'EMAIL_SENT',
-          title: 'Email Sent',
-          description: `Email sent to ${selectedContact.name} (${selectedContact.email}) - Subject: ${subject}`,
-          metadata: {
-            subject,
-            body,
-            contactId: selectedContact.id,
-            contactEmail: selectedContact.email,
-          }
-        })
+          noteText: `Email sent to ${selectedContact.name} (${selectedContact.email}) - Subject: ${subject}`,
+          noteType: "email_sent",
+          createdBy: "user@turnkey.com",
+        }),
       });
-      
+
       if (!response.ok) {
-        console.error('Failed to log email event');
+        console.error("Failed to log email event");
       }
-      
+
       toast.success(`Email sent to ${selectedContact.email}`);
     } catch (err) {
-      console.error('Error logging email event:', err);
+      console.error("Error logging email event:", err);
       toast.success(`Email sent to ${selectedContact.email}`);
     }
   };
-  
-  // Fetch company data
-  const { data: company, isLoading, error } = useClient(clientId);
-  const { data: allLeads = [] } = useLeads();
-  
-  // Filter leads for this company
-  const companyLeads = allLeads.filter((lead: any) => 
-    lead.company?.toLowerCase() === company?.name?.toLowerCase()
-  );
+
+  // Guard: Redirect "new" after hooks (avoids rules-of-hooks violation)
+  if (clientId === "new") {
+    return (
+      <div className="p-8">
+        <div className="animate-pulse">Redirecting...</div>
+      </div>
+    );
+  }
 
   // Loading state
   if (isLoading) {
@@ -245,7 +277,7 @@ const [activeTab, setActiveTab] = useState("overview");
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab.id
                     ? "border-primary text-primary"
@@ -262,10 +294,21 @@ const [activeTab, setActiveTab] = useState("overview");
 
 {/* Tab Content */}
       <div className="min-h-[400px]">
-        {activeTab === "overview" && <OverviewTab company={company} />}
+        {activeTab === "overview" && (
+          <OverviewTab
+            company={company}
+            onViewContacts={() => handleTabChange("contacts")}
+          />
+        )}
         {activeTab === "history" && <HistoryTab company={company} />}
         {activeTab === "jobs" && <JobsTab companyId={company.id} companyName={company.name} />}
-        {activeTab === "contacts" && <ContactsTab company={company} leads={companyLeads} onEmailClick={handleEmailClick} />}
+        {activeTab === "contacts" && (
+          <ContactsTab
+            company={company}
+            leads={companyLeads}
+            onEmailClick={handleEmailClick}
+          />
+        )}
       </div>
 
       {/* Send Email Modal */}
@@ -283,7 +326,13 @@ const [activeTab, setActiveTab] = useState("overview");
 }
 
 // Overview Tab Component
-function OverviewTab({ company }: { company: any }) {
+function OverviewTab({
+  company,
+  onViewContacts,
+}: {
+  company: any;
+  onViewContacts?: () => void;
+}) {
   // Get primary contact from contacts array
   const contacts = company.contacts || [];
   const primaryContact = contacts.find((c: any) => c.isPrimary) || contacts[0];
@@ -368,26 +417,50 @@ function OverviewTab({ company }: { company: any }) {
               </span>
             </div>
           )}
+          {onViewContacts && (
+            <Button variant="outline" size="sm" onClick={onViewContacts} className="mt-2">
+              <User className="h-4 w-4 mr-2" />
+              View Contacts ({contacts.length})
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Primary Contact - Show prominently */}
       {primaryContact && (
         <div className="md:col-span-2 p-6 rounded-lg border border-border bg-card space-y-4">
-          <h3 className="font-semibold flex items-center gap-2">
-            <User className="h-5 w-5" />
-            Primary Contact
-            <Badge variant="secondary" className="ml-2 bg-yellow-100 text-yellow-800">
-              <Star className="h-3 w-3 mr-1" />
-              Primary
-            </Badge>
-          </h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-semibold flex items-center gap-2">
+              <User className="h-5 w-5" />
+              Primary Contact
+              <Badge variant="secondary" className="ml-2 bg-yellow-100 text-yellow-800">
+                <Star className="h-3 w-3 mr-1" />
+                Primary
+              </Badge>
+            </h3>
+            {onViewContacts && (
+              <Button variant="ghost" size="sm" onClick={onViewContacts}>
+                View all contacts
+              </Button>
+            )}
+          </div>
           <div className="flex items-center gap-4">
             <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
               <User className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <p className="font-medium">{primaryContact.name}</p>
+              <p className="font-medium">
+                {primaryContact.id ? (
+                  <Link
+                    href={`/dashboard/contact-info/${primaryContact.id}?companyId=${company.id}`}
+                    className="hover:underline text-primary"
+                  >
+                    {primaryContact.name}
+                  </Link>
+                ) : (
+                  primaryContact.name
+                )}
+              </p>
               {primaryContact.title && (
                 <p className="text-sm text-muted-foreground">{primaryContact.title}</p>
               )}
@@ -401,13 +474,13 @@ function OverviewTab({ company }: { company: any }) {
                     {primaryContact.email}
                   </a>
                 )}
-                {primaryContact.phone && (
+                {(primaryContact.preferredPhone || primaryContact.phone || primaryContact.phones?.[0]?.number) && (
                   <a 
-                    href={`tel:${primaryContact.phone}`}
+                    href={`tel:${primaryContact.preferredPhone || primaryContact.phone || primaryContact.phones?.[0]?.number}`}
                     className="flex items-center gap-1 text-sm text-primary hover:underline"
                   >
                     <Phone className="h-3 w-3" />
-                    {primaryContact.phone}
+                    {primaryContact.preferredPhone || primaryContact.phone || primaryContact.phones?.[0]?.number}
                   </a>
                 )}
               </div>
@@ -639,7 +712,18 @@ function ContactsTab({ company, leads, onEmailClick }: { company: any; leads: an
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h4 className="font-medium">{contact.name}</h4>
+                    <h4 className="font-medium">
+                      {contact.id ? (
+                        <Link
+                          href={`/dashboard/contact-info/${contact.id}?companyId=${company.id}`}
+                          className="hover:underline text-primary"
+                        >
+                          {contact.name}
+                        </Link>
+                      ) : (
+                        contact.name
+                      )}
+                    </h4>
                     {contact.isPrimary && (
                       <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-xs">
                         <Star className="h-3 w-3 mr-1" />
@@ -674,19 +758,29 @@ function ContactsTab({ company, leads, onEmailClick }: { company: any; leads: an
                         {contact.email}
                       </a>
                     )}
-                    {contact.phone && (
+                    {(contact.preferredPhone || contact.phone || contact.phones?.[0]?.number) && (
                       <a 
-                        href={`tel:${contact.phone}`}
+                        href={`tel:${contact.preferredPhone || contact.phone || contact.phones?.[0]?.number}`}
                         className="flex items-center gap-1 text-sm text-primary hover:underline"
                       >
                         <Phone className="h-3 w-3" />
-                        {contact.phone}
+                        {contact.preferredPhone || contact.phone || contact.phones?.[0]?.number}
                       </a>
                     )}
                   </div>
 
                   {/* Action buttons */}
                   <div className="flex gap-2 mt-3 pt-3 border-t border-border">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      asChild
+                      className="h-7 px-2 text-xs"
+                    >
+                      <Link href={`/dashboard/contact-info/${contact.id}?companyId=${company.id}`}>
+                        View
+                      </Link>
+                    </Button>
                     <Button 
                       variant="ghost" 
                       size="sm" 

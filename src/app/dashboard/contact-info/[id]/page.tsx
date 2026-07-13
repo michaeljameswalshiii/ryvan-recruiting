@@ -432,7 +432,7 @@ export default function ContactDetailPage() {
           <p className="text-xs text-muted-foreground">COMPANY</p>
           {contact.clientId ? (
             <Link
-              href={`/dashboard/companies/${contact.clientId}`}
+              href={`/dashboard/companies/${contact.clientId}?tab=contacts`}
               className="font-medium text-blue-600 hover:underline"
             >
               {contact.companyName}
@@ -535,10 +535,10 @@ export default function ContactDetailPage() {
         <div className="bg-card border rounded-3xl p-8">
           {contact.clientId ? (
             <Link
-              href={`/dashboard/companies/${contact.clientId}`}
+              href={`/dashboard/companies/${contact.clientId}?tab=contacts`}
               className="text-blue-600 hover:underline"
             >
-              Open company profile →
+              Open company contacts →
             </Link>
           ) : (
             <p className="text-muted-foreground">No company linked.</p>

@@ -133,7 +133,7 @@ const deleteMutation = useMutation({
             <p className="text-2xl text-muted-foreground">{contact.title}</p>
             <p className="text-xl">
               {companyId ? (
-                <a href={`/dashboard/companies/${companyId}`} className="hover:underline text-blue-600">
+                <a href={`/dashboard/companies/${companyId}?tab=contacts`} className="hover:underline text-blue-600">
                   {companyName}
                 </a>
               ) : (
@@ -255,9 +255,9 @@ const deleteMutation = useMutation({
               <Button 
                 variant="ghost" 
                 className="w-full justify-start"
-                onClick={() => companyId && router.push(`/dashboard/companies/${companyId}`)}
+                onClick={() => companyId && router.push(`/dashboard/companies/${companyId}?tab=contacts`)}
               >
-                View Company Profile
+                View Company Contacts
               </Button>
               <Button variant="ghost" className="w-full justify-start">
                 Send Candidate Profile
