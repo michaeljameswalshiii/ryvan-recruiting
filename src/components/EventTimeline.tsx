@@ -1,10 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { toast } from 'sonner'; // or your toast library
-import { StickyNote, Clock } from 'lucide-react'; // adjust icons as needed
 
-// Types (keep or expand your existing ones)
+// Types
 export type EntityType = 'candidate' | 'company' | 'job';
 
 interface EventItem {
@@ -47,7 +45,7 @@ export default function EventTimeline({
   const [events, setEvents] = useState<EventItem[]>(initialEvents);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Note form state
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('general');
@@ -86,17 +84,16 @@ export default function EventTimeline({
     }
   }, [entityType, entityId]);
 
-  // Initial load
   useEffect(() => {
     if (!initialEvents.length) {
       fetchEvents();
     }
   }, [initialEvents.length, fetchEvents]);
 
-  // Get icon/color/label helpers (keep your existing ones or add these)
+  // Helper functions
   const getEventIcon = (eventType: string) => {
-    if (eventType === 'NOTE') return <StickyNote className="h-4 w-4" />;
-    return <Clock className="h-4 w-4" />;
+    if (eventType === 'NOTE') return <span>📝</span>;
+    return <span>⏰</span>;
   };
 
   const getEventColor = (eventType: string) => {
@@ -140,7 +137,6 @@ export default function EventTimeline({
       createdByName: undefined,
     };
 
-    // Add to UI immediately
     setEvents(prev => [optimisticEvent, ...prev]);
 
     try {
@@ -170,18 +166,19 @@ export default function EventTimeline({
         throw new Error(errorData.error || 'Failed to add note');
       }
 
-      toast.success("Note added successfully");
+      // Simple success feedback (replace with your toast later)
+      console.log("Note added successfully");
+      alert("Note added successfully!"); // Temporary - replace with your toast
+
       setNewNote('');
       setNoteType('general');
 
-      // Refetch real data (replaces the optimistic entry)
       await fetchEvents();
     } catch (err: any) {
       console.error('Failed to add note:', err);
       setError(err.message || 'Failed to add note');
-      toast.error(err.message || 'Failed to add note');
+      alert(err.message || 'Failed to add note');
 
-      // Remove optimistic entry on failure
       setEvents(prev => prev.filter(e => e.id !== optimisticEvent.id));
     } finally {
       setAddingNote(false);
@@ -191,7 +188,7 @@ export default function EventTimeline({
   // ==================== RENDER ====================
   return (
     <div className="bg-white border rounded-xl">
-      {/* Note Form - matches your screenshot */}
+      {/* Note Form */}
       <div className="border-b border-border p-4">
         <div className="mb-3">
           <label className="text-sm font-medium mb-2 block">Note Type</label>
@@ -228,7 +225,7 @@ export default function EventTimeline({
         </button>
       </div>
 
-      {/* Timeline / Events List */}
+      {/* Timeline */}
       <div className="p-4" style={{ maxHeight, overflowY: 'auto' }}>
         {loading && events.length === 0 && (
           <div className="text-center text-sm text-gray-500 py-4">Loading events...</div>
@@ -240,7 +237,6 @@ export default function EventTimeline({
           <div className="text-center text-sm text-gray-500 py-8">No events yet.</div>
         ) : (
           <div className="space-y-4 relative">
-            {/* Vertical timeline line */}
             <div className="absolute left-6 top-0 bottom-0 w-px bg-border" />
 
             {events.map((event) => (
@@ -254,4 +250,22 @@ export default function EventTimeline({
                       {getEventLabel(event.eventType)}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {formatDate(event.createdAt
+                      {formatDate(event.createdAt)}
+                    </span>
+                  </div>
+                  <div className="font-medium text-sm">{event.title}</div>
+                  {event.description && (
+                    <p className="text-sm text-muted-foreground mt-1">{event.description}</p>
+                  )}
+                  <div className="text-xs text-muted-foreground mt-2">
+                    by {event.createdByName || event.createdBy}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
