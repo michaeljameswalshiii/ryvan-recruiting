@@ -1,6 +1,6 @@
 /**
  * Job Events Service
- * Records and retrieves job events from DynamoDB (aligned with candidate-events.ts)
+ * Records and retrieves job events from DynamoDB
  * 
  * @serverOnly
  */
@@ -39,7 +39,6 @@ function logEvent(level: LogLevel, message: string, meta?: any) {
 }
 
 async function withRetry<T>(operation: () => Promise<T>): Promise<T> {
-  // ... (same retry logic as before — keep your existing one)
   let lastError;
   for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
     try {
@@ -99,7 +98,6 @@ export async function recordJobEvent(
   }
 }
 
-// GSI-based get (reliable tenant + entity filter)
 export async function getJobEvents(
   jobId: string,
   options?: { limit?: number; cursor?: PaginationCursor; eventTypes?: JobEventType[] }
@@ -141,4 +139,32 @@ export async function getJobEvents(
   }
 }
 
-// ... (keep all your existing helper functions like recordJobCreated, addNoteToJob, etc. at the bottom — they call recordJobEvent)
+/**
+ * Add a note to a job
+ */
+export async function addNoteToJob(
+  jobId: string,
+  noteText: string,
+  createdBy: string
+): Promise<RecordEventResponse> {
+  if (!noteText || noteText.trim() === '') {
+    return {
+      success: false,
+      error: 'Note text is required',
+    };
+  }
+
+  return recordJobEvent(
+    jobId,
+    'NOTE',
+    {
+      title: 'Note Added',
+      description: noteText.substring(0, 100) + (noteText.length > 100 ? '...' : ''),
+      metadata: {
+        noteText,
+        changedBy: createdBy,
+      },
+    },
+    createdBy
+  );
+}
