@@ -284,6 +284,11 @@ const candidateNoteTypes = [
   { value: 'placement_made', label: 'Placement made' },
   { value: 'check_in', label: 'Check-in' },
   { value: 'other', label: 'Other' },
+  // Legacy UI note types from older candidate detail
+  { value: 'Conversation', label: 'Conversation' },
+  { value: 'Interview Scheduled', label: 'Interview Scheduled' },
+  { value: 'Submitted', label: 'Submitted' },
+  { value: 'Email Sent', label: 'Email Sent' },
 ];
 
 /**

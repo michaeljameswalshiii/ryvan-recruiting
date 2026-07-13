@@ -9,9 +9,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+
+/** Matches server candidateNoteTypes in candidate-events.ts */
+const NOTE_TYPES = [
+  { value: "general", label: "General Note" },
+  { value: "phone_call", label: "Phone call" },
+  { value: "email_sent", label: "Email sent" },
+  { value: "meeting", label: "Meeting" },
+  { value: "follow_up", label: "Follow-up" },
+  { value: "proposal_sent", label: "Proposal sent" },
+  { value: "contract_signed", label: "Contract signed" },
+  { value: "placement_made", label: "Placement made" },
+  { value: "check_in", label: "Check-in" },
+  { value: "other", label: "Other" },
+  // Legacy labels used in older UI (still accepted / displayed)
+  { value: "Conversation", label: "Conversation" },
+  { value: "Interview Scheduled", label: "Interview Scheduled" },
+  { value: "Submitted", label: "Submitted" },
+  { value: "Email Sent", label: "Email Sent" },
+] as const;
 
 interface CandidateDetailClientProps {
   candidate: any;
@@ -26,7 +45,8 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
   const [notes, setNotes] = useState<any[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [newNote, setNewNote] = useState("");
-  const [noteType, setNoteType] = useState("Conversation");
+  const [noteType, setNoteType] = useState("general");
+  const [addingNote, setAddingNote] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -56,35 +76,85 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
   const candidateSummary = safeCandidate.summary || '';
   const candidateStage = safeCandidate.stage || 'Identified';
 
-  useEffect(() => {
+  const fetchNotes = async () => {
     if (!candidateId) {
       setNotesLoading(false);
       return;
     }
-    const fetchNotes = async () => {
-      try {
-        const res = await fetch(`/api/candidate/${candidateId}/events?t=${Date.now()}`);
-        if (res.ok) {
-          const data = await res.json();
-          setNotes(Array.isArray(data) ? data : (data.events || []));
-        }
-      } catch (err) {
-        console.error("Failed to fetch notes", err);
-      } finally {
-        setNotesLoading(false);
+    setNotesLoading(true);
+    try {
+      const res = await fetch(`/api/candidate/${candidateId}/events?t=${Date.now()}&limit=50`);
+      if (res.ok) {
+        const data = await res.json();
+        const events = Array.isArray(data) ? data : data.events || [];
+        setNotes(events);
       }
-    };
+    } catch (err) {
+      console.error("Failed to fetch notes", err);
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchNotes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidateId]);
 
   const handleAddNote = async () => {
-    if (!newNote.trim()) return;
+    if (!newNote.trim() || !candidateId) return;
+
+    setAddingNote(true);
     try {
+      const res = await fetch(`/api/candidate/${candidateId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          noteText: newNote.trim(),
+          noteType,
+          stage: candidateStage || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to add note");
+      }
+
       toast.success("Note logged successfully");
       setNewNote("");
-    } catch (err) {
-      toast.error("Failed to log note");
+      setNoteType("general");
+      await fetchNotes();
+    } catch (err: any) {
+      console.error("Failed to log note", err);
+      toast.error(err?.message || "Failed to log note");
+    } finally {
+      setAddingNote(false);
     }
+  };
+
+  const getNoteTypeLabel = (note: any): string => {
+    const meta = note?.metadata || {};
+    if (meta.noteTypeLabel) return meta.noteTypeLabel;
+    if (meta.noteType) {
+      const match = NOTE_TYPES.find((t) => t.value === meta.noteType);
+      if (match) return match.label;
+      return String(meta.noteType);
+    }
+    if (note?.eventType && note.eventType !== "NOTE") {
+      return String(note.eventType).replace(/_/g, " ");
+    }
+    return "Note";
+  };
+
+  const getNoteBody = (note: any): string => {
+    return (
+      note?.metadata?.noteText ||
+      note?.description ||
+      note?.title ||
+      note?.noteText ||
+      "Note"
+    );
   };
 
   const handleDeleteCandidate = async () => {
@@ -243,14 +313,149 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
               </CardContent>
             </Card>
 
-            {/* Notes section - keep your original code here */}
+            {/* Notes & Activity Log — original UI with note types + API persistence */}
             <Card>
-              <CardHeader><CardTitle>Notes & Activity Log</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                {/* Your original notes code */}
+              <CardHeader>
+                <CardTitle>Notes & Activity Log</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col sm:flex-row gap-3 mb-6">
+                  <Select value={noteType} onValueChange={setNoteType}>
+                    <SelectTrigger className="w-full sm:w-56">
+                      <SelectValue placeholder="Note type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {NOTE_TYPES.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="Add note detail here..."
+                    className="flex-1 min-h-[80px]"
+                  />
+                  <Button
+                    onClick={handleAddNote}
+                    disabled={!newNote.trim() || addingNote}
+                    className="sm:self-start"
+                  >
+                    {addingNote ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plus className="mr-2 h-4 w-4" />
+                    )}
+                    Log
+                  </Button>
+                </div>
+
+                {notesLoading ? (
+                  <div className="flex justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : notes && notes.length > 0 ? (
+                  <div className="space-y-4">
+                    {notes.map((note: any, index: number) => (
+                      <div
+                        key={note.id || note.SK || index}
+                        className="border-l-4 border-blue-200 pl-4 py-2"
+                      >
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mb-1">
+                          <Badge variant="secondary" className="text-xs font-normal">
+                            {getNoteTypeLabel(note)}
+                          </Badge>
+                          <span>
+                            {note.createdAt || note.timestamp
+                              ? new Date(note.createdAt || note.timestamp).toLocaleString()
+                              : "Recent"}
+                          </span>
+                          {note.createdBy && note.createdBy !== "system" && (
+                            <span>· {note.createdBy}</span>
+                          )}
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">{getNoteBody(note)}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-center py-8">
+                    No activity yet. Log the first note above.
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>
+
+          <div className="lg:col-span-5 space-y-8">
+            <Card>
+              <CardHeader>
+                <CardTitle>Professional Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground whitespace-pre-wrap">
+                {candidateSummary || "No summary on file."}
+              </CardContent>
+            </Card>
+            {candidateResumeUrl && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Resume</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <a
+                    href={candidateResumeUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:underline text-sm"
+                  >
+                    {candidateResumeFileName || "View resume"}
+                  </a>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="timeline" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Full Timeline</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {notesLoading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : notes && notes.length > 0 ? (
+                <div className="space-y-4">
+                  {notes.map((note: any, index: number) => (
+                    <div
+                      key={note.id || note.SK || `tl-${index}`}
+                      className="border rounded-lg p-4"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mb-2">
+                        <Badge variant="outline">{getNoteTypeLabel(note)}</Badge>
+                        <span>
+                          {note.createdAt || note.timestamp
+                            ? new Date(note.createdAt || note.timestamp).toLocaleString()
+                            : "Recent"}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium mb-1">{note.title || getNoteTypeLabel(note)}</p>
+                      <p className="text-sm whitespace-pre-wrap text-muted-foreground">
+                        {getNoteBody(note)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">No timeline events yet.</p>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
