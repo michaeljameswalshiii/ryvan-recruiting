@@ -199,14 +199,18 @@ export async function getCandidateEvents(
       exprValues[':cursorSK'] = cursor.timestamp;
     }
 
-    const events = await queryItems<CandidateEvent>(
+    // queryItems returns { items: T[], lastEvaluatedKey?: ... } — not a bare array
+    const rawResponse = await queryItems<CandidateEvent>(
       eventsTable,
       queryExpr,
       exprValues
     );
+    const events = Array.isArray(rawResponse)
+      ? rawResponse
+      : (rawResponse?.items || []);
 
     // Sort by timestamp descending (newest first)
-    const sortedEvents = events.sort((a, b) => 
+    const sortedEvents = [...events].sort((a, b) =>
       b.SK.localeCompare(a.SK)
     );
 
