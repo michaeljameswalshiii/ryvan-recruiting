@@ -71,11 +71,13 @@ export async function getJobEvents(
       'PK = :pk',
       { ':pk': `ENTITY#job#${jobId}` },
       { Limit: options?.limit || 50, ScanIndexForward: false }
-    ) || [];
+    );
 
-    console.log(`[getJobEvents] Raw DB items: ${rawEvents.length}`);
+    const eventsArray = Array.isArray(rawEvents) ? rawEvents : [];
 
-    const mapped = rawEvents.map((e: any) => ({
+    console.log(`[getJobEvents] Raw DB items: ${eventsArray.length}`);
+
+    const mapped = eventsArray.map((e: any) => ({
       id: (e.SK || '').replace('EVENT#', ''),
       entityId: e.entityId,
       entityType: 'job',
