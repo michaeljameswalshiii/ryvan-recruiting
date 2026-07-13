@@ -9,16 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle 
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { ArrowLeft, Loader2, Plus, Mail, FileText, ExternalLink, Trash2, Briefcase, GraduationCap, Brain } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -26,7 +17,6 @@ interface CandidateDetailClientProps {
   candidate: any;
 }
 
-// Named export for compatibility with both import styles
 export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
   return <CandidateDetailClientInner candidate={candidate} />;
 }
@@ -40,7 +30,7 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Local contact info state (updates UI immediately after save)
+  // Contact info
   const [contactInfo, setContactInfo] = useState({
     email: candidate?.email || '',
     phone: candidate?.phone || '',
@@ -48,7 +38,7 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
     title: candidate?.title || '',
   });
 
-  // Modal form states
+  // Modal
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
     email: '',
@@ -58,7 +48,6 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
   });
   const [isSavingContact, setIsSavingContact] = useState(false);
 
-  // Safely access candidate properties with fallbacks
   const safeCandidate = candidate || {};
   const candidateId = safeCandidate.id || '';
   const candidateName = safeCandidate.name || '';
@@ -67,7 +56,6 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
   const candidateSummary = safeCandidate.summary || '';
   const candidateStage = safeCandidate.stage || 'Identified';
 
-  // Fetch activity/notes
   useEffect(() => {
     if (!candidateId) {
       setNotesLoading(false);
@@ -99,14 +87,11 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
     }
   };
 
-  // Handle candidate deletion
   const handleDeleteCandidate = async () => {
     if (!candidateId) return;
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/candidate/${candidateId}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`/api/candidate/${candidateId}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success('Candidate deleted successfully');
         router.push('/dashboard/candidates');
@@ -123,7 +108,6 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
     }
   };
 
-  // Save Contact Information from Modal Form
   const handleSaveContactInfo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!candidateId) return;
@@ -142,41 +126,37 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
       });
 
       if (res.ok) {
-        const updatedInfo = {
+        const updated = {
           email: editForm.email.trim(),
           phone: editForm.phone.trim(),
           location: editForm.location.trim(),
           title: editForm.title.trim(),
         };
-        
-        setContactInfo(updatedInfo);
+        setContactInfo(updated);
         setShowEditModal(false);
         toast.success("Contact information updated successfully");
       } else {
         const data = await res.json();
-        toast.error(data.error || "Failed to update contact information");
+        toast.error(data.error || "Failed to update");
       }
     } catch (err) {
-      console.error("Error updating candidate:", err);
+      console.error(err);
       toast.error("Failed to update contact information");
     } finally {
       setIsSavingContact(false);
     }
   };
 
-  // Get initials for avatar
   const getInitials = (name: string) => {
     if (!name) return "?";
     return name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
   };
 
-  // Pipeline stages
   const pipelineStages = ["Identified", "Submitted", "Interviewing", "Offer Out", "Accepted"];
-  const currentStageIndex = pipelineStages.indexOf(candidateStage);
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-8">
-      {/* Header - Matches screenshot style */}
+      {/* Header */}
       <div className="flex flex-col lg:flex-row justify-between items-start gap-6 border-b pb-6">
         <div className="flex items-start gap-6">
           <Avatar className="w-24 h-24 text-4xl bg-blue-600 text-white">
@@ -186,11 +166,7 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
             <h1 className="text-3xl font-bold">{candidateName || "Unknown"}</h1>
             <p className="text-xl text-muted-foreground">{contactInfo.title || "No Title"}</p>
             <div className="flex gap-4 text-sm mt-2">
-              {contactInfo.email && (
-                <a href={`mailto:${contactInfo.email}`} className="text-blue-600 hover:underline">
-                  {contactInfo.email}
-                </a>
-              )}
+              {contactInfo.email && <a href={`mailto:${contactInfo.email}`} className="text-blue-600 hover:underline">{contactInfo.email}</a>}
               {contactInfo.phone && <span>{contactInfo.phone}</span>}
               {contactInfo.location && <span>{contactInfo.location}</span>}
             </div>
@@ -198,21 +174,18 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
         </div>
 
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => router.push(`/dashboard/candidates/${candidateId}/edit`)}>Edit</Button>
+          <Button variant="outline" onClick={() => router.push(`/dashboard/candidates/${candidateId}/edit`)}>Full Edit</Button>
           <Button>Send Email</Button>
           {showDeleteConfirm ? (
             <>
               <Button variant="destructive" onClick={handleDeleteCandidate} disabled={isDeleting}>
                 {isDeleting ? 'Deleting...' : 'Confirm Delete'}
               </Button>
-              <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
             </>
           ) : (
             <Button variant="outline" onClick={() => setShowDeleteConfirm(true)}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
+              <Trash2 className="mr-2 h-4 w-4" /> Delete
             </Button>
           )}
         </div>
@@ -227,9 +200,8 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
         </TabsList>
 
         <TabsContent value="overview" className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-6">
-          {/* Left Column */}
           <div className="lg:col-span-7 space-y-8">
-            {/* Contact Info Card - Clean Display Only (Edit opens Modal) */}
+            {/* Contact Info Card */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Contact Information</CardTitle>
@@ -245,22 +217,10 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
                 </Button>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <strong className="block text-muted-foreground">Email</strong>
-                  <p>{contactInfo.email || "No Email"}</p>
-                </div>
-                <div>
-                  <strong className="block text-muted-foreground">Phone</strong>
-                  <p>{contactInfo.phone || "No Phone"}</p>
-                </div>
-                <div>
-                  <strong className="block text-muted-foreground">Location</strong>
-                  <p>{contactInfo.location || "Not specified"}</p>
-                </div>
-                <div>
-                  <strong className="block text-muted-foreground">Title</strong>
-                  <p>{contactInfo.title || "No Title"}</p>
-                </div>
+                <div><strong className="block text-muted-foreground">Email</strong><p>{contactInfo.email || "No Email"}</p></div>
+                <div><strong className="block text-muted-foreground">Phone</strong><p>{contactInfo.phone || "No Phone"}</p></div>
+                <div><strong className="block text-muted-foreground">Location</strong><p>{contactInfo.location || "Not specified"}</p></div>
+                <div><strong className="block text-muted-foreground">Title</strong><p>{contactInfo.title || "No Title"}</p></div>
               </CardContent>
             </Card>
 
@@ -270,11 +230,7 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
               <CardContent>
                 <div className="flex gap-2 flex-wrap mb-6">
                   {pipelineStages.map((stage) => (
-                    <Badge 
-                      key={stage} 
-                      variant={stage === candidateStage ? "default" : "secondary"}
-                      className="px-4 py-1.5"
-                    >
+                    <Badge key={stage} variant={stage === candidateStage ? "default" : "secondary"} className="px-4 py-1.5">
                       {stage}
                     </Badge>
                   ))}
@@ -287,97 +243,86 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
               </CardContent>
             </Card>
 
-            {/* Notes & Activity Log (rest of original content continues here) */}
+            {/* Notes section - keep your original code here */}
             <Card>
               <CardHeader><CardTitle>Notes & Activity Log</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                {/* Original Notes UI continues... */}
+                {/* Your original notes code */}
               </CardContent>
             </Card>
           </div>
-
-          {/* Right column (original content) */}
         </TabsContent>
-
-        {/* Timeline, Resume, Jobs tabs - original content continues */}
       </Tabs>
 
-      {/* ========== EDIT CONTACT INFO MODAL (POPUP FORM) ========== */}
-      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Contact Information</DialogTitle>
-            <DialogDescription>
-              Update the candidate&apos;s contact details. Changes save immediately.
-            </DialogDescription>
-          </DialogHeader>
+      {/* Simple Modal (Tailwind only - no shadcn Dialog needed) */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-lg max-w-md w-full max-h-[90vh] overflow-auto">
+            <div className="p-6">
+              <h2 className="text-xl font-semibold mb-1">Edit Contact Information</h2>
+              <p className="text-sm text-muted-foreground mb-4">Update the candidate&apos;s details.</p>
 
-          <form onSubmit={handleSaveContactInfo} className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={editForm.email}
-                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                placeholder="email@example.com"
-              />
+              <form onSubmit={handleSaveContactInfo} className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium block mb-1">Email</label>
+                  <Input
+                    type="email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    placeholder="email@example.com"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium block mb-1">Phone</label>
+                  <Input
+                    type="tel"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    placeholder="+1 (555) 123-4567"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium block mb-1">Location</label>
+                  <Input
+                    value={editForm.location}
+                    onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                    placeholder="City, State"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium block mb-1">Title</label>
+                  <Input
+                    value={editForm.title}
+                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                    placeholder="Job Title"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="flex-1"
+                    onClick={() => setShowEditModal(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={isSavingContact} className="flex-1">
+                    {isSavingContact ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save Changes"
+                    )}
+                  </Button>
+                </div>
+              </form>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                type="tel"
-                value={editForm.phone}
-                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                placeholder="+1 (555) 123-4567"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="location">Location</Label>
-              <Input
-                id="location"
-                value={editForm.location}
-                onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
-                placeholder="City, State / Country"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="title">Title / Position</Label>
-              <Input
-                id="title"
-                value={editForm.title}
-                onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                placeholder="Senior Software Engineer"
-              />
-            </div>
-
-            <DialogFooter className="pt-4">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => setShowEditModal(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSavingContact}>
-                {isSavingContact ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save Changes"
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-      {/* ========== END MODAL ========== */}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
