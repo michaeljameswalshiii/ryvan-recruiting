@@ -19,43 +19,38 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-// === DIAGNOSTIC TEST POST (with timeout - REMOVE LATER) ===
+// === SUPER DIAGNOSTIC TEST POST ===
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const jobId = params.id;
-  const timeout = (ms: number) => new Promise((_, reject) => 
-    setTimeout(() => reject(new Error('Operation timed out')), ms)
-  );
-
   console.log(`[TEST POST] Started for job ${jobId}`);
 
   try {
     const body = await request.json().catch(() => ({}));
-    console.log(`[TEST POST] Body received:`, body);
+    const noteText = body.noteText || "Default test note";
 
-    const result = await Promise.race([
-      recordJobEvent(
-        jobId,
-        'NOTE',
-        { 
-          title: 'Test Note', 
-          description: body.noteText || "Default test note", 
-          metadata: { source: 'diagnostic' } 
-        },
-        body.createdBy || "test-user"
-      ),
-      timeout(10000)  // 10 second timeout
-    ]);
+    console.log(`[TEST POST] About to call recordJobEvent...`);
 
-    console.log(`[TEST POST] Success - recordJobEvent returned:`, result);
+    const result = await recordJobEvent(
+      jobId,
+      'NOTE',
+      { title: 'Test Note', description: noteText, metadata: { source: 'diagnostic' } },
+      "test-user"
+    );
+
+    console.log(`[TEST POST] recordJobEvent FULL result:`, JSON.stringify(result, null, 2));
 
     const fresh = await getJobEvents(jobId, { limit: 5 });
-    console.log(`[TEST POST] Fresh events count:`, fresh.events?.length || 0);
+    console.log(`[TEST POST] Events after attempt:`, fresh.events?.length || 0, fresh);
 
-    return NextResponse.json({ success: true, record: result, events: fresh.events });
+    return NextResponse.json({ 
+      success: true, 
+      recordResult: result, 
+      eventsAfter: fresh.events 
+    });
   } catch (error: any) {
-    console.error(`[TEST POST] ERROR:`, {
+    console.error(`[TEST POST] CRITICAL ERROR:`, {
       message: error.message,
-      stack: error.stack ? error.stack.substring(0, 800) : 'no stack'
+      stack: error.stack ? error.stack.substring(0, 1000) : null
     });
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
