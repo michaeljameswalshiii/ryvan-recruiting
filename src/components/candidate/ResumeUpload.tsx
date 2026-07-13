@@ -164,7 +164,17 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
         if (parsed.certifications && parsed.certifications.length > 0) updatePayload.certifications = parsed.certifications;
       }
       
-      // Update candidate record
+      const parsedData = parseResult.success ? parseResult.resume : undefined;
+
+      // Create-candidate mode: parse only, fill form via callback
+      if (!candidateId) {
+        toast.success('Google Doc parsed! Form fields have been filled in.');
+        onSuccess?.(newResumeUrl || googleDocUrl, parsedData);
+        setGoogleDocUrl('');
+        return;
+      }
+
+      // Update existing candidate record
       const updateResponse = await fetch(`/api/data/leads/${candidateId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -178,9 +188,6 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
       }
       
       toast.success('Resume imported from Google Docs and parsed successfully');
-      
-      // Call success callback
-      const parsedData = parseResult.success ? parseResult.resume : undefined;
       onSuccess?.(newResumeUrl || googleDocUrl, parsedData);
       
       // Reset state
@@ -224,13 +231,20 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
     if (!selectedFile) return;
 
     setIsUploading(true);
-    setUploadProgress("Parsing resume and uploading to S3...");
+    // Create flow (no candidateId yet): parse + autofill only
+    // Existing candidate: parse + S3 upload + update record
+    setUploadProgress(
+      candidateId
+        ? "Parsing resume and uploading to S3..."
+        : "Parsing resume and filling candidate form..."
+    );
 
     try {
-      // Single API call: parse-resume handles both parsing AND S3 upload
       const parseFormData = new FormData();
       parseFormData.append('resume', selectedFile);
-      parseFormData.append('candidateId', candidateId);
+      if (candidateId) {
+        parseFormData.append('candidateId', candidateId);
+      }
 
       const parseResponse = await fetch('/api/parse-resume', {
         method: 'POST',
@@ -244,58 +258,80 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
         throw new Error(parseResult.error || 'Failed to parse resume');
       }
 
-      const newResumeUrl = parseResult.resumeUrl;
-      const fileKey = parseResult.fileKey;
+      if (!parseResult.success || !parseResult.resume) {
+        throw new Error(parseResult.error || 'Could not extract candidate info from resume');
+      }
 
-      if (!newResumeUrl) {
-        throw new Error('Failed to upload resume to S3');
+      const parsedData = parseResult.resume as ParsedResumeData;
+      const newResumeUrl = parseResult.resumeUrl || '';
+      const fileKey = parseResult.fileKey || '';
+
+      // Create-candidate mode: only parse and hand data back to parent form
+      if (!candidateId) {
+        toast.success('Resume parsed! Form fields have been filled in.');
+        onSuccess?.(fileKey || newResumeUrl || selectedFile.name, {
+          ...parsedData,
+          _file: selectedFile,
+          _fileKey: fileKey,
+          _resumeUrl: newResumeUrl,
+        });
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
+      if (!newResumeUrl && !fileKey) {
+        // Parsing worked; S3 may have failed — still apply fields
+        console.warn('S3 upload skipped or failed; applying parsed fields only');
       }
 
       setUploadProgress("Updating candidate record...");
 
-      // Build update payload
-      const updatePayload: any = {
-        resume_url: fileKey || newResumeUrl,
-      };
-      
-      if (parseResult.success && parseResult.resume) {
-        const parsed = parseResult.resume as ParsedResumeData;
-        if (parsed.name) updatePayload.name = parsed.name;
-        if (parsed.email) updatePayload.email = parsed.email;
-        if (parsed.phone) updatePayload.phone = parsed.phone;
-        if (parsed.title) updatePayload.title = parsed.title;
-        if (parsed.location) updatePayload.location = parsed.location;
-        if (parsed.fullAddress) updatePayload.full_address = parsed.fullAddress;
-        if (parsed.linkedin) updatePayload.linkedin_url = parsed.linkedin;
-        if (parsed.salaryRequirements) updatePayload.salary_requirements = parsed.salaryRequirements;
-        if (parsed.summary) updatePayload.summary = parsed.summary;
-        if (parsed.skills && parsed.skills.length > 0) updatePayload.skills = parsed.skills;
-        if (parsed.experience && parsed.experience.length > 0) updatePayload.experience = parsed.experience;
-        if (parsed.education && parsed.education.length > 0) updatePayload.education = parsed.education;
-        if (parsed.certifications && parsed.certifications.length > 0) updatePayload.certifications = parsed.certifications;
+      const updatePayload: any = {};
+      if (fileKey || newResumeUrl) {
+        updatePayload.resume_url = fileKey || newResumeUrl;
       }
-      
-      // Update candidate record
+      if (selectedFile.name) {
+        updatePayload.resume_file_name = selectedFile.name;
+      }
+
+      if (parsedData.name) updatePayload.name = parsedData.name;
+      if (parsedData.email) updatePayload.email = parsedData.email;
+      if (parsedData.phone) updatePayload.phone = parsedData.phone;
+      if (parsedData.title) updatePayload.title = parsedData.title;
+      if (parsedData.location) updatePayload.location = parsedData.location;
+      if (parsedData.fullAddress) updatePayload.full_address = parsedData.fullAddress;
+      if (parsedData.linkedin) updatePayload.linkedin_url = parsedData.linkedin;
+      if (parsedData.salaryRequirements) updatePayload.salary_requirements = parsedData.salaryRequirements;
+      if (parsedData.summary) updatePayload.summary = parsedData.summary;
+      if (parsedData.skills && parsedData.skills.length > 0) updatePayload.skills = parsedData.skills;
+      if (parsedData.experience && parsedData.experience.length > 0) updatePayload.experience = parsedData.experience;
+      if (parsedData.education && parsedData.education.length > 0) updatePayload.education = parsedData.education;
+      if (parsedData.certifications && parsedData.certifications.length > 0) {
+        updatePayload.certifications = parsedData.certifications;
+      }
+
       const updateResponse = await fetch(`/api/data/leads/${candidateId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatePayload),
       });
-      
+
       const updateResult = await updateResponse.json();
-      
+
       if (!updateResponse.ok || updateResult.error) {
         throw new Error(updateResult.error || 'Failed to update candidate');
       }
-      
-      // Log the resume upload event
-      await logResumeUploadEvent(selectedFile.name, newResumeUrl);
-      
+
+      if (newResumeUrl) {
+        await logResumeUploadEvent(selectedFile.name, newResumeUrl);
+      }
+
       toast.success('Resume uploaded and parsed successfully');
-      
-      const parsedData = parseResult.success ? parseResult.resume : undefined;
-      onSuccess?.(newResumeUrl, parsedData);
-      
+      onSuccess?.(newResumeUrl || fileKey, parsedData);
+
       setSelectedFile(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -327,9 +363,8 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
   return (
     <div className={`space-y-4 ${className || ""}`}>
       {/* Drag & Drop Zone using react-dropzone */}
-<div
+      <div
         {...getRootProps()}
-        onClick={(e) => e.stopPropagation()}
         className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
           isDragActive 
             ? 'border-blue-500 bg-blue-50' 
@@ -339,9 +374,8 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
         }`}
       >
         <input
-          {...getInputProps()}
+          {...getInputProps({ onChange: handleFileChange })}
           ref={fileInputRef}
-          onChange={handleFileChange}
           accept=".pdf,.doc,.docx"
         />
         
