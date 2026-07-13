@@ -148,5 +148,13 @@ export async function getJobEvents(
     return { events: [] };
   }
 }
+// Helper for UI
+export async function addNoteToJob(jobId: string, noteText: string, createdBy: string) {
+  return recordJobEvent(jobId, 'NOTE', {
+    title: 'Note Added',
+    description: noteText,
+    metadata: { source: 'ui' }
+  }, createdBy);
+}
 
 // Keep the rest of your helper functions (recordJobCreated, addNoteToJob, etc.) unchanged at the bottom
