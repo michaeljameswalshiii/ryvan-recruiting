@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Plus, RefreshCw, User } from 'lucide-react';
 import { useLeads, useDeleteLead } from '@/lib/hooks/query-lead';
+import { ResumeCreateCard } from '@/components/candidates/ResumeCreateCard';
 
 export function CandidatesClient() {
   const router = useRouter();
@@ -11,7 +12,6 @@ export function CandidatesClient() {
   const deleteLeadMutation = useDeleteLead();
 
   const goToNewCandidate = () => {
-    // Full create flow with resume upload + auto-populate
     router.push('/dashboard/candidates/new');
   };
 
@@ -85,16 +85,19 @@ export function CandidatesClient() {
         </Button>
       </div>
 
+      {/* Always visible on Candidates list — primary resume create path */}
+      <ResumeCreateCard />
+
       {/* Candidates Table */}
       {candidates.length === 0 ? (
         <div className="bg-white border rounded-2xl p-12 text-center">
           <div className="text-4xl mb-6">👤</div>
           <h2 className="text-2xl font-semibold mb-3">No Candidates Yet</h2>
           <p className="text-gray-600 max-w-md mx-auto mb-6">
-            Get started by uploading a resume or adding your first candidate.
+            Upload a resume above, or add a candidate manually.
           </p>
           <Button onClick={goToNewCandidate}>
-            <Plus className="mr-2 h-4 w-4" /> Add Your First Candidate
+            <Plus className="mr-2 h-4 w-4" /> Manual Entry
           </Button>
         </div>
       ) : (
