@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -14,7 +14,6 @@ import { APPLICATION_STAGES } from "@/lib/schemas/lead";
 
 const JOB_STATUSES = ["OPEN", "PAUSED", "CLOSED"] as const;
 
-// Map APPLICATION_STAGES values for job-specific stages
 const STAGES = APPLICATION_STAGES.map(s => s.value);
 
 type JobStatus = (typeof JOB_STATUSES)[number];
@@ -121,7 +120,7 @@ export default function JobDetailPage() {
             <p className="text-sm text-gray-600">{job.companyName || "Unknown Company"}</p>
           </div>
 
-<div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <Badge variant="secondary">{job.status || "OPEN"}</Badge>
             <select
               value={job.status || "OPEN"}
@@ -277,10 +276,15 @@ export default function JobDetailPage() {
             </div>
           </div>
 
-<div>
+          <div>
             <div className="bg-white border rounded-xl p-6">
               <h2 className="font-semibold mb-4">Job Activity</h2>
-              <EventTimeline entityType="company" entityId={job.companyId || ""} tenantId={(job.tenantId as string) || "default"} />
+              {/* Minimal fix here */}
+              <EventTimeline 
+                entityType="job" 
+                entityId={job.id || jobId} 
+                tenantId={(job.tenantId as string) || "default"} 
+              />
             </div>
           </div>
         </div>
@@ -289,7 +293,7 @@ export default function JobDetailPage() {
   );
 }
 
-// Job Delete Button Component
+// Job Delete Button (unchanged)
 function JobDeleteButton({ jobId, jobTitle }: { jobId: string; jobTitle: string }) {
   const router = useRouter();
   const [showConfirm, setShowConfirm] = useState(false);
