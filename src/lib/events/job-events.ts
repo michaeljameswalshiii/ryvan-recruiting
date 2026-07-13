@@ -71,7 +71,7 @@ export async function getJobEvents(
       'PK = :pk',
       { ':pk': `ENTITY#job#${jobId}` },
       { Limit: options?.limit || 50, ScanIndexForward: false }
-    );
+    ) || [];
 
     console.log(`[getJobEvents] Raw DB items: ${rawEvents.length}`);
 
