@@ -11,16 +11,14 @@ interface EventItem {
   eventType: string;
   title: string;
   description?: string;
-  metadata: Record<string, any>;
+  metadata?: Record<string, any>;
   createdAt: string;
   createdBy: string;
-  createdByName?: string;
 }
 
 interface EventTimelineProps {
   entityType: EntityType;
   entityId: string;
-  tenantId?: string;
   initialEvents?: EventItem[];
   maxHeight?: string;
 }
@@ -37,97 +35,72 @@ const noteTypes = [
 export default function EventTimeline({
   entityType,
   entityId,
-  tenantId,
   initialEvents = [],
   maxHeight = "500px",
 }: EventTimelineProps) {
   const [events, setEvents] = useState<EventItem[]>(initialEvents);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('general');
   const [addingNote, setAddingNote] = useState(false);
 
   const fetchEvents = useCallback(async () => {
     try {
-      setLoading(true);
-      let endpoint: string;
+      let endpoint = `/api/jobs/${entityId}/events`;
       if (entityType === 'candidate') endpoint = `/api/candidate/${entityId}/events`;
-      else if (entityType === 'job') endpoint = `/api/jobs/${entityId}/events`;
-      else endpoint = `/api/company/${entityId}/events`;
+      if (entityType === 'company') endpoint = `/api/company/${entityId}/events`;
 
-      const response = await fetch(`${endpoint}?limit=50&_t=${Date.now()}`, { cache: 'no-store' });
-      if (!response.ok) throw new Error('Failed');
-
-      const data = await response.json();
-      console.log(`[Events] Fetched ${data.events?.length || 0} events`, data.events);
+      const res = await fetch(`${endpoint}?_t=${Date.now()}`);
+      const data = await res.json();
       setEvents(data.events || []);
-      return data.events || [];
-    } catch (err) {
-      console.error(err);
-      setError('Failed to load events');
-      return [];
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      console.error(e);
     }
   }, [entityType, entityId]);
 
   useEffect(() => {
-    if (!initialEvents.length) fetchEvents();
+    if (initialEvents.length === 0) fetchEvents();
   }, [initialEvents.length, fetchEvents]);
-
-  // Poll until new note appears
-  const pollForNewNote = async (maxAttempts = 8) => {
-    for (let i = 0; i < maxAttempts; i++) {
-      const fetched = await fetchEvents();
-      const hasNote = fetched.some((e: EventItem) => e.eventType === 'NOTE');
-      if (hasNote) return;
-      await new Promise(r => setTimeout(r, 600));
-    }
-  };
 
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
 
     const noteText = newNote.trim();
-    const optimistic: EventItem = {
-      id: `temp-${Date.now()}`,
+    const tempId = `temp-${Date.now()}`;
+
+    // Optimistic
+    const optimistic = {
+      id: tempId,
       entityType,
       entityId,
       eventType: 'NOTE',
       title: 'Note Added',
-      description: noteText.length > 100 ? noteText.substring(0, 100) + '...' : noteText,
-      metadata: { noteText, noteType },
+      description: noteText,
       createdAt: new Date().toISOString(),
-      createdBy: 'user',
+      createdBy: 'You',
     };
 
     setEvents(prev => [optimistic, ...prev]);
 
     try {
       setAddingNote(true);
-
       let endpoint = `/api/jobs/${entityId}/notes`;
       if (entityType === 'candidate') endpoint = `/api/candidate/${entityId}/notes`;
       if (entityType === 'company') endpoint = `/api/company/${entityId}/notes`;
 
-      const res = await fetch(endpoint, {
+      await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ noteText, noteType }),
       });
 
-      if (!res.ok) throw new Error('Save failed');
-
       setNewNote('');
       setNoteType('general');
 
-      // Poll backend until the real note appears
-      await pollForNewNote();
-    } catch (err) {
-      console.error(err);
-      setEvents(prev => prev.filter(e => e.id !== optimistic.id));
+      await new Promise(r => setTimeout(r, 1000));
+      await fetchEvents();
+    } catch (e) {
+      console.error(e);
+      setEvents(prev => prev.filter(e => e.id !== tempId));
     } finally {
       setAddingNote(false);
     }
@@ -135,42 +108,32 @@ export default function EventTimeline({
 
   return (
     <div className="bg-white border rounded-xl">
-      {/* Note Form */}
       <div className="border-b border-border p-4">
         <div className="mb-3">
           <label className="text-sm font-medium mb-2 block">Note Type</label>
-          <select value={noteType} onChange={(e) => setNoteType(e.target.value)} className="w-full p-2 text-sm border rounded-md">
-            {noteTypes.map(t => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
+          <select value={noteType} onChange={(e) => setNoteType(e.target.value)} className="w-full p-2 border rounded">
+            {noteTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
         <div className="mb-3">
           <label className="text-sm font-medium mb-2 block">Notes</label>
-          <textarea
-            value={newNote}
-            onChange={(e) => setNewNote(e.target.value)}
-            placeholder="Add a note..."
-            rows={3}
-            className="w-full p-2 border rounded-md"
-          />
+          <textarea value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="Add a note..." rows={3} className="w-full p-2 border rounded" />
         </div>
-        <button
-          onClick={handleAddNote}
-          disabled={addingNote || !newNote.trim()}
-          className="w-full py-2 bg-blue-600 text-white rounded-md disabled:opacity-50"
-        >
+        <button onClick={handleAddNote} disabled={addingNote || !newNote.trim()} className="w-full py-2 bg-blue-600 text-white rounded disabled:opacity-50">
           {addingNote ? 'Adding...' : 'Add Note'}
         </button>
       </div>
 
-      {/* Events List */}
       <div className="p-4" style={{ maxHeight, overflowY: 'auto' }}>
-        {events.length === 0 && !loading ? (
-          <div className="text-center py-8 text-gray-500">No events yet.</div>
-        ) : (
-          events.map((event, i) => (
-            <div key={event.id || i} className="mb-6 p-3 border-l-4 border-yellow-400 bg-yellow-50">
-              <div className="font-medium">{event.title}</div>
-              <div className="text-sm">{event.description}</div>
-              <div className="text-xs text-gray-500 mt-
+        {events.map((event, i) => (
+          <div key={event.id || i} className="mb-4 p-3 border-l-4 border-yellow-400 bg-yellow-50">
+            <strong>{event.title}</strong>
+            <p>{event.description}</p>
+            <small>{event.createdAt} by {event.createdBy}</small>
+          </div>
+        ))}
+        {events.length === 0 && <div className="text-center py-8 text-gray-500">No events yet</div>}
+      </div>
+    </div>
+  );
+}
