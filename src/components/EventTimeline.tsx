@@ -123,7 +123,7 @@ export default function EventTimeline({
       if (entityType === 'candidate') {
         endpoint = `/api/candidate/${entityId}/notes`;
       } else if (entityType === 'job') {
-        endpoint = `/api/company/${entityId}/notes`;  // ← Minimal fix
+        endpoint = `/api/jobs/${entityId}/notes`;   // ✅ FIXED - was wrongly pointing to /api/company/
       } else {
         endpoint = `/api/company/${entityId}/notes`;
       }
