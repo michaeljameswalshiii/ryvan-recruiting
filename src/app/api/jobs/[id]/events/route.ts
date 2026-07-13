@@ -1,41 +1,20 @@
-/**
- * Job Events API Route
- * GET /api/jobs/[id]/events
- * 
- * @serverOnly
- */
-
+// src/app/api/jobs/[id]/events/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getJobEvents } from '@/lib/events/job-events';
 
-type RouteParams = Promise<{ id: string }>;
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  const jobId = params.id;
+  console.log(`[Events API] GET request for job ${jobId}`);
 
-export async function GET(request: NextRequest, { params }: { params: RouteParams }) {
   try {
-    const { id: jobId } = await params;
-    
-    if (!jobId) {
-      return NextResponse.json(
-        { error: 'Job ID is required' },
-        { status: 400 }
-      );
-    }
-
-    const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const limit = request.nextUrl.searchParams.get('limit') ? parseInt(request.nextUrl.searchParams.get('limit')!) : 50;
 
     const result = await getJobEvents(jobId, { limit });
+    console.log(`[Events API] Returning ${result.events?.length || 0} events for job ${jobId}`);
 
-    return NextResponse.json({
-      events: result?.events || [],
-      hasMore: result?.hasMore || false,
-      totalCount: result?.totalCount || 0,
-    });
+    return NextResponse.json(result);
   } catch (error) {
-    console.error('[API] Failed to fetch job events:', error);
-    return NextResponse.json(
-      { events: [] },
-      { status: 500 }
-    );
+    console.error(`[Events API] Error for job ${jobId}:`, error);
+    return NextResponse.json({ events: [], hasMore: false, totalCount: 0 }, { status: 500 });
   }
 }
