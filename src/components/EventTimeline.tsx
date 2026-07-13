@@ -39,13 +39,12 @@ export default function EventTimeline({
   entityId,
   tenantId,
   initialEvents = [],
-  maxHeight = "500px",   // Default height
+  maxHeight = "500px",
 }: EventTimelineProps) {
   const [events, setEvents] = useState<EventItem[]>(initialEvents);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Note form state
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('general');
   const [addingNote, setAddingNote] = useState(false);
@@ -56,129 +55,71 @@ export default function EventTimeline({
       setError(null);
 
       let endpoint: string;
-      if (entityType === 'candidate') {
-        endpoint = `/api/candidate/${entityId}/events`;
-      } else if (entityType === 'job') {
-        endpoint = `/api/jobs/${entityId}/events`;
-      } else {
-        endpoint = `/api/company/${entityId}/events`;
-      }
+      if (entityType === 'candidate') endpoint = `/api/candidate/${entityId}/events`;
+      else if (entityType === 'job') endpoint = `/api/jobs/${entityId}/events`;
+      else endpoint = `/api/company/${entityId}/events`;
 
-      const timestamp = new Date().getTime();
-      const response = await fetch(`${endpoint}?limit=50&_t=${timestamp}`, {
-        cache: 'no-store',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch ${entityType} events`);
-      }
+      const response = await fetch(`${endpoint}?limit=50&_t=${Date.now()}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Failed to fetch events');
 
       const data = await response.json();
-      console.log(`Fetched ${data.events?.length || 0} events:`, data.events); // Debug
       setEvents(data.events || []);
     } catch (err: any) {
-      console.error('Failed to fetch events:', err);
-      setError(`Failed to load ${entityType} events`);
+      console.error(err);
+      setError('Failed to load events');
     } finally {
       setLoading(false);
     }
   }, [entityType, entityId]);
 
-  // Initial load
   useEffect(() => {
-    if (!initialEvents.length) {
-      fetchEvents();
-    }
+    if (!initialEvents.length) fetchEvents();
   }, [initialEvents.length, fetchEvents]);
 
-  // Helpers
-  const getEventIcon = (eventType: string) => {
-    if (eventType === 'NOTE') return <span>📝</span>;
-    return <span>⏰</span>;
-  };
+  const getEventIcon = (type: string) => (type === 'NOTE' ? '📝' : '⏰');
+  const getEventColor = (type: string) => (type === 'NOTE' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800');
+  const getEventLabel = (type: string) => (type === 'NOTE' ? 'Note' : type.replace(/_/g, ' '));
+  const formatDate = (d: string) => new Date(d).toLocaleString();
 
-  const getEventColor = (eventType: string) => {
-    if (eventType === 'NOTE') return 'bg-yellow-100 text-yellow-800';
-    return 'bg-gray-100 text-gray-800';
-  };
-
-  const getEventLabel = (eventType: string) => {
-    if (eventType === 'NOTE') return 'Note';
-    return (eventType || 'Event').replace(/_/g, ' ');
-  };
-
-  const formatDate = (dateStr: string) => {
-    try {
-      return new Date(dateStr).toLocaleString();
-    } catch {
-      return 'Invalid date';
-    }
-  };
-
-  // Improved Add Note with optimistic update + retry
   const handleAddNote = async () => {
-    if (!newNote.trim()) {
-      setError("Please enter a note");
-      return;
-    }
+    if (!newNote.trim()) return;
 
     const noteText = newNote.trim();
-    const currentNoteType = noteType;
-
-    const optimisticEvent: EventItem = {
+    const optimistic = {
       id: `temp-${Date.now()}`,
       entityType,
       entityId,
       eventType: 'NOTE',
       title: 'Note Added',
-      description: noteText.length > 100 ? noteText.substring(0, 100) + '...' : noteText,
-      metadata: { noteText, noteType: currentNoteType },
+      description: noteText,
+      metadata: { noteText, noteType },
       createdAt: new Date().toISOString(),
-      createdBy: 'current-user',
-      createdByName: undefined,
-    };
+      createdBy: 'user',
+    } as EventItem;
 
-    setEvents(prev => [optimisticEvent, ...prev]);
+    setEvents(prev => [optimistic, ...prev]);
 
     try {
       setAddingNote(true);
-      setError(null);
+      let endpoint = `/api/jobs/${entityId}/notes`;
+      if (entityType === 'candidate') endpoint = `/api/candidate/${entityId}/notes`;
+      if (entityType === 'company') endpoint = `/api/company/${entityId}/notes`;
 
-      let endpoint: string;
-      if (entityType === 'candidate') {
-        endpoint = `/api/candidate/${entityId}/notes`;
-      } else if (entityType === 'job') {
-        endpoint = `/api/jobs/${entityId}/notes`;
-      } else {
-        endpoint = `/api/company/${entityId}/notes`;
-      }
-
-      const response = await fetch(endpoint, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ noteText, noteType: currentNoteType }),
+        body: JSON.stringify({ noteText, noteType }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to add note');
-      }
-
-      console.log("✅ Note saved successfully");
-      alert("Note added successfully!"); // Replace with your toast later
+      if (!res.ok) throw new Error('Failed');
 
       setNewNote('');
       setNoteType('general');
-
-      // Small delay + refetch
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise(r => setTimeout(r, 800));
       await fetchEvents();
-    } catch (err: any) {
-      console.error('Failed to add note:', err);
-      setError(err.message || 'Failed to add note');
-      alert(err.message || 'Failed to add note');
-
-      setEvents(prev => prev.filter(e => e.id !== optimisticEvent.id));
+    } catch (e) {
+      console.error(e);
+      setEvents(prev => prev.filter(ev => ev.id !== optimistic.id));
     } finally {
       setAddingNote(false);
     }
@@ -186,64 +127,47 @@ export default function EventTimeline({
 
   return (
     <div className="bg-white border rounded-xl">
-      {/* Note Form */}
       <div className="border-b border-border p-4">
         <div className="mb-3">
           <label className="text-sm font-medium mb-2 block">Note Type</label>
-          <select
-            value={noteType}
-            onChange={(e) => setNoteType(e.target.value)}
-            className="w-full p-2 text-sm border border-input rounded-md bg-background"
-          >
-            {noteTypes.map((type) => (
-              <option key={type.value} value={type.value}>
-                {type.label}
-              </option>
-            ))}
+          <select value={noteType} onChange={(e) => setNoteType(e.target.value)} className="w-full p-2 text-sm border rounded-md">
+            {noteTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
-
         <div className="mb-3">
           <label className="text-sm font-medium mb-2 block">Notes</label>
           <textarea
-            placeholder="Add a note..."
             value={newNote}
             onChange={(e) => setNewNote(e.target.value)}
-            rows={2}
-            className="w-full p-2 text-sm border border-input rounded-md resize-y min-h-[60px]"
+            placeholder="Add a note..."
+            rows={3}
+            className="w-full p-2 border rounded-md"
           />
         </div>
-
         <button
           onClick={handleAddNote}
           disabled={addingNote || !newNote.trim()}
-          className="mt-2 w-full py-2 px-4 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-primary text-primary-foreground hover:bg-primary/90"
+          className="w-full py-2 bg-blue-600 text-white rounded-md disabled:opacity-50"
         >
           {addingNote ? 'Adding...' : 'Add Note'}
         </button>
       </div>
 
-      {/* Timeline */}
       <div className="p-4" style={{ maxHeight, overflowY: 'auto' }}>
-        {loading && events.length === 0 && (
-          <div className="text-center text-sm text-gray-500 py-4">Loading events...</div>
-        )}
-
-        {error && <div className="text-red-600 text-sm mb-4 p-3 bg-red-50 rounded">{error}</div>}
-
-        {events.length === 0 && !loading ? (
-          <div className="text-center text-sm text-gray-500 py-8">No events yet.</div>
+        {events.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">No events yet.</div>
         ) : (
-          <div className="space-y-4 relative">
-            <div className="absolute left-6 top-0 bottom-0 w-px bg-border" />
-
-            {events.map((event, index) => {
-              if (!event || !event.id) return null;
-
-              return (
-                <div key={event.id || `event-${index}`} className="flex gap-3 relative">
-                  <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${getEventColor(event.eventType || 'default')}`}>
-                    {getEventIcon(event.eventType || 'default')}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className
+          events.map((event, i) => (
+            <div key={event.id || i} className="mb-6">
+              <div className="font-medium">{event.title}</div>
+              <div className="text-sm text-gray-600">{event.description}</div>
+              <div className="text-xs text-gray-500">
+                {formatDate(event.createdAt)} by {event.createdBy}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
