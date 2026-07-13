@@ -1,17 +1,54 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useClients } from '@/lib/hooks/query-client';
 import { useUpdateContact } from '@/lib/hooks/contact-mutations';
 import { Button } from '@/components/ui/button';
 import { getDisplayPhone, getDisplayPhoneType } from '@/lib/contacts/phone';
+import {
+  logContactActivity,
+  getContactActivities,
+} from '@/lib/actions/contact-actions';
 import { toast } from 'sonner';
+import { Loader2, Plus } from 'lucide-react';
+
+/** Same activity / note types as the original contact ActivityModal */
+const NOTE_TYPES = [
+  // OUTREACH & COMMUNICATION
+  '01 Left Voicemail',
+  '02 Email Sent',
+  '03 Email Received',
+  '04 Text Sent',
+  '05 Text Received',
+  '06 LinkedIn Message Sent',
+  '07 Conversation Engaged',
+  '08 No Answer',
+  // BUSINESS DEVELOPMENT
+  '09 Initial Outreach',
+  '10 Qualification Call',
+  '11 Discovery Call',
+  '12 Demo / Presentation',
+  '13 Proposal Sent',
+  '14 Proposal Review',
+  '15 Contract Sent',
+  '16 Contract Signed',
+  // MEETINGS & FOLLOW-UP
+  '17 Meeting Scheduled',
+  '18 Meeting Completed',
+  '19 Follow-up Needed',
+  '20 Follow-up Completed',
+  // OTHER
+  '21 Note',
+  '22 Other',
+];
 
 export default function ContactDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = params.id as string;
+  const companyIdParam = searchParams.get('companyId') || '';
 
   const { data: clientsData, isLoading, refetch } = useClients();
   const updateContact = useUpdateContact();
@@ -22,6 +59,13 @@ export default function ContactDetailPage() {
   const [formData, setFormData] = useState<any>({});
   const [saving, setSaving] = useState(false);
 
+  // Notes / activity log
+  const [activities, setActivities] = useState<any[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [noteType, setNoteType] = useState(NOTE_TYPES[20]); // "21 Note"
+  const [newNote, setNewNote] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
+
   useEffect(() => {
     if (!clientsData) return;
 
@@ -30,13 +74,29 @@ export default function ContactDetailPage() {
     let foundContact: any = null;
     let foundCompany: any = null;
 
-    for (const company of companies) {
-      const companyContacts = Array.isArray(company.contacts) ? company.contacts : [];
-      const match = companyContacts.find((c: any) => String(c.id) === String(id));
-      if (match) {
-        foundContact = match;
-        foundCompany = company;
-        break;
+    // Prefer companyId from query when present
+    if (companyIdParam) {
+      const company = companies.find(
+        (c: any) => String(c.id) === String(companyIdParam) || String(c.PK) === String(companyIdParam)
+      );
+      if (company) {
+        const match = (company.contacts || []).find((c: any) => String(c.id) === String(id));
+        if (match) {
+          foundContact = match;
+          foundCompany = company;
+        }
+      }
+    }
+
+    if (!foundContact) {
+      for (const company of companies) {
+        const companyContacts = Array.isArray(company.contacts) ? company.contacts : [];
+        const match = companyContacts.find((c: any) => String(c.id) === String(id));
+        if (match) {
+          foundContact = match;
+          foundCompany = company;
+          break;
+        }
       }
     }
 
@@ -57,10 +117,86 @@ export default function ContactDetailPage() {
         isPrimary: !!contactData.isPrimary,
       });
     }
-  }, [id, clientsData]);
+  }, [id, clientsData, companyIdParam]);
+
+  const fetchActivities = useCallback(async () => {
+    if (!id) {
+      setActivitiesLoading(false);
+      return;
+    }
+    setActivitiesLoading(true);
+    try {
+      // Prefer API route (works even if server action export path differs)
+      const res = await fetch(`/api/data/contacts/${id}/notes?t=${Date.now()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setActivities(Array.isArray(data.events) ? data.events : data.activities || []);
+      } else {
+        // Fallback to server action
+        const events = await getContactActivities(id);
+        setActivities(Array.isArray(events) ? events : []);
+      }
+    } catch (err) {
+      console.error('Failed to load contact activities', err);
+      try {
+        const events = await getContactActivities(id);
+        setActivities(Array.isArray(events) ? events : []);
+      } catch {
+        setActivities([]);
+      }
+    } finally {
+      setActivitiesLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchActivities();
+  }, [fetchActivities]);
 
   const displayPhone = getDisplayPhone(contact);
   const displayPhoneType = getDisplayPhoneType(contact);
+
+  const handleLogNote = async () => {
+    if (!newNote.trim() || !id) return;
+    if (!noteType) {
+      toast.error('Select a note type');
+      return;
+    }
+
+    setAddingNote(true);
+    try {
+      // Try API first
+      const res = await fetch(`/api/data/contacts/${id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: noteType,
+          content: newNote.trim(),
+          companyId: contact?.clientId || companyIdParam || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        // Fallback to server action
+        await logContactActivity({
+          contactId: id,
+          companyId: contact?.clientId || companyIdParam || undefined,
+          type: noteType,
+          content: newNote.trim(),
+        });
+      }
+
+      toast.success('Note logged successfully');
+      setNewNote('');
+      setNoteType(NOTE_TYPES[20]);
+      await fetchActivities();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Failed to log note');
+    } finally {
+      setAddingNote(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!contact?.clientId || !contact?.id) {
@@ -110,6 +246,88 @@ export default function ContactDetailPage() {
     }
     window.location.href = `mailto:${contact.email}`;
   };
+
+  const renderActivityList = () => {
+    if (activitiesLoading) {
+      return (
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      );
+    }
+
+    if (!activities.length) {
+      return (
+        <p className="text-muted-foreground text-center py-8">
+          No activity yet. Log the first note above.
+        </p>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {activities.map((act: any, index: number) => (
+          <div
+            key={act.id || act.SK || index}
+            className="border-l-4 border-blue-200 pl-4 py-2"
+          >
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mb-1">
+              <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium">
+                {act.type || act.metadata?.noteType || 'Note'}
+              </span>
+              <span>
+                {act.createdAt
+                  ? new Date(act.createdAt).toLocaleString()
+                  : act.timestamp
+                    ? new Date(act.timestamp).toLocaleString()
+                    : 'Recent'}
+              </span>
+              {act.createdBy && act.createdBy !== 'current-user' && act.createdBy !== 'system' && (
+                <span>· {act.createdBy}</span>
+              )}
+            </div>
+            <p className="text-sm whitespace-pre-wrap">
+              {act.content || act.description || act.metadata?.noteText || act.title || '—'}
+            </p>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderNoteComposer = () => (
+    <div className="flex flex-col sm:flex-row gap-3 mb-6">
+      <select
+        value={noteType}
+        onChange={(e) => setNoteType(e.target.value)}
+        className="w-full sm:w-64 h-10 rounded-md border border-input bg-background px-3 text-sm"
+      >
+        {NOTE_TYPES.map((t) => (
+          <option key={t} value={t}>
+            {t}
+          </option>
+        ))}
+      </select>
+      <textarea
+        value={newNote}
+        onChange={(e) => setNewNote(e.target.value)}
+        placeholder="Add note detail here..."
+        className="flex-1 min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+      />
+      <Button
+        onClick={handleLogNote}
+        disabled={!newNote.trim() || addingNote}
+        className="sm:self-start"
+      >
+        {addingNote ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <Plus className="mr-2 h-4 w-4" />
+        )}
+        Log
+      </Button>
+    </div>
+  );
 
   if (isLoading) {
     return <div className="p-8 max-w-7xl mx-auto">Loading contact...</div>;
@@ -177,7 +395,7 @@ export default function ContactDetailPage() {
         </div>
       </div>
 
-      {/* Contact Info Bar — multi-phone structure */}
+      {/* Contact Info Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 bg-card border rounded-2xl p-8 mb-12">
         <div>
           <p className="text-xs text-muted-foreground">EMAIL</p>
@@ -209,21 +427,6 @@ export default function ContactDetailPage() {
               '—'
             )}
           </p>
-          {Array.isArray(contact.phones) && contact.phones.length > 1 && (
-            <ul className="mt-2 text-sm text-muted-foreground space-y-1">
-              {contact.phones
-                .filter((p: any) => p?.number)
-                .map((p: any) => (
-                  <li key={p.id || p.number}>
-                    <a href={`tel:${p.number}`} className="hover:underline">
-                      {p.number}
-                    </a>
-                    {p.type ? ` · ${p.type}` : ''}
-                    {p.isPreferred ? ' · preferred' : ''}
-                  </li>
-                ))}
-            </ul>
-          )}
         </div>
         <div>
           <p className="text-xs text-muted-foreground">COMPANY</p>
@@ -261,35 +464,49 @@ export default function ContactDetailPage() {
 
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 bg-card border rounded-3xl p-8">
-            <h3 className="font-semibold mb-6">Contact Details</h3>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Name</span>
-                <span className="font-medium">{contact.name}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Title</span>
-                <span className="font-medium">{contact.title || '—'}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Preferred phone</span>
-                <span className="font-medium">{displayPhone || '—'}</span>
-              </div>
-              {contact.notes && (
-                <div>
-                  <span className="text-muted-foreground block mb-1">Notes</span>
-                  <p className="font-medium whitespace-pre-wrap">{contact.notes}</p>
+          <div className="lg:col-span-2 space-y-8">
+            <div className="bg-card border rounded-3xl p-8">
+              <h3 className="font-semibold mb-6">Contact Details</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Name</span>
+                  <span className="font-medium">{contact.name}</span>
                 </div>
-              )}
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Title</span>
+                  <span className="font-medium">{contact.title || '—'}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Preferred phone</span>
+                  <span className="font-medium">{displayPhone || '—'}</span>
+                </div>
+                {contact.notes && (
+                  <div>
+                    <span className="text-muted-foreground block mb-1">Static notes</span>
+                    <p className="font-medium whitespace-pre-wrap">{contact.notes}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Notes & Activity Log — note types + Log */}
+            <div className="bg-card border rounded-3xl p-8">
+              <h3 className="font-semibold mb-6">Notes & Activity Log</h3>
+              {renderNoteComposer()}
+              {renderActivityList()}
             </div>
           </div>
-          <div className="bg-card border rounded-3xl p-8">
+
+          <div className="bg-card border rounded-3xl p-8 h-fit">
             <h3 className="font-semibold mb-6">Quick Stats</h3>
             <div className="space-y-4 text-sm">
               <div className="flex justify-between">
                 <span>Company</span>
                 <span>{contact.companyName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Activities</span>
+                <span>{activities.length}</span>
               </div>
               <div className="flex justify-between">
                 <span>Contact ID</span>
@@ -301,15 +518,19 @@ export default function ContactDetailPage() {
       )}
 
       {activeTab === 'timeline' && (
-        <div className="bg-card border rounded-3xl p-8 text-muted-foreground">
-          Timeline coming soon...
+        <div className="bg-card border rounded-3xl p-8">
+          <h3 className="font-semibold mb-6">Full Timeline</h3>
+          {renderNoteComposer()}
+          {renderActivityList()}
         </div>
       )}
+
       {activeTab === 'jobs' && (
         <div className="bg-card border rounded-3xl p-8 text-muted-foreground">
           Open Jobs coming soon...
         </div>
       )}
+
       {activeTab === 'company' && (
         <div className="bg-card border rounded-3xl p-8">
           {contact.clientId ? (
@@ -325,7 +546,7 @@ export default function ContactDetailPage() {
         </div>
       )}
 
-      {/* Edit Modal — real DynamoDB save */}
+      {/* Edit Modal */}
       {isEditing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-background rounded-3xl p-8 w-full max-w-md shadow-xl">
@@ -362,7 +583,7 @@ export default function ContactDetailPage() {
               value={formData.notes || ''}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               className="w-full p-3 border rounded-xl mb-4 bg-background min-h-[80px]"
-              placeholder="Notes"
+              placeholder="Static notes field on contact record"
             />
             <label className="flex items-center gap-2 mb-6 text-sm">
               <input

@@ -56,6 +56,8 @@ export async function logContactActivity(data: {
   }
 
   revalidatePath(`/dashboard/contacts/${data.contactId}`);
+  revalidatePath(`/dashboard/contact-info/${data.contactId}`);
+  revalidatePath('/dashboard/contact-info');
   
   // Sanitize the returned event
   return sanitizeEvent(rawResult.event);
@@ -84,6 +86,8 @@ export async function updateContactActivity(data: {
   }
 
   revalidatePath(`/dashboard/contacts/${data.contactId}`);
+  revalidatePath(`/dashboard/contact-info/${data.contactId}`);
+  revalidatePath('/dashboard/contact-info');
   
   // Sanitize the returned event
   return sanitizeEvent(result.event);
@@ -100,5 +104,7 @@ export async function deleteContactActivity(data: {
   }
 
   revalidatePath(`/dashboard/contacts/${data.contactId}`);
+  revalidatePath(`/dashboard/contact-info/${data.contactId}`);
+  revalidatePath('/dashboard/contact-info');
   return { success: true };
 }
