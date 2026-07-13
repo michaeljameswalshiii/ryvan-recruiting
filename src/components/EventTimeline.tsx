@@ -1,83 +1,49 @@
-// Replace the entire handleAddNote function
-const handleAddNote = async () => {
-  if (!newNote.trim()) {
-    setError("Please enter a note");
-    return;
-  }
+{/* Timeline */}
+<div className="p-4" style={{ maxHeight, overflowY: 'auto' }}>
+  {loading && events.length === 0 && (
+    <div className="text-center text-sm text-gray-500 py-4">Loading events...</div>
+  )}
 
-  const noteText = newNote.trim();
-  const currentNoteType = noteType;
+  {error && <div className="text-red-600 text-sm mb-4 p-3 bg-red-50 rounded">{error}</div>}
 
-  const optimisticEvent: EventItem = {
-    id: `temp-${Date.now()}`,
-    entityType,
-    entityId,
-    eventType: 'NOTE',
-    title: 'Note Added',
-    description: noteText.length > 100 ? noteText.substring(0, 100) + '...' : noteText,
-    metadata: { noteText, noteType: currentNoteType },
-    createdAt: new Date().toISOString(),
-    createdBy: 'current-user',
-    createdByName: undefined,
-  };
+  {events.length === 0 && !loading ? (
+    <div className="text-center text-sm text-gray-500 py-8">No events yet.</div>
+  ) : (
+    <div className="space-y-4 relative">
+      <div className="absolute left-6 top-0 bottom-0 w-px bg-border" />
 
-  setEvents(prev => [optimisticEvent, ...prev]);
+      {events.map((event, index) => {
+        // Defensive check
+        if (!event || !event.id) {
+          console.warn('Invalid event:', event);
+          return null;
+        }
 
-  try {
-    setAddingNote(true);
-    setError(null);
-
-    let endpoint: string;
-    if (entityType === 'candidate') {
-      endpoint = `/api/candidate/${entityId}/notes`;
-    } else if (entityType === 'job') {
-      endpoint = `/api/jobs/${entityId}/notes`;
-    } else {
-      endpoint = `/api/company/${entityId}/notes`;
-    }
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ noteText, noteType: currentNoteType }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Failed to add note');
-    }
-
-    console.log("✅ Note saved successfully");
-    alert("Note saved! Refreshing timeline..."); // Temporary
-
-    setNewNote('');
-    setNoteType('general');
-
-    // Improved refetch with delay + retry
-    await new Promise(resolve => setTimeout(resolve, 800)); // Give DynamoDB time
-    await fetchEventsWithRetry(3); // up to 3 attempts
-  } catch (err: any) {
-    console.error('Failed to add note:', err);
-    setError(err.message || 'Failed to add note');
-    alert(err.message || 'Failed to add note');
-    setEvents(prev => prev.filter(e => e.id !== optimisticEvent.id));
-  } finally {
-    setAddingNote(false);
-  }
-};
-
-// New helper: fetch with retry
-const fetchEventsWithRetry = async (retries: number = 3) => {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      await fetchEvents();
-      const hasNewNote = events.some(e => e.eventType === 'NOTE' && e.id.startsWith('temp-') === false);
-      if (hasNewNote || attempt === retries) return;
-      await new Promise(r => setTimeout(r, 600 * attempt)); // backoff
-    } catch (e) {
-      if (attempt === retries) throw e;
-    }
-  }
-};
-
-// Your existing fetchEvents stays the same (with cache bust)
+        return (
+          <div key={event.id || `event-${index}`} className="flex gap-3 relative">
+            <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${getEventColor(event.eventType || 'default')}`}>
+              {getEventIcon(event.eventType || 'default')}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <span className={`text-xs px-2 py-0.5 rounded-full ${getEventColor(event.eventType || 'default')}`}>
+                  {getEventLabel(event.eventType || 'default')}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {formatDate(event.createdAt || new Date().toISOString())}
+                </span>
+              </div>
+              <div className="font-medium text-sm">{event.title || 'Event'}</div>
+              {event.description && typeof event.description === 'string' && (
+                <p className="text-sm text-muted-foreground mt-1">{event.description}</p>
+              )}
+              <div className="text-xs text-muted-foreground mt-2">
+                by {event.createdByName || event.createdBy || 'Unknown'}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  )}
+</div>
