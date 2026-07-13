@@ -1,33 +1,120 @@
-// src/lib/events/job-events.ts
-export async function getJobEvents(
+'use server';
+
+/**
+ * Job Events Service
+ */
+
+import { putItem, queryItems, eventsTable } from '../db/dynamodb';
+import type { EventDetails, RecordEventResponse, PaginationCursor } from './types';
+
+export type JobEventType =
+  | 'JOB_CREATED'
+  | 'JOB_UPDATED'
+  | 'JOB_DELETED'
+  | 'JOB_STATUS_CHANGED'
+  | 'CANDIDATE_LINKED'
+  | 'CANDIDATE_UNLINKED'
+  | 'CANDIDATE_STAGE_CHANGED'
+  | 'NOTE';
+
+async function getEventTenantId(): Promise<string> {
+  const { getSessionTenantId, getSessionUserId } = await import('../server-auth');
+  const tenantId = await getSessionTenantId();
+  const userId = await getSessionUserId();
+  const final = tenantId || `tenant-${userId || 'default'}`;
+  console.log(`[TENANT] Resolved: ${final}`);
+  return final;
+}
+
+export async function recordJobEvent(
   jobId: string,
-  options?: { limit?: number; cursor?: any; eventTypes?: string[] }
-) {
-  console.log(`[getJobEvents] START - jobId: ${jobId}, options:`, options);
-
+  eventType: JobEventType,
+  details: EventDetails,
+  createdBy: string
+): Promise<RecordEventResponse> {
   try {
-    // Your existing query logic here...
-    // Example:
-    const tenantId = await getEventTenantId(); // whatever you use
-    console.log(`[getJobEvents] Using tenantId: ${tenantId}`);
+    const timestamp = new Date().toISOString();
+    const eventId = `${jobId}-${timestamp}`;
+    const tenantId = await getEventTenantId();
 
-    // ... your DynamoDB query ...
+    const event = {
+      PK: `ENTITY#job#${jobId}`,
+      SK: `EVENT#${timestamp}`,
+      GSI1PK: `TENANT#${tenantId}`,
+      GSI1SK: `EVENT#${timestamp}`,
+      tenantId,
+      entityId: jobId,
+      entityType: 'job',
+      eventType,
+      title: details.title,
+      description: details.description,
+      metadata: details.metadata || {},
+      createdAt: timestamp,
+      createdBy,
+    };
 
-    console.log(`[getJobEvents] Raw DB results count:`, rawResults?.length || 0);
-    console.log(`[getJobEvents] Raw events:`, rawResults); // Log the full results
+    await putItem(eventsTable, event);
+    console.log(`[recordJobEvent] Success for job ${jobId}, type ${eventType}`);
 
-    // Your filtering logic...
-    const filtered = rawResults.filter(/* your filter */);
-    console.log(`[getJobEvents] After filter: ${filtered.length} events for job ${jobId}`);
-
-    const finalEvents = filtered.slice(0, options?.limit || 50);
-    console.log(`[getJobEvents] Returning ${finalEvents.length} events`);
-
-    return { events: finalEvents, hasMore: false, totalCount: finalEvents.length };
+    return { success: true, eventId };
   } catch (error) {
-    console.error(`[getJobEvents] ERROR:`, error);
-    return { events: [], hasMore: false, totalCount: 0 };
+    console.error('[recordJobEvent] Failed:', error);
+    return { success: false, error: String(error) };
   }
 }
 
-// Keep your addNoteToJob and recordJobEvent as-is (they are working)
+export async function getJobEvents(
+  jobId: string,
+  options?: { limit?: number; cursor?: PaginationCursor; eventTypes?: JobEventType[] }
+) {
+  console.log(`[getJobEvents] START for job ${jobId}`);
+
+  try {
+    const tenantId = await getEventTenantId();
+    console.log(`[getJobEvents] Using tenant: ${tenantId}`);
+
+    const rawEvents = await queryItems(
+      eventsTable,
+      'GSI1PK = :gsi1pk AND begins_with(GSI1SK, :prefix)',
+      {
+        ':gsi1pk': `TENANT#${tenantId}`,
+        ':prefix': 'EVENT#',
+      }
+    );
+
+    console.log(`[getJobEvents] Raw DB items: ${rawEvents.length}`);
+
+    let filtered = rawEvents.filter((e: any) => e.entityId === jobId && e.entityType === 'job');
+    console.log(`[getJobEvents] After entity filter: ${filtered.length}`);
+
+    const sorted = filtered.sort((a: any, b: any) => b.SK.localeCompare(a.SK));
+    const limited = sorted.slice(0, options?.limit || 50);
+
+    const mapped = limited.map((e: any) => ({
+      id: e.SK.replace('EVENT#', ''),
+      entityId: e.entityId,
+      entityType: 'job',
+      eventType: e.eventType,
+      title: e.title,
+      description: e.description,
+      metadata: e.metadata,
+      createdAt: e.createdAt,
+      createdBy: e.createdBy,
+    }));
+
+    console.log(`[getJobEvents] FINAL returning ${mapped.length} events`);
+    return { events: mapped, hasMore: sorted.length > (options?.limit || 50) };
+  } catch (error) {
+    console.error(`[getJobEvents] ERROR:`, error);
+    return { events: [] };
+  }
+}
+
+// Keep your other functions (addNoteToJob, etc.) at the bottom
+export async function addNoteToJob(jobId: string, noteText: string, createdBy: string, noteType = 'general') {
+  return recordJobEvent(jobId, 'NOTE', {
+    title: 'Note Added',
+    description: noteText.length > 100 ? noteText.substring(0, 100) + '...' : noteText,
+    metadata: { noteText, noteType },
+  }, createdBy);
+}
