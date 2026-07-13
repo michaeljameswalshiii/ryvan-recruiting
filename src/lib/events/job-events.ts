@@ -1,64 +1,33 @@
-import { getEventTenantId } from './utils'; // adjust import if needed
-import { eventsTable } from '../db/dynamodb'; // your DynamoDB client
-
-export type JobEventType =
-  | 'JOB_CREATED'
-  | 'JOB_UPDATED'
-  | 'JOB_DELETED'
-  | 'JOB_STATUS_CHANGED'
-  | 'CANDIDATE_LINKED'
-  | 'CANDIDATE_UNLINKED'
-  | 'CANDIDATE_STAGE_CHANGED'
-  | 'NOTE';
-
-interface EventDetails {
-  title: string;
-  description?: string;
-  metadata?: Record<string, any>;
-}
-
-export async function recordJobEvent(
+// src/lib/events/job-events.ts
+export async function getJobEvents(
   jobId: string,
-  eventType: JobEventType,
-  details: EventDetails,
-  createdBy: string
+  options?: { limit?: number; cursor?: any; eventTypes?: string[] }
 ) {
-  // Your existing implementation (PK, SK, GSI1PK, etc.)
-  // ... keep your current recordJobEvent code ...
-  return { success: true, eventId: '...' }; // placeholder - keep your real logic
-}
+  console.log(`[getJobEvents] START - jobId: ${jobId}, options:`, options);
 
-export async function getJobEvents(jobId: string, options?: any) {
-  // Your existing getJobEvents implementation
-  // ... keep your current code ...
-  return { events: [], hasMore: false, totalCount: 0 };
-}
+  try {
+    // Your existing query logic here...
+    // Example:
+    const tenantId = await getEventTenantId(); // whatever you use
+    console.log(`[getJobEvents] Using tenantId: ${tenantId}`);
 
-// ==================== UPDATED addNoteToJob ====================
-export async function addNoteToJob(
-  jobId: string,
-  noteText: string,
-  createdBy: string,
-  noteType: string = 'general'   // NEW parameter
-) {
-  if (!noteText || noteText.trim() === '') {
-    return { success: false, error: 'Note text is required' };
+    // ... your DynamoDB query ...
+
+    console.log(`[getJobEvents] Raw DB results count:`, rawResults?.length || 0);
+    console.log(`[getJobEvents] Raw events:`, rawResults); // Log the full results
+
+    // Your filtering logic...
+    const filtered = rawResults.filter(/* your filter */);
+    console.log(`[getJobEvents] After filter: ${filtered.length} events for job ${jobId}`);
+
+    const finalEvents = filtered.slice(0, options?.limit || 50);
+    console.log(`[getJobEvents] Returning ${finalEvents.length} events`);
+
+    return { events: finalEvents, hasMore: false, totalCount: finalEvents.length };
+  } catch (error) {
+    console.error(`[getJobEvents] ERROR:`, error);
+    return { events: [], hasMore: false, totalCount: 0 };
   }
-
-  const truncated = noteText.length > 100 ? noteText.substring(0, 100) + '...' : noteText;
-
-  return recordJobEvent(
-    jobId,
-    'NOTE',
-    {
-      title: 'Note Added',
-      description: truncated,
-      metadata: {
-        noteText: noteText.trim(),
-        noteType,                    // Now stored
-        changedBy: createdBy,
-      },
-    },
-    createdBy
-  );
 }
+
+// Keep your addNoteToJob and recordJobEvent as-is (they are working)
