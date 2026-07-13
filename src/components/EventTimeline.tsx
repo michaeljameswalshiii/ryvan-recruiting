@@ -52,11 +52,7 @@ export default function EventTimeline({
       const res = await fetch(`${endpoint}?limit=50&_t=${Date.now()}`);
       const data = await res.json();
       
-      console.log(`[DEBUG] Fetched ${data.events?.length || 0} events for ${entityType} ${entityId}`, data.events);
-      
-      // Look for NOTE events
-      const noteEvents = (data.events || []).filter((e: any) => e.eventType === 'NOTE');
-      console.log(`[DEBUG] Found ${noteEvents.length} NOTE events`, noteEvents);
+      console.log(`[DEBUG] Fetched ${data.events?.length || 0} events for ${entityType} ${entityId}`);
 
       setEvents(data.events || []);
     } catch (e) {
@@ -64,9 +60,10 @@ export default function EventTimeline({
     }
   }, [entityType, entityId]);
 
+  // Force fetch on mount and when entity changes
   useEffect(() => {
-    if (initialEvents.length === 0) fetchEvents();
-  }, [initialEvents.length, fetchEvents]);
+    fetchEvents();
+  }, [fetchEvents]);
 
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
@@ -94,8 +91,6 @@ export default function EventTimeline({
       if (entityType === 'candidate') endpoint = `/api/candidate/${entityId}/notes`;
       if (entityType === 'company') endpoint = `/api/company/${entityId}/notes`;
 
-      console.log(`[DEBUG] Posting note to ${endpoint}`);
-
       await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -105,12 +100,11 @@ export default function EventTimeline({
       setNewNote('');
       setNoteType('general');
 
-      // Aggressive polling
-      for (let i = 0; i < 10; i++) {
-        await new Promise(r => setTimeout(r, 700));
+      // Strong polling
+      for (let i = 0; i < 12; i++) {
+        await new Promise(r => setTimeout(r, 800));
         await fetchEvents();
-        const hasNote = events.some(e => e.eventType === 'NOTE' && e.id !== tempId);
-        if (hasNote) break;
+        if (events.some(e => e.eventType === 'NOTE' && e.description?.includes(noteText.substring(0, 20)))) break;
       }
     } catch (e) {
       console.error(e);
