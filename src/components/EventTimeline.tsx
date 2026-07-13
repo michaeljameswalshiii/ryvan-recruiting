@@ -11,7 +11,7 @@ interface EventItem {
   eventType: string;
   title: string;
   description?: string;
-  metadata?: Record<string, any>;
+  metadata?: any;
   createdAt: string;
   createdBy: string;
 }
@@ -49,11 +49,18 @@ export default function EventTimeline({
       if (entityType === 'candidate') endpoint = `/api/candidate/${entityId}/events`;
       if (entityType === 'company') endpoint = `/api/company/${entityId}/events`;
 
-      const res = await fetch(`${endpoint}?_t=${Date.now()}`);
+      const res = await fetch(`${endpoint}?limit=50&_t=${Date.now()}`);
       const data = await res.json();
+      
+      console.log(`[DEBUG] Fetched ${data.events?.length || 0} events for ${entityType} ${entityId}`, data.events);
+      
+      // Look for NOTE events
+      const noteEvents = (data.events || []).filter((e: any) => e.eventType === 'NOTE');
+      console.log(`[DEBUG] Found ${noteEvents.length} NOTE events`, noteEvents);
+
       setEvents(data.events || []);
     } catch (e) {
-      console.error(e);
+      console.error('[DEBUG] Fetch error:', e);
     }
   }, [entityType, entityId]);
 
@@ -67,7 +74,6 @@ export default function EventTimeline({
     const noteText = newNote.trim();
     const tempId = `temp-${Date.now()}`;
 
-    // Optimistic
     const optimistic = {
       id: tempId,
       entityType,
@@ -77,15 +83,18 @@ export default function EventTimeline({
       description: noteText,
       createdAt: new Date().toISOString(),
       createdBy: 'You',
-    };
+    } as EventItem;
 
     setEvents(prev => [optimistic, ...prev]);
 
     try {
       setAddingNote(true);
+
       let endpoint = `/api/jobs/${entityId}/notes`;
       if (entityType === 'candidate') endpoint = `/api/candidate/${entityId}/notes`;
       if (entityType === 'company') endpoint = `/api/company/${entityId}/notes`;
+
+      console.log(`[DEBUG] Posting note to ${endpoint}`);
 
       await fetch(endpoint, {
         method: 'POST',
@@ -96,8 +105,13 @@ export default function EventTimeline({
       setNewNote('');
       setNoteType('general');
 
-      await new Promise(r => setTimeout(r, 1000));
-      await fetchEvents();
+      // Aggressive polling
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 700));
+        await fetchEvents();
+        const hasNote = events.some(e => e.eventType === 'NOTE' && e.id !== tempId);
+        if (hasNote) break;
+      }
     } catch (e) {
       console.error(e);
       setEvents(prev => prev.filter(e => e.id !== tempId));
