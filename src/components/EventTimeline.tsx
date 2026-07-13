@@ -52,21 +52,22 @@ export default function EventTimeline({
   const fetchEvents = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-
       let endpoint: string;
       if (entityType === 'candidate') endpoint = `/api/candidate/${entityId}/events`;
       else if (entityType === 'job') endpoint = `/api/jobs/${entityId}/events`;
       else endpoint = `/api/company/${entityId}/events`;
 
       const response = await fetch(`${endpoint}?limit=50&_t=${Date.now()}`, { cache: 'no-store' });
-      if (!response.ok) throw new Error('Failed to fetch events');
+      if (!response.ok) throw new Error('Failed');
 
       const data = await response.json();
+      console.log(`[Events] Fetched ${data.events?.length || 0} events`, data.events);
       setEvents(data.events || []);
-    } catch (err: any) {
+      return data.events || [];
+    } catch (err) {
       console.error(err);
       setError('Failed to load events');
+      return [];
     } finally {
       setLoading(false);
     }
@@ -76,31 +77,37 @@ export default function EventTimeline({
     if (!initialEvents.length) fetchEvents();
   }, [initialEvents.length, fetchEvents]);
 
-  const getEventIcon = (type: string) => (type === 'NOTE' ? '📝' : '⏰');
-  const getEventColor = (type: string) => (type === 'NOTE' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800');
-  const getEventLabel = (type: string) => (type === 'NOTE' ? 'Note' : type.replace(/_/g, ' '));
-  const formatDate = (d: string) => new Date(d).toLocaleString();
+  // Poll until new note appears
+  const pollForNewNote = async (maxAttempts = 8) => {
+    for (let i = 0; i < maxAttempts; i++) {
+      const fetched = await fetchEvents();
+      const hasNote = fetched.some((e: EventItem) => e.eventType === 'NOTE');
+      if (hasNote) return;
+      await new Promise(r => setTimeout(r, 600));
+    }
+  };
 
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
 
     const noteText = newNote.trim();
-    const optimistic = {
+    const optimistic: EventItem = {
       id: `temp-${Date.now()}`,
       entityType,
       entityId,
       eventType: 'NOTE',
       title: 'Note Added',
-      description: noteText,
+      description: noteText.length > 100 ? noteText.substring(0, 100) + '...' : noteText,
       metadata: { noteText, noteType },
       createdAt: new Date().toISOString(),
       createdBy: 'user',
-    } as EventItem;
+    };
 
     setEvents(prev => [optimistic, ...prev]);
 
     try {
       setAddingNote(true);
+
       let endpoint = `/api/jobs/${entityId}/notes`;
       if (entityType === 'candidate') endpoint = `/api/candidate/${entityId}/notes`;
       if (entityType === 'company') endpoint = `/api/company/${entityId}/notes`;
@@ -111,15 +118,16 @@ export default function EventTimeline({
         body: JSON.stringify({ noteText, noteType }),
       });
 
-      if (!res.ok) throw new Error('Failed');
+      if (!res.ok) throw new Error('Save failed');
 
       setNewNote('');
       setNoteType('general');
-      await new Promise(r => setTimeout(r, 800));
-      await fetchEvents();
-    } catch (e) {
-      console.error(e);
-      setEvents(prev => prev.filter(ev => ev.id !== optimistic.id));
+
+      // Poll backend until the real note appears
+      await pollForNewNote();
+    } catch (err) {
+      console.error(err);
+      setEvents(prev => prev.filter(e => e.id !== optimistic.id));
     } finally {
       setAddingNote(false);
     }
@@ -127,11 +135,14 @@ export default function EventTimeline({
 
   return (
     <div className="bg-white border rounded-xl">
+      {/* Note Form */}
       <div className="border-b border-border p-4">
         <div className="mb-3">
           <label className="text-sm font-medium mb-2 block">Note Type</label>
           <select value={noteType} onChange={(e) => setNoteType(e.target.value)} className="w-full p-2 text-sm border rounded-md">
-            {noteTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            {noteTypes.map(t => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
           </select>
         </div>
         <div className="mb-3">
@@ -153,21 +164,13 @@ export default function EventTimeline({
         </button>
       </div>
 
+      {/* Events List */}
       <div className="p-4" style={{ maxHeight, overflowY: 'auto' }}>
-        {events.length === 0 ? (
+        {events.length === 0 && !loading ? (
           <div className="text-center py-8 text-gray-500">No events yet.</div>
         ) : (
           events.map((event, i) => (
-            <div key={event.id || i} className="mb-6">
+            <div key={event.id || i} className="mb-6 p-3 border-l-4 border-yellow-400 bg-yellow-50">
               <div className="font-medium">{event.title}</div>
-              <div className="text-sm text-gray-600">{event.description}</div>
-              <div className="text-xs text-gray-500">
-                {formatDate(event.createdAt)} by {event.createdBy}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
+              <div className="text-sm">{event.description}</div>
+              <div className="text-xs text-gray-500 mt-
