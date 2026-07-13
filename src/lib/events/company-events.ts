@@ -62,7 +62,8 @@ export async function getCompanyEvents(
   limit?: number
 ): Promise<GetCompanyEventsResponse> {
   try {
-    const events = await queryItems<CompanyEvent>(
+    // queryItems returns { items: T[], lastEvaluatedKey?: ... } — not a bare array
+    const rawResponse = await queryItems<CompanyEvent>(
       eventsTable,
       'PK = :pk AND begins_with(SK, :skPrefix)',
       {
@@ -71,7 +72,11 @@ export async function getCompanyEvents(
       }
     );
 
-    const sortedEvents = events.sort((a, b) => b.SK.localeCompare(a.SK));
+    const events = Array.isArray(rawResponse)
+      ? rawResponse
+      : (rawResponse?.items || []);
+
+    const sortedEvents = [...events].sort((a, b) => b.SK.localeCompare(a.SK));
     const limitedEvents = limit ? sortedEvents.slice(0, limit) : sortedEvents;
 
     const eventResults: CompanyEventResult[] = limitedEvents.map(event => ({
