@@ -1,51 +1,18 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Plus, RefreshCw, User, Mail, Phone, Briefcase } from 'lucide-react';
-import { useLeads, useCreateLead, useDeleteLead } from '@/lib/hooks/query-lead';
+import { Plus, RefreshCw, User } from 'lucide-react';
+import { useLeads, useDeleteLead } from '@/lib/hooks/query-lead';
 
 export function CandidatesClient() {
   const router = useRouter();
   const { data: leads = [], isLoading, error, refetch } = useLeads();
-  const createLeadMutation = useCreateLead();
   const deleteLeadMutation = useDeleteLead();
-  
-  const [showForm, setShowForm] = useState(false);
-  const [newCandidateName, setNewCandidateName] = useState('');
-  const [newCandidateEmail, setNewCandidateEmail] = useState('');
-  const [newCandidatePhone, setNewCandidatePhone] = useState('');
-  const [newCandidateCompany, setNewCandidateCompany] = useState('');
-  const [newCandidateTitle, setNewCandidateTitle] = useState('');
 
-  const handleCreateCandidate = async () => {
-    if (!newCandidateName) {
-      alert('Candidate name is required');
-      return;
-    }
-    
-    try {
-      const formData = new FormData();
-      formData.append('name', newCandidateName);
-      if (newCandidateEmail) formData.append('email', newCandidateEmail);
-      if (newCandidatePhone) formData.append('phone', newCandidatePhone);
-      if (newCandidateCompany) formData.append('company', newCandidateCompany);
-      if (newCandidateTitle) formData.append('title', newCandidateTitle);
-      
-      await createLeadMutation.mutateAsync(formData);
-      setShowForm(false);
-      setNewCandidateName('');
-      setNewCandidateEmail('');
-      setNewCandidatePhone('');
-      setNewCandidateCompany('');
-      setNewCandidateTitle('');
-      refetch();
-      alert('Candidate created successfully!');
-    } catch (err: any) {
-      console.error('Create candidate error:', err);
-      alert(`Failed to create candidate: ${err?.message || 'Unknown error'}`);
-    }
+  const goToNewCandidate = () => {
+    // Full create flow with resume upload + auto-populate
+    router.push('/dashboard/candidates/new');
   };
 
   const handleDeleteCandidate = async (leadId: string, candidateName: string) => {
@@ -113,77 +80,10 @@ export function CandidatesClient() {
           <h1 className="text-3xl font-bold">Candidates</h1>
           <p className="text-gray-500">Manage your talent pipeline</p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
-          <Plus className="mr-2 h-5 w-5" /> {showForm ? 'Cancel' : 'New Candidate'}
+        <Button onClick={goToNewCandidate}>
+          <Plus className="mr-2 h-5 w-5" /> New Candidate
         </Button>
       </div>
-
-      {/* New Candidate Form */}
-      {showForm && (
-        <div className="bg-white border rounded-lg p-6 mb-6">
-          <h3 className="text-lg font-semibold mb-4">Add New Candidate</h3>
-          <div className="grid gap-4 max-w-xl">
-            <div>
-              <label className="block text-sm font-medium mb-1">Name *</label>
-              <input
-                type="text"
-                value={newCandidateName}
-                onChange={(e) => setNewCandidateName(e.target.value)}
-                className="w-full h-10 px-3 border rounded-md"
-                placeholder="John Doe"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Email</label>
-              <input
-                type="email"
-                value={newCandidateEmail}
-                onChange={(e) => setNewCandidateEmail(e.target.value)}
-                className="w-full h-10 px-3 border rounded-md"
-                placeholder="john@example.com"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Phone</label>
-              <input
-                type="tel"
-                value={newCandidatePhone}
-                onChange={(e) => setNewCandidatePhone(e.target.value)}
-                className="w-full h-10 px-3 border rounded-md"
-                placeholder="(555) 123-4567"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Company</label>
-              <input
-                type="text"
-                value={newCandidateCompany}
-                onChange={(e) => setNewCandidateCompany(e.target.value)}
-                className="w-full h-10 px-3 border rounded-md"
-                placeholder="Current company"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Title</label>
-              <input
-                type="text"
-                value={newCandidateTitle}
-                onChange={(e) => setNewCandidateTitle(e.target.value)}
-                className="w-full h-10 px-3 border rounded-md"
-                placeholder="Software Engineer"
-              />
-            </div>
-            <div className="flex gap-3">
-              <Button onClick={handleCreateCandidate} disabled={createLeadMutation.isPending}>
-                {createLeadMutation.isPending ? 'Creating...' : 'Create Candidate'}
-              </Button>
-              <Button variant="outline" onClick={() => setShowForm(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Candidates Table */}
       {candidates.length === 0 ? (
@@ -191,9 +91,9 @@ export function CandidatesClient() {
           <div className="text-4xl mb-6">👤</div>
           <h2 className="text-2xl font-semibold mb-3">No Candidates Yet</h2>
           <p className="text-gray-600 max-w-md mx-auto mb-6">
-            Get started by adding your first candidate to the pipeline.
+            Get started by uploading a resume or adding your first candidate.
           </p>
-          <Button onClick={() => setShowForm(true)}>
+          <Button onClick={goToNewCandidate}>
             <Plus className="mr-2 h-4 w-4" /> Add Your First Candidate
           </Button>
         </div>
