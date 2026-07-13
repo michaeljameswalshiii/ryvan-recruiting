@@ -1,292 +1,68 @@
-'use client';
-
-import { useState, useEffect, useCallback } from 'react';
-import { 
-  StickyNote, 
-  Mail, 
-  Eye, 
-  ArrowRight, 
-  Calendar, 
-  CheckCircle2,
-  UserPlus,
-  Search,
-  FileText,
-  Building2,
-  UserMinus,
-  Briefcase,
-  TrendingUp,
-  TrendingDown,
-  Trophy,
-  XCircle,
-  Handshake,
-  Phone,
-  Clock
-} from 'lucide-react';
-import { toast } from 'sonner';
-
-export type EntityType = 'candidate' | 'company' | 'job';
-
-type EventType = string;
-
-interface EventItem {
-  id: string;
-  entityType: EntityType;
-  entityId: string;
-  eventType: EventType;
-  title: string;
-  description?: string;
-  metadata: Record<string, any>;
-  createdAt: string;
-  createdBy: string;
-  createdByName?: string;
-}
-
-interface EventTimelineProps {
-  entityType: EntityType;
-  entityId: string;
-  tenantId: string;
-  initialEvents?: EventItem[];
-  maxHeight?: string;
-}
-
-const noteTypes = [
-  { value: 'general', label: 'General Note' },
-  { value: 'follow_up', label: 'Follow-up' },
-  { value: 'meeting', label: 'Meeting' },
-  { value: 'phone_call', label: 'Phone Call' },
-  { value: 'email_sent', label: 'Email Sent' },
-  { value: 'other', label: 'Other' },
-];
-
-export default function EventTimeline({
-  entityType,
-  entityId,
-  tenantId,
-  initialEvents = [],
-  maxHeight = '500px',
-}: EventTimelineProps) {
-  const [events, setEvents] = useState<EventItem[]>(initialEvents);
-  const [loading, setLoading] = useState(!initialEvents.length);
-  const [error, setError] = useState<string | null>(null);
-  const [newNote, setNewNote] = useState('');
-  const [noteType, setNoteType] = useState('general');
-  const [addingNote, setAddingNote] = useState(false);
-
-  const fetchEvents = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      let endpoint: string;
-      if (entityType === 'candidate') {
-        endpoint = `/api/candidate/${entityId}/events`;
-      } else if (entityType === 'job') {
-        endpoint = `/api/jobs/${entityId}/events`;
-      } else {
-        endpoint = `/api/company/${entityId}/events`;
-      }
-        
-      const timestamp = new Date().getTime();
-      const response = await fetch(`${endpoint}?limit=50&_t=${timestamp}`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch ${entityType} events`);
-      }
-      
-      const data = await response.json();
-      setEvents(data.events || []);
-    } catch (err) {
-      console.error('Failed to fetch events:', err);
-      setError(`Failed to load ${entityType} events`);
-    } finally {
-      setLoading(false);
-    }
-  }, [entityType, entityId]);
-
-  useEffect(() => {
-    if (!initialEvents.length) {
-      fetchEvents();
-    }
-  }, [initialEvents.length, fetchEvents]);
-
-  const handleAddNote = async () => {
-    if (!newNote.trim()) {
-      setError("Please enter a note");
-      return;
-    }
-
-    try {
-      setAddingNote(true);
-      setError(null);
-
-      let endpoint: string;
-      if (entityType === 'candidate') {
-        endpoint = `/api/candidate/${entityId}/notes`;
-      } else if (entityType === 'job') {
-        endpoint = `/api/jobs/${entityId}/notes`;   // ✅ FIXED
-      } else {
-        endpoint = `/api/company/${entityId}/notes`;
-      }
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          noteText: newNote.trim(),
-          noteType: noteType,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to add note');
-      }
-
-      toast.success("Note added successfully");
-      setNewNote('');
-      setNoteType('general');
-      await new Promise(resolve => setTimeout(resolve, 300));
-      await fetchEvents();
-    } catch (err: any) {
-      console.error('Failed to add note:', err);
-      setError(err.message || 'Failed to add note');
-      toast.error(err.message || 'Failed to add note');
-    } finally {
-      setAddingNote(false);
-    }
-  };
-
-  // ... (rest of the file: getEventIcon, getEventColor, getEventLabel, formatDate, and the JSX return — unchanged)
-
-  function getEventIcon(eventType: EventType) {
-    const icons: Record<string, React.ReactNode> = {
-      NOTE: <StickyNote className="w-4 h-4" />,
-      EMAIL_SENT: <Mail className="w-4 h-4" />,
-      EMAIL_OPENED: <Eye className="w-4 h-4" />,
-      EMAIL_CLICKED: <ArrowRight className="w-4 h-4" />,
-      STATUS_CHANGED: <ArrowRight className="w-4 h-4" />,
-      STAGE_CHANGED: <ArrowRight className="w-4 h-4" />,
-      INTERVIEW_SCHEDULED: <Calendar className="w-4 h-4" />,
-      INTERVIEW_COMPLETED: <CheckCircle2 className="w-4 h-4" />,
-      CANDIDATE_CREATED: <UserPlus className="w-4 h-4" />,
-      CANDIDATE_VIEWED: <Search className="w-4 h-4" />,
-      RESUME_UPLOADED: <FileText className="w-4 h-4" />,
-      COMPANY_CREATED: <Building2 className="w-4 h-4" />,
-      CONTACT_ADDED: <UserPlus className="w-4 h-4" />,
-      CONTACT_REMOVED: <UserMinus className="w-4 h-4" />,
-      DEAL_CREATED: <Briefcase className="w-4 h-4" />,
-      DEAL_STAGE_CHANGED: <TrendingUp className="w-4 h-4" />,
-      DEAL_WON: <Trophy className="w-4 h-4" />,
-      DEAL_LOST: <XCircle className="w-4 h-4" />,
-      MEETING_SCHEDULED: <Handshake className="w-4 h-4" />,
-      CALL_COMPLETED: <Phone className="w-4 h-4" />,
-    };
-    return icons[eventType] || <Clock className="w-4 h-4" />;
-  }
-
-  function getEventColor(eventType: EventType): string {
-    const colors: Record<string, string> = {
-      NOTE: 'bg-yellow-100 text-yellow-800',
-      EMAIL_SENT: 'bg-blue-100 text-blue-800',
-      EMAIL_OPENED: 'bg-cyan-100 text-cyan-800',
-      EMAIL_CLICKED: 'bg-indigo-100 text-indigo-800',
-      STATUS_CHANGED: 'bg-purple-100 text-purple-800',
-      STAGE_CHANGED: 'bg-violet-100 text-violet-800',
-      INTERVIEW_SCHEDULED: 'bg-green-100 text-green-800',
-      INTERVIEW_COMPLETED: 'bg-emerald-100 text-emerald-800',
-      CANDIDATE_CREATED: 'bg-slate-100 text-slate-800',
-      CANDIDATE_VIEWED: 'bg-gray-100 text-gray-800',
-      RESUME_UPLOADED: 'bg-red-100 text-red-800',
-      COMPANY_CREATED: 'bg-slate-100 text-slate-800',
-      CONTACT_ADDED: 'bg-teal-100 text-teal-800',
-      CONTACT_REMOVED: 'bg-orange-100 text-orange-800',
-      DEAL_CREATED: 'bg-amber-100 text-amber-800',
-      DEAL_STAGE_CHANGED: 'bg-lime-100 text-lime-800',
-      DEAL_WON: 'bg-yellow-100 text-yellow-800',
-      DEAL_LOST: 'bg-red-100 text-red-800',
-      MEETING_SCHEDULED: 'bg-cyan-100 text-cyan-800',
-      CALL_COMPLETED: 'bg-green-100 text-green-800',
-    };
-    return colors[eventType] || 'bg-gray-100 text-gray-800';
-  }
-
-  function getEventLabel(eventType: EventType): string {
-    const labels: Record<string, string> = {
-      NOTE: 'Note',
-      EMAIL_SENT: 'Email Sent',
-      EMAIL_OPENED: 'Email Opened',
-      EMAIL_CLICKED: 'Link Clicked',
-      STATUS_CHANGED: 'Status Changed',
-      STAGE_CHANGED: 'Stage Changed',
-      INTERVIEW_SCHEDULED: 'Interview',
-      INTERVIEW_COMPLETED: 'Interview Done',
-      CANDIDATE_CREATED: 'Added',
-      CANDIDATE_VIEWED: 'Viewed',
-      RESUME_UPLOADED: 'Resume',
-      COMPANY_CREATED: 'Added',
-      CONTACT_ADDED: 'Contact Added',
-      CONTACT_REMOVED: 'Contact Removed',
-      DEAL_CREATED: 'Deal',
-      DEAL_STAGE_CHANGED: 'Deal Stage',
-      DEAL_WON: 'Deal Won',
-      DEAL_LOST: 'Deal Lost',
-      MEETING_SCHEDULED: 'Meeting',
-      CALL_COMPLETED: 'Call Done',
-    };
-    return labels[eventType] || 'Event';
-  }
-
-  function formatDate(dateString: string) {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    let relativeTime = '';
-    if (diffMins < 1) relativeTime = 'just now';
-    else if (diffMins < 60) relativeTime = `${diffMins}m ago`;
-    else if (diffHours < 24) relativeTime = `${diffHours}h ago`;
-    else if (diffDays < 7) relativeTime = `${diffDays}d ago`;
-
-    const formatted = date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-
-    return relativeTime ? `${formatted} (${relativeTime})` : formatted;
-  }
-
-  if (loading) {
-    return (
-      <div className="border border-border rounded-lg p-4 bg-background">
-        <h3 className="text-lg font-semibold mb-4">Category</h3>
-        <div className="flex items-center justify-center py-8 text-muted-foreground">
-          Loading events...
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="border border-border rounded-lg bg-background overflow-hidden">
-      <div className="border-b border-border p-4">
-        <h3 className="text-lg font-semibold">Category</h3>
-        <p className="text-sm text-muted-foreground">
-          {events.length} event{events.length !== 1 ? 's' : ''} • Chronological
-        </p>
-      </div>
-
-      <div className="border-b border-border p-4">
-        <div className="mb-3">
-          <label className="text-sm font-medium mb-2 block">Note Type</label>
-          <select
-            value={noteType}
-            onChange={(e) => setNoteType(e.target.value)}
-            className="w-full p-2 text-sm border border-input rounded-md bg-background"
-          >
-            {noteTypes.map((type) => (
+22:49:03.664 Running build in Washington, D.C., USA (East) – iad1
+22:49:03.665 Build machine configuration: 4 cores, 8 GB
+22:49:03.815 Cloning github.com/michaeljameswalshiii/turnkey-optimization (Branch: master, Commit: 21f7e0c)
+22:49:04.161 Warning: Failed to fetch one or more git submodules
+22:49:04.162 Cloning completed: 346.000ms
+22:49:04.241 Found .vercelignore
+22:49:04.287 Removed 95 ignored files defined in .vercelignore
+22:49:04.288   /AI_APOLLO_IMPORT_GUIDE.md
+22:49:04.288   /AWS_QUICKSIGHT_REPORTING_SETUP.md
+22:49:04.288   /BEDROCK_USAGE_SETUP.md
+22:49:04.288   /cdk/__init__.py
+22:49:04.288   /cdk/app.py
+22:49:04.289   /cdk/cdk.json
+22:49:04.289   /cdk/cdk.out/cdk.out
+22:49:04.289   /cdk/cdk.out/manifest.json
+22:49:04.289   /cdk/cdk.out/tree.json
+22:49:04.289   /cdk/cdk.out/TurnkeyAuth.assets.json
+22:49:05.534 Restored build cache from previous deployment (7xZbDtaiayzwy3hqcsAgkjN1QcT6)
+22:49:05.748 Running "vercel build"
+22:49:05.764 Vercel CLI 55.0.0
+22:49:06.164 Running "install" command: `npm install`...
+22:49:13.770 
+22:49:13.770 up to date, audited 694 packages in 7s
+22:49:13.770 
+22:49:13.770 195 packages are looking for funding
+22:49:13.771   run `npm fund` for details
+22:49:13.879 
+22:49:13.879 3 vulnerabilities (1 moderate, 1 high, 1 critical)
+22:49:13.879 
+22:49:13.879 To address all issues (including breaking changes), run:
+22:49:13.879   npm audit fix --force
+22:49:13.879 
+22:49:13.880 Run `npm audit` for details.
+22:49:13.931 Detected Next.js version: 15.1.11
+22:49:13.932 Running "npm run build"
+22:49:14.044 
+22:49:14.044 > turnkey-optimization@0.1.0 build
+22:49:14.044 > next build
+22:49:14.044 
+22:49:14.891    ▲ Next.js 15.1.11
+22:49:14.891    - Environments: .env.production
+22:49:14.891 
+22:49:14.912    Creating an optimized production build ...
+22:49:28.745 Failed to compile.
+22:49:28.746 
+22:49:28.746 ./src/components/EventTimeline.tsx
+22:49:28.746 Error:   x Unexpected token `div`. Expected jsx identifier
+22:49:28.746      ,-[/vercel/path0/src/components/EventTimeline.tsx:276:1]
+22:49:28.746  273 |   }
+22:49:28.746  274 | 
+22:49:28.747  275 |   return (
+22:49:28.747  276 |     <div className="border border-border rounded-lg bg-background overflow-hidden">
+22:49:28.747      :      ^^^
+22:49:28.747  277 |       <div className="border-b border-border p-4">
+22:49:28.747  278 |         <h3 className="text-lg font-semibold">Category</h3>
+22:49:28.747  279 |         <p className="text-sm text-muted-foreground">
+22:49:28.747      `----
+22:49:28.747 
+22:49:28.748 Caused by:
+22:49:28.748     Syntax Error
+22:49:28.748 
+22:49:28.748 Import trace for requested module:
+22:49:28.748 ./src/components/EventTimeline.tsx
+22:49:28.748 ./src/app/dashboard/jobs/[id]/page.tsx
+22:49:28.748 
+22:49:28.752 
+22:49:28.752 > Build failed because of webpack errors
+22:49:28.790 Error: Command "npm run build" exited with 1
