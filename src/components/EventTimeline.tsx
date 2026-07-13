@@ -24,7 +24,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-// Types (unchanged)
 export type EntityType = 'candidate' | 'company' | 'job';
 
 type EventType = string;
@@ -110,7 +109,6 @@ export default function EventTimeline({
     }
   }, [initialEvents.length, fetchEvents]);
 
-  // Minimal fix here - use general events endpoint for jobs
   const handleAddNote = async () => {
     if (!newNote.trim()) {
       setError("Please enter a note");
@@ -125,7 +123,7 @@ export default function EventTimeline({
       if (entityType === 'candidate') {
         endpoint = `/api/candidate/${entityId}/notes`;
       } else if (entityType === 'job') {
-        endpoint = `/api/events`;  // ← Fix
+        endpoint = `/api/company/${entityId}/notes`;  // ← Minimal fix
       } else {
         endpoint = `/api/company/${entityId}/notes`;
       }
@@ -134,13 +132,8 @@ export default function EventTimeline({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          entityType,
-          entityId,
-          tenantId,
-          eventType: 'NOTE',
-          title: `Note: ${noteType}`,
-          description: newNote.trim(),
-          metadata: { noteType, noteText: newNote.trim() },
+          noteText: newNote.trim(),
+          noteType: noteType,
         }),
       });
 
@@ -149,17 +142,11 @@ export default function EventTimeline({
         throw new Error(errorData.error || 'Failed to add note');
       }
 
-      const data = await response.json();
-
-      if (data.success || data.event) {
-        toast.success("Note added successfully");
-        setNewNote('');
-        setNoteType('general');
-        await new Promise(resolve => setTimeout(resolve, 300));
-        await fetchEvents();
-      } else {
-        setError(data.error || 'Failed to add note');
-      }
+      toast.success("Note added successfully");
+      setNewNote('');
+      setNoteType('general');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await fetchEvents();
     } catch (err: any) {
       console.error('Failed to add note:', err);
       setError(err.message || 'Failed to add note');
@@ -169,7 +156,6 @@ export default function EventTimeline({
     }
   };
 
-  // getEventIcon, getEventColor, getEventLabel, formatDate (unchanged - keep your original functions)
   function getEventIcon(eventType: EventType) {
     const icons: Record<string, React.ReactNode> = {
       NOTE: <StickyNote className="w-4 h-4" />,
@@ -200,7 +186,24 @@ export default function EventTimeline({
     const colors: Record<string, string> = {
       NOTE: 'bg-yellow-100 text-yellow-800',
       EMAIL_SENT: 'bg-blue-100 text-blue-800',
-      // ... (keep your original colors)
+      EMAIL_OPENED: 'bg-cyan-100 text-cyan-800',
+      EMAIL_CLICKED: 'bg-indigo-100 text-indigo-800',
+      STATUS_CHANGED: 'bg-purple-100 text-purple-800',
+      STAGE_CHANGED: 'bg-violet-100 text-violet-800',
+      INTERVIEW_SCHEDULED: 'bg-green-100 text-green-800',
+      INTERVIEW_COMPLETED: 'bg-emerald-100 text-emerald-800',
+      CANDIDATE_CREATED: 'bg-slate-100 text-slate-800',
+      CANDIDATE_VIEWED: 'bg-gray-100 text-gray-800',
+      RESUME_UPLOADED: 'bg-red-100 text-red-800',
+      COMPANY_CREATED: 'bg-slate-100 text-slate-800',
+      CONTACT_ADDED: 'bg-teal-100 text-teal-800',
+      CONTACT_REMOVED: 'bg-orange-100 text-orange-800',
+      DEAL_CREATED: 'bg-amber-100 text-amber-800',
+      DEAL_STAGE_CHANGED: 'bg-lime-100 text-lime-800',
+      DEAL_WON: 'bg-yellow-100 text-yellow-800',
+      DEAL_LOST: 'bg-red-100 text-red-800',
+      MEETING_SCHEDULED: 'bg-cyan-100 text-cyan-800',
+      CALL_COMPLETED: 'bg-green-100 text-green-800',
     };
     return colors[eventType] || 'bg-gray-100 text-gray-800';
   }
@@ -209,7 +212,24 @@ export default function EventTimeline({
     const labels: Record<string, string> = {
       NOTE: 'Note',
       EMAIL_SENT: 'Email Sent',
-      // ... (keep your original labels)
+      EMAIL_OPENED: 'Email Opened',
+      EMAIL_CLICKED: 'Link Clicked',
+      STATUS_CHANGED: 'Status Changed',
+      STAGE_CHANGED: 'Stage Changed',
+      INTERVIEW_SCHEDULED: 'Interview',
+      INTERVIEW_COMPLETED: 'Interview Done',
+      CANDIDATE_CREATED: 'Added',
+      CANDIDATE_VIEWED: 'Viewed',
+      RESUME_UPLOADED: 'Resume',
+      COMPANY_CREATED: 'Added',
+      CONTACT_ADDED: 'Contact Added',
+      CONTACT_REMOVED: 'Contact Removed',
+      DEAL_CREATED: 'Deal',
+      DEAL_STAGE_CHANGED: 'Deal Stage',
+      DEAL_WON: 'Deal Won',
+      DEAL_LOST: 'Deal Lost',
+      MEETING_SCHEDULED: 'Meeting',
+      CALL_COMPLETED: 'Call Done',
     };
     return labels[eventType] || 'Event';
   }
