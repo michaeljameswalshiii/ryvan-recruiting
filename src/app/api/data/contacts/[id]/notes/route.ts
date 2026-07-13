@@ -3,10 +3,10 @@ import { createEvent, getEventsForContact } from '@/lib/db/repositories/event-re
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: contactId } = params;
+    const { id: contactId } = await params;
     const body = await request.json();
 
     if (!body.type || !body.content) {
@@ -25,6 +25,13 @@ export async function POST(
       metadata: body.metadata,
     });
 
+    if (!result?.success && result?.error) {
+      return NextResponse.json(
+        { error: result.error || 'Failed to log activity' },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json({ success: true, event: result.event });
   } catch (error: any) {
     console.error('Error creating activity event:', error);
@@ -37,12 +44,12 @@ export async function POST(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: contactId } = params;
+    const { id: contactId } = await params;
     const { events } = await getEventsForContact(contactId);
-    return NextResponse.json({ events });
+    return NextResponse.json({ events: events || [] });
   } catch (error: any) {
     console.error('Error fetching events:', error);
     return NextResponse.json(
