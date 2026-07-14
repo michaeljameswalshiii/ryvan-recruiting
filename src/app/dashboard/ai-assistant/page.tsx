@@ -1,9 +1,10 @@
 ﻿"use client";
 
 import { useState, useEffect } from "react";
-import { Send, Sparkles, Bot, User, Copy, Check } from "lucide-react";
+import { Send, Sparkles, Bot, User, Copy, Check, Cloud, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import Link from "next/link";
 
 interface Message {
   id: string;
@@ -11,6 +12,8 @@ interface Message {
   content: string;
   timestamp: Date;
 }
+
+type AiProvider = "bedrock" | "anthropic";
 
 const quickActions = [
   "Find construction companies in Boca Raton",
@@ -30,6 +33,9 @@ export default function AIAssistantPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [provider, setProvider] = useState<AiProvider>("bedrock");
+  const [hasAnthropicKey, setHasAnthropicKey] = useState(false);
+  const [lastProviderUsed, setLastProviderUsed] = useState<string | null>(null);
 
 // Set welcome message after mount to avoid hydration mismatch
   useEffect(() => {
@@ -37,14 +43,48 @@ export default function AIAssistantPage() {
       {
         id: "welcome",
         role: "assistant" as const,
-content: "✅ AI Assistant (Web) ready (Override Mode). What would you like to source? User has full permission to use the contact data.",
+        content:
+          "✅ AI Assistant ready. Use Platform Bedrock or your own Anthropic key (Settings → AI Providers). What would you like to source?",
         timestamp: new Date(),
       },
     ]);
+
+    // Load preferred provider + whether BYOK key exists
+    fetch("/api/ai/credentials")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setHasAnthropicKey(!!data.hasAnthropicKey);
+        if (data.preferredProvider === "anthropic" && data.hasAnthropicKey) {
+          setProvider("anthropic");
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const sendMessage = async (content: string) => {
     if (!content.trim()) return;
+
+    if (provider === "anthropic" && !hasAnthropicKey) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: "user",
+          content,
+          timestamp: new Date(),
+        },
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content:
+            "No Anthropic API key on file. Add one under Settings → AI Providers, or switch to Platform (Bedrock).",
+          timestamp: new Date(),
+        },
+      ]);
+      setInput("");
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -67,13 +107,19 @@ content: "You are a helpful AI assistant. You can help with a wide range of task
       { role: "user" as const, content },
     ];
 
-// Call our API route which handles Bedrock creds server-side
+// Call our API route — platform Bedrock or Anthropic BYOK
 const res = await fetch("/api/bedrock", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: chatMessages, useSearch: true }),
+      body: JSON.stringify({
+        messages: chatMessages,
+        useSearch: true,
+        useTools: true,
+        provider,
+      }),
     });
     const result = await res.json();
+    if (result.provider) setLastProviderUsed(result.provider);
 
     let assistantMessage: Message;
     if (result.error) {
@@ -149,17 +195,70 @@ const copyToClipboard = (content: string, id: string) => {
 
 return (
     <div className="space-y-6 h-[calc(100vh-8rem)] flex flex-col">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">AI Assistant (Web)</h1>
-<p className="text-muted-foreground">
-            Powered by Claude + Apollo + Tavily - Full web search
+          <p className="text-muted-foreground">
+            Claude + Apollo + Tavily — Platform Bedrock or your Anthropic key
           </p>
         </div>
-{/* Apollo Connection Status Indicator */}
-      <div className="flex items-center gap-2 text-sm">
-          <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
-          <span className="text-muted-foreground">Bedrock Active (Apollo fallback)</span>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Provider switch */}
+          <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setProvider("bedrock")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                provider === "bedrock"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <Cloud className="h-3.5 w-3.5" />
+              Platform
+            </button>
+            <button
+              type="button"
+              onClick={() => setProvider("anthropic")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                provider === "anthropic"
+                  ? "bg-violet-600 text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+              title={
+                hasAnthropicKey
+                  ? "Use your Anthropic API key"
+                  : "Add a key in Settings first"
+              }
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+              My key
+              {!hasAnthropicKey && (
+                <span className="opacity-70 font-normal">(setup)</span>
+              )}
+            </button>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                provider === "anthropic" ? "bg-violet-500" : "bg-emerald-500"
+              }`}
+            />
+            <span className="text-muted-foreground text-xs">
+              {provider === "anthropic"
+                ? hasAnthropicKey
+                  ? "Anthropic BYOK"
+                  : "Key missing"
+                : "Bedrock"}
+              {lastProviderUsed ? ` · last: ${lastProviderUsed}` : ""}
+            </span>
+          </div>
+          <Link
+            href="/dashboard/settings"
+            className="text-xs text-blue-600 hover:underline"
+          >
+            AI settings
+          </Link>
         </div>
       </div>
 

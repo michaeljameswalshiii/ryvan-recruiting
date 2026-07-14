@@ -27,6 +27,15 @@ import { logBedrockUsage } from "@/lib/aws/athena-bedrock";
 import { SYSTEM_PROMPTS, getBasePrompt } from "@/lib/prompts/bedrock-system";
 import { getClaudeAssistantPrompt } from "@/lib/prompts/claude-assistant";
 import { getToolSchemas, executeTool, ToolContext, ToolResult, ToolParams } from "@/lib/ai/tools";
+import {
+  getDecryptedAnthropicKey,
+  getAiCredentialsPublic,
+} from "@/lib/db/repositories/ai-credentials-repository";
+import {
+  runAnthropicByokAgent,
+  runAnthropicByokChat,
+} from "@/lib/ai/providers/anthropic-byok";
+import { getSession } from "@/lib/server-auth";
 
 // ============================================================================
 // TypeScript Interfaces
@@ -41,6 +50,9 @@ interface ChatMessage {
   id?: string;
 }
 
+/** Platform Bedrock vs user Anthropic BYOK */
+export type AiProviderId = "bedrock" | "anthropic";
+
 /**
  * Request body
  */
@@ -49,6 +61,9 @@ interface BedrockRequest {
   model?: string;
   useTools?: boolean;
   assistantMode?: boolean;
+  /** 'bedrock' (default platform) or 'anthropic' (user BYOK key) */
+  provider?: AiProviderId;
+  useSearch?: boolean;
 }
 
 /**
@@ -855,35 +870,7 @@ export async function POST(request: NextRequest) {
   
 try {
     // ============================================================================
-    // EARLY ENVIRONMENT VARIABLE VALIDATION
-    // ============================================================================
-    const awsRegion = process.env.AWS_REGION;
-    const bedrockEndpoint = process.env.AWS_BEDROCK_ENDPOINT;
-    const awsAccessKeyId = process.env.AWS_ACCESS_KEY_ID;
-    const awsSecretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
-    
-    console.log("=== BEDROCK REQUEST START ===");
-    console.log("AWS_REGION present:", !!awsRegion, awsRegion || "not set");
-    console.log("AWS_ACCESS_KEY_ID present:", !!awsAccessKeyId);
-    console.log("AWS_SECRET_ACCESS_KEY present:", !!awsSecretAccessKey);
-    console.log("AWS_BEDROCK_ENDPOINT present:", !!bedrockEndpoint);
-    console.log("NEXT_PUBLIC_APP_URL:", process.env.NEXT_PUBLIC_APP_URL || "not set");
-    
-    if (!awsRegion) {
-      console.error("AWS_REGION not configured");
-      return NextResponse.json(
-        { error: "Server configuration error: AWS_REGION not set" },
-        { status: 500 }
-      );
-    }
-    
-    // Check for AWS credentials (warn if missing)
-    if (!awsAccessKeyId || !awsSecretAccessKey) {
-      console.warn("WARNING: AWS credentials may not be configured properly");
-    }
-
-    // ============================================================================
-    // REQUEST VALIDATION
+    // REQUEST VALIDATION (provider-aware)
     // ============================================================================
     
     // Parse request body
@@ -897,7 +884,13 @@ try {
       );
     }
     
-const { messages, model: requestedModel, useTools = true, assistantMode = false } = body;
+    const {
+      messages,
+      model: requestedModel,
+      useTools = true,
+      assistantMode = false,
+      provider: requestedProvider,
+    } = body;
     
 // Validate messages exist
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -908,31 +901,73 @@ const { messages, model: requestedModel, useTools = true, assistantMode = false 
     }
 
     // ============================================================================
-    // Dynamic Model Routing (MCP-Style)
+    // Tenant / user context (headers first, then session cookie)
     // ============================================================================
-    // Get the latest user message for routing decision
+    tenantId = request.headers.get("x-tenant-id");
+    let userId = request.headers.get("x-user-id");
+    if (!userId || !tenantId) {
+      try {
+        const session = await getSession();
+        if (session) {
+          userId = userId || session.userId || null;
+          tenantId = tenantId || session.tenantId || null;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    console.log("Tenant ID:", tenantId || "none provided");
+    console.log("User ID:", userId || "none");
+
+    // Resolve provider: explicit request > user preference > bedrock
+    let provider: AiProviderId = "bedrock";
+    if (requestedProvider === "anthropic" || requestedProvider === "bedrock") {
+      provider = requestedProvider;
+    } else if (userId) {
+      try {
+        const prefs = await getAiCredentialsPublic(userId);
+        if (prefs.preferredProvider === "anthropic" && prefs.hasAnthropicKey) {
+          provider = "anthropic";
+        }
+      } catch {
+        /* keep bedrock */
+      }
+    }
+    console.log("AI provider:", provider);
+
+    // ============================================================================
+    // Dynamic Model Routing (MCP-Style) — Bedrock only
+    // ============================================================================
     const userMessage = messages
       .filter((m) => m.role === "user")
       .slice(-1)[0];
 
     lastUserQuery = userMessage?.content || "";
 
-// Select model based on query complexity and user request
-    const selectedModel = selectModel(lastUserQuery, requestedModel);
+    const selectedModel =
+      provider === "anthropic"
+        ? process.env.ANTHROPIC_BYOK_MODEL || "claude-sonnet-4-20250514"
+        : selectModel(lastUserQuery, requestedModel);
     
-    // Log detailed model selection info
     console.log("=== MODEL SELECTION ===");
+    console.log("Provider:", provider);
     console.log("Requested model:", requestedModel || "none");
     console.log("Selected model:", selectedModel);
-    console.log("Query length:", lastUserQuery.length);
     console.log("Query preview:", lastUserQuery.substring(0, 50));
 
-    // ============================================================================
-    // Get Tenant Context (from middleware headers)
-    // ============================================================================
-    tenantId = request.headers.get("x-tenant-id");
-    console.log("Tenant ID:", tenantId || "none provided");
-    console.log("User ID:", request.headers.get("x-user-id") || "none");
+    // Bedrock path needs AWS config
+    if (provider === "bedrock") {
+      const awsRegion = process.env.AWS_REGION;
+      if (!awsRegion) {
+        return NextResponse.json(
+          { error: "Server configuration error: AWS_REGION not set" },
+          { status: 500 }
+        );
+      }
+      if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+        console.warn("WARNING: AWS credentials may not be configured properly");
+      }
+    }
 
     // ============================================================================
     // Rate Limiting
@@ -954,12 +989,77 @@ const { messages, model: requestedModel, useTools = true, assistantMode = false 
     const appUrl = getAppUrl(request);
 
     // ============================================================================
-    // MCP Agent Loop (Native Tool Calling)
+    // Provider execution
     // ============================================================================
     let completion = "";
     let toolsUsed: string[] = [];
-    
-if (assistantMode) {
+    let usedModel = selectedModel;
+
+    // ---------- BYOK Anthropic ----------
+    if (provider === "anthropic") {
+      if (!userId) {
+        return NextResponse.json(
+          {
+            error: "Sign in required to use your Anthropic API key",
+            suggestion: "Log in, then save your key under Settings → AI Providers",
+          },
+          { status: 401 }
+        );
+      }
+
+      const apiKey = await getDecryptedAnthropicKey(userId);
+      if (!apiKey) {
+        return NextResponse.json(
+          {
+            error: "No Anthropic API key saved",
+            suggestion:
+              "Add your key in Settings → AI Providers, or switch to Platform (Bedrock).",
+          },
+          { status: 400 }
+        );
+      }
+
+      const toolContext: ToolContext = {
+        tenantId,
+        userId,
+        requestUrl: appUrl,
+      };
+
+      const systemPrompt =
+        SYSTEM_PROMPTS.base + "\n\n" + (SYSTEM_PROMPTS.override || "");
+
+      if (assistantMode || !useTools) {
+        console.log("[BYOK] Anthropic chat (no tools)...");
+        const conversation = buildConversationMessages(messages);
+        const result = await runAnthropicByokChat({
+          apiKey,
+          model: usedModel,
+          systemPrompt,
+          messages: conversation.map((m) => ({
+            role: m.role === "assistant" ? "assistant" : "user",
+            content: m.content,
+          })),
+        });
+        completion = result.text;
+        usedModel = result.model;
+        toolsUsed = [];
+      } else {
+        console.log("[BYOK] Anthropic agent with tools...");
+        const result = await runAnthropicByokAgent({
+          apiKey,
+          query: lastUserQuery,
+          toolContext,
+          systemPrompt,
+          model: usedModel,
+          useTools: true,
+        });
+        completion = result.text;
+        toolsUsed = result.toolsUsed.length ? result.toolsUsed : ["apollo", "tavily"];
+        usedModel = result.model;
+      }
+    }
+    // ---------- Platform Bedrock (existing) ----------
+    else if (assistantMode) {
       // Claude-only Assistant mode (no external tools, just conversation)
       console.log("Running Claude Assistant mode (no tools)...");
       const conversation = buildConversationMessages(messages);
@@ -977,9 +1077,6 @@ if (assistantMode) {
       completion = textBlock?.text || "No response";
       toolsUsed = []; // No tools in assistant mode
     } else if (useTools && lastUserQuery) {
-      // Get userId from session (via middleware header)
-      const userId = request.headers.get("x-user-id");
-
       const toolContext: ToolContext = {
         tenantId,
         userId,
@@ -1037,7 +1134,7 @@ if (assistantMode) {
 
     // Log to DynamoDB for dashboard usage tracking
     logBedrockUsage({
-      modelId: selectedModel,
+      modelId: `${provider}:${usedModel}`,
       inputTokens: promptTokens,
       outputTokens: completionTokens,
       queryPreview: lastUserQuery.substring(0, 200),
@@ -1048,6 +1145,8 @@ if (assistantMode) {
     const response = NextResponse.json({
       response: completion,
       toolsUsed,
+      provider,
+      model: usedModel,
       rateLimit: {
         remaining: rateLimitResult.remaining,
         tenantId: tenantId ? "provided" : "anonymous",
