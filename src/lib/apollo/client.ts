@@ -121,8 +121,12 @@ const SENIORITY_MAP: Record<string, string> = {
 };
 
 function getApiKey(): string {
+  // Vercel env names are case-sensitive on Linux — accept common variants
   const key =
     process.env.APOLLO_API_KEY ||
+    process.env.Apollo_API_key ||
+    process.env.APOLLO_API_key ||
+    process.env.apollo_api_key ||
     process.env.NEXT_PUBLIC_APOLLO_API_KEY ||
     '';
   return key.trim();
