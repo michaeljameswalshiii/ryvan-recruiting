@@ -7,8 +7,18 @@
  * @serverOnly
  */
 
-import { getSessionTenantId, getSessionUserId, getSessionUserEmail } from '../server-auth';
-import { queryItems, putItem, bedrockUsageTable } from '../db/dynamodb';
+import {
+  getSession,
+  getSessionTenantId,
+  getSessionUserId,
+  getSessionUserEmail,
+} from '../server-auth';
+import {
+  queryItems,
+  putItem,
+  scanItems,
+  bedrockUsageTable,
+} from '../db/dynamodb';
 
 // ============================================================================
 // Constants - Claude Pricing (per 1K tokens)
@@ -152,6 +162,91 @@ function calculateCost(modelId: string, inputTokens: number, outputTokens: numbe
 }
 
 // ============================================================================
+// Tenant resolution
+// ============================================================================
+
+/**
+ * Resolve which tenant IDs to query for the usage dashboard.
+ * Primary = session tenant; also includes common fallbacks so logs under
+ * "default" still surface when session tenant is missing/mismatched.
+ */
+export async function resolveUsageTenantIds(
+  explicit?: string | null
+): Promise<{ primary: string; all: string[] }> {
+  const session = await getSession().catch(() => null);
+  const fromSession = session?.tenantId || (await getSessionTenantId());
+  const primary =
+    (explicit && explicit.trim()) ||
+    (fromSession && fromSession.trim()) ||
+    'tenant-2024-001';
+
+  const all = Array.from(
+    new Set(
+      [primary, fromSession, 'tenant-2024-001', 'default', 'SYSTEM'].filter(
+        (t): t is string => !!t && t.trim().length > 0
+      )
+    )
+  );
+
+  return { primary, all };
+}
+
+async function fetchUsageRecords(
+  tenantIds: string[],
+  start: string,
+  end: string
+): Promise<BedrockUsageRecord[]> {
+  const results: BedrockUsageRecord[] = [];
+  const seen = new Set<string>();
+
+  for (const tenantId of tenantIds) {
+    try {
+      const { items } = await queryItems<BedrockUsageRecord>(
+        bedrockUsageTable,
+        'PK = :pk AND SK BETWEEN :start AND :end',
+        {
+          ':pk': `TENANT#${tenantId}`,
+          ':start': `USAGE#${start}`,
+          ':end': `USAGE#${end}~`,
+        }
+      );
+      for (const item of items) {
+        const key = `${item.PK}|${item.SK}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          results.push(item);
+        }
+      }
+    } catch (err) {
+      console.error('[USAGE] query failed for', tenantId, err);
+    }
+  }
+
+  // If still empty, scan table (small usage tables only)
+  if (results.length === 0) {
+    try {
+      const scanned = await scanItems<BedrockUsageRecord>(bedrockUsageTable);
+      const startMs = new Date(start).getTime();
+      const endMs = new Date(end).getTime() + 86_400_000;
+      for (const item of scanned) {
+        const ts = new Date(item.timestamp || item.SK || 0).getTime();
+        if (!Number.isFinite(ts) || (ts >= startMs && ts <= endMs)) {
+          const key = `${item.PK}|${item.SK}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            results.push(item);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[USAGE] scan fallback failed', err);
+    }
+  }
+
+  return results;
+}
+
+// ============================================================================
 // Core Functions
 // ============================================================================
 
@@ -173,14 +268,22 @@ export async function logBedrockUsage(params: {
   userId?: string | null;
   userEmail?: string | null;
   provider?: string;
-}): Promise<void> {
+}): Promise<{ ok: boolean; tenantId?: string; error?: string }> {
   try {
+    const session = await getSession().catch(() => null);
     const tenantId =
-      params.tenantId || (await getSessionTenantId()) || 'default';
+      (params.tenantId && params.tenantId.trim()) ||
+      session?.tenantId ||
+      (await getSessionTenantId()) ||
+      'tenant-2024-001';
     const userId =
-      params.userId || (await getSessionUserId()) || 'anonymous';
+      (params.userId && params.userId.trim()) ||
+      session?.userId ||
+      (await getSessionUserId()) ||
+      'anonymous';
     const userEmail =
       params.userEmail ||
+      session?.email ||
       (await getSessionUserEmail()) ||
       'anonymous';
 
@@ -215,15 +318,19 @@ export async function logBedrockUsage(params: {
 
     await putItem(bedrockUsageTable, record);
     console.log(
-      '[USAGE] Logged:',
+      '[USAGE] Logged OK:',
+      `tenant=${tenantId}`,
       params.provider || 'bedrock',
       params.modelId,
       params.inputTokens,
       params.outputTokens,
       `$${estimatedCost.toFixed(4)}`
     );
+    return { ok: true, tenantId };
   } catch (error) {
-    console.error('[USAGE] Failed to log:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[USAGE] Failed to log:', message, error);
+    return { ok: false, error: message };
   }
 }
 
@@ -283,33 +390,11 @@ export async function logApolloUsage(params: {
 export async function getBedrockUsageSummary(
   period: 'day' | 'week' | 'month' = 'week'
 ): Promise<UsageSummary> {
-  const tenantId = await getSessionTenantId();
-  if (!tenantId) {
-    return {
-      totalInvocations: 0,
-      totalInputTokens: 0,
-      totalOutputTokens: 0,
-      totalTokens: 0,
-      estimatedCost: 0,
-      period,
-      startDate: '',
-      endDate: '',
-    };
-  }
-  
   const { start, end } = getDateRange(period);
-  
+  const { all: tenantIds } = await resolveUsageTenantIds();
+
   try {
-    const { items: records } = await queryItems<BedrockUsageRecord>(
-      bedrockUsageTable,
-      'PK = :pk AND SK BETWEEN :start AND :end',
-      {
-        ':pk': `TENANT#${tenantId}`,
-        // Inclusive upper bound: pad end so USAGE#timestamp#uuid still matches
-        ':start': `USAGE#${start}`,
-        ':end': `USAGE#${end}~`,
-      }
-    );
+    const records = await fetchUsageRecords(tenantIds, start, end);
 
     let totalInvocations = 0;
     let totalInputTokens = 0;
@@ -359,21 +444,11 @@ export async function getUsageByUser(
   period: 'day' | 'week' | 'month' = 'week',
   limit: number = 10
 ): Promise<UsageByUser[]> {
-  const tenantId = await getSessionTenantId();
-  if (!tenantId) return [];
-  
   const { start, end } = getDateRange(period);
-  
+  const { all: tenantIds } = await resolveUsageTenantIds();
+
   try {
-    const { items: records } = await queryItems<BedrockUsageRecord>(
-      bedrockUsageTable,
-      'PK = :pk AND SK BETWEEN :start AND :end',
-      {
-        ':pk': `TENANT#${tenantId}`,
-        ':start': `USAGE#${start}`,
-        ':end': `USAGE#${end}~`,
-      }
-    );
+    const records = await fetchUsageRecords(tenantIds, start, end);
 
     // Group by user
     const byUserMap = new Map<string, UsageByUser>();
@@ -415,21 +490,11 @@ export async function getUsageByUser(
 export async function getUsageByModel(
   period: 'day' | 'week' | 'month' = 'week'
 ): Promise<UsageByModel[]> {
-  const tenantId = await getSessionTenantId();
-  if (!tenantId) return [];
-  
   const { start, end } = getDateRange(period);
-  
+  const { all: tenantIds } = await resolveUsageTenantIds();
+
   try {
-    const { items: records } = await queryItems<BedrockUsageRecord>(
-      bedrockUsageTable,
-      'PK = :pk AND SK BETWEEN :start AND :end',
-      {
-        ':pk': `TENANT#${tenantId}`,
-        ':start': `USAGE#${start}`,
-        ':end': `USAGE#${end}~`,
-      }
-    );
+    const records = await fetchUsageRecords(tenantIds, start, end);
 
     // Group by model
     const byModelMap = new Map<string, UsageByModel>();
@@ -471,21 +536,11 @@ export async function getRecentCalls(
   period: 'day' | 'week' | 'month' = 'day',
   limit: number = 20
 ): Promise<UsageDetail[]> {
-  const tenantId = await getSessionTenantId();
-  if (!tenantId) return [];
-  
   const { start, end } = getDateRange(period);
-  
+  const { all: tenantIds } = await resolveUsageTenantIds();
+
   try {
-    const { items: records } = await queryItems<BedrockUsageRecord>(
-      bedrockUsageTable,
-      'PK = :pk AND SK BETWEEN :start AND :end',
-      {
-        ':pk': `TENANT#${tenantId}`,
-        ':start': `USAGE#${start}`,
-        ':end': `USAGE#${end}~`,
-      }
-    );
+    const records = await fetchUsageRecords(tenantIds, start, end);
 
     // Sort by timestamp descending and take limit
     const sorted = records
@@ -507,6 +562,32 @@ export async function getRecentCalls(
     console.error('[USAGE] getRecentCalls error:', error);
     return [];
   }
+}
+
+/** Diagnostic for Usage dashboard */
+export async function getUsageDiagnostics(): Promise<{
+  primaryTenant: string;
+  tenantsQueried: string[];
+  table: string;
+  totalItemsScanned: number;
+  sessionPresent: boolean;
+}> {
+  const session = await getSession().catch(() => null);
+  const { primary, all } = await resolveUsageTenantIds();
+  let totalItemsScanned = 0;
+  try {
+    const allItems = await scanItems<BedrockUsageRecord>(bedrockUsageTable);
+    totalItemsScanned = allItems.length;
+  } catch {
+    totalItemsScanned = -1;
+  }
+  return {
+    primaryTenant: primary,
+    tenantsQueried: all,
+    table: bedrockUsageTable,
+    totalItemsScanned,
+    sessionPresent: !!session?.userId,
+  };
 }
 
 /**

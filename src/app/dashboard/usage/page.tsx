@@ -5,10 +5,17 @@
  * @serverOnly - Data fetched server-side
  */
 
-import { getBedrockUsageSummary, getUsageByUser, getUsageByModel, getRecentCalls } from '@/lib/aws/athena-bedrock';
+import {
+  getBedrockUsageSummary,
+  getUsageByUser,
+  getUsageByModel,
+  getRecentCalls,
+  getUsageDiagnostics,
+} from '@/lib/aws/athena-bedrock';
 import { DollarSign, Activity, Cpu, Clock, TrendingUp, BarChart3 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 
 /**
  * Format number with K/M suffix
@@ -40,15 +47,16 @@ function formatTime(timestamp: string): string {
 
 export default async function UsageDashboardPage() {
   // Fetch all data server-side
-  const [summary, byUser, byModel, recentCalls] = await Promise.all([
-    getBedrockUsageSummary('week'),
-    getUsageByUser('week'),
-    getUsageByModel('week'),
-    getRecentCalls('day'),
-  ]);
-
-  const dailySummary = await getBedrockUsageSummary('day');
-  const monthlySummary = await getBedrockUsageSummary('month');
+  const [summary, byUser, byModel, recentCalls, diagnostics, dailySummary, monthlySummary] =
+    await Promise.all([
+      getBedrockUsageSummary('week'),
+      getUsageByUser('week'),
+      getUsageByModel('week'),
+      getRecentCalls('week'),
+      getUsageDiagnostics(),
+      getBedrockUsageSummary('day'),
+      getBedrockUsageSummary('month'),
+    ]);
 
   return (
     <div className="space-y-6">
@@ -56,19 +64,51 @@ export default async function UsageDashboardPage() {
         <div>
           <h1 className="text-3xl font-bold">AI Usage Dashboard</h1>
           <p className="text-muted-foreground">
-            Track Claude AI usage, tokens, and costs
+            Track Bedrock / Claude / Grok usage, tokens, and estimated costs
           </p>
         </div>
-        <a 
-          href="https://console.aws.amazon.com/bedrock/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Badge variant="outline" className="gap-2">
-            <BarChart3 className="h-3 w-3" />
-            View in QuickSight
-          </Badge>
-        </a>
+        <div className="flex items-center gap-2">
+          <Link href="/dashboard/ai-assistant">
+            <Badge variant="outline" className="gap-2 cursor-pointer hover:bg-slate-50">
+              Open AI Assistant
+            </Badge>
+          </Link>
+          <a 
+            href="https://console.aws.amazon.com/bedrock/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Badge variant="outline" className="gap-2">
+              <BarChart3 className="h-3 w-3" />
+              Bedrock Console
+            </Badge>
+          </a>
+        </div>
+      </div>
+
+      {/* Diagnostics strip */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
+        <span>
+          <strong>Table:</strong> {diagnostics.table}
+        </span>
+        <span>
+          <strong>Records:</strong>{' '}
+          {diagnostics.totalItemsScanned < 0
+            ? 'unavailable'
+            : diagnostics.totalItemsScanned}
+        </span>
+        <span>
+          <strong>Tenant:</strong> {diagnostics.primaryTenant}
+        </span>
+        <span>
+          <strong>Session:</strong>{' '}
+          {diagnostics.sessionPresent ? 'yes' : 'no'}
+        </span>
+        {summary.totalInvocations === 0 && (
+          <span className="text-amber-700 font-medium">
+            No calls in range yet — send a message in AI Assistant (Platform), then refresh.
+          </span>
+        )}
       </div>
 
       {/* Summary Cards */}
