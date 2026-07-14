@@ -133,13 +133,28 @@ export default function SettingsPage() {
   const fetchAiCredentials = async () => {
     setAiLoading(true);
     try {
-      const res = await fetch('/api/ai/credentials');
+      const res = await fetch('/api/ai/credentials', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setAiStatus(mapAiStatus(data));
+      } else {
+        // Still show UI with empty keys if unauthorized / error
+        setAiStatus({
+          preferredProvider: 'bedrock',
+          hasAnthropicKey: false,
+          hasGrokKey: false,
+        });
+        if (res.status === 401) {
+          console.warn('[settings] AI credentials: not signed in');
+        }
       }
     } catch (err) {
       console.error('Failed to load AI credentials', err);
+      setAiStatus({
+        preferredProvider: 'bedrock',
+        hasAnthropicKey: false,
+        hasGrokKey: false,
+      });
     } finally {
       setAiLoading(false);
     }
@@ -165,6 +180,7 @@ export default function SettingsPage() {
     try {
       const res = await fetch('/api/ai/credentials', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           keyProvider,
@@ -342,6 +358,252 @@ export default function SettingsPage() {
           Manage your account settings and preferences
         </p>
       </div>
+
+      {/* AI Providers — top of page so BYOK keys are easy to find */}
+      <Card className="border-blue-100 shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-blue-600" />
+            AI Providers
+          </CardTitle>
+          <CardDescription>
+            Choose Platform Bedrock (default), or bring your own Anthropic / Grok keys.
+            Keys are encrypted and only used for your chat sessions.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {aiLoading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading saved keys…
+            </div>
+          )}
+
+          {/* Provider cards — always visible */}
+          <div className="grid gap-3 sm:grid-cols-3">
+            <button
+              type="button"
+              onClick={() => setAiProvider('bedrock')}
+              className={`text-left rounded-xl border p-4 transition-all ${
+                (aiStatus?.preferredProvider || 'bedrock') === 'bedrock'
+                  ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-100'
+                  : 'border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Cloud className="h-4 w-4 text-slate-600" />
+                <span className="font-semibold text-sm">Platform</span>
+                {(aiStatus?.preferredProvider || 'bedrock') === 'bedrock' && (
+                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                    Active
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                AWS Bedrock Claude. No personal key required.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!aiStatus?.hasAnthropicKey) {
+                  toast.message('Paste and save an Anthropic key below first');
+                  return;
+                }
+                setAiProvider('anthropic');
+              }}
+              className={`text-left rounded-xl border p-4 transition-all ${
+                aiStatus?.preferredProvider === 'anthropic'
+                  ? 'border-violet-500 bg-violet-50/60 ring-2 ring-violet-100'
+                  : 'border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <KeyRound className="h-4 w-4 text-violet-600" />
+                <span className="font-semibold text-sm">Anthropic</span>
+                {aiStatus?.preferredProvider === 'anthropic' && (
+                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full">
+                    Active
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Your Claude API key (BYOK).
+              </p>
+              {aiStatus?.hasAnthropicKey ? (
+                <p className="text-[11px] text-violet-700 mt-2 font-mono truncate">
+                  {aiStatus.anthropicKeyHint}
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-400 mt-2">No key saved</p>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!aiStatus?.hasGrokKey) {
+                  toast.message('Paste and save a Grok key in the section below first');
+                  document.getElementById('grok-key')?.focus();
+                  return;
+                }
+                setAiProvider('grok');
+              }}
+              className={`text-left rounded-xl border p-4 transition-all ${
+                aiStatus?.preferredProvider === 'grok'
+                  ? 'border-zinc-900 bg-zinc-50 ring-2 ring-zinc-300'
+                  : 'border-zinc-300 hover:border-zinc-500 bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles className="h-4 w-4 text-zinc-900" />
+                <span className="font-semibold text-sm">Grok (xAI)</span>
+                {aiStatus?.preferredProvider === 'grok' && (
+                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-zinc-900 bg-zinc-200 px-2 py-0.5 rounded-full">
+                    Active
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Your xAI API key (BYOK).
+              </p>
+              {aiStatus?.hasGrokKey ? (
+                <p className="text-[11px] text-zinc-800 mt-2 font-mono truncate">
+                  {aiStatus.grokKeyHint}
+                </p>
+              ) : (
+                <p className="text-[11px] text-amber-700 mt-2 font-medium">
+                  Add key below ↓
+                </p>
+              )}
+            </button>
+          </div>
+
+          {/* Anthropic key entry */}
+          <div className="rounded-xl border border-violet-100 p-4 space-y-3 bg-violet-50/30">
+            <Label htmlFor="anthropic-key" className="text-sm font-medium">
+              Anthropic API key
+            </Label>
+            <Input
+              id="anthropic-key"
+              type="password"
+              autoComplete="off"
+              placeholder="sk-ant-api03-…"
+              value={anthropicKeyInput}
+              onChange={(e) => setAnthropicKeyInput(e.target.value)}
+              className="font-mono text-sm bg-white"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              From{' '}
+              <a
+                href="https://console.anthropic.com/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-600 hover:underline"
+              >
+                console.anthropic.com
+              </a>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => saveProviderKey('anthropic')}
+                disabled={aiSaving !== null || !anthropicKeyInput.trim()}
+                className="rounded-lg"
+              >
+                {aiSaving === 'anthropic' ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <KeyRound className="h-4 w-4 mr-2" />
+                )}
+                {aiStatus?.hasAnthropicKey ? 'Replace key' : 'Save & validate'}
+              </Button>
+              {aiStatus?.hasAnthropicKey && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => removeProviderKey('anthropic')}
+                  disabled={aiRemoving !== null}
+                  className="rounded-lg text-red-600"
+                >
+                  {aiRemoving === 'anthropic' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    'Remove'
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Grok key entry — highly visible */}
+          <div
+            id="grok-key-section"
+            className="rounded-xl border-2 border-zinc-900/20 p-4 space-y-3 bg-zinc-50"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-zinc-900" />
+              <Label htmlFor="grok-key" className="text-sm font-semibold">
+                Grok (xAI) API key
+              </Label>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-700 bg-zinc-200 px-2 py-0.5 rounded-full">
+                BYOK
+              </span>
+            </div>
+            <Input
+              id="grok-key"
+              type="password"
+              autoComplete="off"
+              placeholder="xai-…"
+              value={grokKeyInput}
+              onChange={(e) => setGrokKeyInput(e.target.value)}
+              className="font-mono text-sm bg-white border-zinc-300"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Create a key at{' '}
+              <a
+                href="https://console.x.ai/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-600 hover:underline"
+              >
+                console.x.ai
+              </a>
+              . Encrypted at rest; never shown in full again.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => saveProviderKey('grok')}
+                disabled={aiSaving !== null || !grokKeyInput.trim()}
+                className="rounded-lg bg-zinc-900 hover:bg-zinc-800"
+              >
+                {aiSaving === 'grok' ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Sparkles className="h-4 w-4 mr-2" />
+                )}
+                {aiStatus?.hasGrokKey ? 'Replace Grok key' : 'Save Grok key'}
+              </Button>
+              {aiStatus?.hasGrokKey && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => removeProviderKey('grok')}
+                  disabled={aiRemoving !== null}
+                  className="rounded-lg text-red-600"
+                >
+                  {aiRemoving === 'grok' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    'Remove'
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       
       {/* Email Connections */}
       <Card>
@@ -470,239 +732,6 @@ export default function SettingsPage() {
             <p><strong>Note:</strong> Your email credentials are securely stored and never shared. 
             We use OAuth to access your email account - you can revoke access at any time.</p>
           </div>
-        </CardContent>
-      </Card>
-      
-      {/* AI Providers */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-blue-600" />
-            AI Providers
-          </CardTitle>
-          <CardDescription>
-            Platform Claude via AWS Bedrock is always available. Optionally add your own
-            Anthropic or Grok (xAI) API keys — billed to your accounts.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {aiLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading AI settings…
-            </div>
-          ) : (
-            <>
-              {/* Provider cards */}
-              <div className="grid gap-3 sm:grid-cols-3">
-                <button
-                  type="button"
-                  onClick={() => setAiProvider('bedrock')}
-                  className={`text-left rounded-xl border p-4 transition-all ${
-                    (aiStatus?.preferredProvider || 'bedrock') === 'bedrock'
-                      ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-100'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <Cloud className="h-4 w-4 text-slate-600" />
-                    <span className="font-semibold text-sm">Platform</span>
-                    {(aiStatus?.preferredProvider || 'bedrock') === 'bedrock' && (
-                      <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                        Active
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    AWS Bedrock Claude. No personal key. Same tools (Apollo, web, data).
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!aiStatus?.hasAnthropicKey) {
-                      toast.message('Paste and save an Anthropic key below first');
-                      return;
-                    }
-                    setAiProvider('anthropic');
-                  }}
-                  className={`text-left rounded-xl border p-4 transition-all ${
-                    aiStatus?.preferredProvider === 'anthropic'
-                      ? 'border-violet-500 bg-violet-50/60 ring-2 ring-violet-100'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <KeyRound className="h-4 w-4 text-violet-600" />
-                    <span className="font-semibold text-sm">Anthropic</span>
-                    {aiStatus?.preferredProvider === 'anthropic' && (
-                      <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full">
-                        Active
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Your Claude API key. Billed to Anthropic.
-                  </p>
-                  {aiStatus?.hasAnthropicKey && (
-                    <p className="text-[11px] text-violet-700 mt-2 font-mono truncate">
-                      {aiStatus.anthropicKeyHint}
-                    </p>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!aiStatus?.hasGrokKey) {
-                      toast.message('Paste and save a Grok key below first');
-                      return;
-                    }
-                    setAiProvider('grok');
-                  }}
-                  className={`text-left rounded-xl border p-4 transition-all ${
-                    aiStatus?.preferredProvider === 'grok'
-                      ? 'border-zinc-800 bg-zinc-50 ring-2 ring-zinc-200'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <Sparkles className="h-4 w-4 text-zinc-800" />
-                    <span className="font-semibold text-sm">Grok</span>
-                    {aiStatus?.preferredProvider === 'grok' && (
-                      <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-zinc-800 bg-zinc-200 px-2 py-0.5 rounded-full">
-                        Active
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Your xAI API key. Billed to xAI.
-                  </p>
-                  {aiStatus?.hasGrokKey && (
-                    <p className="text-[11px] text-zinc-700 mt-2 font-mono truncate">
-                      {aiStatus.grokKeyHint}
-                    </p>
-                  )}
-                </button>
-              </div>
-
-              {/* Anthropic key entry */}
-              <div className="rounded-xl border border-slate-200 p-4 space-y-3 bg-slate-50/40">
-                <Label htmlFor="anthropic-key" className="text-sm font-medium">
-                  Anthropic API key
-                </Label>
-                <Input
-                  id="anthropic-key"
-                  type="password"
-                  autoComplete="off"
-                  placeholder="sk-ant-api03-…"
-                  value={anthropicKeyInput}
-                  onChange={(e) => setAnthropicKeyInput(e.target.value)}
-                  className="font-mono text-sm bg-white"
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Get a key from{' '}
-                  <a
-                    href="https://console.anthropic.com/"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 hover:underline"
-                  >
-                    console.anthropic.com
-                  </a>
-                  . Encrypted at rest; never shown in full again.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => saveProviderKey('anthropic')}
-                    disabled={aiSaving !== null || !anthropicKeyInput.trim()}
-                    className="rounded-lg"
-                  >
-                    {aiSaving === 'anthropic' ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <KeyRound className="h-4 w-4 mr-2" />
-                    )}
-                    {aiStatus?.hasAnthropicKey ? 'Replace key' : 'Save & validate'}
-                  </Button>
-                  {aiStatus?.hasAnthropicKey && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => removeProviderKey('anthropic')}
-                      disabled={aiRemoving !== null}
-                      className="rounded-lg text-red-600"
-                    >
-                      {aiRemoving === 'anthropic' ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        'Remove'
-                      )}
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* Grok key entry */}
-              <div className="rounded-xl border border-slate-200 p-4 space-y-3 bg-slate-50/40">
-                <Label htmlFor="grok-key" className="text-sm font-medium">
-                  Grok (xAI) API key
-                </Label>
-                <Input
-                  id="grok-key"
-                  type="password"
-                  autoComplete="off"
-                  placeholder="xai-…"
-                  value={grokKeyInput}
-                  onChange={(e) => setGrokKeyInput(e.target.value)}
-                  className="font-mono text-sm bg-white"
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Get a key from{' '}
-                  <a
-                    href="https://console.x.ai/"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 hover:underline"
-                  >
-                    console.x.ai
-                  </a>
-                  . Encrypted at rest; never shown in full again.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => saveProviderKey('grok')}
-                    disabled={aiSaving !== null || !grokKeyInput.trim()}
-                    className="rounded-lg bg-zinc-900 hover:bg-zinc-800"
-                  >
-                    {aiSaving === 'grok' ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Sparkles className="h-4 w-4 mr-2" />
-                    )}
-                    {aiStatus?.hasGrokKey ? 'Replace key' : 'Save & validate'}
-                  </Button>
-                  {aiStatus?.hasGrokKey && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => removeProviderKey('grok')}
-                      disabled={aiRemoving !== null}
-                      className="rounded-lg text-red-600"
-                    >
-                      {aiRemoving === 'grok' ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        'Remove'
-                      )}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
         </CardContent>
       </Card>
       
