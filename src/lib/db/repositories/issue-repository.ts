@@ -146,26 +146,38 @@ async update(id: string, data: Partial<CreateIssueInput>, tenantId: string): Pro
     const existing = await this.getById(id, tenantId);
     if (!existing) return null;
 
+    // Never write primary/system fields via partial update
+    const forbidden = new Set(['id', 'tenantId', 'tenant_id', 'issueId', 'createdAt', 'updatedAt']);
+    const cleaned: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(data || {})) {
+      if (forbidden.has(key)) continue;
+      if (value === undefined) continue;
+      // DynamoDB rejects empty strings for some attribute shapes; store null-ish as omit
+      if (typeof value === 'string' && value.trim() === '') {
+        cleaned[key] = null;
+        continue;
+      }
+      cleaned[key] = value;
+    }
+
     const updatedAt = new Date().toISOString();
-    const keys = Object.keys(data);
-    const updateExpression = keys.length > 0
-      ? 'set ' + keys.map((key) => `#${key} = :${key}`).join(', ') + ', #updatedAt = :updatedAt'
-      : '#updatedAt = :updatedAt';
+    const keys = Object.keys(cleaned);
+    const setParts = keys.map((key) => `#${key} = :${key}`);
+    setParts.push('#updatedAt = :updatedAt');
 
     const expressionNames: Record<string, string> = { '#updatedAt': 'updatedAt' };
-    const expressionValues: Record<string, any> = { ':updatedAt': updatedAt };
+    const expressionValues: Record<string, unknown> = { ':updatedAt': updatedAt };
 
-    keys.forEach((key) => {
+    for (const key of keys) {
       expressionNames[`#${key}`] = key;
-      const value = (data as any)[key];
-      // Convert numbers to raw numbers for DynamoDB
-      expressionValues[`:${key}`] = typeof value === 'number' ? value : value;
-    });
+      expressionValues[`:${key}`] = cleaned[key];
+    }
 
     await updateItem(
       tableNames.issues,
       { tenant_id: tenantId, id },
-      updateExpression,
+      `SET ${setParts.join(', ')}`,
       expressionValues,
       expressionNames
     );

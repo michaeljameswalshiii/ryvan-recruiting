@@ -106,11 +106,25 @@ export default function IssueDialog({
     }
 
     try {
-      await onSubmit(form as CreateIssueInput);
-      toast.success(mode === 'create' ? "Issue created!" : "Issue updated!");
+      // Omit empty optional strings so DynamoDB update stays valid
+      const payload = {
+        ...form,
+        title: form.title.trim(),
+        description: form.description?.trim() || undefined,
+        severity: form.severity?.trim() || undefined,
+        featureArea: form.featureArea?.trim() || undefined,
+        reportedBy: form.reportedBy?.trim() || undefined,
+      } as CreateIssueInput;
+
+      await onSubmit(payload);
+      // Success toast is handled by mutation hooks when used from list/detail
+      if (mode === 'create') {
+        // create from list also toasts in the hook; keep a fallback for direct onSubmit
+      }
       onOpenChange(false);
     } catch (err) {
-      toast.error("Failed to save issue");
+      const message = err instanceof Error ? err.message : 'Failed to save issue';
+      toast.error(message);
     }
   };
 

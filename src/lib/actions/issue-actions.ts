@@ -54,8 +54,30 @@ export async function updateIssueAction(id: string, data: Partial<CreateIssueInp
     return { error: 'Unauthorized' };
   }
 
+  if (!id) {
+    return { error: 'Issue id is required' };
+  }
+
   try {
-    const issue = await issueRepository.update(id, data, tenantId);
+    // Only pass known updatable fields (avoids serializing junk / forbidden keys)
+    const payload: Partial<CreateIssueInput> = {
+      title: data.title,
+      description: data.description,
+      issueType: data.issueType,
+      priority: data.priority,
+      severity: data.severity,
+      mvp: data.mvp,
+      featureArea: data.featureArea,
+      status: data.status,
+      reportedBy: data.reportedBy,
+      assignedTo: data.assignedTo,
+      environment: data.environment,
+      tags: data.tags,
+      attachments: data.attachments,
+      comments: data.comments,
+    };
+
+    const issue = await issueRepository.update(id, payload, tenantId);
     if (!issue) {
       return { error: 'Issue not found' };
     }
@@ -63,6 +85,7 @@ export async function updateIssueAction(id: string, data: Partial<CreateIssueInp
     revalidatePath(`/dashboard/issues/${id}`);
     return { issue };
   } catch (error: any) {
+    console.error('[updateIssueAction]', id, error);
     return { error: error?.message || 'Failed to update issue' };
   }
 }

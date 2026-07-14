@@ -238,7 +238,7 @@ export async function putItem<T>(table: string, item: T): Promise<T> {
 
 /**
  * Update an item
- * Note: expressionValues must be raw JS values - do NOT marshall them
+ * expressionValues should be raw JS values; they are marshalled for the low-level client.
  */
 export async function updateItem<T>(
   table: string,
@@ -248,23 +248,25 @@ export async function updateItem<T>(
   expressionNames?: Record<string, string>
 ): Promise<T | null> {
   const client = getClient();
-  
-  // Use raw expressionValues - DynamoDB UpdateCommand handles conversion
+
   const command = new UpdateItemCommand({
     TableName: table,
     Key: marshall(key),
     UpdateExpression: updateExpression,
-    ExpressionAttributeValues: expressionValues as any,
+    ExpressionAttributeValues: marshall(expressionValues, {
+      removeUndefinedValues: true,
+      convertClassInstanceToMap: true,
+    }),
     ExpressionAttributeNames: expressionNames,
     ReturnValues: 'ALL_NEW',
   });
-  
+
   const response = await client.send(command);
-  
+
   if (!response.Attributes) {
     return null;
   }
-  
+
   return unmarshall(response.Attributes) as T;
 }
 
