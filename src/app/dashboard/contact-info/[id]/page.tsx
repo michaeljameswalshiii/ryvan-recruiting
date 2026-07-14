@@ -156,6 +156,13 @@ export default function ContactDetailPage() {
   const displayPhone = getDisplayPhone(contact);
   const displayPhoneType = getDisplayPhoneType(contact);
 
+  // Resolve company detail URL (clientId / companyId / ?companyId= query)
+  const companyDetailId =
+    contact?.clientId || contact?.companyId || companyIdParam || '';
+  const companyDetailHref = companyDetailId
+    ? `/dashboard/companies/${companyDetailId}`
+    : null;
+
   const handleLogNote = async () => {
     if (!newNote.trim() || !id) return;
     if (!noteType) {
@@ -379,7 +386,22 @@ export default function ContactDetailPage() {
             </span>
           </div>
           <p className="text-2xl text-muted-foreground mt-1">
-            {contact.title} • {contact.companyName}
+            {contact.title || '—'}
+            {contact.companyName ? (
+              <>
+                {' • '}
+                {companyDetailHref ? (
+                  <Link
+                    href={companyDetailHref}
+                    className="text-blue-600 hover:underline"
+                  >
+                    {contact.companyName}
+                  </Link>
+                ) : (
+                  contact.companyName
+                )}
+              </>
+            ) : null}
           </p>
         </div>
         <div className="flex gap-3 pt-4">
@@ -430,15 +452,15 @@ export default function ContactDetailPage() {
         </div>
         <div>
           <p className="text-xs text-muted-foreground">COMPANY</p>
-          {contact.clientId ? (
+          {companyDetailHref ? (
             <Link
-              href={`/dashboard/companies/${contact.clientId}?tab=contacts`}
+              href={companyDetailHref}
               className="font-medium text-blue-600 hover:underline"
             >
               {contact.companyName}
             </Link>
           ) : (
-            <p className="font-medium">{contact.companyName}</p>
+            <p className="font-medium">{contact.companyName || '—'}</p>
           )}
         </div>
       </div>
@@ -500,9 +522,18 @@ export default function ContactDetailPage() {
           <div className="bg-card border rounded-3xl p-8 h-fit">
             <h3 className="font-semibold mb-6">Quick Stats</h3>
             <div className="space-y-4 text-sm">
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span>Company</span>
-                <span>{contact.companyName}</span>
+                {companyDetailHref ? (
+                  <Link
+                    href={companyDetailHref}
+                    className="font-medium text-blue-600 hover:underline text-right"
+                  >
+                    {contact.companyName}
+                  </Link>
+                ) : (
+                  <span className="text-right">{contact.companyName || '—'}</span>
+                )}
               </div>
               <div className="flex justify-between">
                 <span>Activities</span>
@@ -533,13 +564,22 @@ export default function ContactDetailPage() {
 
       {activeTab === 'company' && (
         <div className="bg-card border rounded-3xl p-8">
-          {contact.clientId ? (
-            <Link
-              href={`/dashboard/companies/${contact.clientId}?tab=contacts`}
-              className="text-blue-600 hover:underline"
-            >
-              Open company contacts →
-            </Link>
+          {companyDetailHref ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                This contact is linked to{' '}
+                <span className="font-medium text-foreground">
+                  {contact.companyName}
+                </span>
+                .
+              </p>
+              <Link
+                href={companyDetailHref}
+                className="inline-flex text-blue-600 hover:underline font-medium"
+              >
+                Open company detail page →
+              </Link>
+            </div>
           ) : (
             <p className="text-muted-foreground">No company linked.</p>
           )}

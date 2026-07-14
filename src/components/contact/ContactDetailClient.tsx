@@ -29,7 +29,7 @@ export default function ContactDetailClient({ contact: rawContact, companyJobs: 
   const safeCompanyJobs = (rawJobs || []).map((job: any) => JSON.parse(JSON.stringify(job)));
   
   const companyName = propCompanyName || contact.companyName || contact.company?.name || 'Unknown Company';
-  const companyId = contact.companyId || '';
+  const companyId = contact.companyId || contact.clientId || '';
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<any>(null);
@@ -133,7 +133,7 @@ const deleteMutation = useMutation({
             <p className="text-2xl text-muted-foreground">{contact.title}</p>
             <p className="text-xl">
               {companyId ? (
-                <a href={`/dashboard/companies/${companyId}?tab=contacts`} className="hover:underline text-blue-600">
+                <a href={`/dashboard/companies/${companyId}`} className="hover:underline text-blue-600">
                   {companyName}
                 </a>
               ) : (
