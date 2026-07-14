@@ -1,80 +1,184 @@
 'use client';
 
-import React, { useState, useEffect } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Avatar } from "@/components/ui/avatar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Loader2, Plus, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import {
+  Mail,
+  Phone,
+  MapPin,
+  Pencil,
+  Trash2,
+  Loader2,
+  FileText,
+  Download,
+  ExternalLink,
+  RefreshCw,
+  Sparkles,
+  Briefcase,
+  ChevronRight,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
+import { SendEmailModal } from '@/components/email/send-email-modal';
+import { ResumeViewer } from '@/components/candidate/ResumeViewer';
 
-/** Matches server candidateNoteTypes in candidate-events.ts */
+/** Activity / note types shown in the log composer */
 const NOTE_TYPES = [
-  { value: "general", label: "General Note" },
-  { value: "phone_call", label: "Phone call" },
-  { value: "email_sent", label: "Email sent" },
-  { value: "meeting", label: "Meeting" },
-  { value: "follow_up", label: "Follow-up" },
-  { value: "proposal_sent", label: "Proposal sent" },
-  { value: "contract_signed", label: "Contract signed" },
-  { value: "placement_made", label: "Placement made" },
-  { value: "check_in", label: "Check-in" },
-  { value: "other", label: "Other" },
-  // Legacy labels used in older UI (still accepted / displayed)
-  { value: "Conversation", label: "Conversation" },
-  { value: "Interview Scheduled", label: "Interview Scheduled" },
-  { value: "Submitted", label: "Submitted" },
-  { value: "Email Sent", label: "Email Sent" },
+  { value: 'general', label: 'Action Type' },
+  { value: 'Conversation', label: 'Conversation' },
+  { value: 'Interview Scheduled', label: 'Interview Scheduled' },
+  { value: 'Submitted', label: 'Submitted' },
+  { value: 'Left Message', label: 'Left Message' },
+  { value: 'Email Sent', label: 'Email Sent' },
+  { value: 'phone_call', label: 'Phone call' },
+  { value: 'follow_up', label: 'Follow-up' },
+  { value: 'meeting', label: 'Meeting' },
+  { value: 'other', label: 'Other' },
 ] as const;
+
+/** 5-step pipeline matching Candidates list + mockup */
+const PIPELINE_STEPS = [
+  { key: 'identified', label: 'Identified', match: ['sourced', 'identification', 'outreach', 'new', 'contacted', 'identified', 'left_message'] },
+  { key: 'submitted', label: 'Submitted', match: ['submitted', 'pre_screened', 'presented', 'conversation', 'qualified'] },
+  { key: 'interviewing', label: 'Interviewing', match: ['interviewing', 'interview'] },
+  { key: 'offer_out', label: 'Offer Out', match: ['offer_out', 'offer', 'accept', 'offer_accepted'] },
+  { key: 'accepted', label: 'Accepted', match: ['placed', 'converted', 'hired', 'accepted'] },
+] as const;
+
+const REJECTED = ['rejected', 'not_interested', 'offer_declined', 'withdrawn'];
+
+function normalizeStage(raw?: string): string {
+  if (!raw) return 'identified';
+  return String(raw).trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function stageIndex(status?: string): number {
+  const s = normalizeStage(status);
+  if (REJECTED.includes(s)) return -1;
+  for (let i = PIPELINE_STEPS.length - 1; i >= 0; i--) {
+    if (PIPELINE_STEPS[i].match.includes(s) || PIPELINE_STEPS[i].key === s) return i;
+  }
+  return 0;
+}
+
+function stageToApiStatus(stepKey: string): string {
+  const map: Record<string, string> = {
+    identified: 'identification',
+    submitted: 'submitted',
+    interviewing: 'interviewing',
+    offer_out: 'offer_out',
+    accepted: 'converted',
+  };
+  return map[stepKey] || stepKey;
+}
+
+function getInitials(name: string) {
+  if (!name) return '?';
+  return name
+    .split(/\s+/)
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+function formatShortDate(value?: string) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return '—';
+  }
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  } catch {
+    return '—';
+  }
+}
+
+function noteTypeBadgeClass(label: string) {
+  const l = label.toLowerCase();
+  if (l.includes('interview')) return 'bg-violet-100 text-violet-800 border-violet-200';
+  if (l.includes('submit')) return 'bg-sky-100 text-sky-800 border-sky-200';
+  if (l.includes('email')) return 'bg-blue-100 text-blue-800 border-blue-200';
+  if (l.includes('left message') || l.includes('phone'))
+    return 'bg-amber-100 text-amber-900 border-amber-200';
+  if (l.includes('conversation') || l.includes('call'))
+    return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+  return 'bg-slate-100 text-slate-700 border-slate-200';
+}
 
 interface CandidateDetailClientProps {
   candidate: any;
 }
 
 export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
-  return <CandidateDetailClientInner candidate={candidate} />;
-}
-
-function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
   const router = useRouter();
+  const safe = candidate || {};
+  const candidateId = safe.id || '';
+
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'timeline' | 'resume' | 'jobs'
+  >('overview');
   const [notes, setNotes] = useState<any[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
-  const [newNote, setNewNote] = useState("");
-  const [noteType, setNoteType] = useState("general");
+  const [newNote, setNewNote] = useState('');
+  const [noteType, setNoteType] = useState('Conversation');
   const [addingNote, setAddingNote] = useState(false);
+  const [status, setStatus] = useState(safe.status || 'identification');
+  const [updatingStage, setUpdatingStage] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [aiLoading, setAiLoading] = useState<string | null>(null);
+  const [aiOutput, setAiOutput] = useState<string>('');
+  const [resumeUrl, setResumeUrl] = useState(safe.resumeUrl || '');
 
-  // Contact info
   const [contactInfo, setContactInfo] = useState({
-    email: candidate?.email || '',
-    phone: candidate?.phone || '',
-    location: candidate?.location || '',
-    title: candidate?.title || '',
+    name: safe.name || '',
+    email: safe.email || '',
+    phone: safe.phone || '',
+    location: safe.location || '',
+    title: safe.title || '',
+    fullAddress: safe.fullAddress || '',
+    salaryRequirements: safe.salaryRequirements || '',
+    company: safe.company || '',
+    linkedin: safe.linkedin || '',
   });
 
-  // Modal
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editForm, setEditForm] = useState({
-    email: '',
-    phone: '',
-    location: '',
-    title: '',
-  });
+  const [editForm, setEditForm] = useState({ ...contactInfo });
   const [isSavingContact, setIsSavingContact] = useState(false);
 
-  const safeCandidate = candidate || {};
-  const candidateId = safeCandidate.id || '';
-  const candidateName = safeCandidate.name || '';
-  const candidateResumeUrl = safeCandidate.resumeUrl || '';
-  const candidateResumeFileName = safeCandidate.resumeFileName || '';
-  const candidateSummary = safeCandidate.summary || '';
-  const candidateStage = safeCandidate.stage || 'Identified';
+  const currentStep = stageIndex(status);
+  const currentStepLabel =
+    currentStep >= 0 ? PIPELINE_STEPS[currentStep].label : 'Rejected';
+  const primaryJob =
+    Array.isArray(safe.linkedJobs) && safe.linkedJobs.length > 0
+      ? safe.linkedJobs[0]
+      : null;
+
+  const skills: string[] = Array.isArray(safe.skills) ? safe.skills : [];
+  const experience: any[] = Array.isArray(safe.experience) ? safe.experience : [];
+  const education: any[] = Array.isArray(safe.education) ? safe.education : [];
 
   const fetchNotes = async () => {
     if (!candidateId) {
@@ -83,14 +187,16 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
     }
     setNotesLoading(true);
     try {
-      const res = await fetch(`/api/candidate/${candidateId}/events?t=${Date.now()}&limit=50`);
+      const res = await fetch(
+        `/api/candidate/${candidateId}/events?t=${Date.now()}&limit=50`
+      );
       if (res.ok) {
         const data = await res.json();
         const events = Array.isArray(data) ? data : data.events || [];
         setNotes(events);
       }
     } catch (err) {
-      console.error("Failed to fetch notes", err);
+      console.error('Failed to fetch notes', err);
     } finally {
       setNotesLoading(false);
     }
@@ -101,87 +207,127 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidateId]);
 
-  const handleAddNote = async () => {
-    if (!newNote.trim() || !candidateId) return;
-
-    setAddingNote(true);
-    try {
-      const res = await fetch(`/api/candidate/${candidateId}/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          noteText: newNote.trim(),
-          noteType,
-          stage: candidateStage || null,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to add note");
-      }
-
-      toast.success("Note logged successfully");
-      setNewNote("");
-      setNoteType("general");
-      await fetchNotes();
-    } catch (err: any) {
-      console.error("Failed to log note", err);
-      toast.error(err?.message || "Failed to log note");
-    } finally {
-      setAddingNote(false);
-    }
-  };
-
   const getNoteTypeLabel = (note: any): string => {
     const meta = note?.metadata || {};
     if (meta.noteTypeLabel) return meta.noteTypeLabel;
     if (meta.noteType) {
       const match = NOTE_TYPES.find((t) => t.value === meta.noteType);
       if (match) return match.label;
-      return String(meta.noteType);
+      return String(meta.noteType).replace(/_/g, ' ');
     }
-    if (note?.eventType && note.eventType !== "NOTE") {
-      return String(note.eventType).replace(/_/g, " ");
+    if (note?.eventType && note.eventType !== 'NOTE') {
+      return String(note.eventType).replace(/_/g, ' ');
     }
-    return "Note";
+    return 'Note';
   };
 
-  const getNoteBody = (note: any): string => {
-    return (
-      note?.metadata?.noteText ||
-      note?.description ||
-      note?.title ||
-      note?.noteText ||
-      "Note"
-    );
+  const getNoteBody = (note: any): string =>
+    note?.metadata?.noteText ||
+    note?.description ||
+    note?.title ||
+    note?.noteText ||
+    '—';
+
+  const handleAddNote = async () => {
+    if (!newNote.trim() || !candidateId) return;
+    setAddingNote(true);
+    try {
+      const res = await fetch(`/api/candidate/${candidateId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          noteText: newNote.trim(),
+          noteType,
+          stage: status || null,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to add note');
+      }
+      toast.success('Note logged');
+      setNewNote('');
+      await fetchNotes();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to log note');
+    } finally {
+      setAddingNote(false);
+    }
   };
 
-  const handleDeleteCandidate = async () => {
+  const updateStage = async (direction: 'back' | 'advance' | 'reject') => {
+    if (!candidateId) return;
+    let nextStatus = status;
+    if (direction === 'reject') {
+      nextStatus = 'rejected';
+    } else if (direction === 'advance') {
+      const idx = Math.min(currentStep + 1, PIPELINE_STEPS.length - 1);
+      nextStatus = stageToApiStatus(PIPELINE_STEPS[Math.max(idx, 0)].key);
+    } else {
+      const idx = Math.max(currentStep - 1, 0);
+      nextStatus = stageToApiStatus(PIPELINE_STEPS[idx].key);
+    }
+
+    setUpdatingStage(true);
+    try {
+      const res = await fetch(`/api/candidate/${candidateId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to update stage');
+      }
+      setStatus(nextStatus);
+      toast.success(
+        direction === 'reject'
+          ? 'Candidate rejected'
+          : `Stage updated to ${direction === 'advance' ? 'next' : 'previous'}`
+      );
+      // Log stage change as activity
+      await fetch(`/api/candidate/${candidateId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          noteText: `Stage changed to ${nextStatus.replace(/_/g, ' ')}`,
+          noteType: 'stage_change',
+          stage: nextStatus,
+        }),
+      }).catch(() => {});
+      await fetchNotes();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update stage');
+    } finally {
+      setUpdatingStage(false);
+    }
+  };
+
+  const handleDelete = async () => {
     if (!candidateId) return;
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/candidate/${candidateId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/candidate/${candidateId}`, {
+        method: 'DELETE',
+      });
       if (res.ok) {
-        toast.success('Candidate deleted successfully');
+        toast.success('Candidate deleted');
         router.push('/dashboard/candidates');
       } else {
-        const data = await res.json();
-        toast.error(data.error || 'Failed to delete candidate');
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || 'Failed to delete');
       }
-    } catch (err) {
-      console.error('Error deleting candidate:', err);
-      toast.error('Failed to delete candidate');
+    } catch {
+      toast.error('Failed to delete');
     } finally {
       setIsDeleting(false);
       setShowDeleteConfirm(false);
     }
   };
 
-  const handleSaveContactInfo = async (e: React.FormEvent) => {
+  const handleSaveContact = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!candidateId) return;
-
     setIsSavingContact(true);
     try {
       const res = await fetch(`/api/candidate/${candidateId}`, {
@@ -192,341 +338,871 @@ function CandidateDetailClientInner({ candidate }: CandidateDetailClientProps) {
           phone: editForm.phone.trim(),
           location: editForm.location.trim(),
           title: editForm.title.trim(),
+          name: editForm.name.trim(),
+          full_address: editForm.fullAddress.trim(),
+          salary_requirements: editForm.salaryRequirements.trim(),
+          linkedin_url: editForm.linkedin.trim(),
         }),
       });
-
-      if (res.ok) {
-        const updated = {
-          email: editForm.email.trim(),
-          phone: editForm.phone.trim(),
-          location: editForm.location.trim(),
-          title: editForm.title.trim(),
-        };
-        setContactInfo(updated);
-        setShowEditModal(false);
-        toast.success("Contact information updated successfully");
-      } else {
-        const data = await res.json();
-        toast.error(data.error || "Failed to update");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to update');
       }
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to update contact information");
+      setContactInfo({ ...editForm });
+      setShowEditModal(false);
+      toast.success('Contact information updated');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update');
     } finally {
       setIsSavingContact(false);
     }
   };
 
-  const getInitials = (name: string) => {
-    if (!name) return "?";
-    return name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
+  const runAiTool = async (tool: string) => {
+    setAiLoading(tool);
+    setAiOutput('');
+    const prompts: Record<string, string> = {
+      rate: `Rate this candidate for recruiting. Give a score 1-10 with brief reasoning.\n\nName: ${contactInfo.name}\nTitle: ${contactInfo.title}\nSummary: ${safe.summary || 'N/A'}\nSkills: ${skills.join(', ') || 'N/A'}\nExperience: ${JSON.stringify(experience).slice(0, 1500)}`,
+      match: `Match this candidate against typical job requirements for "${contactInfo.title || 'their role'}". List strengths, gaps, and fit %.\n\nSummary: ${safe.summary || 'N/A'}\nSkills: ${skills.join(', ')}\nExperience: ${JSON.stringify(experience).slice(0, 1500)}`,
+      interview: `Generate 8 strong interview questions for a ${contactInfo.title || 'professional'} candidate named ${contactInfo.name}. Include behavioral and technical questions.`,
+      summarize: `Write a concise client-facing resume summary (3-5 sentences, professional tone) for ${contactInfo.name}, ${contactInfo.title}.\n\nSummary: ${safe.summary || 'N/A'}\nSkills: ${skills.join(', ')}\nExperience: ${JSON.stringify(experience).slice(0, 1500)}`,
+    };
+    try {
+      const res = await fetch('/api/bedrock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: prompts[tool] || prompts.rate }],
+          useTools: false,
+          useSearch: false,
+        }),
+      });
+      const data = await res.json();
+      if (data.response) {
+        setAiOutput(data.response);
+      } else {
+        throw new Error(data.error || 'AI unavailable');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'AI tool failed');
+      setAiOutput('');
+    } finally {
+      setAiLoading(null);
+    }
   };
 
-  const pipelineStages = ["Identified", "Submitted", "Interviewing", "Offer Out", "Accepted"];
+  const tabs = [
+    { id: 'overview' as const, label: 'Overview' },
+    { id: 'timeline' as const, label: 'Timeline' },
+    { id: 'resume' as const, label: 'Resume' },
+    { id: 'jobs' as const, label: 'Linked Jobs' },
+  ];
+
+  const activityRows = useMemo(() => notes, [notes]);
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-8">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row justify-between items-start gap-6 border-b pb-6">
-        <div className="flex items-start gap-6">
-          <Avatar className="w-24 h-24 text-4xl bg-blue-600 text-white">
-            {getInitials(candidateName)}
-          </Avatar>
-          <div>
-            <h1 className="text-3xl font-bold">{candidateName || "Unknown"}</h1>
-            <p className="text-xl text-muted-foreground">{contactInfo.title || "No Title"}</p>
-            <div className="flex gap-4 text-sm mt-2">
-              {contactInfo.email && <a href={`mailto:${contactInfo.email}`} className="text-blue-600 hover:underline">{contactInfo.email}</a>}
-              {contactInfo.phone && <span>{contactInfo.phone}</span>}
-              {contactInfo.location && <span>{contactInfo.location}</span>}
+    <div className="max-w-[1400px] mx-auto space-y-5 pb-10">
+      {/* ── Header ───────────────────────────────────────────────── */}
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+          <div className="flex items-start gap-4 min-w-0">
+            <div className="h-16 w-16 shrink-0 rounded-full bg-violet-600 text-white flex items-center justify-center text-xl font-semibold shadow-sm">
+              {getInitials(contactInfo.name)}
             </div>
+            <div className="min-w-0 space-y-1.5">
+              <h1 className="text-2xl font-semibold tracking-tight text-gray-900 truncate">
+                {contactInfo.name || 'Unknown'}
+              </h1>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                <span className="font-medium text-gray-800">
+                  {contactInfo.title || 'No title'}
+                </span>
+                {contactInfo.company && (
+                  <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
+                    {contactInfo.company}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
+                {contactInfo.email && (
+                  <a
+                    href={`mailto:${contactInfo.email}`}
+                    className="inline-flex items-center gap-1.5 text-blue-600 hover:underline"
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    {contactInfo.email}
+                  </a>
+                )}
+                {contactInfo.phone && (
+                  <a
+                    href={`tel:${contactInfo.phone}`}
+                    className="inline-flex items-center gap-1.5"
+                  >
+                    <Phone className="h-3.5 w-3.5 text-gray-400" />
+                    {contactInfo.phone}
+                  </a>
+                )}
+                {contactInfo.location && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-gray-400" />
+                    {contactInfo.location}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {primaryJob && (
+                  <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-800">
+                    {primaryJob.jobTitle || 'Linked job'}
+                  </span>
+                )}
+                <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-800">
+                  {currentStepLabel}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditForm({ ...contactInfo });
+                setShowEditModal(true);
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5 mr-1.5" />
+              Edit
+            </Button>
+            <Button
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => setEmailOpen(true)}
+              disabled={!contactInfo.email}
+            >
+              <Mail className="h-3.5 w-3.5 mr-1.5" />
+              Send Email
+            </Button>
+            {showDeleteConfirm ? (
+              <>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? 'Deleting…' : 'Confirm'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDeleteConfirm(false)}
+                >
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-red-600"
+                onClick={() => setShowDeleteConfirm(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
         </div>
 
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={() => router.push(`/dashboard/candidates/${candidateId}/edit`)}>Full Edit</Button>
-          <Button>Send Email</Button>
-          {showDeleteConfirm ? (
-            <>
-              <Button variant="destructive" onClick={handleDeleteCandidate} disabled={isDeleting}>
-                {isDeleting ? 'Deleting...' : 'Confirm Delete'}
-              </Button>
-              <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
-            </>
-          ) : (
-            <Button variant="outline" onClick={() => setShowDeleteConfirm(true)}>
-              <Trash2 className="mr-2 h-4 w-4" /> Delete
-            </Button>
-          )}
+        {/* Tabs */}
+        <div className="mt-5 border-b border-gray-100">
+          <nav className="flex gap-1 overflow-x-auto">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setActiveTab(t.id)}
+                className={`px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+                  activeTab === t.id
+                    ? 'border-blue-600 text-blue-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
-          <TabsTrigger value="resume">Resume</TabsTrigger>
-          <TabsTrigger value="jobs">Linked Jobs</TabsTrigger>
-        </TabsList>
+      {/* ── Overview ─────────────────────────────────────────────── */}
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+          {/* Left column */}
+          <div className="xl:col-span-7 space-y-5">
+            {/* Contact information */}
+            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Contact Information
+                </h2>
+                <span className="text-xs text-gray-400">
+                  Added {formatShortDate(safe.createdAt)} · Source:{' '}
+                  {safe.source || 'Manual'}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                <Field label="Full Name" value={contactInfo.name} />
+                <Field
+                  label="Email"
+                  value={contactInfo.email}
+                  href={
+                    contactInfo.email ? `mailto:${contactInfo.email}` : undefined
+                  }
+                />
+                <Field label="Phone" value={contactInfo.phone} />
+                <Field label="Location" value={contactInfo.location} />
+                <Field label="Current Title" value={contactInfo.title} />
+                <Field
+                  label="Salary Target"
+                  value={contactInfo.salaryRequirements || 'Not specified'}
+                />
+                <Field
+                  label="LinkedIn"
+                  value={contactInfo.linkedin || 'Not added'}
+                  href={contactInfo.linkedin || undefined}
+                />
+                <Field
+                  label="Address"
+                  value={contactInfo.fullAddress || '—'}
+                />
+              </div>
+            </section>
 
-        <TabsContent value="overview" className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-6">
-          <div className="lg:col-span-7 space-y-8">
-            {/* Contact Info Card */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Contact Information</CardTitle>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => {
-                    setEditForm({ ...contactInfo });
-                    setShowEditModal(true);
-                  }}
-                >
-                  Edit
-                </Button>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div><strong className="block text-muted-foreground">Email</strong><p>{contactInfo.email || "No Email"}</p></div>
-                <div><strong className="block text-muted-foreground">Phone</strong><p>{contactInfo.phone || "No Phone"}</p></div>
-                <div><strong className="block text-muted-foreground">Location</strong><p>{contactInfo.location || "Not specified"}</p></div>
-                <div><strong className="block text-muted-foreground">Title</strong><p>{contactInfo.title || "No Title"}</p></div>
-              </CardContent>
-            </Card>
-
-            {/* Pipeline Stage */}
-            <Card>
-              <CardTitle className="px-6 pt-6">Pipeline Stage</CardTitle>
-              <CardContent>
-                <div className="flex gap-2 flex-wrap mb-6">
-                  {pipelineStages.map((stage) => (
-                    <Badge key={stage} variant={stage === candidateStage ? "default" : "secondary"} className="px-4 py-1.5">
-                      {stage}
-                    </Badge>
-                  ))}
-                </div>
-                <div className="flex gap-3">
-                  <Button variant="outline">Move Back</Button>
-                  <Button>Advance</Button>
-                  <Button variant="destructive">Reject</Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Notes & Activity Log — original UI with note types + API persistence */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Notes & Activity Log</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col sm:flex-row gap-3 mb-6">
-                  <Select value={noteType} onValueChange={setNoteType}>
-                    <SelectTrigger className="w-full sm:w-56">
-                      <SelectValue placeholder="Note type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {NOTE_TYPES.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <Textarea
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    placeholder="Add note detail here..."
-                    className="flex-1 min-h-[80px]"
-                  />
-                  <Button
-                    onClick={handleAddNote}
-                    disabled={!newNote.trim() || addingNote}
-                    className="sm:self-start"
-                  >
-                    {addingNote ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Plus className="mr-2 h-4 w-4" />
-                    )}
-                    Log
-                  </Button>
-                </div>
-
-                {notesLoading ? (
-                  <div className="flex justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                ) : notes && notes.length > 0 ? (
-                  <div className="space-y-4">
-                    {notes.map((note: any, index: number) => (
-                      <div
-                        key={note.id || note.SK || index}
-                        className="border-l-4 border-blue-200 pl-4 py-2"
-                      >
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mb-1">
-                          <Badge variant="secondary" className="text-xs font-normal">
-                            {getNoteTypeLabel(note)}
-                          </Badge>
-                          <span>
-                            {note.createdAt || note.timestamp
-                              ? new Date(note.createdAt || note.timestamp).toLocaleString()
-                              : "Recent"}
-                          </span>
-                          {note.createdBy && note.createdBy !== "system" && (
-                            <span>· {note.createdBy}</span>
-                          )}
+            {/* Pipeline stage */}
+            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                Pipeline Stage
+                {primaryJob?.jobTitle
+                  ? ` — ${String(primaryJob.jobTitle).toUpperCase()}`
+                  : ''}
+              </h2>
+              <div className="mt-4">
+                <div className="flex items-center gap-1 mb-2">
+                  {PIPELINE_STEPS.map((step, i) => {
+                    const active = i === currentStep;
+                    const done = currentStep >= 0 && i < currentStep;
+                    return (
+                      <React.Fragment key={step.key}>
+                        <div
+                          className={`flex-1 text-center rounded-lg border px-2 py-2.5 text-xs font-semibold transition-colors ${
+                            active
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                              : done
+                                ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                : 'bg-gray-50 text-gray-500 border-gray-200'
+                          }`}
+                        >
+                          {step.label}
                         </div>
-                        <p className="text-sm whitespace-pre-wrap">{getNoteBody(note)}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-center py-8">
-                    No activity yet. Log the first note above.
+                        {i < PIPELINE_STEPS.length - 1 && (
+                          <ChevronRight className="h-4 w-4 text-gray-300 shrink-0" />
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+                {currentStep < 0 && (
+                  <p className="text-sm text-rose-600 font-medium mb-3">
+                    Status: Rejected
                   </p>
                 )}
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="lg:col-span-5 space-y-8">
-            <Card>
-              <CardHeader>
-                <CardTitle>Professional Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground whitespace-pre-wrap">
-                {candidateSummary || "No summary on file."}
-              </CardContent>
-            </Card>
-            {candidateResumeUrl && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Resume</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <a
-                    href={candidateResumeUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 hover:underline text-sm"
+                <div className="flex flex-wrap gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={updatingStage || currentStep <= 0}
+                    onClick={() => updateStage('back')}
                   >
-                    {candidateResumeFileName || "View resume"}
-                  </a>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="timeline" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Full Timeline</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {notesLoading ? (
-                <div className="flex justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    Move Back
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700"
+                    disabled={
+                      updatingStage ||
+                      currentStep < 0 ||
+                      currentStep >= PIPELINE_STEPS.length - 1
+                    }
+                    onClick={() => updateStage('advance')}
+                  >
+                    {updatingStage ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : currentStep >= 0 &&
+                      currentStep < PIPELINE_STEPS.length - 1 ? (
+                      `Advance to ${PIPELINE_STEPS[currentStep + 1].label}`
+                    ) : (
+                      'Advance'
+                    )}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={updatingStage || currentStep < 0}
+                    onClick={() => updateStage('reject')}
+                  >
+                    Reject
+                  </Button>
                 </div>
-              ) : notes && notes.length > 0 ? (
-                <div className="space-y-4">
-                  {notes.map((note: any, index: number) => (
-                    <div
-                      key={note.id || note.SK || `tl-${index}`}
-                      className="border rounded-lg p-4"
-                    >
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mb-2">
-                        <Badge variant="outline">{getNoteTypeLabel(note)}</Badge>
-                        <span>
-                          {note.createdAt || note.timestamp
-                            ? new Date(note.createdAt || note.timestamp).toLocaleString()
-                            : "Recent"}
+              </div>
+            </section>
+
+            {/* Notes & activity log */}
+            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-4">
+                Notes & Activity Log
+              </h2>
+
+              <div className="flex flex-col sm:flex-row gap-2 mb-5">
+                <select
+                  value={noteType}
+                  onChange={(e) => setNoteType(e.target.value)}
+                  className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm sm:w-44"
+                >
+                  {NOTE_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  placeholder="Add note detail here..."
+                  className="flex-1 bg-white"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleAddNote();
+                    }
+                  }}
+                />
+                <Button
+                  onClick={handleAddNote}
+                  disabled={!newNote.trim() || addingNote}
+                  className="bg-blue-600 hover:bg-blue-700 shrink-0"
+                >
+                  {addingNote ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    'Log'
+                  )}
+                </Button>
+              </div>
+
+              {notesLoading ? (
+                <div className="flex justify-center py-10">
+                  <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                </div>
+              ) : activityRows.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">
+                  No activity yet. Log the first note above.
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-gray-100">
+                  <table className="w-full text-sm min-w-[520px]">
+                    <thead>
+                      <tr className="bg-gray-50/80 border-b border-gray-100 text-left">
+                        <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-36">
+                          Date
+                        </th>
+                        <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-40">
+                          Action Type
+                        </th>
+                        <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                          Note
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {activityRows.map((note: any, index: number) => {
+                        const label = getNoteTypeLabel(note);
+                        return (
+                          <tr
+                            key={note.id || note.SK || index}
+                            className="hover:bg-gray-50/60"
+                          >
+                            <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap align-top">
+                              {formatDateTime(
+                                note.createdAt || note.timestamp || note.created_at
+                              )}
+                            </td>
+                            <td className="px-3 py-3 align-top">
+                              <span
+                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${noteTypeBadgeClass(label)}`}
+                              >
+                                {label}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 text-sm text-gray-800 align-top">
+                              {getNoteBody(note)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </div>
+
+          {/* Right column — Resume + AI */}
+          <div className="xl:col-span-5 space-y-5">
+            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Resume
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {resumeUrl && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs"
+                        asChild
+                      >
+                        <a href={resumeUrl} target="_blank" rel="noreferrer">
+                          <ExternalLink className="h-3 w-3 mr-1" /> View
+                        </a>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs"
+                        asChild
+                      >
+                        <a href={resumeUrl} download>
+                          <Download className="h-3 w-3 mr-1" /> Download
+                        </a>
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() =>
+                      router.push(`/dashboard/candidates/${candidateId}/edit`)
+                    }
+                  >
+                    Update
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-5">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {contactInfo.name}
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    {[contactInfo.title, contactInfo.location]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                  {(contactInfo.email || contactInfo.phone) && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {[contactInfo.email, contactInfo.phone]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-wide text-blue-700 mb-2">
+                    Professional Summary
+                  </h4>
+                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                    {safe.summary ||
+                      'No professional summary on file. Upload or parse a resume to populate this section.'}
+                  </p>
+                </div>
+
+                {experience.length > 0 && (
+                  <div>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-blue-700 mb-2">
+                      Experience
+                    </h4>
+                    <div className="space-y-3">
+                      {experience.map((exp: any, i: number) => (
+                        <div key={i} className="text-sm">
+                          <div className="font-semibold text-gray-900">
+                            {exp.title || exp.role || 'Role'}
+                          </div>
+                          <div className="text-gray-600">
+                            {[exp.company, exp.dates || exp.date]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                          {exp.description && (
+                            <p className="text-gray-600 mt-1 text-xs leading-relaxed whitespace-pre-wrap">
+                              {exp.description}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {education.length > 0 && (
+                  <div>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-blue-700 mb-2">
+                      Education
+                    </h4>
+                    <div className="space-y-2">
+                      {education.map((ed: any, i: number) => (
+                        <div key={i} className="text-sm">
+                          <div className="font-semibold text-gray-900">
+                            {ed.degree || ed.school || 'Education'}
+                          </div>
+                          <div className="text-gray-600 text-xs">
+                            {[ed.school, ed.dates || ed.date]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {skills.length > 0 && (
+                  <div>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-blue-700 mb-2">
+                      Skills
+                    </h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {skills.map((s) => (
+                        <span
+                          key={s}
+                          className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[11px] font-medium text-blue-800"
+                        >
+                          {s}
                         </span>
-                      </div>
-                      <p className="text-sm font-medium mb-1">{note.title || getNoteTypeLabel(note)}</p>
-                      <p className="text-sm whitespace-pre-wrap text-muted-foreground">
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!safe.summary &&
+                  experience.length === 0 &&
+                  education.length === 0 &&
+                  skills.length === 0 && (
+                    <div className="text-center py-6 text-sm text-gray-500 border border-dashed rounded-xl">
+                      <FileText className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                      No parsed resume data yet.
+                      {resumeUrl ? (
+                        <a
+                          href={resumeUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block mt-2 text-blue-600 hover:underline"
+                        >
+                          Open original resume file
+                        </a>
+                      ) : (
+                        <p className="mt-1 text-xs">
+                          Edit the candidate to upload a resume.
+                        </p>
+                      )}
+                    </div>
+                  )}
+              </div>
+            </section>
+
+            {/* AI evaluation tools */}
+            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+              <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-3 flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-violet-500" />
+                AI Evaluation Tools
+              </h2>
+              <div className="space-y-2">
+                {[
+                  { id: 'rate', label: 'Rate This Candidate' },
+                  { id: 'match', label: 'Match Against Job Requirements' },
+                  { id: 'interview', label: 'Generate Interview Questions' },
+                  { id: 'summarize', label: 'Summarize Resume for Client' },
+                ].map((tool) => (
+                  <Button
+                    key={tool.id}
+                    variant="outline"
+                    className="w-full justify-between h-11 border-blue-200 text-blue-800 hover:bg-blue-50"
+                    disabled={!!aiLoading}
+                    onClick={() => runAiTool(tool.id)}
+                  >
+                    <span>{tool.label}</span>
+                    {aiLoading === tool.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 opacity-50" />
+                    )}
+                  </Button>
+                ))}
+              </div>
+              {aiOutput && (
+                <div className="mt-4 rounded-xl border border-violet-100 bg-violet-50/50 p-4 text-sm text-gray-800 whitespace-pre-wrap max-h-80 overflow-y-auto">
+                  {aiOutput}
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+      )}
+
+      {/* ── Timeline tab ─────────────────────────────────────────── */}
+      {activeTab === 'timeline' && (
+        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">
+            Full Timeline
+          </h2>
+          {notesLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : activityRows.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-10">
+              No timeline events yet.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {activityRows.map((note: any, index: number) => {
+                const label = getNoteTypeLabel(note);
+                return (
+                  <div
+                    key={note.id || note.SK || index}
+                    className="flex gap-4 rounded-xl border border-gray-100 p-4"
+                  >
+                    <div className="w-36 shrink-0 text-xs text-gray-500">
+                      {formatDateTime(
+                        note.createdAt || note.timestamp || note.created_at
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium mb-2 ${noteTypeBadgeClass(label)}`}
+                      >
+                        {label}
+                      </span>
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap">
                         {getNoteBody(note)}
                       </p>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground text-center py-8">No timeline events yet.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
 
-      {/* Simple Modal (Tailwind only - no shadcn Dialog needed) */}
+      {/* ── Resume tab ───────────────────────────────────────────── */}
+      {activeTab === 'resume' && (
+        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 min-h-[480px]">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-gray-900">Resume</h2>
+            {resumeUrl && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={resumeUrl} target="_blank" rel="noreferrer">
+                  <Download className="h-4 w-4 mr-1.5" /> Download
+                </a>
+              </Button>
+            )}
+          </div>
+          {resumeUrl || candidateId ? (
+            <ResumeViewer
+              url={resumeUrl}
+              fileName={safe.resumeFileName}
+              candidateId={candidateId}
+              fileKey={safe.resumeKey}
+              onUrlUpdated={(u) => setResumeUrl(u)}
+            />
+          ) : (
+            <div className="text-center py-16 text-gray-500 text-sm">
+              No resume on file. Edit the candidate to upload one.
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Linked jobs tab ──────────────────────────────────────── */}
+      {activeTab === 'jobs' && (
+        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-gray-900">Linked Jobs</h2>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => router.push('/dashboard/jobs')}
+            >
+              <Briefcase className="h-4 w-4 mr-1.5" /> Browse jobs
+            </Button>
+          </div>
+          {!Array.isArray(safe.linkedJobs) || safe.linkedJobs.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-12">
+              No jobs linked yet. Link this candidate from a job detail page.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {safe.linkedJobs.map((job: any) => (
+                <Link
+                  key={job.jobId || job.id}
+                  href={`/dashboard/jobs/${job.jobId || job.id}`}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-4 py-3 hover:bg-gray-50"
+                >
+                  <div>
+                    <div className="font-medium text-gray-900">
+                      {job.jobTitle || job.title || 'Job'}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {job.companyName || '—'}
+                      {job.stage ? ` · ${job.stage}` : ''}
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-gray-400" />
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Edit contact modal */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-lg max-w-md w-full max-h-[90vh] overflow-auto">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-auto shadow-xl">
             <div className="p-6">
-              <h2 className="text-xl font-semibold mb-1">Edit Contact Information</h2>
-              <p className="text-sm text-muted-foreground mb-4">Update the candidate&apos;s details.</p>
-
-              <form onSubmit={handleSaveContactInfo} className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium block mb-1">Email</label>
-                  <Input
-                    type="email"
-                    value={editForm.email}
-                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                    placeholder="email@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium block mb-1">Phone</label>
-                  <Input
-                    type="tel"
-                    value={editForm.phone}
-                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                    placeholder="+1 (555) 123-4567"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium block mb-1">Location</label>
-                  <Input
-                    value={editForm.location}
-                    onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
-                    placeholder="City, State"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium block mb-1">Title</label>
-                  <Input
-                    value={editForm.title}
-                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                    placeholder="Job Title"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+              <h2 className="text-xl font-semibold mb-1">
+                Edit Contact Information
+              </h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Update the candidate&apos;s details.
+              </p>
+              <form onSubmit={handleSaveContact} className="space-y-3">
+                {(
+                  [
+                    ['name', 'Full Name'],
+                    ['email', 'Email'],
+                    ['phone', 'Phone'],
+                    ['title', 'Title'],
+                    ['company', 'Company'],
+                    ['location', 'Location'],
+                    ['fullAddress', 'Address'],
+                    ['salaryRequirements', 'Salary Target'],
+                    ['linkedin', 'LinkedIn URL'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="text-sm font-medium block mb-1">
+                      {label}
+                    </label>
+                    <Input
+                      value={(editForm as any)[key] || ''}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, [key]: e.target.value })
+                      }
+                    />
+                  </div>
+                ))}
+                <div className="flex gap-3 pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
                     className="flex-1"
                     onClick={() => setShowEditModal(false)}
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isSavingContact} className="flex-1">
-                    {isSavingContact ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      "Save Changes"
-                    )}
+                  <Button
+                    type="submit"
+                    disabled={isSavingContact}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  >
+                    {isSavingContact ? 'Saving…' : 'Save Changes'}
                   </Button>
                 </div>
               </form>
             </div>
           </div>
         </div>
+      )}
+
+      <SendEmailModal
+        open={emailOpen}
+        onOpenChange={setEmailOpen}
+        candidate={
+          contactInfo.email
+            ? { email: contactInfo.email, name: contactInfo.name }
+            : null
+        }
+        onSend={async (subject, body) => {
+          const res = await fetch('/api/email/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: contactInfo.email,
+              subject,
+              text: body,
+              html: body.replace(/\n/g, '<br/>'),
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.success === false) {
+            throw new Error(data.error || 'Failed to send email');
+          }
+          await fetch(`/api/candidate/${candidateId}/notes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              noteText: `Email sent: ${subject}`,
+              noteType: 'Email Sent',
+            }),
+          }).catch(() => {});
+          await fetchNotes();
+        }}
+      />
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value?: string;
+  href?: string;
+}) {
+  return (
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">
+        {label}
+      </div>
+      {href && value && value !== '—' && value !== 'Not added' ? (
+        <a
+          href={href}
+          target={href.startsWith('http') ? '_blank' : undefined}
+          rel="noreferrer"
+          className="text-sm text-blue-600 hover:underline break-all"
+        >
+          {value}
+        </a>
+      ) : (
+        <div className="text-sm text-gray-900 break-words">{value || '—'}</div>
       )}
     </div>
   );

@@ -1,5 +1,4 @@
-﻿import { notFound } from "next/navigation";
-// CandidateDetailClient is a named export
+import { notFound } from "next/navigation";
 import { CandidateDetailClient } from "@/components/candidate/CandidateDetailClient";
 import { getLeadById } from "@/lib/db/repositories/lead-repository";
 import { getSessionTenantId } from "@/lib/server-auth";
@@ -10,42 +9,50 @@ interface Props {
 
 export default async function CandidateDetailPage({ params }: Props) {
   const { id } = await params;
-  
-  // Get tenant from session
+
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
     notFound();
   }
 
-  // Get candidate directly from repository (server-side)
   const candidate = await getLeadById(tenantId, id);
   if (!candidate) {
     notFound();
   }
 
-// Map Lead to compatible format for client component
-  // Note: DynamoDB uses snake_case, client component expects camelCase
-  // Defensive: ensure all values are strings or arrays, never objects
+  const c = candidate as any;
+
   const candidateData = {
-    id: (candidate.id || "") as string,
-    name: (candidate.name || "") as string,
-    email: (candidate.email || "") as string,
-    phone: (candidate.phone || "") as string,
-    title: (candidate.title || "") as string,
-    location: (candidate.location || "Orlando, FL") as string,
-    status: (candidate.status || "Identified") as string,
-    source: (candidate.source || "") as string,
-    createdAt: (candidate.created_at || "") as string,
-    // Additional fields from Lead (map snake_case to camelCase)
-    linkedin: (candidate.linkedin_url || "") as string,
-    resumeUrl: (candidate.resume_url || "") as string,
-    resumeFileName: (candidate.resume_file_name || "") as string,
-    // All parsed fields - ensure array
-    skills: Array.isArray(candidate.skills) 
-      ? candidate.skills.filter((s: any) => typeof s === 'string') 
-      : typeof candidate.skills === 'string' 
-        ? candidate.skills.split(',').map((s: string) => s.trim()).filter(Boolean)
+    id: (c.id || "") as string,
+    name: (c.name || "") as string,
+    email: (c.email || "") as string,
+    phone: (c.phone || "") as string,
+    title: (c.title || "") as string,
+    location: (c.location || "") as string,
+    fullAddress: (c.full_address || c.fullAddress || "") as string,
+    salaryRequirements: (c.salary_requirements || c.salaryRequirements || "") as string,
+    status: (c.status || "identification") as string,
+    source: (c.source || "Manual") as string,
+    createdAt: (c.created_at || c.createdAt || "") as string,
+    modifiedAt: (c.modified_at || c.modifiedAt || "") as string,
+    linkedin: (c.linkedin_url || c.linkedin || "") as string,
+    resumeUrl: (c.resume_url || c.resumeUrl || "") as string,
+    resumeFileName: (c.resume_file_name || c.resumeFileName || "") as string,
+    resumeKey: (c.resume_key || c.resumeKey || c.resume_s3_key || "") as string,
+    summary: (c.summary || "") as string,
+    company: (c.company || c.companyName || c.current_company || "") as string,
+    skills: Array.isArray(c.skills)
+      ? c.skills.filter((s: any) => typeof s === "string")
+      : typeof c.skills === "string"
+        ? c.skills
+            .split(",")
+            .map((s: string) => s.trim())
+            .filter(Boolean)
         : [],
+    experience: Array.isArray(c.experience) ? c.experience : [],
+    education: Array.isArray(c.education) ? c.education : [],
+    certifications: Array.isArray(c.certifications) ? c.certifications : [],
+    linkedJobs: Array.isArray(c.linkedJobs) ? c.linkedJobs : [],
   };
 
   return <CandidateDetailClient candidate={candidateData} />;
