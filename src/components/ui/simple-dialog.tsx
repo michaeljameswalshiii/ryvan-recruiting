@@ -35,18 +35,18 @@ export function SimpleDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-background/80 backdrop-blur-sm"
         onClick={() => onOpenChange(false)}
       />
-      
-      {/* Dialog content */}
-      <div className="relative z-10 w-full max-w-lg mx-4 bg-background rounded-lg border shadow-lg p-6">
+
+      {/* Dialog content — scrollable on short screens */}
+      <div className="relative z-10 w-full max-w-lg sm:mx-4 max-h-[min(92vh,900px)] flex flex-col bg-background rounded-t-2xl sm:rounded-lg border shadow-lg">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div>
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b shrink-0">
+          <div className="min-w-0 pr-2">
             <h2 className="text-lg font-semibold">{title}</h2>
             {description && (
               <p className="text-sm text-muted-foreground">{description}</p>
@@ -55,17 +55,22 @@ export function SimpleDialog({
           <Button
             variant="ghost"
             size="icon"
+            className="shrink-0"
             onClick={() => onOpenChange(false)}
           >
             <X className="h-4 w-4" />
           </Button>
         </div>
 
-        {/* Body */}
-        <div className="mb-4">{children}</div>
+        {/* Body — scrolls when content is tall */}
+        <div className="px-6 py-4 overflow-y-auto flex-1 min-h-0">{children}</div>
 
-        {/* Footer */}
-        {footer && <div className="flex justify-end gap-2">{footer}</div>}
+        {/* Footer — always visible */}
+        {footer && (
+          <div className="flex justify-end gap-2 px-6 py-4 border-t bg-background shrink-0">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );
