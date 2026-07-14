@@ -44,7 +44,7 @@ const navItems = [
   { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
   { href: "/dashboard/settings", label: "Email", icon: Mail },
   { href: "/dashboard/debug-env", label: "Debug", icon: Bug },
-  { href: "/admin/dynamodb", label: "DynamoDB Viewer", icon: Database },
+  { href: "/dashboard/dynamo-search", label: "Dynamo Search Tool", icon: Database },
 ];
 
 interface DashboardNavProps {

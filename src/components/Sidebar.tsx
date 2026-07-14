@@ -38,7 +38,7 @@ const debugItems = [
   { name: 'Issues', href: '/dashboard/issues', icon: Bug },
   { name: 'Usage', href: '/dashboard/usage', icon: Bug },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
-  { name: 'DynamoDB Admin', href: '/admin/dynamodb', icon: Database },
+  { name: 'Dynamo Search Tool', href: '/dashboard/dynamo-search', icon: Database },
 ];
 
 export default function Sidebar() {
