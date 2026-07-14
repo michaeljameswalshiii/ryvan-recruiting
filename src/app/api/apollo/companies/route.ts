@@ -1,59 +1,66 @@
-﻿import { NextRequest } from "next/server";
-import { logApolloUsage } from "@/lib/aws/athena-bedrock";
+import { NextRequest } from 'next/server';
+import { logApolloUsage } from '@/lib/aws/athena-bedrock';
+import { searchCompanies } from '@/lib/apollo/client';
 
-// Apollo pricing per result
 const APOLLO_COST_PER_RESULT = 0.005;
 
 export async function POST(request: NextRequest) {
   try {
-    const APOLLO_API_KEY = process.env.APOLLO_API_KEY || process.env.NEXT_PUBLIC_APOLLO_API_KEY || "";
-
-    if (!APOLLO_API_KEY) {
-      return Response.json({ error: "API key required" }, { status: 400 });
-    }
-
     const body = await request.json().catch(() => ({}));
-    const { q, locations, per_page } = body;
 
-    const response = await fetch("https://api.apollo.io/api/v1/mixed_companies/search", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": APOLLO_API_KEY,
-      },
-      body: JSON.stringify({
-        q,
-        locations: locations || [],
-        per_page: per_page || 20,
-      }),
+    const result = await searchCompanies({
+      q: body.q || body.query || '',
+      keywords: body.keywords,
+      locations: body.locations || body.organization_locations,
+      industries: body.industries || body.organization_industries,
+      employeeRanges:
+        body.employeeRanges || body.organization_num_employees_ranges,
+      jobTitles: body.jobTitles || body.q_organization_job_titles,
+      minJobs: body.minJobs,
+      per_page: body.per_page || 25,
+      page: body.page || 1,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Apollo Companies Error:", response.status, errorText);
-      return Response.json({ error: `Apollo API error ${response.status}` }, { status: response.status });
+    if (result.error && result.companies.length === 0) {
+      return Response.json(
+        {
+          success: false,
+          error: result.error,
+          companies: [],
+          // Also alias organizations for any legacy clients
+          organizations: [],
+          total: 0,
+        },
+        { status: result.error.includes('not configured') ? 400 : 502 }
+      );
     }
 
-    const data = await response.json();
-    
-    // Log Apollo usage after successful search
-    const resultsCount = data.companies?.length || 0;
-    if (resultsCount > 0) {
+    if (result.companies.length > 0) {
       logApolloUsage({
         modelId: 'apollo-companies-search',
-        resultsCount,
-        estimatedCost: resultsCount * APOLLO_COST_PER_RESULT,
-        queryPreview: q,
+        resultsCount: result.companies.length,
+        estimatedCost: result.companies.length * APOLLO_COST_PER_RESULT,
+        queryPreview: body.q || body.query,
       }).catch(() => {});
     }
-    
-    return Response.json(data);
 
+    return Response.json({
+      success: true,
+      companies: result.companies,
+      // Apollo native name — both always present now
+      organizations: result.companies,
+      total: result.total,
+    });
   } catch (error: any) {
-    console.error("Apollo Companies Proxy Error:", error);
-    return Response.json({ 
-      error: "Search failed", 
-      message: error.message || "Internal server error" 
-    }, { status: 500 });
+    console.error('Apollo Companies Error:', error);
+    return Response.json(
+      {
+        success: false,
+        error: error?.message || 'Company search failed',
+        companies: [],
+        organizations: [],
+      },
+      { status: 500 }
+    );
   }
 }

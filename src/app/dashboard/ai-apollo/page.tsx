@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SaveCandidateButton, AIResultsList, AIRawResult } from "@/components/candidate-import";
+import { toast } from "sonner";
 
 interface Message {
   id: string;
@@ -74,9 +75,9 @@ interface JobResult {
 
 const quickActions = [
   "Find construction companies in Boca Raton",
-  "Search for latest news on AI",
-  "What is the weather in Miami?",
   "Find software companies in South Florida",
+  "Who are the top recruiting strategies for tech startups?",
+  "Help me write an outreach email to a hiring manager",
 ];
 
 const sourcingActions = [
@@ -142,10 +143,40 @@ export default function AIAssistantPage() {
   const [showDebug, setShowDebug] = useState(false);
   const [showRawResponse, setShowRawResponse] = useState(false);
   const [rawResponse, setRawResponse] = useState<any>(null);
+  const [searchError, setSearchError] = useState<string>("");
+  const [apolloStatus, setApolloStatus] = useState<{
+    connected: boolean;
+    message: string;
+    checked: boolean;
+  }>({ connected: false, message: "Checking…", checked: false });
 
   useEffect(() => {
     const saved = localStorage.getItem('apolloSearchHistory');
-    if (saved) setSearchHistory(JSON.parse(saved));
+    if (saved) {
+      try {
+        setSearchHistory(JSON.parse(saved));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Real Apollo health check
+    fetch("/api/apollo/health")
+      .then((r) => r.json())
+      .then((data) => {
+        setApolloStatus({
+          connected: !!data.connected,
+          message: data.message || (data.connected ? "Apollo connected" : "Apollo unavailable"),
+          checked: true,
+        });
+      })
+      .catch(() => {
+        setApolloStatus({
+          connected: false,
+          message: "Could not verify Apollo connection",
+          checked: true,
+        });
+      });
   }, []);
 
   const saveToHistory = (query: string) => {
@@ -335,6 +366,8 @@ const result = await res.json();
     setIsSearchingPeople(true);
     setPeopleQuery(query);
     setExpansionResult(null);
+    setSearchError("");
+    setPeopleResults([]);
 
     try {
       // Smart query expansion - get structured result
@@ -343,60 +376,82 @@ const result = await res.json();
         expandedData = await expandQuery(query, "people");
         setExpansionResult(expandedData);
       } else {
-        expandedData = { optimizedQuery: query, keywords: [query] };
+        expandedData = { optimizedQuery: query, keywords: [query], personTitles: [query] };
       }
       
       const res = await fetch("/api/apollo/people", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          q: expandedData.optimizedQuery,
-          // Pass additional filters if smart search enabled
-          ...(smartSearchEnabled && {
-            titles: expandedData.personTitles,
-            keywords: expandedData.keywords,
-            technologies: expandedData.technologies,
-            locations: expandedData.locations,
-            industries: expandedData.industries,
-            seniorities: expandedData.seniorities,
-          })
+          q: expandedData.optimizedQuery || query,
+          titles: expandedData.personTitles?.length
+            ? expandedData.personTitles
+            : [expandedData.optimizedQuery || query],
+          keywords: expandedData.keywords,
+          technologies: expandedData.technologies,
+          locations: expandedData.locations,
+          industries: expandedData.industries,
+          seniorities: expandedData.seniorities,
+          per_page: 25,
         }),
       });
       
-const data = await res.json();
-      
-      // Store raw response for debug panel
+      const data = await res.json();
       setRawResponse(data);
+
+      if (!res.ok || data.success === false || data.error) {
+        const msg = data.error || data.message || `People search failed (${res.status})`;
+        setSearchError(msg);
+        toast.error(msg);
+        setPeopleResults([]);
+        return;
+      }
       
-      if (data.people && Array.isArray(data.people)) {
-        // Map Apollo people to our format
-        const mappedResults: PersonResult[] = data.people.map((p: any) => ({
+      const peopleList = Array.isArray(data.people)
+        ? data.people
+        : Array.isArray(data.results)
+          ? data.results
+          : [];
+
+      if (peopleList.length > 0) {
+        const mappedResults: PersonResult[] = peopleList.map((p: any) => ({
           id: p.id,
-          name: p.name,
+          name: p.name || [p.first_name, p.last_name].filter(Boolean).join(" ") || "Unknown",
           first_name: p.first_name,
           last_name: p.last_name,
-          title: p.title,
-          company: p.company?.name || p.organization?.name,
+          title: p.title || p.headline,
+          company:
+            typeof p.company === "string"
+              ? p.company
+              : p.company?.name || p.organization?.name || p.organization_name,
           email: p.email,
-          phone: p.phone,
-          linkedin_url: p.linkedin_url,
+          phone: p.phone || p.phone_number,
+          linkedin_url: p.linkedin_url || p.linkedin,
           city: p.city,
           state: p.state,
           country: p.country,
           industry: p.industry,
           skills: p.skills,
         }));
-setPeopleResults(mappedResults);
+        setPeopleResults(mappedResults);
         saveToHistory(query);
+        toast.success(`Found ${mappedResults.length} people`);
       } else {
         setPeopleResults([]);
+        setSearchError("No people matched that search. Try a broader title or different location.");
+        toast.message("No people found", {
+          description: "Try broadening titles or removing location filters.",
+        });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("People search error:", err);
+      const msg = err?.message || "People search failed";
+      setSearchError(msg);
+      toast.error(msg);
       setPeopleResults([]);
+    } finally {
+      setIsSearchingPeople(false);
     }
-
-setIsSearchingPeople(false);
   };
 
 // Company search function with smart expansion
@@ -405,23 +460,22 @@ setIsSearchingPeople(false);
 
     setIsSearchingCompanies(true);
     setCompanyQuery(query);
+    setSearchError("");
+    setCompanyResults([]);
 
     try {
-const expandedData = smartSearchEnabled 
+      const expandedData = smartSearchEnabled 
         ? await expandQuery(query, "companies")
-        : { optimizedQuery: query, industries: [] as string[], locations: [] as string[], keywords: [] as string[] };
+        : { optimizedQuery: query, industries: [] as string[], locations: [] as string[], keywords: [query] as string[] };
 
-const payload: any = {
-        q: expandedData.optimizedQuery,
+      const payload: any = {
+        q: expandedData.optimizedQuery || query,
         per_page: 25,
+        keywords: expandedData.keywords?.length ? expandedData.keywords : [query],
       };
 
-      // Add rich filters if available
-      if (smartSearchEnabled) {
-        if (expandedData.industries?.length) payload.industries = expandedData.industries;
-        if (expandedData.locations?.length) payload.locations = expandedData.locations;
-        if (expandedData.keywords?.length) payload.keywords = expandedData.keywords;
-      }
+      if (expandedData.industries?.length) payload.industries = expandedData.industries;
+      if (expandedData.locations?.length) payload.locations = expandedData.locations;
 
       const res = await fetch("/api/apollo/companies", {
         method: "POST",
@@ -429,23 +483,62 @@ const payload: any = {
         body: JSON.stringify(payload),
       });
       
-const data = await res.json();
-      
-      // Store raw response for debug panel
+      const data = await res.json();
       setRawResponse(data);
+
+      if (!res.ok || data.success === false || data.error) {
+        const msg = data.error || data.message || `Company search failed (${res.status})`;
+        setSearchError(msg);
+        toast.error(msg);
+        setCompanyResults([]);
+        return;
+      }
+
+      // Normalize Apollo organizations[] OR companies[]
+      const list = Array.isArray(data.companies) && data.companies.length > 0
+        ? data.companies
+        : Array.isArray(data.organizations)
+          ? data.organizations
+          : [];
       
-      if (data.companies && Array.isArray(data.companies) && data.companies.length > 0) {
-        setCompanyResults(data.companies);
+      if (list.length > 0) {
+        const mapped: CompanyResult[] = list.map((c: any) => ({
+          id: c.id || c.organization_id,
+          name: c.name || c.organization_name || "Unknown",
+          website: c.website || c.website_url || c.domain || c.primary_domain,
+          industry: c.industry || (Array.isArray(c.industries) ? c.industries[0] : undefined),
+          size: c.size || (c.employees_count != null ? String(c.employees_count) : undefined),
+          city: c.city,
+          state: c.state,
+          country: c.country,
+          linkedin_url: c.linkedin_url,
+          facebook_url: c.facebook_url,
+          twitter_url: c.twitter_url,
+          description: c.description || c.short_description,
+          headquarters_location:
+            c.headquarters_location ||
+            [c.city, c.state, c.country].filter(Boolean).join(", "),
+          founded_year: c.founded_year,
+          annual_revenue: c.annual_revenue,
+          employees_count: c.employees_count || c.estimated_num_employees,
+        }));
+        setCompanyResults(mapped);
         saveToHistory(query);
+        toast.success(`Found ${mapped.length} companies`);
       } else {
         setCompanyResults([]);
+        setSearchError("No companies matched. Try industry + location (e.g. “software Miami”).");
+        toast.message("No companies found");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Company search error:", err);
+      const msg = err?.message || "Company search failed";
+      setSearchError(msg);
+      toast.error(msg);
       setCompanyResults([]);
+    } finally {
+      setIsSearchingCompanies(false);
     }
-
-    setIsSearchingCompanies(false);
   };
 
 // Job search function with smart expansion
@@ -454,33 +547,40 @@ const data = await res.json();
 
     setIsSearchingJobs(true);
     setJobQuery(query);
+    setSearchError("");
+    setJobResults([]);
 
     try {
-      // Only expand if smart search is enabled
       const expandedData = smartSearchEnabled 
         ? await expandQuery(query, "jobs")
-        : { optimizedQuery: query, keywords: [], locations: [], industries: [] };
+        : { optimizedQuery: query, keywords: [query], locations: [] as string[], personTitles: [query] };
       
       const res = await fetch("/api/apollo/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          q: expandedData.optimizedQuery,
-          ...(smartSearchEnabled && {
-            keywords: expandedData.keywords || [],
-            locations: expandedData.locations || [],
-            industries: expandedData.industries || [],
-          })
+          q: expandedData.optimizedQuery || query,
+          titles: expandedData.personTitles?.length
+            ? expandedData.personTitles
+            : [expandedData.optimizedQuery || query],
+          keywords: expandedData.keywords || [],
+          locations: expandedData.locations || [],
+          per_page: 25,
         }),
       });
       
-const data = await res.json();
-      
-      // Store raw response for debug panel
+      const data = await res.json();
       setRawResponse(data);
+
+      if (!res.ok || data.success === false || data.error) {
+        const msg = data.error || data.message || `Job search failed (${res.status})`;
+        setSearchError(msg);
+        toast.error(msg);
+        setJobResults([]);
+        return;
+      }
       
-      if (data.jobs && Array.isArray(data.jobs)) {
-        // Map jobs to our format
+      if (data.jobs && Array.isArray(data.jobs) && data.jobs.length > 0) {
         const mappedResults: JobResult[] = data.jobs.map((j: any) => ({
           id: j.id,
           title: j.title,
@@ -493,18 +593,26 @@ const data = await res.json();
           url: j.url,
           employees_count: j.employees_count,
           industry: j.industry,
+          source: j.source,
         }));
-setJobResults(mappedResults);
+        setJobResults(mappedResults);
         saveToHistory(query);
+        toast.success(`Found ${mappedResults.length} open roles`);
+        if (data.note) toast.message(data.note);
       } else {
         setJobResults([]);
+        setSearchError("No open roles found. Try a different title or location.");
+        toast.message("No open roles found");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Job search error:", err);
+      const msg = err?.message || "Job search failed";
+      setSearchError(msg);
+      toast.error(msg);
       setJobResults([]);
+    } finally {
+      setIsSearchingJobs(false);
     }
-
-    setIsSearchingJobs(false);
   };
 
   const runSourcingSearch = async (query: string) => {
@@ -557,14 +665,49 @@ setJobResults(mappedResults);
         <div>
           <h1 className="text-3xl font-bold">AI Apollo</h1>
           <p className="text-muted-foreground">
-            Powered by Claude - AI Assistant (Web)
+            Source people, companies, and open roles with Apollo + Smart Search
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="w-2 h-2 rounded-full bg-green-500"></span>
-          <span className="text-muted-foreground">Apollo Connected</span>
+        <div className="flex items-center gap-2 text-sm" title={apolloStatus.message}>
+          <span
+            className={`w-2 h-2 rounded-full ${
+              !apolloStatus.checked
+                ? "bg-gray-300 animate-pulse"
+                : apolloStatus.connected
+                  ? "bg-green-500"
+                  : "bg-red-500"
+            }`}
+          />
+          <span className="text-muted-foreground">
+            {!apolloStatus.checked
+              ? "Checking Apollo…"
+              : apolloStatus.connected
+                ? "Apollo Connected"
+                : "Apollo Offline"}
+          </span>
         </div>
       </div>
+
+      {searchError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-start justify-between gap-3">
+          <span>{searchError}</span>
+          <button
+            type="button"
+            className="text-red-500 hover:text-red-700 text-xs font-medium shrink-0"
+            onClick={() => setSearchError("")}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {apolloStatus.checked && !apolloStatus.connected && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>Apollo is not connected.</strong> {apolloStatus.message} Set{" "}
+          <code className="text-xs bg-amber-100 px-1 rounded">APOLLO_API_KEY</code> in
+          Vercel env (master key recommended for People Search).
+        </div>
+      )}
 
 {/* Global Smart Search Toggle */}
 <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-card mb-6">

@@ -1,81 +1,61 @@
-﻿import { NextRequest } from "next/server";
-import { logApolloUsage } from "@/lib/aws/athena-bedrock";
+import { NextRequest } from 'next/server';
+import { logApolloUsage } from '@/lib/aws/athena-bedrock';
+import { searchJobs } from '@/lib/apollo/client';
 
-// Apollo pricing per result (jobs typically cost more)
 const APOLLO_COST_PER_RESULT = 0.01;
 
 export async function POST(request: NextRequest) {
   try {
-    const APOLLO_API_KEY = process.env.APOLLO_API_KEY || process.env.NEXT_PUBLIC_APOLLO_API_KEY || "";
-
-    if (!APOLLO_API_KEY) {
-      return Response.json({ error: "API key required" }, { status: 400 });
-    }
-
     const body = await request.json().catch(() => ({}));
-    const { q, title, company_id, location, per_page } = body;
+    const searchQuery = body.q || body.title || body.query || '';
 
-    // Use Apollo's companies search with job keywords as a proxy for open roles
-    // In production, you would use a dedicated jobs API or enrich company data
-    const searchQuery = q || title || "";
-    
-    const response = await fetch("https://api.apollo.io/api/v1/mixed_companies/search", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": APOLLO_API_KEY,
-      },
-      body: JSON.stringify({
-        q: searchQuery,
-        locations: location ? [location] : [],
-        per_page: per_page || 20,
-      }),
+    const result = await searchJobs({
+      q: searchQuery,
+      titles: body.titles || body.personTitles || (searchQuery ? [searchQuery] : []),
+      locations: body.locations || (body.location ? [body.location] : []),
+      keywords: body.keywords,
+      per_page: body.per_page || 25,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Apollo Jobs Error:", response.status, errorText);
-      return Response.json({ error: `Apollo API error ${response.status}` }, { status: response.status });
+    if (result.error && result.jobs.length === 0) {
+      return Response.json(
+        {
+          success: false,
+          error: result.error,
+          jobs: [],
+          total: 0,
+        },
+        { status: result.error.includes('not configured') ? 400 : 502 }
+      );
     }
 
-    const data = await response.json();
-    
-    // Transform companies data into job-like results
-    // This is a placeholder - in production you'd use a proper jobs API
-    const jobs = (data.companies || []).map((company: any) => ({
-      id: company.id,
-      title: searchQuery || "Open Role",
-      company: company.name,
-      company_id: company.id,
-      location: company.city && company.state 
-        ? `${company.city}, ${company.state}` 
-        : company.headquarters_location,
-      department: "Engineering",
-      description: `${company.name} is hiring ${searchQuery}.`,
-      posted_at: new Date().toISOString(),
-      url: company.website,
-      employees_count: company.employees_count,
-      industry: company.industry,
-    }));
-    
-    // Log Apollo usage after successful search
-    const resultsCount = jobs.length;
-    if (resultsCount > 0) {
+    if (result.jobs.length > 0) {
       logApolloUsage({
         modelId: 'apollo-jobs-search',
-        resultsCount,
-        estimatedCost: resultsCount * APOLLO_COST_PER_RESULT,
+        resultsCount: result.jobs.length,
+        estimatedCost: result.jobs.length * APOLLO_COST_PER_RESULT,
         queryPreview: searchQuery,
       }).catch(() => {});
     }
-    
-    return Response.json({ jobs });
 
+    return Response.json({
+      success: true,
+      jobs: result.jobs,
+      total: result.total,
+      note:
+        result.jobs.some((j) => j.source === 'apollo_hiring_company')
+          ? 'Some results are companies actively hiring (job posting details unavailable for that org).'
+          : undefined,
+    });
   } catch (error: any) {
-    console.error("Apollo Jobs Proxy Error:", error);
-    return Response.json({ 
-      error: "Search failed", 
-      message: error.message || "Internal server error" 
-    }, { status: 500 });
+    console.error('Apollo Jobs Error:', error);
+    return Response.json(
+      {
+        success: false,
+        error: error?.message || 'Job search failed',
+        jobs: [],
+      },
+      { status: 500 }
+    );
   }
 }
