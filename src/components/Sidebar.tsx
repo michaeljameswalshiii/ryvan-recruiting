@@ -82,7 +82,7 @@ export default function Sidebar() {
           </div>
           <div>
             <div className="font-semibold text-xl tracking-tight">RyVan Recruiting</div>
-            <div className="text-xs text-gray-500">Turnkey Optimization</div>
+            <div className="text-xs text-gray-500">Trio ATS</div>
           </div>
         </div>
       </div>
