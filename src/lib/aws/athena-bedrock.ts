@@ -348,37 +348,34 @@ export async function logApolloUsage(params: {
   tenantId?: string;
   userId?: string;
   userEmail?: string;
-}): Promise<void> {
-  try {
-    const timestamp = new Date().toISOString();
-    
-    // Use actual tenant/user if provided, otherwise system
-    const tenant = params.tenantId || 'SYSTEM';
-    const user = params.userId || 'apollo';
-    const email = params.userEmail || 'apollo@system';
-    
-    const record: BedrockUsageRecord = {
-      PK: `TENANT#${tenant}`,
-      SK: `USAGE#APOLLO#${timestamp}`,
-      tenantId: tenant,
-      userId: user,
-      userEmail: email,
-      modelId: params.modelId,
-      inputTokens: 0,
-      outputTokens: params.resultsCount * 100, // Estimate tokens from results
-      totalTokens: params.resultsCount * 100,
-      estimatedCost: params.estimatedCost,
-      queryPreview: params.queryPreview.substring(0, 200),
-      toolsUsed: ['apollo'],
-      latencyMs: 0,
-      timestamp,
-    };
-    
-    await putItem(bedrockUsageTable, record);
-    console.log('[APOLLO] Logged:', params.modelId, params.resultsCount, params.estimatedCost, 'tenant:', tenant);
-  } catch (error) {
-    console.error('[APOLLO] Failed to log:', error);
-  }
+}): Promise<{ ok: boolean; tenantId?: string; error?: string }> {
+  // Reuse main logger so Apollo rows share the same SK scheme (USAGE#iso#id)
+  // and land in the same dashboard date queries.
+  const session = await getSession().catch(() => null);
+  return logBedrockUsage({
+    modelId: params.modelId || 'apollo-search',
+    inputTokens: 0,
+    outputTokens: Math.max(1, (params.resultsCount || 0) * 100),
+    queryPreview: params.queryPreview || '',
+    toolsUsed: ['apollo'],
+    latencyMs: 0,
+    tenantId:
+      params.tenantId ||
+      session?.tenantId ||
+      (await getSessionTenantId()) ||
+      'tenant-2024-001',
+    userId:
+      params.userId ||
+      session?.userId ||
+      (await getSessionUserId()) ||
+      'apollo',
+    userEmail:
+      params.userEmail ||
+      session?.email ||
+      (await getSessionUserEmail()) ||
+      'apollo@system',
+    provider: 'apollo',
+  });
 }
 
 /**

@@ -151,6 +151,8 @@ export async function POST(request: NextRequest) {
             resultsCount: broader.people.length,
             estimatedCost: broader.people.length * APOLLO_COST_PER_RESULT,
             queryPreview: text,
+            tenantId: request.headers.get('x-tenant-id') || undefined,
+            userId: request.headers.get('x-user-id') || undefined,
           }).catch(() => {});
 
           return NextResponse.json({
@@ -185,6 +187,8 @@ export async function POST(request: NextRequest) {
           resultsCount: result.people.length,
           estimatedCost: result.people.length * APOLLO_COST_PER_RESULT,
           queryPreview: text,
+          tenantId: request.headers.get('x-tenant-id') || undefined,
+          userId: request.headers.get('x-user-id') || undefined,
         }).catch(() => {});
       }
 

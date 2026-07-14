@@ -24,7 +24,7 @@ const PUBLIC_API_ROUTES = [
 ];
 
 // API routes that need session injection (for client-side calls from dashboard)
-// bedrock + ai: inject x-user-id / x-tenant-id when logged in (BYOK); still allow without session for platform Bedrock
+// bedrock + ai + apollo: inject x-user-id / x-tenant-id when logged in for usage logging
 const PROTECTED_API_ROUTES = [
   '/api/jobs',
   '/api/data/jobs',
@@ -32,6 +32,7 @@ const PROTECTED_API_ROUTES = [
   '/api/candidates',
   '/api/ai',
   '/api/bedrock',
+  '/api/apollo',
 ];
 
 // Protected routes that require authentication
