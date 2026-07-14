@@ -30,6 +30,7 @@ function buildForm(initialData: Partial<CreateIssueInput> = {}) {
     environment: initialData.environment || ('Dev' as const),
     tags: initialData.tags || [],
     attachments: (initialData.attachments || []) as Array<{
+      id?: string;
       url: string;
       name: string;
       type?: string;

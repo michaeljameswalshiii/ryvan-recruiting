@@ -1,8 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
 import { putItem, getItem, queryItems, updateItem, deleteItem, tableNames } from '../dynamodb';
-import { CreateIssueInput, Issue } from '../../schemas/issue';
-
-const ISSUES_GSI = 'TenantStatusIndex';
+import {
+  CreateIssueInput,
+  Issue,
+  IssueAttachment,
+  IssueComment,
+} from '../../schemas/issue';
 
 function generateIssueId(existingCount: number): string {
   return `ISS-${String(existingCount + 1).padStart(3, '0')}`;
@@ -15,6 +18,59 @@ async function countIssuesForTenant(tenantId: string): Promise<number> {
     { ':tenantId': tenantId }
   );
   return result.items.length || 0;
+}
+
+function normalizeAttachment(raw: any): IssueAttachment {
+  return {
+    id: raw?.id || uuidv4(),
+    url: raw?.url || '',
+    s3Key: raw?.s3Key,
+    name: raw?.name || 'file',
+    type: raw?.type,
+    size: typeof raw?.size === 'number' ? raw.size : undefined,
+    uploadedBy: raw?.uploadedBy,
+    uploadedByEmail: raw?.uploadedByEmail,
+    uploadedAt: raw?.uploadedAt,
+  };
+}
+
+function normalizeComment(raw: any): IssueComment {
+  return {
+    id: raw?.id || uuidv4(),
+    body: raw?.body || raw?.text || '',
+    authorId: raw?.authorId,
+    authorName: raw?.authorName || raw?.author || 'User',
+    authorEmail: raw?.authorEmail,
+    createdAt: raw?.createdAt || new Date().toISOString(),
+  };
+}
+
+function mapItem(item: any): Issue {
+  return {
+    id: item.id,
+    tenantId: item.tenant_id,
+    issueId: item.issueId,
+    title: item.title,
+    description: item.description,
+    issueType: item.issueType,
+    priority: item.priority,
+    severity: item.severity,
+    mvp: item.mvp,
+    featureArea: item.featureArea,
+    status: item.status,
+    reportedBy: item.reportedBy,
+    assignedTo: item.assignedTo || [],
+    environment: item.environment,
+    tags: item.tags || [],
+    attachments: Array.isArray(item.attachments)
+      ? item.attachments.map(normalizeAttachment)
+      : [],
+    comments: Array.isArray(item.comments)
+      ? item.comments.map(normalizeComment)
+      : [],
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
 }
 
 export const issueRepository = {
@@ -41,8 +97,8 @@ export const issueRepository = {
       assignedTo: data.assignedTo || [],
       environment: data.environment,
       tags: data.tags || [],
-      attachments: data.attachments || [],
-      comments: data.comments || [],
+      attachments: (data.attachments || []).map(normalizeAttachment),
+      comments: (data.comments || []).map(normalizeComment),
       createdAt: now,
       updatedAt: now,
     };
@@ -79,81 +135,50 @@ export const issueRepository = {
     });
 
     if (!item) return null;
-    return {
-      id: item.id,
-      tenantId: item.tenant_id,
-      issueId: item.issueId,
-      title: item.title,
-      description: item.description,
-      issueType: item.issueType,
-      priority: item.priority,
-      severity: item.severity,
-      mvp: item.mvp,
-      featureArea: item.featureArea,
-      status: item.status,
-      reportedBy: item.reportedBy,
-      assignedTo: item.assignedTo || [],
-      environment: item.environment,
-      tags: item.tags || [],
-      attachments: item.attachments || [],
-      comments: item.comments || [],
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-    };
+    return mapItem(item);
   },
 
   async listByTenant(tenantId: string, status?: string): Promise<Issue[]> {
-    const result =
-      status && status.length > 0
-        ? await queryItems<any>(
-            tableNames.issues,
-            'tenant_id = :tenantId',
-            { ':tenantId': tenantId },
-            {
-              expressionNames: { '#status': 'status' },
-            }
-          )
-        : await queryItems<any>(
-            tableNames.issues,
-            'tenant_id = :tenantId',
-            { ':tenantId': tenantId }
-          );
+    const result = await queryItems<any>(
+      tableNames.issues,
+      'tenant_id = :tenantId',
+      { ':tenantId': tenantId }
+    );
 
-return (result.items || []).map((item: any) => ({
-      id: item.id,
-      tenantId: item.tenant_id,
-      issueId: item.issueId,
-      title: item.title,
-      description: item.description,
-      issueType: item.issueType,
-      priority: item.priority,
-      severity: item.severity,
-      mvp: item.mvp,
-      featureArea: item.featureArea,
-      status: item.status,
-      reportedBy: item.reportedBy,
-      assignedTo: item.assignedTo || [],
-      environment: item.environment,
-      tags: item.tags || [],
-      attachments: item.attachments || [],
-      comments: item.comments || [],
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-    }));
+    let items = (result.items || []).map(mapItem);
+    if (status && status.length > 0) {
+      items = items.filter((i) => i.status === status);
+    }
+    // Newest first
+    items.sort(
+      (a, b) =>
+        new Date(b.updatedAt || b.createdAt).getTime() -
+        new Date(a.updatedAt || a.createdAt).getTime()
+    );
+    return items;
   },
 
-async update(id: string, data: Partial<CreateIssueInput>, tenantId: string): Promise<Issue | null> {
+  async update(
+    id: string,
+    data: Partial<CreateIssueInput>,
+    tenantId: string
+  ): Promise<Issue | null> {
     const existing = await this.getById(id, tenantId);
     if (!existing) return null;
 
-    // Never write primary/system fields via partial update
-    const forbidden = new Set(['id', 'tenantId', 'tenant_id', 'issueId', 'createdAt', 'updatedAt']);
+    const forbidden = new Set([
+      'id',
+      'tenantId',
+      'tenant_id',
+      'issueId',
+      'createdAt',
+      'updatedAt',
+    ]);
     const cleaned: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(data || {})) {
       if (forbidden.has(key)) continue;
       if (value === undefined) continue;
-      // DynamoDB rejects empty strings for some attribute shapes; store null-ish as omit
       if (typeof value === 'string' && value.trim() === '') {
         cleaned[key] = null;
         continue;
@@ -183,6 +208,63 @@ async update(id: string, data: Partial<CreateIssueInput>, tenantId: string): Pro
     );
 
     return this.getById(id, tenantId);
+  },
+
+  async addComment(
+    id: string,
+    tenantId: string,
+    comment: Omit<IssueComment, 'id' | 'createdAt'> & {
+      id?: string;
+      createdAt?: string;
+    }
+  ): Promise<Issue | null> {
+    const existing = await this.getById(id, tenantId);
+    if (!existing) return null;
+
+    const entry: IssueComment = {
+      id: comment.id || uuidv4(),
+      body: comment.body.trim(),
+      authorId: comment.authorId,
+      authorName: comment.authorName || 'User',
+      authorEmail: comment.authorEmail,
+      createdAt: comment.createdAt || new Date().toISOString(),
+    };
+
+    if (!entry.body) {
+      throw new Error('Comment cannot be empty');
+    }
+
+    const comments = [...(existing.comments || []), entry];
+    return this.update(id, { comments } as Partial<CreateIssueInput>, tenantId);
+  },
+
+  async addAttachment(
+    id: string,
+    tenantId: string,
+    attachment: IssueAttachment
+  ): Promise<Issue | null> {
+    const existing = await this.getById(id, tenantId);
+    if (!existing) return null;
+
+    const attachments = [
+      ...(existing.attachments || []),
+      normalizeAttachment(attachment),
+    ];
+    return this.update(id, { attachments } as Partial<CreateIssueInput>, tenantId);
+  },
+
+  async removeAttachment(
+    id: string,
+    tenantId: string,
+    attachmentId: string
+  ): Promise<Issue | null> {
+    const existing = await this.getById(id, tenantId);
+    if (!existing) return null;
+
+    const attachments = (existing.attachments || []).filter(
+      (a) => a.id !== attachmentId
+    );
+    return this.update(id, { attachments } as Partial<CreateIssueInput>, tenantId);
   },
 
   async delete(id: string, tenantId: string): Promise<void> {
