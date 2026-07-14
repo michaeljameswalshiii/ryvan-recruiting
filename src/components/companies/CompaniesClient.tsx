@@ -1,115 +1,790 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
-import { useClients, useCreateClient, useDeleteClient } from '@/lib/hooks/query-client';
 import Link from 'next/link';
+import {
+  Plus,
+  RefreshCw,
+  Search,
+  MoreHorizontal,
+  Trash2,
+  Pencil,
+  Eye,
+  Building2,
+  MapPin,
+  Users,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useClients, useCreateClient, useDeleteClient } from '@/lib/hooks/query-client';
+import { companyStageOptions } from '@/lib/schemas/client';
+
+type SortKey = 'last_activity' | 'name' | 'added' | 'stage' | 'contacts';
+
+type StageBucket =
+  | 'all'
+  | 'identification'
+  | 'outreach'
+  | 'conversation'
+  | 'active' // presented | meeting | proposal
+  | 'closed_won'
+  | 'lost';
+
+/** Progress through the company BD pipeline (8 stages → 5 visual steps). */
+const PROGRESS_STEPS = [
+  {
+    key: 'identification',
+    label: 'Identified',
+    match: ['identification', 'identified', 'new', 'lead'],
+  },
+  {
+    key: 'outreach',
+    label: 'Outreach',
+    match: ['outreach', 'attempted_outreach', 'contacted'],
+  },
+  {
+    key: 'conversation',
+    label: 'Conversation',
+    match: ['conversation', 'engaged'],
+  },
+  {
+    key: 'active',
+    label: 'In Progress',
+    match: ['presented', 'meeting', 'proposal', 'candidate_presented'],
+  },
+  {
+    key: 'closed_won',
+    label: 'Won',
+    match: ['closed_won', 'won', 'client', 'active'],
+  },
+] as const;
+
+const STAGE_LABELS: Record<string, string> = Object.fromEntries(
+  companyStageOptions.map((s) => [s.id, s.label])
+);
+
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function avatarColor(name: string) {
+  const palette = [
+    'bg-blue-600',
+    'bg-indigo-600',
+    'bg-violet-600',
+    'bg-emerald-600',
+    'bg-teal-600',
+    'bg-orange-600',
+    'bg-rose-600',
+    'bg-cyan-600',
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash + name.charCodeAt(i) * 17) % palette.length;
+  return palette[hash];
+}
+
+function normalizeStage(raw?: string): string {
+  if (!raw) return 'identification';
+  const s = String(raw).trim().toLowerCase().replace(/\s+/g, '_');
+  if (STAGE_LABELS[s]) return s;
+  // Common aliases
+  if (['won', 'client', 'active'].includes(s)) return 'closed_won';
+  if (['lost', 'dead', 'inactive'].includes(s)) return 'lost';
+  if (['new', 'lead', 'identified'].includes(s)) return 'identification';
+  return s;
+}
+
+function stageLabel(stage: string) {
+  return (
+    STAGE_LABELS[stage] ||
+    stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
+
+function getProgressIndex(stage: string): number {
+  const s = stage.toLowerCase();
+  if (s === 'lost') return 0;
+  for (let i = PROGRESS_STEPS.length - 1; i >= 0; i--) {
+    if (PROGRESS_STEPS[i].match.includes(s) || PROGRESS_STEPS[i].key === s) {
+      return i + 1;
+    }
+  }
+  return 1;
+}
+
+function getProgressColor(step: number) {
+  if (step >= 5) return 'bg-emerald-500';
+  if (step >= 4) return 'bg-amber-500';
+  if (step >= 3) return 'bg-violet-500';
+  if (step >= 2) return 'bg-sky-500';
+  return 'bg-slate-400';
+}
+
+function stageBadgeClasses(stage: string) {
+  const s = stage.toLowerCase();
+  if (s === 'lost') return 'bg-rose-50 text-rose-700 border-rose-200';
+  if (s === 'closed_won') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (['proposal', 'meeting'].includes(s)) return 'bg-amber-50 text-amber-800 border-amber-200';
+  if (['presented', 'conversation'].includes(s))
+    return 'bg-violet-50 text-violet-700 border-violet-200';
+  if (s === 'outreach') return 'bg-sky-50 text-sky-700 border-sky-200';
+  return 'bg-slate-50 text-slate-700 border-slate-200';
+}
+
+function matchesBucket(stage: string, bucket: StageBucket): boolean {
+  if (bucket === 'all') return true;
+  const s = stage.toLowerCase();
+  switch (bucket) {
+    case 'identification':
+      return ['identification', 'identified', 'new', 'lead'].includes(s);
+    case 'outreach':
+      return ['outreach', 'attempted_outreach', 'contacted'].includes(s);
+    case 'conversation':
+      return ['conversation', 'engaged'].includes(s);
+    case 'active':
+      return ['presented', 'meeting', 'proposal', 'candidate_presented'].includes(s);
+    case 'closed_won':
+      return ['closed_won', 'won', 'client', 'active'].includes(s);
+    case 'lost':
+      return s === 'lost' || s === 'dead' || s === 'inactive';
+    default:
+      return true;
+  }
+}
+
+function formatShortDate(value?: string) {
+  if (!value) return '—';
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return '—';
+  }
+}
+
+function formatRelativeActivity(value?: string) {
+  if (!value) return '—';
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '—';
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startThat = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round((startToday.getTime() - startThat.getTime()) / 86400000);
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch {
+    return '—';
+  }
+}
+
+function getPrimaryContact(company: any): { name: string; email?: string; title?: string } | null {
+  const contacts = Array.isArray(company.contacts) ? company.contacts : [];
+  if (contacts.length === 0) return null;
+  const primary =
+    contacts.find((c: any) => c.isPrimary) ||
+    contacts.find((c: any) => c.id === company.primaryContactId) ||
+    contacts[0];
+  if (!primary?.name) return null;
+  return {
+    name: primary.name,
+    email: primary.email,
+    title: primary.title,
+  };
+}
+
+function locationLine(company: any): string {
+  const parts = [company.city, company.state].filter(Boolean);
+  return parts.join(', ');
+}
 
 export function CompaniesClient() {
   const router = useRouter();
   const { data, isLoading, error, refetch } = useClients();
-  
-  const companies = Array.isArray(data) ? data : (data?.clients || []);
-
   const createClientMutation = useCreateClient();
   const deleteClientMutation = useDeleteClient();
 
+  const [search, setSearch] = useState('');
+  const [bucket, setBucket] = useState<StageBucket>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('last_activity');
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newCompanyIndustry, setNewCompanyIndustry] = useState('');
 
+  const companies = useMemo(() => {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray((data as any).clients)) return (data as any).clients;
+    return [];
+  }, [data]);
+
+  const enriched = useMemo(() => {
+    return companies.map((c: any) => {
+      const stage = normalizeStage(c.status || c.stage || 'identification');
+      const progress = getProgressIndex(stage);
+      const contacts = Array.isArray(c.contacts) ? c.contacts : [];
+      const primary = getPrimaryContact(c);
+      const added = c.created_at || c.createdAt;
+      const lastActivity = c.modified_at || c.modifiedAt || c.updated_at || c.updatedAt || added;
+      return {
+        raw: c,
+        id: c.id,
+        name: c.name || c.companyName || 'Unknown',
+        industry: c.industry || '',
+        domain: c.domain || '',
+        location: locationLine(c),
+        stage,
+        progress,
+        contactCount: contacts.length,
+        primary,
+        added,
+        lastActivity,
+      };
+    });
+  }, [companies]);
+
+  const stats = useMemo(() => {
+    const counts = {
+      all: enriched.length,
+      identification: 0,
+      outreach: 0,
+      conversation: 0,
+      active: 0,
+      closed_won: 0,
+      lost: 0,
+    };
+    for (const c of enriched) {
+      if (matchesBucket(c.stage, 'identification')) counts.identification++;
+      if (matchesBucket(c.stage, 'outreach')) counts.outreach++;
+      if (matchesBucket(c.stage, 'conversation')) counts.conversation++;
+      if (matchesBucket(c.stage, 'active')) counts.active++;
+      if (matchesBucket(c.stage, 'closed_won')) counts.closed_won++;
+      if (matchesBucket(c.stage, 'lost')) counts.lost++;
+    }
+    return counts;
+  }, [enriched]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let list = enriched.filter((c) => {
+      if (!matchesBucket(c.stage, bucket)) return false;
+      if (!q) return true;
+      const hay = [
+        c.name,
+        c.industry,
+        c.domain,
+        c.location,
+        c.stage,
+        c.primary?.name,
+        c.primary?.email,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+
+    list = [...list].sort((a, b) => {
+      switch (sortKey) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'added':
+          return new Date(b.added || 0).getTime() - new Date(a.added || 0).getTime();
+        case 'stage':
+          return b.progress - a.progress;
+        case 'contacts':
+          return b.contactCount - a.contactCount;
+        case 'last_activity':
+        default:
+          return new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime();
+      }
+    });
+
+    return list;
+  }, [enriched, search, bucket, sortKey]);
+
   const handleCreateCompany = async () => {
-    if (!newCompanyName) return alert('Company name is required');
+    if (!newCompanyName.trim()) {
+      alert('Company name is required');
+      return;
+    }
     try {
       const formData = new FormData();
-      formData.append('name', newCompanyName);
-      if (newCompanyIndustry) formData.append('industry', newCompanyIndustry);
+      formData.append('name', newCompanyName.trim());
+      if (newCompanyIndustry.trim()) formData.append('industry', newCompanyIndustry.trim());
+      formData.append('status', 'identification');
       await createClientMutation.mutateAsync(formData);
       setShowForm(false);
       setNewCompanyName('');
       setNewCompanyIndustry('');
       refetch();
-      alert('Company created!');
-    } catch (err) {
-      alert('Failed to create');
+    } catch (err: any) {
+      alert(err?.message || 'Failed to create company');
     }
   };
 
   const handleDeleteCompany = async (companyId: string, companyName: string) => {
-    if (!confirm(`Delete ${companyName}?`)) return;
+    if (!confirm(`Are you sure you want to delete ${companyName}?`)) return;
     try {
       await deleteClientMutation.mutateAsync(companyId);
+      setOpenMenuId(null);
       refetch();
-      alert('Deleted!');
-    } catch (err) {
-      alert('Failed to delete');
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete company');
     }
   };
 
-  if (isLoading) return <div className="p-8">Loading...</div>;
-  if (error) return <div className="p-8 text-red-600">Error.</div>;
+  const statCards: {
+    key: StageBucket;
+    label: string;
+    sub: string;
+    count: number;
+    ring: string;
+    bg: string;
+    text: string;
+  }[] = [
+    {
+      key: 'all',
+      label: 'All Companies',
+      sub: 'Click to show all',
+      count: stats.all,
+      ring: 'ring-blue-200',
+      bg: 'bg-white',
+      text: 'text-gray-900',
+    },
+    {
+      key: 'identification',
+      label: 'Identified',
+      sub: 'New accounts',
+      count: stats.identification,
+      ring: 'ring-slate-100',
+      bg: 'bg-slate-50/80',
+      text: 'text-slate-900',
+    },
+    {
+      key: 'outreach',
+      label: 'Outreach',
+      sub: 'In outreach',
+      count: stats.outreach,
+      ring: 'ring-sky-100',
+      bg: 'bg-sky-50/80',
+      text: 'text-sky-900',
+    },
+    {
+      key: 'conversation',
+      label: 'Conversation',
+      sub: 'Engaged',
+      count: stats.conversation,
+      ring: 'ring-violet-100',
+      bg: 'bg-violet-50/80',
+      text: 'text-violet-900',
+    },
+    {
+      key: 'active',
+      label: 'In Progress',
+      sub: 'Presented → proposal',
+      count: stats.active,
+      ring: 'ring-amber-100',
+      bg: 'bg-amber-50/80',
+      text: 'text-amber-900',
+    },
+    {
+      key: 'closed_won',
+      label: 'Closed Won',
+      sub: 'Clients',
+      count: stats.closed_won,
+      ring: 'ring-emerald-100',
+      bg: 'bg-emerald-50/80',
+      text: 'text-emerald-900',
+    },
+    {
+      key: 'lost',
+      label: 'Lost',
+      sub: 'This period',
+      count: stats.lost,
+      ring: 'ring-rose-100',
+      bg: 'bg-rose-50/70',
+      text: 'text-rose-900',
+    },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Companies</h1>
+          <p className="text-sm text-gray-500">Manage your client companies</p>
+        </div>
+        <div className="flex items-center justify-center py-16 text-gray-500">
+          <RefreshCw className="h-6 w-6 animate-spin" />
+          <span className="ml-3">Loading companies...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-start gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Companies</h1>
+            <p className="text-sm text-gray-500">Manage your client companies</p>
+          </div>
+          <Button onClick={() => refetch()} variant="outline">
+            <RefreshCw className="mr-2 h-4 w-4" /> Retry
+          </Button>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
+          <div className="text-red-600 text-lg font-semibold mb-2">Error Loading Companies</div>
+          <p className="text-red-600 text-sm">{(error as Error).message}</p>
+          <Button onClick={() => refetch()} className="mt-4">
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
+    <div className="space-y-5 max-w-7xl">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Companies</h1>
-          <p className="text-gray-500">Manage your client companies</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Companies</h1>
+          <p className="text-sm text-gray-500">
+            Manage your client pipeline — click any card to filter
+          </p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
-          <Plus className="mr-2 h-5 w-5" /> {showForm ? 'Cancel' : 'New Company'}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowForm((v) => !v)}
+          >
+            {showForm ? 'Cancel' : 'Quick add'}
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => router.push('/dashboard/companies/new')}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Company
+          </Button>
+        </div>
       </div>
 
       {showForm && (
-        <div className="bg-white border rounded-lg p-6 mb-8 max-w-md">
-          <h3 className="text-lg font-semibold mb-4">Add New Company</h3>
-          <input type="text" value={newCompanyName} onChange={(e) => setNewCompanyName(e.target.value)} className="w-full p-3 border rounded mb-4" placeholder="Company Name" />
-          <input type="text" value={newCompanyIndustry} onChange={(e) => setNewCompanyIndustry(e.target.value)} className="w-full p-3 border rounded mb-4" placeholder="Industry" />
-          <Button onClick={handleCreateCompany}>Create Company</Button>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm max-w-lg">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Quick add company</h3>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              value={newCompanyName}
+              onChange={(e) => setNewCompanyName(e.target.value)}
+              placeholder="Company name"
+              className="bg-white"
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateCompany()}
+            />
+            <Input
+              value={newCompanyIndustry}
+              onChange={(e) => setNewCompanyIndustry(e.target.value)}
+              placeholder="Industry (optional)"
+              className="bg-white"
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateCompany()}
+            />
+            <Button
+              onClick={handleCreateCompany}
+              disabled={createClientMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700 shrink-0"
+            >
+              {createClientMutation.isPending ? 'Creating…' : 'Create'}
+            </Button>
+          </div>
         </div>
       )}
 
-      {companies.length === 0 ? (
-        <div className="text-center py-20">No companies yet.</div>
+      {/* Pipeline stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+        {statCards.map((card) => {
+          const active = bucket === card.key;
+          return (
+            <button
+              key={card.key}
+              type="button"
+              onClick={() => setBucket(card.key)}
+              className={`text-left rounded-2xl border px-4 py-3.5 shadow-sm transition-all ${card.bg} ${
+                active
+                  ? `ring-2 ${card.ring} border-blue-300 shadow-md`
+                  : 'border-gray-200 hover:border-gray-300 hover:shadow'
+              }`}
+            >
+              <div className={`text-2xl font-semibold tabular-nums ${card.text}`}>{card.count}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mt-1">
+                {card.label}
+              </div>
+              <div className="text-[11px] text-gray-400 mt-0.5">{card.sub}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Search / sort bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search companies..."
+            className="pl-9 bg-white"
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <select
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as SortKey)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
+            aria-label="Sort companies"
+          >
+            <option value="last_activity">Sort: Last Activity</option>
+            <option value="added">Sort: Date Added</option>
+            <option value="name">Sort: Name</option>
+            <option value="stage">Sort: Stage</option>
+            <option value="contacts">Sort: Contacts</option>
+          </select>
+          <span className="text-xs text-gray-500 whitespace-nowrap">
+            Showing {filtered.length} compan{filtered.length === 1 ? 'y' : 'ies'}
+          </span>
+        </div>
+      </div>
+
+      {/* Table */}
+      {filtered.length === 0 ? (
+        <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center shadow-sm">
+          <div className="mx-auto mb-4 h-12 w-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <Building2 className="h-6 w-6" />
+          </div>
+          <h2 className="text-xl font-semibold mb-2 text-gray-900">
+            {companies.length === 0 ? 'No Companies Yet' : 'No matches'}
+          </h2>
+          <p className="text-gray-500 max-w-md mx-auto mb-6 text-sm">
+            {companies.length === 0
+              ? 'Add your first client company to start tracking the business-development pipeline.'
+              : 'Try a different search or clear the stage filter.'}
+          </p>
+          <div className="flex justify-center gap-2">
+            {bucket !== 'all' && (
+              <Button variant="outline" onClick={() => setBucket('all')}>
+                Clear filter
+              </Button>
+            )}
+            <Button
+              onClick={() => router.push('/dashboard/companies/new')}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Plus className="mr-2 h-4 w-4" /> Add Company
+            </Button>
+          </div>
+        </div>
       ) : (
-        <div className="bg-white border rounded-2xl overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left px-6 py-4">Company</th>
-                <th className="text-left px-6 py-4">Industry</th>
-                <th className="text-left px-6 py-4">Status</th>
-                <th className="text-left px-6 py-4">Contacts</th>
-                <th className="text-left px-6 py-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {companies.map((company: any) => (
-                <tr key={company.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium">
-                    <Link href={`/dashboard/companies/${company.id}`} className="hover:underline">
-                      {company.name}
-                    </Link>
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">{company.industry || '—'}</td>
-                  <td className="px-6 py-4">
-                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs">Active</span>
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">{company.contacts?.length || 0}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-3">
-                      <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/companies/${company.id}`)}>View</Button>
-                      <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/companies/${company.id}/edit`)}>Edit</Button>
-                      <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleDeleteCompany(company.id, company.name)}>Delete</Button>
-                    </div>
-                  </td>
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px]">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/80">
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    Company
+                  </th>
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    Primary Contact
+                  </th>
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    Industry
+                  </th>
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    Stage &amp; Progress
+                  </th>
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    Contacts
+                  </th>
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    Added
+                  </th>
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    Last Activity
+                  </th>
+                  <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    Actions
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map((c) => (
+                  <tr key={c.id} className="hover:bg-gray-50/80 transition-colors">
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={`h-9 w-9 shrink-0 rounded-full ${avatarColor(c.name)} text-white flex items-center justify-center text-xs font-semibold`}
+                        >
+                          {getInitials(c.name)}
+                        </div>
+                        <div className="min-w-0">
+                          <Link
+                            href={`/dashboard/companies/${c.id}`}
+                            className="font-medium text-sm text-blue-600 hover:text-blue-700 hover:underline truncate block"
+                          >
+                            {c.name}
+                          </Link>
+                          <div className="text-xs text-gray-500 truncate flex items-center gap-1">
+                            {c.location ? (
+                              <>
+                                <MapPin className="h-3 w-3 shrink-0" />
+                                {c.location}
+                              </>
+                            ) : c.domain ? (
+                              c.domain
+                            ) : (
+                              '—'
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3.5">
+                      {c.primary ? (
+                        <div className="min-w-0">
+                          <span className="text-sm text-gray-800 font-medium block truncate">
+                            {c.primary.name}
+                          </span>
+                          <span className="text-xs text-gray-500 block truncate">
+                            {c.primary.title || c.primary.email || '—'}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400 italic">No contacts</span>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-3.5 text-sm text-gray-700">
+                      {c.industry || '—'}
+                    </td>
+
+                    <td className="px-4 py-3.5">
+                      <div className="space-y-1.5 min-w-[140px]">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${stageBadgeClasses(c.stage)}`}
+                          >
+                            {stageLabel(c.stage)}
+                          </span>
+                          <span className="text-[11px] text-gray-400 tabular-nums">
+                            {c.stage === 'lost' ? '—' : `${Math.min(c.progress, 5)} of 5`}
+                          </span>
+                        </div>
+                        {c.stage !== 'lost' && (
+                          <div className="flex gap-0.5">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <div
+                                key={i}
+                                className={`h-1.5 flex-1 rounded-full ${
+                                  i < c.progress
+                                    ? getProgressColor(c.progress)
+                                    : 'bg-gray-200'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3.5">
+                      <Link
+                        href={`/dashboard/companies/${c.id}?tab=contacts`}
+                        className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600"
+                      >
+                        <Users className="h-3.5 w-3.5 text-gray-400" />
+                        <span className="tabular-nums font-medium">{c.contactCount}</span>
+                      </Link>
+                    </td>
+
+                    <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
+                      {formatShortDate(c.added)}
+                    </td>
+
+                    <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
+                      {formatRelativeActivity(c.lastActivity)}
+                    </td>
+
+                    <td className="px-4 py-3.5 text-right">
+                      <div className="relative inline-flex items-center gap-1 justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => router.push(`/dashboard/companies/${c.id}`)}
+                          title="View"
+                        >
+                          <Eye className="h-4 w-4 text-gray-500" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() =>
+                            setOpenMenuId((id) => (id === c.id ? null : c.id))
+                          }
+                          title="More actions"
+                        >
+                          <MoreHorizontal className="h-4 w-4 text-gray-500" />
+                        </Button>
+                        {openMenuId === c.id && (
+                          <div className="absolute right-0 top-9 z-20 w-40 rounded-lg border border-gray-200 bg-white shadow-lg py-1 text-left">
+                            <button
+                              type="button"
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
+                              onClick={() => {
+                                setOpenMenuId(null);
+                                router.push(`/dashboard/companies/${c.id}`);
+                              }}
+                            >
+                              <Eye className="h-3.5 w-3.5" /> View
+                            </button>
+                            <button
+                              type="button"
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
+                              onClick={() => {
+                                setOpenMenuId(null);
+                                router.push(`/dashboard/companies/${c.id}/edit`);
+                              }}
+                            >
+                              <Pencil className="h-3.5 w-3.5" /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                              onClick={() => handleDeleteCompany(c.id, c.name)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" /> Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
