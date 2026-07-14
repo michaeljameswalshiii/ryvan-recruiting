@@ -34,15 +34,31 @@ function formatCurrency(num: number): string {
   return `$${num.toFixed(2)}`;
 }
 
+/** Eastern Time (EST/EDT via America/New_York) */
+const EST_TZ = 'America/New_York';
+
 /**
- * Format date/time
+ * Format date + time in Eastern Time for Recent Activity
+ * e.g. "Jul 14, 2026, 5:30 PM ET"
  */
-function formatTime(timestamp: string): string {
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString('en-US', { 
-    hour: '2-digit', 
-    minute: '2-digit' 
-  });
+function formatEstDateTime(timestamp: string): string {
+  if (!timestamp) return '—';
+  try {
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '—';
+    const formatted = date.toLocaleString('en-US', {
+      timeZone: EST_TZ,
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    return `${formatted} ET`;
+  } catch {
+    return '—';
+  }
 }
 
 export default async function UsageDashboardPage() {
@@ -254,7 +270,7 @@ export default async function UsageDashboardPage() {
       <Card>
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Last 20 AI calls</CardDescription>
+          <CardDescription>Last 20 AI calls · times shown in Eastern (ET)</CardDescription>
         </CardHeader>
         <CardContent>
           {recentCalls.length === 0 ? (
@@ -262,19 +278,23 @@ export default async function UsageDashboardPage() {
           ) : (
             <div className="space-y-4">
               {recentCalls.map((call) => (
-                <div key={call.id} className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">
+                <div key={call.id} className="flex items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <Clock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
                         {call.queryPreview || 'AI Request'}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {call.modelId.split('.').pop()} • {formatTime(call.timestamp)}
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        <span className="font-medium text-slate-600">
+                          {formatEstDateTime(call.timestamp)}
+                        </span>
+                        {' · '}
+                        {(call.modelId || '').split(/[.:]/).pop() || call.modelId}
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <div className="text-sm">
                       {formatNumber(call.inputTokens + call.outputTokens)} tokens
                     </div>
