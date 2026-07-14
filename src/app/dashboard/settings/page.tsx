@@ -39,12 +39,14 @@ interface ActiveConnection {
   emailAddress: string;
 }
 
-type AiProvider = 'bedrock' | 'anthropic';
+type AiProvider = 'bedrock' | 'anthropic' | 'grok';
 
 interface AiCredStatus {
   preferredProvider: AiProvider;
   hasAnthropicKey: boolean;
   anthropicKeyHint?: string;
+  hasGrokKey: boolean;
+  grokKeyHint?: string;
 }
 
 export default function SettingsPage() {
@@ -63,8 +65,9 @@ export default function SettingsPage() {
   const [aiStatus, setAiStatus] = useState<AiCredStatus | null>(null);
   const [aiLoading, setAiLoading] = useState(true);
   const [anthropicKeyInput, setAnthropicKeyInput] = useState('');
-  const [aiSaving, setAiSaving] = useState(false);
-  const [aiRemoving, setAiRemoving] = useState(false);
+  const [grokKeyInput, setGrokKeyInput] = useState('');
+  const [aiSaving, setAiSaving] = useState<'anthropic' | 'grok' | null>(null);
+  const [aiRemoving, setAiRemoving] = useState<'anthropic' | 'grok' | null>(null);
   
   // Get user ID from session (in real app, get from auth)
   const userId = 'demo-user'; // TODO: Get from session
@@ -119,17 +122,21 @@ export default function SettingsPage() {
     }
   };
   
+  const mapAiStatus = (data: any, prev?: AiCredStatus | null): AiCredStatus => ({
+    preferredProvider: data.preferredProvider || prev?.preferredProvider || 'bedrock',
+    hasAnthropicKey: data.hasAnthropicKey ?? prev?.hasAnthropicKey ?? false,
+    anthropicKeyHint: data.anthropicKeyHint ?? prev?.anthropicKeyHint,
+    hasGrokKey: data.hasGrokKey ?? prev?.hasGrokKey ?? false,
+    grokKeyHint: data.grokKeyHint ?? prev?.grokKeyHint,
+  });
+
   const fetchAiCredentials = async () => {
     setAiLoading(true);
     try {
       const res = await fetch('/api/ai/credentials');
       if (res.ok) {
         const data = await res.json();
-        setAiStatus({
-          preferredProvider: data.preferredProvider || 'bedrock',
-          hasAnthropicKey: !!data.hasAnthropicKey,
-          anthropicKeyHint: data.anthropicKeyHint,
-        });
+        setAiStatus(mapAiStatus(data));
       }
     } catch (err) {
       console.error('Failed to load AI credentials', err);
@@ -144,18 +151,24 @@ export default function SettingsPage() {
     fetchAiCredentials();
   }, [userId]);
 
-  const saveAnthropicKey = async () => {
-    if (!anthropicKeyInput.trim()) {
-      toast.error('Paste your Anthropic API key first');
+  const saveProviderKey = async (keyProvider: 'anthropic' | 'grok') => {
+    const value = keyProvider === 'anthropic' ? anthropicKeyInput : grokKeyInput;
+    if (!value.trim()) {
+      toast.error(
+        keyProvider === 'anthropic'
+          ? 'Paste your Anthropic API key first'
+          : 'Paste your Grok (xAI) API key first'
+      );
       return;
     }
-    setAiSaving(true);
+    setAiSaving(keyProvider);
     try {
       const res = await fetch('/api/ai/credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          apiKey: anthropicKeyInput.trim(),
+          keyProvider,
+          apiKey: value.trim(),
           setAsPreferred: true,
         }),
       });
@@ -164,17 +177,22 @@ export default function SettingsPage() {
         toast.error(data.error || 'Failed to save key');
         return;
       }
-      toast.success('Anthropic key saved and validated');
-      setAnthropicKeyInput('');
-      setAiStatus({
-        preferredProvider: data.preferredProvider || 'anthropic',
-        hasAnthropicKey: true,
-        anthropicKeyHint: data.anthropicKeyHint,
-      });
+      toast.success(
+        keyProvider === 'anthropic'
+          ? 'Anthropic key saved and validated'
+          : 'Grok key saved and validated'
+      );
+      if (keyProvider === 'anthropic') setAnthropicKeyInput('');
+      else setGrokKeyInput('');
+      setAiStatus(mapAiStatus(data));
     } catch {
-      toast.error('Failed to save Anthropic key');
+      toast.error(
+        keyProvider === 'anthropic'
+          ? 'Failed to save Anthropic key'
+          : 'Failed to save Grok key'
+      );
     } finally {
-      setAiSaving(false);
+      setAiSaving(null);
     }
   };
 
@@ -190,40 +208,47 @@ export default function SettingsPage() {
         toast.error(data.error || 'Could not update provider');
         return;
       }
-      setAiStatus((prev) => ({
-        preferredProvider: data.preferredProvider || preferredProvider,
-        hasAnthropicKey: data.hasAnthropicKey ?? prev?.hasAnthropicKey ?? false,
-        anthropicKeyHint: data.anthropicKeyHint ?? prev?.anthropicKeyHint,
-      }));
+      setAiStatus((prev) => mapAiStatus(data, prev));
       toast.success(
         preferredProvider === 'bedrock'
           ? 'Using Platform Bedrock'
-          : 'Using your Anthropic key'
+          : preferredProvider === 'anthropic'
+            ? 'Using your Anthropic key'
+            : 'Using your Grok key'
       );
     } catch {
       toast.error('Failed to update provider');
     }
   };
 
-  const removeAnthropicKey = async () => {
-    if (!confirm('Remove your saved Anthropic API key?')) return;
-    setAiRemoving(true);
+  const removeProviderKey = async (keyProvider: 'anthropic' | 'grok') => {
+    if (
+      !confirm(
+        keyProvider === 'anthropic'
+          ? 'Remove your saved Anthropic API key?'
+          : 'Remove your saved Grok/xAI API key?'
+      )
+    )
+      return;
+    setAiRemoving(keyProvider);
     try {
-      const res = await fetch('/api/ai/credentials', { method: 'DELETE' });
+      const res = await fetch(
+        `/api/ai/credentials?provider=${keyProvider}`,
+        { method: 'DELETE' }
+      );
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || 'Failed to remove key');
         return;
       }
-      toast.success('Anthropic key removed');
-      setAiStatus({
-        preferredProvider: 'bedrock',
-        hasAnthropicKey: false,
-      });
+      toast.success(
+        keyProvider === 'anthropic' ? 'Anthropic key removed' : 'Grok key removed'
+      );
+      setAiStatus(mapAiStatus(data));
     } catch {
       toast.error('Failed to remove key');
     } finally {
-      setAiRemoving(false);
+      setAiRemoving(null);
     }
   };
   
@@ -457,7 +482,7 @@ export default function SettingsPage() {
           </CardTitle>
           <CardDescription>
             Platform Claude via AWS Bedrock is always available. Optionally add your own
-            Anthropic API key (BYOK) — billed to your Anthropic account.
+            Anthropic or Grok (xAI) API keys — billed to your accounts.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -468,7 +493,7 @@ export default function SettingsPage() {
           ) : (
             <>
               {/* Provider cards */}
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <button
                   type="button"
                   onClick={() => setAiProvider('bedrock')}
@@ -480,7 +505,7 @@ export default function SettingsPage() {
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <Cloud className="h-4 w-4 text-slate-600" />
-                    <span className="font-semibold text-sm">Platform (Bedrock)</span>
+                    <span className="font-semibold text-sm">Platform</span>
                     {(aiStatus?.preferredProvider || 'bedrock') === 'bedrock' && (
                       <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
                         Active
@@ -488,8 +513,7 @@ export default function SettingsPage() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Uses Trio’s AWS Bedrock Claude. No personal key required. Same tools
-                    (Apollo, web search, internal data).
+                    AWS Bedrock Claude. No personal key. Same tools (Apollo, web, data).
                   </p>
                 </button>
 
@@ -510,7 +534,7 @@ export default function SettingsPage() {
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <KeyRound className="h-4 w-4 text-violet-600" />
-                    <span className="font-semibold text-sm">My Anthropic key</span>
+                    <span className="font-semibold text-sm">Anthropic</span>
                     {aiStatus?.preferredProvider === 'anthropic' && (
                       <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full">
                         Active
@@ -518,18 +542,51 @@ export default function SettingsPage() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Bring your own Anthropic API key. Usage is billed to you. Same agent
-                    tools as platform mode.
+                    Your Claude API key. Billed to Anthropic.
                   </p>
                   {aiStatus?.hasAnthropicKey && (
-                    <p className="text-[11px] text-violet-700 mt-2 font-mono">
-                      Saved: {aiStatus.anthropicKeyHint}
+                    <p className="text-[11px] text-violet-700 mt-2 font-mono truncate">
+                      {aiStatus.anthropicKeyHint}
+                    </p>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!aiStatus?.hasGrokKey) {
+                      toast.message('Paste and save a Grok key below first');
+                      return;
+                    }
+                    setAiProvider('grok');
+                  }}
+                  className={`text-left rounded-xl border p-4 transition-all ${
+                    aiStatus?.preferredProvider === 'grok'
+                      ? 'border-zinc-800 bg-zinc-50 ring-2 ring-zinc-200'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Sparkles className="h-4 w-4 text-zinc-800" />
+                    <span className="font-semibold text-sm">Grok</span>
+                    {aiStatus?.preferredProvider === 'grok' && (
+                      <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-zinc-800 bg-zinc-200 px-2 py-0.5 rounded-full">
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Your xAI API key. Billed to xAI.
+                  </p>
+                  {aiStatus?.hasGrokKey && (
+                    <p className="text-[11px] text-zinc-700 mt-2 font-mono truncate">
+                      {aiStatus.grokKeyHint}
                     </p>
                   )}
                 </button>
               </div>
 
-              {/* Key entry */}
+              {/* Anthropic key entry */}
               <div className="rounded-xl border border-slate-200 p-4 space-y-3 bg-slate-50/40">
                 <Label htmlFor="anthropic-key" className="text-sm font-medium">
                   Anthropic API key
@@ -553,16 +610,16 @@ export default function SettingsPage() {
                   >
                     console.anthropic.com
                   </a>
-                  . Keys are encrypted at rest and never shown again in full.
+                  . Encrypted at rest; never shown in full again.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
-                    onClick={saveAnthropicKey}
-                    disabled={aiSaving || !anthropicKeyInput.trim()}
+                    onClick={() => saveProviderKey('anthropic')}
+                    disabled={aiSaving !== null || !anthropicKeyInput.trim()}
                     className="rounded-lg"
                   >
-                    {aiSaving ? (
+                    {aiSaving === 'anthropic' ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     ) : (
                       <KeyRound className="h-4 w-4 mr-2" />
@@ -573,14 +630,72 @@ export default function SettingsPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={removeAnthropicKey}
-                      disabled={aiRemoving}
+                      onClick={() => removeProviderKey('anthropic')}
+                      disabled={aiRemoving !== null}
                       className="rounded-lg text-red-600"
                     >
-                      {aiRemoving ? (
+                      {aiRemoving === 'anthropic' ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        'Remove key'
+                        'Remove'
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Grok key entry */}
+              <div className="rounded-xl border border-slate-200 p-4 space-y-3 bg-slate-50/40">
+                <Label htmlFor="grok-key" className="text-sm font-medium">
+                  Grok (xAI) API key
+                </Label>
+                <Input
+                  id="grok-key"
+                  type="password"
+                  autoComplete="off"
+                  placeholder="xai-…"
+                  value={grokKeyInput}
+                  onChange={(e) => setGrokKeyInput(e.target.value)}
+                  className="font-mono text-sm bg-white"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Get a key from{' '}
+                  <a
+                    href="https://console.x.ai/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    console.x.ai
+                  </a>
+                  . Encrypted at rest; never shown in full again.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => saveProviderKey('grok')}
+                    disabled={aiSaving !== null || !grokKeyInput.trim()}
+                    className="rounded-lg bg-zinc-900 hover:bg-zinc-800"
+                  >
+                    {aiSaving === 'grok' ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Sparkles className="h-4 w-4 mr-2" />
+                    )}
+                    {aiStatus?.hasGrokKey ? 'Replace key' : 'Save & validate'}
+                  </Button>
+                  {aiStatus?.hasGrokKey && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => removeProviderKey('grok')}
+                      disabled={aiRemoving !== null}
+                      className="rounded-lg text-red-600"
+                    >
+                      {aiRemoving === 'grok' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        'Remove'
                       )}
                     </Button>
                   )}

@@ -29,12 +29,17 @@ import { getClaudeAssistantPrompt } from "@/lib/prompts/claude-assistant";
 import { getToolSchemas, executeTool, ToolContext, ToolResult, ToolParams } from "@/lib/ai/tools";
 import {
   getDecryptedAnthropicKey,
+  getDecryptedGrokKey,
   getAiCredentialsPublic,
 } from "@/lib/db/repositories/ai-credentials-repository";
 import {
   runAnthropicByokAgent,
   runAnthropicByokChat,
 } from "@/lib/ai/providers/anthropic-byok";
+import {
+  runGrokByokAgent,
+  runGrokByokChat,
+} from "@/lib/ai/providers/grok-byok";
 import { getSession } from "@/lib/server-auth";
 
 // ============================================================================
@@ -50,8 +55,8 @@ interface ChatMessage {
   id?: string;
 }
 
-/** Platform Bedrock vs user Anthropic BYOK */
-export type AiProviderId = "bedrock" | "anthropic";
+/** Platform Bedrock vs user BYOK (Anthropic / Grok) */
+export type AiProviderId = "bedrock" | "anthropic" | "grok";
 
 /**
  * Request body
@@ -61,7 +66,7 @@ interface BedrockRequest {
   model?: string;
   useTools?: boolean;
   assistantMode?: boolean;
-  /** 'bedrock' (default platform) or 'anthropic' (user BYOK key) */
+  /** 'bedrock' (platform) | 'anthropic' | 'grok' (BYOK) */
   provider?: AiProviderId;
   useSearch?: boolean;
 }
@@ -921,13 +926,19 @@ try {
 
     // Resolve provider: explicit request > user preference > bedrock
     let provider: AiProviderId = "bedrock";
-    if (requestedProvider === "anthropic" || requestedProvider === "bedrock") {
+    if (
+      requestedProvider === "anthropic" ||
+      requestedProvider === "bedrock" ||
+      requestedProvider === "grok"
+    ) {
       provider = requestedProvider;
     } else if (userId) {
       try {
         const prefs = await getAiCredentialsPublic(userId);
         if (prefs.preferredProvider === "anthropic" && prefs.hasAnthropicKey) {
           provider = "anthropic";
+        } else if (prefs.preferredProvider === "grok" && prefs.hasGrokKey) {
+          provider = "grok";
         }
       } catch {
         /* keep bedrock */
@@ -947,7 +958,9 @@ try {
     const selectedModel =
       provider === "anthropic"
         ? process.env.ANTHROPIC_BYOK_MODEL || "claude-sonnet-4-20250514"
-        : selectModel(lastUserQuery, requestedModel);
+        : provider === "grok"
+          ? process.env.GROK_BYOK_MODEL || process.env.XAI_BYOK_MODEL || "grok-3"
+          : selectModel(lastUserQuery, requestedModel);
     
     console.log("=== MODEL SELECTION ===");
     console.log("Provider:", provider);
@@ -1046,6 +1059,69 @@ try {
       } else {
         console.log("[BYOK] Anthropic agent with tools...");
         const result = await runAnthropicByokAgent({
+          apiKey,
+          query: lastUserQuery,
+          toolContext,
+          systemPrompt,
+          model: usedModel,
+          useTools: true,
+        });
+        completion = result.text;
+        toolsUsed = result.toolsUsed.length ? result.toolsUsed : ["apollo", "tavily"];
+        usedModel = result.model;
+      }
+    }
+    // ---------- BYOK Grok (xAI) ----------
+    else if (provider === "grok") {
+      if (!userId) {
+        return NextResponse.json(
+          {
+            error: "Sign in required to use your Grok API key",
+            suggestion: "Log in, then save your key under Settings → AI Providers",
+          },
+          { status: 401 }
+        );
+      }
+
+      const apiKey = await getDecryptedGrokKey(userId);
+      if (!apiKey) {
+        return NextResponse.json(
+          {
+            error: "No Grok/xAI API key saved",
+            suggestion:
+              "Add your key in Settings → AI Providers, or switch to Platform (Bedrock).",
+          },
+          { status: 400 }
+        );
+      }
+
+      const toolContext: ToolContext = {
+        tenantId,
+        userId,
+        requestUrl: appUrl,
+      };
+
+      const systemPrompt =
+        SYSTEM_PROMPTS.base + "\n\n" + (SYSTEM_PROMPTS.override || "");
+
+      if (assistantMode || !useTools) {
+        console.log("[BYOK] Grok chat (no tools)...");
+        const conversation = buildConversationMessages(messages);
+        const result = await runGrokByokChat({
+          apiKey,
+          model: usedModel,
+          systemPrompt,
+          messages: conversation.map((m) => ({
+            role: m.role === "assistant" ? "assistant" : "user",
+            content: m.content,
+          })),
+        });
+        completion = result.text;
+        usedModel = result.model;
+        toolsUsed = [];
+      } else {
+        console.log("[BYOK] Grok agent with tools...");
+        const result = await runGrokByokAgent({
           apiKey,
           query: lastUserQuery,
           toolContext,

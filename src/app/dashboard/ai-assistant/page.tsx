@@ -13,7 +13,7 @@ interface Message {
   timestamp: Date;
 }
 
-type AiProvider = "bedrock" | "anthropic";
+type AiProvider = "bedrock" | "anthropic" | "grok";
 
 const quickActions = [
   "Find construction companies in Boca Raton",
@@ -35,6 +35,7 @@ export default function AIAssistantPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [provider, setProvider] = useState<AiProvider>("bedrock");
   const [hasAnthropicKey, setHasAnthropicKey] = useState(false);
+  const [hasGrokKey, setHasGrokKey] = useState(false);
   const [lastProviderUsed, setLastProviderUsed] = useState<string | null>(null);
 
 // Set welcome message after mount to avoid hydration mismatch
@@ -44,19 +45,22 @@ export default function AIAssistantPage() {
         id: "welcome",
         role: "assistant" as const,
         content:
-          "✅ AI Assistant ready. Use Platform Bedrock or your own Anthropic key (Settings → AI Providers). What would you like to source?",
+          "✅ AI Assistant ready. Use Platform Bedrock, your Anthropic key, or Grok (Settings → AI Providers). What would you like to source?",
         timestamp: new Date(),
       },
     ]);
 
-    // Load preferred provider + whether BYOK key exists
+    // Load preferred provider + whether BYOK keys exist
     fetch("/api/ai/credentials")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data) return;
         setHasAnthropicKey(!!data.hasAnthropicKey);
+        setHasGrokKey(!!data.hasGrokKey);
         if (data.preferredProvider === "anthropic" && data.hasAnthropicKey) {
           setProvider("anthropic");
+        } else if (data.preferredProvider === "grok" && data.hasGrokKey) {
+          setProvider("grok");
         }
       })
       .catch(() => {});
@@ -79,6 +83,27 @@ export default function AIAssistantPage() {
           role: "assistant",
           content:
             "No Anthropic API key on file. Add one under Settings → AI Providers, or switch to Platform (Bedrock).",
+          timestamp: new Date(),
+        },
+      ]);
+      setInput("");
+      return;
+    }
+
+    if (provider === "grok" && !hasGrokKey) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: "user",
+          content,
+          timestamp: new Date(),
+        },
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content:
+            "No Grok/xAI API key on file. Add one under Settings → AI Providers, or switch to Platform (Bedrock).",
           timestamp: new Date(),
         },
       ]);
@@ -199,7 +224,7 @@ return (
         <div>
           <h1 className="text-3xl font-bold">AI Assistant (Web)</h1>
           <p className="text-muted-foreground">
-            Claude + Apollo + Tavily — Platform Bedrock or your Anthropic key
+            Claude / Grok + Apollo + Tavily — Platform or your own keys
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -232,8 +257,28 @@ return (
               }
             >
               <KeyRound className="h-3.5 w-3.5" />
-              My key
+              Anthropic
               {!hasAnthropicKey && (
+                <span className="opacity-70 font-normal">(setup)</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setProvider("grok")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                provider === "grok"
+                  ? "bg-zinc-900 text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+              title={
+                hasGrokKey
+                  ? "Use your Grok / xAI API key"
+                  : "Add a key in Settings first"
+              }
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Grok
+              {!hasGrokKey && (
                 <span className="opacity-70 font-normal">(setup)</span>
               )}
             </button>
@@ -241,7 +286,11 @@ return (
           <div className="flex items-center gap-2 text-sm">
             <span
               className={`w-2 h-2 rounded-full ${
-                provider === "anthropic" ? "bg-violet-500" : "bg-emerald-500"
+                provider === "anthropic"
+                  ? "bg-violet-500"
+                  : provider === "grok"
+                    ? "bg-zinc-800"
+                    : "bg-emerald-500"
               }`}
             />
             <span className="text-muted-foreground text-xs">
@@ -249,7 +298,11 @@ return (
                 ? hasAnthropicKey
                   ? "Anthropic BYOK"
                   : "Key missing"
-                : "Bedrock"}
+                : provider === "grok"
+                  ? hasGrokKey
+                    ? "Grok BYOK"
+                    : "Key missing"
+                  : "Bedrock"}
               {lastProviderUsed ? ` · last: ${lastProviderUsed}` : ""}
             </span>
           </div>
