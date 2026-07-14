@@ -1,34 +1,62 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Plus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useJobs, useCreateJob } from '@/lib/hooks/query-job';
 import { useClients } from '@/lib/hooks/query-client';
 import { JobListView } from '@/components/jobs/JobListView';
-import { toast } from "sonner";
+import { toast } from 'sonner';
 
 export default function JobsPage() {
+  const router = useRouter();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  
+
   const { data: jobsDataRaw, isLoading, error, refetch } = useJobs(true);
   const createJobMutation = useCreateJob();
-  const { data: companies = [] } = useClients();
+  const { data: companiesData = [] } = useClients();
 
-  const jobsArray = Array.isArray(jobsDataRaw?.jobs) ? jobsDataRaw.jobs : Array.isArray(jobsDataRaw) ? jobsDataRaw : [];
-  
-  const jobs = jobsArray.map((item: any) => ({
-    id: item.id || item.PK,
-    title: item.title || "Untitled Job",
-    companyName: item.companyName || "Unknown",
-    status: item.status || "Open",
-  }));
+  const companies = useMemo(() => {
+    if (Array.isArray(companiesData)) return companiesData;
+    if (companiesData && Array.isArray((companiesData as any).clients)) {
+      return (companiesData as any).clients;
+    }
+    return [];
+  }, [companiesData]);
 
-  const activeJobs = jobs.filter(j => String(j.status || '').toLowerCase() !== 'closed');
+  const jobs = useMemo(() => {
+    const jobsArray = Array.isArray(jobsDataRaw?.jobs)
+      ? jobsDataRaw.jobs
+      : Array.isArray(jobsDataRaw)
+        ? jobsDataRaw
+        : [];
+
+    return jobsArray.map((item: any) => ({
+      id: item.id || item.PK,
+      title: item.title || 'Untitled Job',
+      companyId: item.companyId,
+      companyName: item.companyName || 'Unknown',
+      status: item.status || 'Open',
+      employmentType: item.employmentType || item.employment_type,
+      candidates: Array.isArray(item.candidates) ? item.candidates : [],
+      createdAt: item.created_at || item.createdAt,
+      modifiedAt: item.modified_at || item.modifiedAt || item.updated_at,
+      location: item.location,
+      salaryRange: item.salaryRange || item.salary_range,
+    }));
+  }, [jobsDataRaw]);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -39,10 +67,19 @@ export default function JobsPage() {
     status: 'Open',
   });
 
+  const handleCompanySelect = (companyId: string) => {
+    const company = companies.find((c: any) => String(c.id) === String(companyId));
+    setFormData({
+      ...formData,
+      companyId,
+      companyName: company?.name || company?.companyName || formData.companyName,
+    });
+  };
+
   const handleAddJobSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) {
-      toast.error("Job title is required");
+      toast.error('Job title is required');
       return;
     }
 
@@ -50,43 +87,100 @@ export default function JobsPage() {
       await createJobMutation.mutateAsync({
         title: formData.title.trim(),
         companyId: formData.companyId.trim(),
-        companyName: formData.companyName.trim() || "Unknown",
+        companyName: formData.companyName.trim() || 'Unknown',
         description: formData.description.trim(),
         salaryRange: formData.salaryRange.trim(),
         status: formData.status,
       });
 
-      toast.success("Job created successfully!");
+      toast.success('Job created successfully!');
       setIsAddDialogOpen(false);
-      setFormData({ title: '', companyId: '', companyName: '', description: '', salaryRange: '', status: 'Open' });
+      setFormData({
+        title: '',
+        companyId: '',
+        companyName: '',
+        description: '',
+        salaryRange: '',
+        status: 'Open',
+      });
       refetch();
     } catch (err: any) {
-      console.error("Add job error:", err);
+      console.error('Add job error:', err);
       toast.error(`Failed to add job: ${err?.message || 'Unknown error'}`);
     }
   };
 
-  if (isLoading) return <div className="p-8">Loading jobs...</div>;
-  if (error) return <div className="p-8 text-red-600">Error: {String(error)}</div>;
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Jobs</h1>
+          <p className="text-sm text-gray-500">Manage job postings and candidate pipelines</p>
+        </div>
+        <div className="flex items-center justify-center py-16 text-gray-500">
+          <RefreshCw className="h-6 w-6 animate-spin" />
+          <span className="ml-3">Loading jobs...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-start gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Jobs</h1>
+            <p className="text-sm text-gray-500">Manage job postings and candidate pipelines</p>
+          </div>
+          <Button onClick={() => refetch()} variant="outline">
+            <RefreshCw className="mr-2 h-4 w-4" /> Retry
+          </Button>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
+          <div className="text-red-600 text-lg font-semibold mb-2">Error Loading Jobs</div>
+          <p className="text-red-600 text-sm">{String((error as Error).message || error)}</p>
+          <Button onClick={() => refetch()} className="mt-4">
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-5 max-w-7xl">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Jobs Pipeline</h1>
-          <p className="text-muted-foreground">Manage your job postings and track candidates.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Jobs</h1>
+          <p className="text-sm text-gray-500">
+            Manage job postings — click any card to filter
+          </p>
         </div>
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={refetch}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="mr-2 h-4 w-4" /> Refresh
           </Button>
-          <Button onClick={() => setIsAddDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" /> Add Job
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => router.push('/dashboard/jobs/new')}
+          >
+            Full form
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setIsAddDialogOpen(true)}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Job
           </Button>
         </div>
       </div>
 
-      <JobListView jobs={activeJobs} />
+      <JobListView jobs={jobs} />
 
       {/* Add Job Modal */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -110,13 +204,33 @@ export default function JobsPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="companyId">Company ID</Label>
-                <Input
-                  id="companyId"
-                  value={formData.companyId}
-                  onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
-                  placeholder="company-123"
-                />
+                <Label htmlFor="companyId">Company</Label>
+                {companies.length > 0 ? (
+                  <select
+                    id="companyId"
+                    value={formData.companyId}
+                    onChange={(e) => handleCompanySelect(e.target.value)}
+                    className="w-full h-10 border border-input rounded-md px-3 text-sm bg-background"
+                  >
+                    <option value="">Select company…</option>
+                    {[...companies]
+                      .sort((a: any, b: any) =>
+                        String(a.name || '').localeCompare(String(b.name || ''))
+                      )
+                      .map((c: any) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name || c.companyName || c.id}
+                        </option>
+                      ))}
+                  </select>
+                ) : (
+                  <Input
+                    id="companyId"
+                    value={formData.companyId}
+                    onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
+                    placeholder="company-123"
+                  />
+                )}
               </div>
               <div>
                 <Label htmlFor="companyName">Company Name</Label>
@@ -156,9 +270,10 @@ export default function JobsPage() {
                 id="status"
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full border border-input rounded-md p-2"
+                className="w-full border border-input rounded-md p-2 text-sm"
               >
                 <option value="Open">Open</option>
+                <option value="On Hold">On Hold</option>
                 <option value="Closed">Closed</option>
               </select>
             </div>
@@ -167,7 +282,9 @@ export default function JobsPage() {
               <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit">Create Job</Button>
+              <Button type="submit" disabled={createJobMutation.isPending}>
+                {createJobMutation.isPending ? 'Creating…' : 'Create Job'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
