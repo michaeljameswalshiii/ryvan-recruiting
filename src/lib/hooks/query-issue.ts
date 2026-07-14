@@ -2,13 +2,19 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { createIssueAction, listIssuesAction, updateIssueAction, deleteIssueAction } from '@/lib/actions/issue-actions';
+import {
+  createIssueAction,
+  listIssuesAction,
+  getIssueAction,
+  updateIssueAction,
+  deleteIssueAction,
+} from '@/lib/actions/issue-actions';
 import { CreateIssueInput } from '@/lib/schemas/issue';
 
 export const issueKeys = {
   all: ['issues'] as const,
   list: (status?: string) => [...issueKeys.all, { status }] as const,
-  detail: (id: string) => [...issueKeys.all, id] as const,
+  detail: (id: string) => [...issueKeys.all, 'detail', id] as const,
 };
 
 export function useIssues(status?: string) {
@@ -23,6 +29,25 @@ export function useIssues(status?: string) {
     },
     staleTime: 1000 * 60 * 5,
     retry: 2,
+  });
+}
+
+export function useIssue(id: string) {
+  return useQuery({
+    queryKey: issueKeys.detail(id),
+    queryFn: async () => {
+      const result = await getIssueAction(id);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      if (!result.issue) {
+        throw new Error('Issue not found');
+      }
+      return result.issue;
+    },
+    enabled: !!id,
+    staleTime: 1000 * 60 * 2,
+    retry: 1,
   });
 }
 
@@ -60,9 +85,10 @@ export function useUpdateIssue() {
       }
       return result.issue;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success('Issue updated successfully');
       queryClient.invalidateQueries({ queryKey: issueKeys.all });
+      queryClient.invalidateQueries({ queryKey: issueKeys.detail(variables.id) });
     },
     onError: (error) => {
       toast.error('Failed to update issue', {

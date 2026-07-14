@@ -56,7 +56,11 @@ export async function updateIssueAction(id: string, data: Partial<CreateIssueInp
 
   try {
     const issue = await issueRepository.update(id, data, tenantId);
+    if (!issue) {
+      return { error: 'Issue not found' };
+    }
     revalidatePath('/dashboard/issues');
+    revalidatePath(`/dashboard/issues/${id}`);
     return { issue };
   } catch (error: any) {
     return { error: error?.message || 'Failed to update issue' };

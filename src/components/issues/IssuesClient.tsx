@@ -61,10 +61,30 @@ export default function IssuesClient() {
                 <tr 
                   key={issue.id} 
                   className="hover:bg-gray-50 cursor-pointer group"
-                  onClick={() => window.location.href = `/dashboard/issues/${issue.id}`}
+                  onClick={() => {
+                    if (issue.id) {
+                      window.location.href = `/dashboard/issues/${issue.id}`;
+                    }
+                  }}
                 >
-                  <td className="p-4 font-mono text-sm text-gray-600">{issue.issueId}</td>
-                  <td className="p-4 font-medium">{issue.title}</td>
+                  <td className="p-4 font-mono text-sm text-gray-600">
+                    <Link
+                      href={`/dashboard/issues/${issue.id}`}
+                      className="text-blue-600 hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {issue.issueId || issue.id}
+                    </Link>
+                  </td>
+                  <td className="p-4 font-medium">
+                    <Link
+                      href={`/dashboard/issues/${issue.id}`}
+                      className="hover:text-blue-700"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {issue.title}
+                    </Link>
+                  </td>
                   <td className="p-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                       issue.issueType === 'Defect' 
@@ -90,7 +110,14 @@ export default function IssuesClient() {
                   </td>
                   <td className="p-4 text-sm text-gray-600">{issue.environment}</td>
                   <td className="p-4">
-                    <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
+                    <Link
+                      href={`/dashboard/issues/${issue.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex"
+                      aria-label={`Open ${issue.issueId}`}
+                    >
+                      <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
+                    </Link>
                   </td>
                 </tr>
               ))

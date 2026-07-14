@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { SimpleDialog } from '@/components/ui/simple-dialog';
 import { toast } from 'sonner';
@@ -15,6 +15,29 @@ interface IssueDialogProps {
   mode?: 'create' | 'edit';
 }
 
+function buildForm(initialData: Partial<CreateIssueInput> = {}) {
+  return {
+    title: initialData.title || '',
+    description: initialData.description || '',
+    issueType: initialData.issueType || ('Defect' as const),
+    priority: (initialData.priority || 3) as 1 | 2 | 3 | 4,
+    severity: initialData.severity || '',
+    mvp: initialData.mvp || false,
+    featureArea: initialData.featureArea || '',
+    status: initialData.status || ('Open' as const),
+    reportedBy: initialData.reportedBy || '',
+    assignedTo: initialData.assignedTo || [],
+    environment: initialData.environment || ('Dev' as const),
+    tags: initialData.tags || [],
+    attachments: (initialData.attachments || []) as Array<{
+      url: string;
+      name: string;
+      type?: string;
+      size?: number;
+    }>,
+  };
+}
+
 export default function IssueDialog({ 
   open, 
   onOpenChange, 
@@ -25,21 +48,15 @@ export default function IssueDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   
-  const [form, setForm] = useState({
-    title: initialData.title || '',
-    description: initialData.description || '',
-    issueType: initialData.issueType || 'Defect',
-    priority: initialData.priority || 3,
-    severity: initialData.severity || '',
-    mvp: initialData.mvp || false,
-    featureArea: initialData.featureArea || '',
-    status: initialData.status || 'Open',
-    reportedBy: initialData.reportedBy || '',
-    assignedTo: initialData.assignedTo || [],
-    environment: initialData.environment || 'Dev',
-    tags: initialData.tags || [],
-    attachments: initialData.attachments || [] as Array<{ url: string; name: string; type?: string; size?: number }>,
-  });
+  const [form, setForm] = useState(() => buildForm(initialData));
+
+  // Sync form when dialog opens or initialData changes (edit mode)
+  useEffect(() => {
+    if (open) {
+      setForm(buildForm(initialData));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, mode, initialData?.title, initialData?.status, initialData?.description]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
