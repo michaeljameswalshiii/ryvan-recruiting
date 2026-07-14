@@ -24,15 +24,17 @@ export async function getLeads() {
   // FIX: No fallback - if no tenantId, user needs to log in properly
   if (!tenantId) {
     console.log('[getLeads] No tenantId in session, userId:', userId);
-    return { leads: [], error: 'No tenant found. Please log in again.' };
+    return { leads: [], error: 'No tenant found. Please log in again.', tenantId: null };
   }
 
-try {
+  try {
     // Use enriched leads with linkedJobs data for the candidates page
     const leads = await getAllLeadsWithLinkedJobs(tenantId);
-    return { leads };
+    console.log('[getLeads] tenantId=', tenantId, 'count=', leads?.length ?? 0);
+    return { leads, tenantId };
   } catch (error: any) {
-    return { error: error.message || 'Failed to get leads' };
+    console.error('[getLeads] error', error);
+    return { error: error.message || 'Failed to get leads', tenantId };
   }
 }
 

@@ -197,7 +197,7 @@ function getLinkedJob(candidate: any): { title: string; company?: string; jobId?
 
 export function CandidatesClient() {
   const router = useRouter();
-  const { data: leads = [], isLoading, error, refetch } = useLeads();
+  const { data: leads = [], isLoading, error, refetch, isFetching } = useLeads();
   const deleteLeadMutation = useDeleteLead();
 
   const [search, setSearch] = useState('');
@@ -416,10 +416,21 @@ export function CandidatesClient() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Candidates</h1>
           <p className="text-sm text-gray-500">
-            Manage your candidate pipeline — click any card to filter
+            {enriched.length} candidate{enriched.length === 1 ? '' : 's'}
+            {isFetching ? ' · refreshing…' : ''} — click any card to filter
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            title="Refresh list"
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           <Button
             variant="outline"
             size="sm"

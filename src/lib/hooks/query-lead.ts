@@ -34,16 +34,15 @@ export const leadKeys = {
 export function useLeads() {
   return useQuery({
     queryKey: leadKeys.lists(),
-queryFn: async () => {
+    queryFn: async () => {
       console.log('[useLeads] Fetching leads...');
       const result = await getLeads();
-      console.log('[useLeads] Got result:', result?.leads?.length, 'leads');
-
-      // Check first lead for linkedJobs
-      if (result?.leads && result.leads.length > 0) {
-        const firstLead = result.leads[0];
-        console.log('[useLeads] First lead:', firstLead.name, 'linkedJobs:', firstLead.linkedJobs, 'linkedJobIds:', firstLead.linkedJobIds);
-      }
+      console.log(
+        '[useLeads] tenant:',
+        (result as any)?.tenantId,
+        'count:',
+        result?.leads?.length
+      );
 
       if (result?.error) {
         console.error('[useLeads] Error:', result.error);
@@ -52,7 +51,10 @@ queryFn: async () => {
       // === SAFE ARRAY GUARD ===
       return Array.isArray(result?.leads) ? result.leads : [];
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    // Always re-read after create/navigation so new candidates appear immediately
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     retry: 2,
   });
 }

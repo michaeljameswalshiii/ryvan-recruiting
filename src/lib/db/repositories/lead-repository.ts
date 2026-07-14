@@ -114,14 +114,8 @@ function generateId(): string {
 export async function getAllLeads(tenantId: string): Promise<Lead[]> {
   const cacheKey = makeCacheKey(tenantId, 'leads', 'all');
 
-  // Try cache first
-  const cached = await getCached<Lead[]>(cacheKey);
-  if (cached && Array.isArray(cached)) {
-    return cached;
-  }
-
   try {
-    // Query from DynamoDB
+    // Always query DynamoDB for list accuracy (avoid empty-cache after create on other instances)
     const result = await queryItems<Lead>(
       leadsTable,
       'tenant_id = :tenantId',
@@ -131,13 +125,18 @@ export async function getAllLeads(tenantId: string): Promise<Lead[]> {
     // GUARD: Ensure we always have an array - even if DynamoDB returns corrupted data
     const leads = Array.isArray(result.items) ? result.items : [];
 
-    // Cache the result
-    await setCached(cacheKey, leads, CACHE_TTL);
+    console.log('[getAllLeads] tenant=', tenantId, 'count=', leads.length);
+
+    // Cache briefly for detail enrichment paths
+    await setCached(cacheKey, leads, 30);
 
     return leads;
   } catch (error: any) {
     // Table doesn't exist or other error - return empty array gracefully
     console.error('[getAllLeads] Error fetching leads:', error?.message);
+    // Fall back to cache if present
+    const cached = await getCached<Lead[]>(cacheKey);
+    if (cached && Array.isArray(cached)) return cached;
     return [];
   }
 }

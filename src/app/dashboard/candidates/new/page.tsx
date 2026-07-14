@@ -244,7 +244,16 @@ export default function NewCandidatePage() {
       }
 
       toast.success('Candidate created successfully');
-      router.push(candidateId ? `/dashboard/candidates/${candidateId}` : '/dashboard/candidates');
+      // Hard navigation so the list page always reloads (avoids stale React Query cache)
+      if (typeof window !== 'undefined') {
+        window.location.href = candidateId
+          ? `/dashboard/candidates/${candidateId}`
+          : '/dashboard/candidates';
+      } else {
+        router.push(
+          candidateId ? `/dashboard/candidates/${candidateId}` : '/dashboard/candidates'
+        );
+      }
     } catch (error: any) {
       console.error('Failed to create candidate:', error);
       toast.error(error.message || 'Failed to create candidate');
