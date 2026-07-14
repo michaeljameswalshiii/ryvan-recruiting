@@ -331,14 +331,36 @@ export async function linkCandidateToJobAction(jobId: string, candidateData: {
   const userId = await getSessionUserId();
   
   if (!tenantId || !userId) {
-    return { error: 'Unauthorized' };
+    return { error: 'Unauthorized — please log in again' };
+  }
+
+  if (!jobId?.trim()) {
+    return { error: 'Job id is required' };
+  }
+  if (!candidateData?.candidateId?.trim()) {
+    return { error: 'Select a candidate to link' };
+  }
+  if (!candidateData?.candidateName?.trim()) {
+    return { error: 'Candidate name is required' };
   }
 
   try {
-    const job = await linkCandidateToJob(tenantId, jobId, candidateData);
+    const email =
+      candidateData.candidateEmail && candidateData.candidateEmail.includes('@')
+        ? candidateData.candidateEmail
+        : undefined;
+
+    const job = await linkCandidateToJob(tenantId, jobId, {
+      candidateId: candidateData.candidateId.trim(),
+      candidateName: candidateData.candidateName.trim(),
+      candidateEmail: email,
+      stage: candidateData.stage || 'sourced',
+      notes: candidateData.notes?.trim() || undefined,
+    } as any);
     // Sanitize the job to ensure JSON serializability
     return { success: true, job: job ? sanitizeJob(job) : null };
   } catch (error: any) {
+    console.error('[linkCandidateToJobAction]', error);
     return { error: error.message || 'Failed to link candidate' };
   }
 }

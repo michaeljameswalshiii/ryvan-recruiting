@@ -255,16 +255,31 @@ export async function updateJob(
 export async function linkCandidateToJob(
   tenantId: string,
   jobId: string,
-  data: LinkCandidateInput
+  data: LinkCandidateInput | {
+    candidateId: string;
+    candidateName: string;
+    candidateEmail?: string;
+    stage?: string;
+    notes?: string;
+  }
 ): Promise<Job | null> {
-  const job = await getJobById(tenantId, jobId);
-  
+  // Bypass stale cache for accurate linked list
+  const job = await getItem<Job>(jobsTable, {
+    tenant_id: tenantId,
+    id: jobId,
+  });
+
   if (!job) {
     throw new Error('Job not found');
   }
 
+  const existing =
+    (Array.isArray(job.candidates) && job.candidates) ||
+    (Array.isArray((job as any).linkedCandidates) && (job as any).linkedCandidates) ||
+    [];
+
   // Check if candidate already linked
-  if (job.candidates?.some(c => c.candidateId === data.candidateId)) {
+  if (existing.some((c: any) => c.candidateId === data.candidateId)) {
     throw new Error('Candidate already linked to this job');
   }
 
@@ -273,17 +288,20 @@ export async function linkCandidateToJob(
     candidateId: data.candidateId,
     candidateName: data.candidateName,
     candidateEmail: data.candidateEmail || '',
-    stage: data.stage || 'Applied',
+    // Accept application stages (sourced, etc.) — cast for storage flexibility
+    stage: (data.stage || 'sourced') as any,
     dateApplied: new Date().toISOString(),
     notes: data.notes || '',
   };
+
+  const nextCandidates = [...existing, newCandidate];
 
   const updated = await updateItem<Job>(
     jobsTable,
     { tenant_id: tenantId, id: jobId },
     'SET #candidates = :candidates, #modified_at = :modified_at',
     {
-      ':candidates': [...(job.candidates || []), newCandidate],
+      ':candidates': nextCandidates,
       ':modified_at': new Date().toISOString(),
     },
     {
@@ -295,7 +313,14 @@ export async function linkCandidateToJob(
   // Invalidate cache
   await invalidateTenantCache(tenantId);
 
-  return updated;
+  // Return fresh job with candidates array guaranteed
+  return (
+    updated || {
+      ...job,
+      candidates: nextCandidates,
+      modified_at: new Date().toISOString(),
+    }
+  );
 }
 
 /**

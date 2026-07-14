@@ -23,6 +23,7 @@ import {
   useUpdateCandidateStageInJob,
   useUpdateJob,
 } from "@/lib/hooks/query-job";
+import { useLeads } from "@/lib/hooks/query-lead";
 import EventTimeline from "@/components/EventTimeline";
 import JobEditModal from "@/components/job/JobEditModal";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { APPLICATION_STAGES } from "@/lib/schemas/lead";
+import { toast } from "sonner";
 
 const JOB_STATUSES = ["OPEN", "PAUSED", "CLOSED"] as const;
 const STAGES = APPLICATION_STAGES.map((s) => s.value);
@@ -146,6 +148,7 @@ export default function JobDetailPage() {
   const jobId = params?.id || "";
 
   const { data: job, isLoading, isError, error } = useJob(jobId);
+  const { data: allCandidates = [], isLoading: loadingCandidates } = useLeads();
   const updateJob = useUpdateJob();
   const linkCandidate = useLinkCandidateToJob();
   const unlinkCandidate = useUnlinkCandidateFromJob();
@@ -156,6 +159,7 @@ export default function JobDetailPage() {
   const [candidateEmail, setCandidateEmail] = useState("");
   const [newCandidateStage, setNewCandidateStage] = useState("sourced");
   const [candidateNotes, setCandidateNotes] = useState("");
+  const [candidateSearch, setCandidateSearch] = useState("");
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const linkFormRef = useRef<HTMLDivElement>(null);
@@ -227,25 +231,62 @@ export default function JobDetailPage() {
     });
   };
 
-  const onLinkCandidate = async () => {
-    if (!jobId || !candidateId || !candidateName) return;
-    await linkCandidate.mutateAsync({
-      jobId,
-      candidateData: {
-        candidateId,
-        candidateName,
-        candidateEmail: candidateEmail || undefined,
-        stage: newCandidateStage,
-        notes: candidateNotes || undefined,
-      },
-    });
+  const linkedIds = useMemo(() => {
+    return new Set(
+      linkedCandidates.map((c: any) => c.candidateId).filter(Boolean)
+    );
+  }, [linkedCandidates]);
 
-    setCandidateId("");
-    setCandidateName("");
-    setCandidateEmail("");
-    setCandidateNotes("");
-    setNewCandidateStage("sourced");
-    setShowLinkForm(false);
+  const availableCandidates = useMemo(() => {
+    const q = candidateSearch.trim().toLowerCase();
+    return (Array.isArray(allCandidates) ? allCandidates : [])
+      .filter((c: any) => c?.id && !linkedIds.has(c.id))
+      .filter((c: any) => {
+        if (!q) return true;
+        const hay = [c.name, c.email, c.title, c.phone, c.id]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      })
+      .slice(0, 50);
+  }, [allCandidates, linkedIds, candidateSearch]);
+
+  const selectCandidate = (c: any) => {
+    setCandidateId(c.id);
+    setCandidateName(c.name || "Unknown");
+    setCandidateEmail(c.email || "");
+    setCandidateSearch(c.name || "");
+  };
+
+  const onLinkCandidate = async () => {
+    if (!jobId) return;
+    if (!candidateId || !candidateName) {
+      toast.error("Select a candidate from the list first");
+      return;
+    }
+    try {
+      await linkCandidate.mutateAsync({
+        jobId,
+        candidateData: {
+          candidateId,
+          candidateName,
+          candidateEmail: candidateEmail || undefined,
+          stage: newCandidateStage,
+          notes: candidateNotes || undefined,
+        },
+      });
+
+      setCandidateId("");
+      setCandidateName("");
+      setCandidateEmail("");
+      setCandidateNotes("");
+      setCandidateSearch("");
+      setNewCandidateStage("sourced");
+      setShowLinkForm(false);
+    } catch {
+      /* toast from mutation */
+    }
   };
 
   const openAddCandidate = () => {
@@ -573,51 +614,151 @@ export default function JobDetailPage() {
               </ul>
             )}
 
-            {/* Link candidate form — same fields/behavior as before */}
+            {/* Link candidate form — search & pick from tenant candidates */}
             {(showLinkForm || linkedCandidates.length === 0) && (
               <div
                 ref={linkFormRef}
                 className="mt-6 border-t border-gray-100 pt-6"
               >
-                <h3 className="font-medium text-sm mb-3 flex items-center gap-2 text-gray-800">
+                <h3 className="font-medium text-sm mb-1 flex items-center gap-2 text-gray-800">
                   <UserPlus className="h-4 w-4" /> Link Candidate
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <p className="text-xs text-gray-500 mb-3">
+                  Search your candidates and click one to select — no ID typing required.
+                </p>
+
+                {/* Selected chip */}
+                {candidateId && (
+                  <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
+                    <span className="font-medium text-blue-900">{candidateName}</span>
+                    {candidateEmail && (
+                      <span className="text-blue-700/80 text-xs">{candidateEmail}</span>
+                    )}
+                    <button
+                      type="button"
+                      className="ml-auto text-xs text-blue-700 hover:underline"
+                      onClick={() => {
+                        setCandidateId("");
+                        setCandidateName("");
+                        setCandidateEmail("");
+                        setCandidateSearch("");
+                      }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+
+                <div className="space-y-3">
                   <Input
-                    value={candidateId}
-                    onChange={(e) => setCandidateId(e.target.value)}
-                    placeholder="Candidate ID"
+                    value={candidateSearch}
+                    onChange={(e) => {
+                      setCandidateSearch(e.target.value);
+                      // Typing a new search clears prior selection
+                      if (candidateId) {
+                        setCandidateId("");
+                        setCandidateName("");
+                        setCandidateEmail("");
+                      }
+                    }}
+                    placeholder="Search by name, email, or title…"
+                    className="h-11"
                   />
-                  <Input
-                    value={candidateName}
-                    onChange={(e) => setCandidateName(e.target.value)}
-                    placeholder="Candidate Name"
-                  />
-                  <Input
-                    value={candidateEmail}
-                    onChange={(e) => setCandidateEmail(e.target.value)}
-                    placeholder="Candidate Email (optional)"
-                  />
-                  <select
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-                    value={newCandidateStage}
-                    onChange={(e) => setNewCandidateStage(e.target.value)}
-                  >
-                    {STAGES.map((stage) => (
-                      <option key={stage} value={stage}>
-                        {getStageLabel(stage)}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="md:col-span-2">
-                    <Textarea
-                      value={candidateNotes}
-                      onChange={(e) => setCandidateNotes(e.target.value)}
-                      placeholder="Notes (optional)"
-                      rows={3}
-                    />
+
+                  <div className="rounded-xl border border-gray-200 max-h-56 overflow-y-auto bg-white">
+                    {loadingCandidates ? (
+                      <div className="flex items-center gap-2 px-4 py-6 text-sm text-gray-500 justify-center">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading candidates…
+                      </div>
+                    ) : availableCandidates.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-sm text-gray-500">
+                        {allCandidates.length === 0 ? (
+                          <>
+                            No candidates in this tenant yet.{" "}
+                            <Link
+                              href="/dashboard/candidates/new"
+                              className="text-blue-600 hover:underline"
+                            >
+                              Add a candidate
+                            </Link>
+                          </>
+                        ) : (
+                          "No matching candidates (or all are already linked)."
+                        )}
+                      </div>
+                    ) : (
+                      <ul className="divide-y divide-gray-100">
+                        {availableCandidates.map((c: any) => {
+                          const selected = c.id === candidateId;
+                          return (
+                            <li key={c.id}>
+                              <button
+                                type="button"
+                                onClick={() => selectCandidate(c)}
+                                className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors ${
+                                  selected ? "bg-blue-50" : ""
+                                }`}
+                              >
+                                <div
+                                  className={`h-8 w-8 shrink-0 rounded-full ${avatarColor(
+                                    c.name || "?"
+                                  )} text-white flex items-center justify-center text-xs font-semibold`}
+                                >
+                                  {getInitials(c.name || "?")}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium text-gray-900 truncate">
+                                    {c.name || "Unknown"}
+                                  </p>
+                                  <p className="text-xs text-gray-500 truncate">
+                                    {[c.title, c.email].filter(Boolean).join(" · ") ||
+                                      "No title / email"}
+                                  </p>
+                                </div>
+                                {selected && (
+                                  <span className="text-xs font-semibold text-blue-700">
+                                    Selected
+                                  </span>
+                                )}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 mb-1 block">
+                        Stage
+                      </label>
+                      <select
+                        className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white w-full h-10"
+                        value={newCandidateStage}
+                        onChange={(e) => setNewCandidateStage(e.target.value)}
+                      >
+                        {STAGES.map((stage) => (
+                          <option key={stage} value={stage}>
+                            {getStageLabel(stage)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-xs font-medium text-gray-500 mb-1 block">
+                        Notes (optional)
+                      </label>
+                      <Textarea
+                        value={candidateNotes}
+                        onChange={(e) => setCandidateNotes(e.target.value)}
+                        placeholder="Why linking / context for this role…"
+                        rows={2}
+                      />
+                    </div>
                   </div>
                 </div>
+
                 <div className="mt-3 flex justify-end gap-2">
                   {linkedCandidates.length > 0 && (
                     <Button

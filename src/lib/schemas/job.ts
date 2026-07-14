@@ -93,12 +93,17 @@ export const updateJobSchema = jobSchema.partial().omit({
 
 /**
  * Link Candidate to Job Schema
+ * Accepts application stages (sourced, etc.) and legacy job stages.
+ * candidateId can be any non-empty id (not all legacy ids are UUIDs).
  */
 export const linkCandidateToJobSchema = z.object({
-  candidateId: z.string().uuid(),
+  candidateId: z.string().min(1, 'Candidate is required'),
   candidateName: z.string().min(1),
-  candidateEmail: z.string().email().optional(),
-  stage: z.enum(jobCandidateStages).default('Applied'),
+  candidateEmail: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().email().optional()
+  ),
+  stage: z.string().min(1).default('sourced'),
   notes: z.string().max(1000).optional(),
 });
 
@@ -106,8 +111,8 @@ export const linkCandidateToJobSchema = z.object({
  * Update Candidate Stage Schema
  */
 export const updateCandidateStageSchema = z.object({
-  candidateId: z.string().uuid(),
-  stage: z.enum(jobCandidateStages),
+  candidateId: z.string().min(1),
+  stage: z.string().min(1),
   notes: z.string().max(1000).optional(),
 });
 
