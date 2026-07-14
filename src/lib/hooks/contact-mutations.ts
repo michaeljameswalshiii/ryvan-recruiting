@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { addContactAction, updateContactAction, removeContactAction } from '@/lib/actions/client-actions';
-import { clientKeys } from './query-client';
+import { clientKeys } from './client-keys';
 
 /**
  * Add a contact to a client - UI hook with improved error handling

@@ -9,10 +9,12 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   GetCommand,
+  PutCommand,
   ScanCommand,
   UpdateCommand,
+  DeleteCommand,
 } from '@aws-sdk/lib-dynamodb';
-import type { Contact, ContactPhone } from '../../schemas/client';
+import type { Contact, ContactPhone, CreateClientInput, UpdateClientInput } from '../../schemas/client';
 
 export type ClientRecord = {
   id?: string;
@@ -149,6 +151,151 @@ export async function getClientById(
     all.find(
       (c) => String(c.id) === String(clientId) || String((c as any).PK) === String(clientId)
     ) || null
+  );
+}
+
+/**
+ * Create a new client/company record
+ */
+export async function createClient(
+  tenantId: string,
+  data: CreateClientInput | Record<string, any>
+): Promise<ClientRecord> {
+  const doc = getDocClient();
+  const now = new Date().toISOString();
+  const id =
+    (typeof data.id === 'string' && data.id) ||
+    generateId();
+
+  const item = removeUndefinedDeep({
+    ...data,
+    id,
+    tenant_id: tenantId,
+    name: typeof data.name === 'string' ? data.name.trim() : '',
+    contacts: Array.isArray(data.contacts) ? data.contacts : [],
+    status: data.status || 'identification',
+    created_at: now,
+    updated_at: now,
+    modified_at: now,
+  }) as ClientRecord;
+
+  if (!item.name) {
+    throw new Error('Company name is required');
+  }
+
+  // Avoid empty-string GSI keys
+  if (item.email === '') delete item.email;
+
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE_NAME,
+      Item: item,
+    })
+  );
+
+  return item;
+}
+
+/**
+ * Update an existing client/company (partial patch)
+ */
+export async function updateClient(
+  tenantId: string,
+  clientId: string,
+  updates: UpdateClientInput | Record<string, any>
+): Promise<ClientRecord | null> {
+  const existing = await getClientById(tenantId, clientId);
+  if (!existing || !existing.id) return null;
+
+  const resolvedTenant = existing.tenant_id || tenantId;
+  const now = new Date().toISOString();
+
+  // Never overwrite primary keys with empty/undefined from partials
+  const { id: _id, tenant_id: _tid, ...safeUpdates } = updates as Record<string, any>;
+  const merged = removeUndefinedDeep({
+    ...existing,
+    ...safeUpdates,
+    id: existing.id,
+    tenant_id: resolvedTenant,
+    updated_at: now,
+    modified_at: now,
+  }) as ClientRecord;
+
+  if (merged.email === '') delete merged.email;
+
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE_NAME,
+      Item: merged,
+    })
+  );
+
+  return merged;
+}
+
+/**
+ * Delete a client/company
+ */
+export async function deleteClient(
+  tenantId: string,
+  clientId: string
+): Promise<boolean> {
+  const existing = await getClientById(tenantId, clientId);
+  if (!existing || !existing.id) return false;
+
+  const doc = getDocClient();
+  const resolvedTenant = existing.tenant_id || tenantId;
+
+  await doc.send(
+    new DeleteCommand({
+      TableName: TABLE_NAME,
+      Key: { tenant_id: resolvedTenant, id: existing.id },
+    })
+  );
+
+  return true;
+}
+
+/**
+ * Get the primary contact for a company (embedded contacts model)
+ */
+export async function getPrimaryContact(
+  tenantId: string,
+  clientId: string
+): Promise<Contact | null> {
+  const client = await getClientById(tenantId, clientId);
+  if (!client?.contacts?.length) return null;
+  if (client.primaryContactId) {
+    const byId = client.contacts.find((c) => c.id === client.primaryContactId);
+    if (byId) return byId;
+  }
+  return client.contacts.find((c) => c.isPrimary) || client.contacts[0] || null;
+}
+
+/**
+ * Mark a contact as primary on a company
+ */
+export async function setPrimaryContact(
+  tenantId: string,
+  clientId: string,
+  contactId: string
+): Promise<ClientRecord | null> {
+  const client = await getClientById(tenantId, clientId);
+  if (!client || !client.id) return null;
+
+  const now = new Date().toISOString();
+  const contacts = (client.contacts || []).map((c) => ({
+    ...c,
+    isPrimary: c.id === contactId,
+    updatedAt: now,
+  }));
+
+  return persistContacts(
+    client.tenant_id || tenantId,
+    client.id,
+    contacts,
+    contactId
   );
 }
 
