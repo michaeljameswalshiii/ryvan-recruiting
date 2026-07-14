@@ -1,148 +1,123 @@
-﻿/**
- * Reporting Dashboard Page
- * 
- * Professional analytics dashboard with Recharts.
- * Tracks candidate pipeline metrics, conversions, and activity.
- * 
- * @serverOnly - Data fetched server-side
+/**
+ * Reporting Dashboard
+ * Insight-first analytics: funnel conversions, jobs/company health,
+ * source quality, aging, and period comparisons.
  */
 
 import { Suspense } from 'react';
-import { getReportingStats } from '@/lib/aws/reporting';
-import { 
-  BarChart3, 
-  PieChart, 
-  TrendingUp, 
-  FileText,
-  Users,
-  Briefcase,
-  Clock,
-  RefreshCw,
-  Calendar
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
-import { 
-  PipelineOverviewTab,
-  PipelineFunnelChart,
-  CandidatesOverTimeChart,
-  StageDistributionChart,
-  SourceBreakdownChart,
-  RecentActivityTable,
-  KPICards
+import { BarChart3, RefreshCw } from 'lucide-react';
+import { getReportingStats, type PeriodKey } from '@/lib/aws/reporting';
+import {
+  KPICards,
+  InsightsStrip,
+  PeriodSelector,
+  ReportingTabs,
+  type ReportingTab,
 } from './charts';
 
-/**
- * Loading skeleton for the whole page
- */
+export const dynamic = 'force-dynamic';
+
+function parsePeriod(raw?: string): PeriodKey {
+  if (raw === '7' || raw === '30' || raw === '90' || raw === 'ytd') return raw;
+  return '30';
+}
+
+function parseTab(raw?: string): ReportingTab {
+  const valid: ReportingTab[] = [
+    'overview',
+    'pipeline',
+    'jobs',
+    'companies',
+    'sources',
+    'activity',
+  ];
+  if (raw && (valid as string[]).includes(raw)) return raw as ReportingTab;
+  return 'overview';
+}
+
 function PageSkeleton() {
   return (
-    <div className="space-y-6">
-      <Skeleton className="h-8 w-48" />
-      <div className="grid gap-4 md:grid-cols-4">
-        {[...Array(4)].map((_, i) => (
-          <Skeleton key={i} className="h-28 w-full" />
+    <div className="space-y-5 max-w-7xl animate-pulse">
+      <div className="h-10 w-64 bg-gray-100 rounded-xl" />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="h-28 bg-gray-100 rounded-2xl" />
         ))}
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        {[...Array(4)].map((_, i) => (
-          <Skeleton key={i} className="h-80 w-full" />
-        ))}
+      <div className="h-24 bg-gray-100 rounded-2xl" />
+      <div className="grid md:grid-cols-2 gap-4">
+        <div className="h-80 bg-gray-100 rounded-2xl" />
+        <div className="h-80 bg-gray-100 rounded-2xl" />
       </div>
     </div>
   );
 }
 
-/**
- * Reporting Page
- */
-export default async function ReportingDashboardPage() {
-  // Fetch all reporting data server-side
-  const stats = await getReportingStats();
+async function ReportingBody({
+  period,
+  tab,
+}: {
+  period: PeriodKey;
+  tab: ReportingTab;
+}) {
+  const stats = await getReportingStats(period);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 max-w-7xl">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <BarChart3 className="h-8 w-8" />
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-900 flex items-center gap-2">
+            <BarChart3 className="h-7 w-7 text-blue-600" />
             Reporting
           </h1>
-          <p className="text-muted-foreground">
-            Unified analytics and pipeline insights
+          <p className="text-sm text-gray-500">
+            Pipeline outcomes, jobs health, and what needs attention —{' '}
+            {stats.periodLabel}
           </p>
         </div>
-        
-        {/* Quick Actions */}
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="gap-1">
-            <Calendar className="h-3 w-3" />
-            {stats.periodLabel}
-          </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Suspense fallback={null}>
+            <PeriodSelector current={period} />
+          </Suspense>
+          <span className="text-[11px] text-gray-400">
+            Updated{' '}
+            {new Date(stats.lastUpdated).toLocaleTimeString(undefined, {
+              hour: 'numeric',
+              minute: '2-digit',
+            })}
+          </span>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <Suspense fallback={<PageSkeleton />}>
-        <KPICards stats={stats} />
+      <KPICards stats={stats} />
+      <InsightsStrip insights={stats.insights} />
+
+      <Suspense
+        fallback={
+          <div className="flex items-center gap-2 text-gray-500 py-8">
+            <RefreshCw className="h-4 w-4 animate-spin" /> Loading tabs…
+          </div>
+        }
+      >
+        <ReportingTabs active={tab} stats={stats} />
       </Suspense>
-
-      {/* Main Tabs */}
-      <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="overview">
-            <BarChart3 className="h-4 w-4 mr-2" />
-            Overview
-          </TabsTrigger>
-          <TabsTrigger value="pipeline">
-            <TrendingUp className="h-4 w-4 mr-2" />
-            Pipeline
-          </TabsTrigger>
-          <TabsTrigger value="sources">
-            <Users className="h-4 w-4 mr-2" />
-            Sources
-          </TabsTrigger>
-          <TabsTrigger value="activity">
-            <Clock className="h-4 w-4 mr-2" />
-            Activity
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-4">
-          <Suspense fallback={<PageSkeleton />}>
-            <PipelineOverviewTab stats={stats} />
-          </Suspense>
-        </TabsContent>
-
-        {/* Pipeline Tab */}
-        <TabsContent value="pipeline" className="space-y-4">
-          <Suspense fallback={<PageSkeleton />}>
-            <div className="grid gap-4 md:grid-cols-2">
-              <PipelineFunnelChart pipeline={stats.pipeline} />
-              <StageDistributionChart pipeline={stats.pipeline} />
-            </div>
-            <CandidatesOverTimeChart candidates={stats.candidatesOverTime} />
-          </Suspense>
-        </TabsContent>
-
-        {/* Sources Tab */}
-        <TabsContent value="sources" className="space-y-4">
-          <Suspense fallback={<PageSkeleton />}>
-            <SourceBreakdownChart sources={stats.sources} />
-          </Suspense>
-        </TabsContent>
-
-        {/* Activity Tab */}
-        <TabsContent value="activity" className="space-y-4">
-          <Suspense fallback={<PageSkeleton />}>
-            <RecentActivityTable events={stats.recentEvents} />
-          </Suspense>
-        </TabsContent>
-      </Tabs>
     </div>
+  );
+}
+
+export default async function ReportingDashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ period?: string; tab?: string }> | { period?: string; tab?: string };
+}) {
+  const params = searchParams instanceof Promise ? await searchParams : searchParams;
+  const period = parsePeriod(params?.period);
+  const tab = parseTab(params?.tab);
+
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <ReportingBody period={period} tab={tab} />
+    </Suspense>
   );
 }

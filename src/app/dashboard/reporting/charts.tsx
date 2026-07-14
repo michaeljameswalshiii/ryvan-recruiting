@@ -1,28 +1,18 @@
-﻿/**
- * Reporting Dashboard Charts
- * 
- * 7 Recharts components for the reporting dashboard:
- * - KPICards: 4 KPI metric cards
- * - PipelineOverviewTab: Overview with mini charts
- * - PipelineFunnelChart: Funnel visualization
- * - CandidatesOverTimeChart: Line/bar chart over time
- * - StageDistributionChart: Pie/donut chart
- * - SourceBreakdownChart: Bar chart by source
- * - RecentActivityTable: Table of recent events
- * 
- * @serverOnly - Uses server-side data types
+/**
+ * Reporting dashboard UI — insight-first Recharts + tables.
  */
 
 'use client';
 
-import {
+import Link from 'next/link';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import type {
   ReportingStats,
-  PipelineStats,
-  CandidatesOverTimeData,
-  SourceStats,
-  EventStats,
+  FunnelStep,
+  SourceQuality,
+  AttentionItem,
+  PeriodKey,
 } from '@/lib/aws/reporting';
-
 import {
   BarChart,
   Bar,
@@ -31,534 +21,852 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
   AreaChart,
   Area,
+  Cell,
+  Legend,
 } from 'recharts';
-
 import {
   Users,
   Briefcase,
   TrendingUp,
   Clock,
+  AlertTriangle,
+  Building2,
   ArrowUpRight,
   ArrowDownRight,
   Minus,
-  Calendar,
+  Sparkles,
   Activity,
+  Target,
+  UserRound,
 } from 'lucide-react';
-
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
-// ============================================================================
-// Chart Colors
-// ============================================================================
-
 const COLORS = [
-  '#3b82f6', // blue
-  '#10b981', // emerald
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#06b6d4', // cyan
-  '#84cc16', // lime
-  '#f97316', // orange
-  '#6366f1', // indigo
+  '#3b82f6',
+  '#10b981',
+  '#f59e0b',
+  '#8b5cf6',
+  '#06b6d4',
+  '#ef4444',
+  '#ec4899',
+  '#84cc16',
 ];
 
-// ============================================================================
-// KPICards Component
-// ============================================================================
+const PERIODS: { key: PeriodKey; label: string }[] = [
+  { key: '7', label: '7d' },
+  { key: '30', label: '30d' },
+  { key: '90', label: '90d' },
+  { key: 'ytd', label: 'YTD' },
+];
 
-interface KPICardsProps {
-  stats: ReportingStats;
+function DeltaBadge({ deltaPct }: { deltaPct: number | null }) {
+  if (deltaPct === null) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-gray-400">
+        <Minus className="h-3 w-3" /> n/a
+      </span>
+    );
+  }
+  if (deltaPct === 0) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-gray-500">
+        <Minus className="h-3 w-3" /> 0%
+      </span>
+    );
+  }
+  if (deltaPct > 0) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-emerald-600">
+        <ArrowUpRight className="h-3 w-3" /> {deltaPct}%
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-rose-600">
+      <ArrowDownRight className="h-3 w-3" /> {Math.abs(deltaPct)}%
+    </span>
+  );
 }
 
-/**
- * KPICards - Displays 4 key metrics
- */
-export function KPICards({ stats }: KPICardsProps) {
-  const kpis = [
+function severityBadge(sev: AttentionItem['severity']) {
+  if (sev === 'high')
+    return 'bg-rose-50 text-rose-700 border-rose-200';
+  if (sev === 'medium')
+    return 'bg-amber-50 text-amber-800 border-amber-200';
+  return 'bg-slate-50 text-slate-600 border-slate-200';
+}
+
+function typeIcon(type: AttentionItem['type']) {
+  if (type === 'job') return Briefcase;
+  if (type === 'company') return Building2;
+  return UserRound;
+}
+
+// ─── Period selector ─────────────────────────────────────────────────────────
+
+export function PeriodSelector({ current }: { current: PeriodKey }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const setPeriod = (key: PeriodKey) => {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set('period', key);
+    router.push(`${pathname}?${next.toString()}`);
+  };
+
+  return (
+    <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+      {PERIODS.map((p) => {
+        const active = current === p.key;
+        return (
+          <button
+            key={p.key}
+            type="button"
+            onClick={() => setPeriod(p.key)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+              active
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {p.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── KPI row ─────────────────────────────────────────────────────────────────
+
+export function KPICards({ stats }: { stats: ReportingStats }) {
+  const cards = [
     {
-      title: 'Total Candidates',
-      value: stats.totalCandidates,
-      icon: Users,
-      color: 'text-blue-500',
-      bgColor: 'bg-blue-50 dark:bg-blue-950',
+      title: 'Placements',
+      value: stats.placementsKpi.value,
+      delta: stats.placementsKpi.deltaPct,
+      sub: `vs prior period (${stats.placementsKpi.previous})`,
+      icon: Target,
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-50',
     },
     {
-      title: 'In Pipeline',
-      value: stats.inPipeline,
+      title: 'Open jobs',
+      value: stats.openJobs,
+      delta: stats.openJobsKpi.deltaPct,
+      sub: `${stats.jobs.emptyOpen} with 0 candidates`,
       icon: Briefcase,
-      color: 'text-emerald-500',
-      bgColor: 'bg-emerald-50 dark:bg-emerald-950',
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
     },
     {
-      title: 'Hired This Month',
-      value: stats.hiredThisMonth,
+      title: 'In motion',
+      value: stats.inMotion,
+      delta: null as number | null,
+      sub: `${stats.totalCandidates} total candidates`,
+      icon: Users,
+      color: 'text-violet-600',
+      bg: 'bg-violet-50',
+    },
+    {
+      title: 'New candidates',
+      value: stats.candidatesAddedKpi.value,
+      delta: stats.candidatesAddedKpi.deltaPct,
+      sub: stats.periodLabel,
       icon: TrendingUp,
-      color: 'text-amber-500',
-      bgColor: 'bg-amber-50 dark:bg-amber-950',
+      color: 'text-sky-600',
+      bg: 'bg-sky-50',
     },
     {
-      title: 'Avg. Time to Hire',
-      value: `${stats.avgTimeToHire} days`,
+      title: 'Time to hire',
+      value: stats.avgTimeToHire > 0 ? `${stats.avgTimeToHire}d` : '—',
+      delta: null as number | null,
+      sub: stats.avgTimeToFill > 0 ? `Fill: ${stats.avgTimeToFill}d avg` : 'Avg for placed',
       icon: Clock,
-      color: 'text-violet-500',
-      bgColor: 'bg-violet-50 dark:bg-violet-950',
+      color: 'text-amber-600',
+      bg: 'bg-amber-50',
       isString: true,
     },
   ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-4">
-      {kpis.map((kpi, index) => (
-        <Card key={index}>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between space-x-4">
-              <div className={`p-2 rounded-lg ${kpi.bgColor}`}>
-                <kpi.icon className={`h-5 w-5 ${kpi.color}`} />
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-muted-foreground">{kpi.title}</p>
-                <p className="text-2xl font-bold">
-                  {kpi.isString ? kpi.value : kpi.value.toLocaleString()}
-                </p>
-              </div>
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+      {cards.map((c) => (
+        <div
+          key={c.title}
+          className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className={`p-2 rounded-xl ${c.bg}`}>
+              <c.icon className={`h-4 w-4 ${c.color}`} />
             </div>
-          </CardContent>
-        </Card>
+            <DeltaBadge deltaPct={c.delta} />
+          </div>
+          <div className="mt-3 text-2xl font-semibold tabular-nums text-gray-900">
+            {c.isString ? c.value : Number(c.value).toLocaleString()}
+          </div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mt-1">
+            {c.title}
+          </div>
+          <div className="text-[11px] text-gray-400 mt-0.5 truncate">{c.sub}</div>
+        </div>
       ))}
     </div>
   );
 }
 
-// ============================================================================
-// PipelineOverviewTab Component
-// ============================================================================
+// ─── Insights strip ──────────────────────────────────────────────────────────
 
-interface PipelineOverviewTabProps {
-  stats: ReportingStats;
-}
-
-/**
- * PipelineOverviewTab - Overview with mini charts
- */
-export function PipelineOverviewTab({ stats }: PipelineOverviewTabProps) {
-  // Mini chart data - top 5 stages
-  const topStages = stats.pipeline.byStage.slice(0, 5);
-  
-  // Calculate percentages
-  const total = stats.pipeline.total || 1;
-  const stageData = topStages.map((stage) => ({
-    name: stage.label,
-    value: stage.count,
-    percentage: Math.round((stage.count / total) * 100),
-  }));
-
-  // Candidates over time - last 7 days
-  const last7Days = stats.candidatesOverTime.period.slice(-7);
-  const trendData = last7Days.map((day) => ({
-    date: new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' }),
-    count: day.count,
-  }));
-
+export function InsightsStrip({ insights }: { insights: string[] }) {
+  if (!insights.length) return null;
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {/* Stage Distribution Mini */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Stage Distribution</CardTitle>
-          <CardDescription>Top pipeline stages</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={stageData} layout="vertical" margin={{ left: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" hide />
-              <YAxis 
-                dataKey="name" 
-                type="category" 
-                width={100}
-                tick={{ fontSize: 12 }}
-              />
-<Tooltip 
-                formatter={(value) => [`${value} candidates`, 'Count']}
-              />
-              <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      {/* Activity Trend Mini */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Recent Activity</CardTitle>
-          <CardDescription>Last 7 days trend</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={trendData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis 
-                dataKey="date" 
-                tick={{ fontSize: 11 }}
-                tickLine={false}
-              />
-              <YAxis 
-                tick={{ fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <Tooltip />
-              <Area
-                type="monotone"
-                dataKey="count"
-                stroke="#10b981"
-                fill="#10b981"
-                fillOpacity={0.2}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+    <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/80 to-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 mb-2">
+        <Sparkles className="h-4 w-4 text-blue-600" />
+        <h2 className="text-sm font-semibold text-gray-900">Insights</h2>
+      </div>
+      <ul className="space-y-1.5">
+        {insights.map((line, i) => (
+          <li key={i} className="text-sm text-gray-700 flex gap-2">
+            <span className="text-blue-500 font-bold shrink-0">·</span>
+            <span>{line}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
 
-// ============================================================================
-// PipelineFunnelChart Component
-// ============================================================================
+// ─── Tabs shell ──────────────────────────────────────────────────────────────
 
-interface PipelineFunnelChartProps {
-  pipeline: PipelineStats;
-}
+const TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'pipeline', label: 'Pipeline' },
+  { id: 'jobs', label: 'Jobs' },
+  { id: 'companies', label: 'Companies' },
+  { id: 'sources', label: 'Sources' },
+  { id: 'activity', label: 'Activity' },
+] as const;
 
-/**
- * PipelineFunnelChart - Funnel visualization of pipeline stages
- */
-export function PipelineFunnelChart({ pipeline }: PipelineFunnelChartProps) {
-  const total = pipeline.total || 1;
-  
-  const funnelData = pipeline.byStage.map((stage) => ({
-    name: stage.label,
-    value: stage.count,
-    percentage: Math.round((stage.count / total) * 100),
-  }));
+export type ReportingTab = (typeof TABS)[number]['id'];
+
+export function ReportingTabs({
+  active,
+  stats,
+}: {
+  active: ReportingTab;
+  stats: ReportingStats;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const setTab = (id: string) => {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set('tab', id);
+    router.push(`${pathname}?${next.toString()}`, { scroll: false });
+  };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Pipeline Funnel</CardTitle>
-        <CardDescription>Candidates by pipeline stage</CardDescription>
+    <div className="space-y-4">
+      <div className="border-b border-gray-200">
+        <nav className="flex gap-1 overflow-x-auto">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+                active === t.id
+                  ? 'border-blue-600 text-blue-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {active === 'overview' && <OverviewTab stats={stats} />}
+      {active === 'pipeline' && <PipelineTab stats={stats} />}
+      {active === 'jobs' && <JobsTab stats={stats} />}
+      {active === 'companies' && <CompaniesTab stats={stats} />}
+      {active === 'sources' && <SourcesTab stats={stats} />}
+      {active === 'activity' && <ActivityTab stats={stats} />}
+    </div>
+  );
+}
+
+// ─── Overview ────────────────────────────────────────────────────────────────
+
+function OverviewTab({ stats }: { stats: ReportingStats }) {
+  const trend = stats.candidatesOverTime.map((d) => ({
+    date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    count: d.count,
+  }));
+  // downsample for readability
+  const displayTrend =
+    trend.length > 45
+      ? trend.filter((_, i) => i % 3 === 0)
+      : trend.length > 20
+        ? trend.filter((_, i) => i % 2 === 0)
+        : trend;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <FunnelCard funnel={stats.funnel} />
+        <Card className="rounded-2xl border-gray-200 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Candidates added</CardTitle>
+            <CardDescription>{stats.periodLabel}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={displayTrend}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} />
+                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip />
+                <Area
+                  type="monotone"
+                  dataKey="count"
+                  stroke="#3b82f6"
+                  fill="#3b82f6"
+                  fillOpacity={0.15}
+                  strokeWidth={2}
+                  name="New candidates"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <JobHealthSummary stats={stats} />
+        <NeedsAttentionCard items={stats.needsAttention.slice(0, 6)} />
+      </div>
+    </div>
+  );
+}
+
+function FunnelCard({ funnel }: { funnel: FunnelStep[] }) {
+  const max = Math.max(...funnel.map((f) => f.count), 1);
+  return (
+    <Card className="rounded-2xl border-gray-200 shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Candidate funnel</CardTitle>
+        <CardDescription>Reached stage or beyond · conversion between steps</CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {funnelData.map((stage, index) => {
-            const width = Math.max(20, stage.percentage);
-            return (
-              <div key={index} className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="font-medium">{stage.name}</span>
-                  <span className="text-muted-foreground">
-                    {stage.value.toLocaleString()} ({stage.percentage}%)
-                  </span>
+      <CardContent className="space-y-3">
+        {funnel.map((step, i) => {
+          const width = Math.max(8, Math.round((step.count / max) * 100));
+          return (
+            <div key={step.key} className="space-y-1">
+              <div className="flex items-center justify-between text-sm gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium text-gray-900">{step.label}</span>
+                  {step.conversionFromPrev !== null && (
+                    <span className="text-[11px] text-gray-400">
+                      {step.conversionFromPrev}% from prior
+                    </span>
+                  )}
                 </div>
-                <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full transition-all duration-300"
-                    style={{
-                      width: `${width}%`,
-                      backgroundColor: COLORS[index % COLORS.length],
-                    }}
-                  />
+                <span className="tabular-nums text-gray-600 shrink-0">
+                  {step.count.toLocaleString()}
+                </span>
+              </div>
+              <div className="h-2.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${width}%`,
+                    backgroundColor: COLORS[i % COLORS.length],
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+        <Link
+          href="/dashboard/candidates"
+          className="inline-block text-xs font-medium text-blue-600 hover:underline pt-1"
+        >
+          Open candidates →
+        </Link>
+      </CardContent>
+    </Card>
+  );
+}
+
+function JobHealthSummary({ stats }: { stats: ReportingStats }) {
+  const j = stats.jobs;
+  const chips = [
+    { label: 'Open', value: j.open, color: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+    { label: 'On hold', value: j.onHold, color: 'bg-amber-50 text-amber-800 border-amber-200' },
+    { label: 'Closed', value: j.closed, color: 'bg-slate-50 text-slate-700 border-slate-200' },
+    { label: 'Empty open', value: j.emptyOpen, color: 'bg-rose-50 text-rose-700 border-rose-200' },
+  ];
+  return (
+    <Card className="rounded-2xl border-gray-200 shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Jobs health</CardTitle>
+        <CardDescription>
+          Avg {j.avgCandidatesPerOpen} candidates per open job
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {chips.map((c) => (
+            <span
+              key={c.label}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${c.color}`}
+            >
+              {c.label}
+              <span className="tabular-nums font-semibold">{c.value}</span>
+            </span>
+          ))}
+        </div>
+        <div className="space-y-2">
+          {j.topJobs.slice(0, 5).map((job) => (
+            <Link
+              key={job.id}
+              href={`/dashboard/jobs/${job.id}`}
+              className="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2 hover:bg-gray-50 transition-colors"
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate">{job.title}</div>
+                <div className="text-xs text-gray-500 truncate">
+                  {job.companyName} · {job.status}
                 </div>
               </div>
-            );
-          })}
+              <div className="text-right shrink-0">
+                <div className="text-sm font-semibold tabular-nums">{job.candidateCount}</div>
+                <div className="text-[11px] text-gray-400">{job.daysOpen}d</div>
+              </div>
+            </Link>
+          ))}
+          {j.topJobs.length === 0 && (
+            <p className="text-sm text-gray-500 text-center py-6">No jobs yet</p>
+          )}
         </div>
+        <Link href="/dashboard/jobs" className="text-xs font-medium text-blue-600 hover:underline">
+          View all jobs →
+        </Link>
       </CardContent>
     </Card>
   );
 }
 
-// ============================================================================
-// CandidatesOverTimeChart Component
-// ============================================================================
-
-interface CandidatesOverTimeChartProps {
-  candidates: CandidatesOverTimeData;
-}
-
-/**
- * CandidatesOverTimeChart - Line/bar chart showing candidates over time
- */
-export function CandidatesOverTimeChart({ candidates }: CandidatesOverTimeChartProps) {
-  // Aggregate by week for better visualization
-  const data = candidates.period.map((day) => ({
-    date: new Date(day.date).toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric' 
-    }),
-    count: day.count,
-  }));
-
-  // Group by week if too many data points
-  const displayData = data.length > 14
-    ? data.filter((_, i) => i % 7 === 0).map((d, i, arr) => {
-        if (i < arr.length - 1) {
-          const startIdx = i * 7;
-          const endIdx = Math.min(startIdx + 7, data.length);
-          const sum = data.slice(startIdx, endIdx).reduce((s, item) => s + item.count, 0);
-          return { date: d.date, count: sum };
-        }
-        return d;
-      })
-    : data;
-
+function NeedsAttentionCard({ items }: { items: AttentionItem[] }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Candidates Over Time</CardTitle>
-        <CardDescription>New candidates added over the period</CardDescription>
+    <Card className="rounded-2xl border-gray-200 shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-500" />
+          Needs attention
+        </CardTitle>
+        <CardDescription>Stalled candidates, empty jobs, incomplete accounts</CardDescription>
       </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
-          <AreaChart data={displayData}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis
-              dataKey="date"
-              tick={{ fontSize: 11 }}
-              tickLine={false}
-              axisLine={false}
-            />
-            <YAxis
-              tick={{ fontSize: 11 }}
-              tickLine={false}
-              axisLine={false}
-            />
-<Tooltip
-              formatter={(value) => [`${value} candidates`, 'Count']}
-            />
-            <Area
-              type="monotone"
-              dataKey="count"
-              stroke="#3b82f6"
-              fill="#3b82f6"
-              fillOpacity={0.2}
-              strokeWidth={2}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+      <CardContent className="space-y-2">
+        {items.length === 0 ? (
+          <p className="text-sm text-gray-500 text-center py-8">
+            Nothing urgent — pipeline looks healthy.
+          </p>
+        ) : (
+          items.map((item) => {
+            const Icon = typeIcon(item.type);
+            return (
+              <Link
+                key={`${item.type}-${item.id}-${item.reason}`}
+                href={item.href}
+                className="flex items-start gap-3 rounded-xl border border-gray-100 px-3 py-2.5 hover:bg-gray-50 transition-colors"
+              >
+                <div className="h-8 w-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
+                  <Icon className="h-4 w-4 text-gray-500" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900 truncate">
+                      {item.title}
+                    </span>
+                    <span
+                      className={`text-[10px] uppercase font-semibold rounded-full border px-1.5 py-0.5 ${severityBadge(item.severity)}`}
+                    >
+                      {item.severity}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500 truncate">
+                    {item.reason}
+                    {item.subtitle ? ` · ${item.subtitle}` : ''}
+                  </div>
+                </div>
+              </Link>
+            );
+          })
+        )}
       </CardContent>
     </Card>
   );
 }
 
-// ============================================================================
-// StageDistributionChart Component
-// ============================================================================
+// ─── Pipeline ────────────────────────────────────────────────────────────────
 
-interface StageDistributionChartProps {
-  pipeline: PipelineStats;
-}
-
-/**
- * StageDistributionChart - Pie/donut chart of stage distribution
- */
-export function StageDistributionChart({ pipeline }: StageDistributionChartProps) {
-  const pieData = pipeline.byStage.map((stage, index) => ({
-    name: stage.label,
-    value: stage.count,
-    color: COLORS[index % COLORS.length],
+function PipelineTab({ stats }: { stats: ReportingStats }) {
+  const stageData = stats.pipelineByStage.slice(0, 10).map((s) => ({
+    name: s.label.length > 14 ? s.label.slice(0, 12) + '…' : s.label,
+    full: s.label,
+    count: s.count,
   }));
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Stage Distribution</CardTitle>
-        <CardDescription>Percentage breakdown by stage</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
-          <PieChart>
-            <Pie
-              data={pieData}
-              cx="50%"
-              cy="50%"
-              innerRadius={60}
-              outerRadius={100}
-              paddingAngle={2}
-              dataKey="value"
-label={({ name, percent }) => 
-                `${name} (${((percent ?? 0) * 100).toFixed(0)}%)`
-              }
-              labelLine={false}
-            >
-              {pieData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
-              ))}
-            </Pie>
-<Tooltip
-              formatter={(value) => [`${value} candidates`, 'Count']}
-            />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <FunnelCard funnel={stats.funnel} />
+        <Card className="rounded-2xl border-gray-200 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Stage distribution</CardTitle>
+            <CardDescription>Current candidate status (top 10)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {stageData.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-16">No candidates</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={stageData} layout="vertical" margin={{ left: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={100}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <Tooltip
+                    formatter={(value) => [`${value} candidates`, 'Count']}
+                    labelFormatter={(_, payload) =>
+                      payload?.[0]?.payload?.full || ''
+                    }
+                  />
+                  <Bar dataKey="count" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      <NeedsAttentionCard
+        items={stats.needsAttention.filter((i) => i.type === 'candidate')}
+      />
+    </div>
   );
 }
 
-// ============================================================================
-// SourceBreakdownChart Component
-// ============================================================================
+// ─── Jobs ────────────────────────────────────────────────────────────────────
 
-interface SourceBreakdownChartProps {
-  sources: SourceStats;
+function JobsTab({ stats }: { stats: ReportingStats }) {
+  const j = stats.jobs;
+  const chartData = [
+    { name: 'Open', count: j.open, fill: '#10b981' },
+    { name: 'On Hold', count: j.onHold, fill: '#f59e0b' },
+    { name: 'Closed', count: j.closed, fill: '#94a3b8' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: 'Open', value: j.open, sub: 'Actively hiring' },
+          { label: 'Empty pipelines', value: j.emptyOpen, sub: '0 candidates' },
+          { label: 'With pipeline', value: j.withCandidates, sub: 'Has candidates' },
+          {
+            label: 'Avg per open',
+            value: j.avgCandidatesPerOpen,
+            sub: 'Candidates / open job',
+          },
+        ].map((c) => (
+          <div
+            key={c.label}
+            className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm"
+          >
+            <div className="text-2xl font-semibold tabular-nums text-gray-900">{c.value}</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mt-1">
+              {c.label}
+            </div>
+            <div className="text-[11px] text-gray-400">{c.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="rounded-2xl border-gray-200 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Jobs by status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                  {chartData.map((e, i) => (
+                    <Cell key={i} fill={e.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-gray-200 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Jobs by pipeline size</CardTitle>
+            <CardDescription>Most populated reqs</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {j.topJobs.map((job) => (
+              <Link
+                key={job.id}
+                href={`/dashboard/jobs/${job.id}`}
+                className="flex justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2 hover:bg-gray-50"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate">{job.title}</div>
+                  <div className="text-xs text-gray-500 truncate">
+                    {job.companyName} · open {job.daysOpen}d
+                  </div>
+                </div>
+                <span className="text-sm font-semibold tabular-nums shrink-0">
+                  {job.candidateCount}
+                </span>
+              </Link>
+            ))}
+            {j.topJobs.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-10">No jobs</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <NeedsAttentionCard items={stats.needsAttention.filter((i) => i.type === 'job')} />
+    </div>
+  );
 }
 
-/**
- * SourceBreakdownChart - Bar chart of candidates by source
- */
-export function SourceBreakdownChart({ sources }: SourceBreakdownChartProps) {
-  const barData = sources.bySource.map((source, index) => ({
-    name: source.label,
-    count: source.count,
-    fill: COLORS[index % COLORS.length],
+// ─── Companies ───────────────────────────────────────────────────────────────
+
+function CompaniesTab({ stats }: { stats: ReportingStats }) {
+  const c = stats.companies;
+  const chartData = c.byStage.map((s) => ({
+    name: s.label,
+    count: s.count,
   }));
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Source Breakdown</CardTitle>
-        <CardDescription>Candidates by recruitment source</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={barData} layout="vertical">
-            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-            <XAxis type="number" hide />
-            <YAxis
-              dataKey="name"
-              type="category"
-              width={100}
-              tick={{ fontSize: 12 }}
-            />
-<Tooltip
-              formatter={(value) => [`${value} candidates`, 'Count']}
-            />
-            <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-              {barData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.fill} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: 'Companies', value: c.total, sub: 'Total accounts' },
+          { label: 'Closed won', value: c.closedWon, sub: 'Clients' },
+          { label: 'No contacts', value: c.noContacts, sub: 'Incomplete' },
+          { label: 'No open jobs', value: c.noOpenJobs, sub: 'No active reqs' },
+        ].map((card) => (
+          <div
+            key={card.label}
+            className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm"
+          >
+            <div className="text-2xl font-semibold tabular-nums text-gray-900">
+              {card.value}
+            </div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mt-1">
+              {card.label}
+            </div>
+            <div className="text-[11px] text-gray-400">{card.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="rounded-2xl border-gray-200 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">BD pipeline stages</CardTitle>
+            <CardDescription>Companies by status</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {chartData.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-16">No companies</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={60} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <NeedsAttentionCard
+          items={stats.needsAttention.filter((i) => i.type === 'company')}
+        />
+      </div>
+
+      <Link href="/dashboard/companies" className="text-sm font-medium text-blue-600 hover:underline">
+        Open companies →
+      </Link>
+    </div>
   );
 }
 
-// ============================================================================
-// RecentActivityTable Component
-// ============================================================================
+// ─── Sources ─────────────────────────────────────────────────────────────────
 
-interface RecentActivityTableProps {
-  events: EventStats;
-}
+function SourcesTab({ stats }: { stats: ReportingStats }) {
+  const data = stats.sources.slice(0, 10);
 
-/**
- * RecentActivityTable - Table of recent candidate events
- */
-export function RecentActivityTable({ events }: RecentActivityTableProps) {
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  };
-
-  const getEventBadge = (eventType: string) => {
-    const type = eventType.toLowerCase();
-    if (type.includes('stage') || type.includes('status')) {
-      return <Badge variant="default">Stage Change</Badge>;
-    }
-    if (type.includes('note') || type.includes('comment')) {
-      return <Badge variant="secondary">Note</Badge>;
-    }
-    if (type.includes('email')) {
-      return <Badge variant="outline">Email</Badge>;
-    }
-    if (type.includes('meeting') || type.includes('interview')) {
-      return <Badge className="bg-purple-500">Interview</Badge>;
-    }
-    return <Badge variant="outline">{eventType}</Badge>;
-  };
-
-  if (events.events.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Latest candidate events</CardDescription>
+  return (
+    <div className="space-y-4">
+      <Card className="rounded-2xl border-gray-200 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Source quality</CardTitle>
+          <CardDescription>
+            Volume vs interview rate and placement rate (not just headcount)
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex h-40 items-center justify-center text-muted-foreground">
-            <div className="text-center">
-              <Activity className="mx-auto h-8 w-8 mb-2 opacity-50" />
-              <p>No recent activity</p>
-            </div>
-          </div>
+          {data.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-16">No source data</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={data} margin={{ bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="count" name="Candidates" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="interviewing" name="Interview+" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="placed" name="Placed" fill="#10b981" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
-    );
-  }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Recent Activity</CardTitle>
-        <CardDescription>Latest candidate events</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b text-left text-sm text-muted-foreground">
-                <th className="pb-2 font-medium">Date</th>
-                <th className="pb-2 font-medium">Event</th>
-                <th className="pb-2 font-medium">Title</th>
-                <th className="pb-2 font-medium">By</th>
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-100 bg-gray-50/80">
+              <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                Source
+              </th>
+              <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                Candidates
+              </th>
+              <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                Interview+
+              </th>
+              <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                Interview rate
+              </th>
+              <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                Placed
+              </th>
+              <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                Placement rate
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {stats.sources.map((s: SourceQuality) => (
+              <tr key={s.source} className="hover:bg-gray-50/80">
+                <td className="px-4 py-3 font-medium text-gray-900">{s.label}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{s.count}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{s.interviewing}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{s.interviewRate}%</td>
+                <td className="px-4 py-3 text-right tabular-nums">{s.placed}</td>
+                <td className="px-4 py-3 text-right tabular-nums font-medium text-emerald-700">
+                  {s.placementRate}%
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {events.events.slice(0, 10).map((event, index) => (
-                <tr key={event.id || index} className="border-b last:border-0">
-                  <td className="py-3 text-sm">{formatDate(event.createdAt)}</td>
-                  <td className="py-3">{getEventBadge(event.eventType)}</td>
-                  <td className="py-3 text-sm font-medium">{event.title}</td>
-                  <td className="py-3 text-sm text-muted-foreground">
-                    {event.createdBy}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
+            ))}
+            {stats.sources.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-4 py-10 text-center text-gray-500">
+                  No sources recorded
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Activity ────────────────────────────────────────────────────────────────
+
+function ActivityTab({ stats }: { stats: ReportingStats }) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <NeedsAttentionCard items={stats.needsAttention} />
+        <Card className="rounded-2xl border-gray-200 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Activity className="h-4 w-4 text-blue-600" />
+              Recent activity
+            </CardTitle>
+            <CardDescription>Latest candidate events</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 max-h-[480px] overflow-y-auto">
+            {stats.recentEvents.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-10">
+                No recent events found
+              </p>
+            ) : (
+              stats.recentEvents.map((ev) => (
+                <Link
+                  key={`${ev.id}-${ev.createdAt}`}
+                  href={ev.href || `/dashboard/candidates/${ev.candidateId}`}
+                  className="block rounded-xl border border-gray-100 px-3 py-2.5 hover:bg-gray-50"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-gray-900 truncate">
+                      {ev.title}
+                    </span>
+                    <Badge variant="outline" className="text-[10px] shrink-0">
+                      {ev.eventType}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {ev.createdAt
+                      ? new Date(ev.createdAt).toLocaleString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })
+                      : '—'}
+                    {ev.createdBy ? ` · ${ev.createdBy}` : ''}
+                  </div>
+                </Link>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }
