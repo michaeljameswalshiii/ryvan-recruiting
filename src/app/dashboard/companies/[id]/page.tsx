@@ -334,7 +334,7 @@ function OverviewTab({
   onViewContacts?: () => void;
 }) {
   // Get primary contact from contacts array
-  const contacts = company.contacts || [];
+  const contacts = Array.isArray(company.contacts) ? company.contacts : [];
   const primaryContact = contacts.find((c: any) => c.isPrimary) || contacts[0];
 
   return (
@@ -612,7 +612,7 @@ function ContactsTab({ company, leads, onEmailClick }: { company: any; leads: an
   const [deletingContact, setDeletingContact] = useState<any>(null);
   const removeContactMutation = useRemoveContact();
 
-  const contacts = company.contacts || [];
+  const contacts = Array.isArray(company.contacts) ? company.contacts : [];
 
   const handleEdit = (contact: any) => {
     setEditingContact(contact);

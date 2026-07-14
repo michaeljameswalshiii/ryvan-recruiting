@@ -46,8 +46,9 @@ export default function ContactModal({
     ? (value: boolean) => controlledOnOpenChange?.(value)
     : setInternalOpen;
 
-  // Fetch companies for dropdown
-  const { data: companies = [], isLoading: isLoadingCompanies } = useClients();
+  // Fetch companies for dropdown (useClients always returns an array)
+  const { data: companiesData = [], isLoading: isLoadingCompanies } = useClients();
+  const companies = Array.isArray(companiesData) ? companiesData : [];
 
   // Form state - include companyId
   const [formData, setFormData] = useState({
@@ -73,7 +74,7 @@ export default function ContactModal({
       }
       
       // Sort companies alphabetically
-      const sortedCompanies = [...companies].sort((a, b) => 
+      const sortedCompanies = [...companies].sort((a: any, b: any) => 
         (a.name || "").localeCompare(b.name || "")
       );
       

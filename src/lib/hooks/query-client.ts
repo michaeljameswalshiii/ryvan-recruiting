@@ -18,11 +18,23 @@ export {
   useRemoveContact,
 } from './contact-mutations';
 
-// Clients Query (for list pages)
+/** Normalize getClients() which returns either an array or `{ clients: [] }`. */
+function normalizeClientsList(allData: unknown): any[] {
+  if (Array.isArray(allData)) return allData;
+  if (allData && typeof allData === 'object' && Array.isArray((allData as any).clients)) {
+    return (allData as any).clients;
+  }
+  return [];
+}
+
+// Clients Query (for list pages) — always returns a client array
 export function useClients() {
   return useQuery({
     queryKey: clientKeys.lists(),
-    queryFn: getClients,
+    queryFn: async () => {
+      const allData = await getClients();
+      return normalizeClientsList(allData);
+    },
   });
 }
 
@@ -31,8 +43,7 @@ export function useClient(clientId: string) {
   return useQuery({
     queryKey: clientKeys.detail(clientId),
     queryFn: async () => {
-      const allData = await getClients();
-      const companies = Array.isArray(allData) ? allData : allData?.clients || [];
+      const companies = normalizeClientsList(await getClients());
 
       const found = companies.find(
         (c: any) =>
