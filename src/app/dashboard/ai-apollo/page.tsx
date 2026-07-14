@@ -74,9 +74,9 @@ interface JobResult {
 }
 
 const quickActions = [
-  "Find construction companies in Boca Raton",
+  "Find Python developers in Jacksonville Florida",
   "Find software companies in South Florida",
-  "Who are the top recruiting strategies for tech startups?",
+  "Find construction companies in Boca Raton",
   "Help me write an outreach email to a hiring manager",
 ];
 
@@ -308,7 +308,7 @@ Make "optimizedQuery" as effective as possible for Apollo's search engine.`;
     ]);
   }, []);
 
-  // Chat functions
+  // Chat functions — sourcing intents run real Apollo search via /api/apollo
   const sendMessage = async (content: string) => {
     if (!content.trim()) return;
 
@@ -322,35 +322,91 @@ Make "optimizedQuery" as effective as possible for Apollo's search engine.`;
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    setSearchError("");
 
     const chatMessages = messages.slice(-6).map((m) => ({ 
       role: m.role as "user" | "assistant", 
       content: m.content 
     }));
 
-    const res = await fetch("/api/apollo", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        message: content,
-        messages: chatMessages,
-        useSearch: false 
-      }),
-    });
-const result = await res.json();
+    try {
+      const res = await fetch("/api/apollo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          message: content,
+          messages: chatMessages,
+          // Hint server to treat as search when it's clearly sourcing
+          query: undefined,
+          per_page: 15,
+        }),
+      });
+      const result = await res.json();
+      setRawResponse(result);
 
-    // Store raw response for debug panel
-    setRawResponse(result);
+      // If Apollo returned people, load them into People Search tab too
+      const peopleList = Array.isArray(result.people)
+        ? result.people
+        : Array.isArray(result.results)
+          ? result.results
+          : [];
 
-    const assistantMessage: Message = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content: result.error || result.response || "I couldn't generate a response. Please try again.",
-      timestamp: new Date(),
-    };
+      if (peopleList.length > 0) {
+        const mapped: PersonResult[] = peopleList.map((p: any) => ({
+          id: p.id,
+          name: p.name || [p.first_name, p.last_name].filter(Boolean).join(" "),
+          first_name: p.first_name,
+          last_name: p.last_name,
+          title: p.title || p.headline,
+          company:
+            typeof p.company === "string"
+              ? p.company
+              : p.company?.name || p.organization || p.organization_name,
+          email: p.email,
+          phone: p.phone || p.phone_number,
+          linkedin_url: p.linkedin_url,
+          city: p.city,
+          state: p.state,
+          country: p.country,
+          industry: p.industry,
+        }));
+        setPeopleResults(mapped);
+        setPeopleQuery(content);
+        saveToHistory(content);
+        toast.success(`${mapped.length} people found — also loaded in People Search tab`);
+      }
 
-    setMessages((prev) => [...prev, assistantMessage]);
-    setIsLoading(false);
+      if (result.error && !result.response) {
+        setSearchError(result.error);
+      }
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content:
+          result.response ||
+          result.error ||
+          "I couldn't generate a response. Try the **People Search** tab for direct Apollo results.",
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err: any) {
+      const msg = err?.message || "Chat request failed";
+      setSearchError(msg);
+      toast.error(msg);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: `Error: ${msg}. Use the **People Search** tab to search Apollo directly.`,
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const copyToClipboard = (content: string, id: string) => {
