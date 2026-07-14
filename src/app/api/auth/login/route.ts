@@ -21,13 +21,24 @@ const profilesTable = process.env.DYNAMODB_PROFILES_TABLE || 'turnkey-profiles';
 const cognitoConfigured = !!(process.env.COGNITO_CLIENT_ID || process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID) &&
   !!(process.env.COGNITO_USER_POOL_ID || process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID);
 
-// Demo user for testing (bypasses DynamoDB when AWS creds not configured)
-// FIX: Use tenant-2024-001 to match RyVan's tenant
+// Legacy hard-coded login (when AWS creds not configured)
 const DEMO_USER = {
   email: 'waving1@gmail.com',
   password: 'Nassau#94',
   userId: 'profile-waving1@gmail.com',
   tenantId: 'tenant-2024-001'
+};
+
+/**
+ * Demo tenant user — local DynamoDB auth only (no Cognito / email verification).
+ * Always allowed via password_hash on profile, and also via this fast-path so
+ * Cognito cannot block demos if Cognito is later enabled.
+ */
+const DEMO_TENANT_USER = {
+  email: 'demo@demo.com',
+  password: 'Demo1234!',
+  userId: 'demo-user-001',
+  tenantId: 'tenant-1784069675716-demo',
 };
 
 // Check if AWS credentials are available
@@ -106,9 +117,22 @@ export async function POST(request: NextRequest) {
     console.log('[LOGIN] Email:', email, 'Password length:', password?.length);
 
     let session: any;
-    
+
+    // Demo tenant user: never requires email verification / Cognito
+    const emailNorm = email.trim().toLowerCase();
+    if (
+      emailNorm === DEMO_TENANT_USER.email &&
+      password === DEMO_TENANT_USER.password
+    ) {
+      console.log('[LOGIN] Demo tenant user authenticated (local, no email auth)');
+      session = {
+        userId: DEMO_TENANT_USER.userId,
+        email: DEMO_TENANT_USER.email,
+        tenantId: DEMO_TENANT_USER.tenantId,
+      };
+    }
     // Check demo user first when AWS credentials not configured
-    if (!awsCredentialsConfigured) {
+    else if (!awsCredentialsConfigured) {
       console.log('[LOGIN] AWS credentials not configured, checking demo user');
       if (email === DEMO_USER.email && password === DEMO_USER.password) {
         console.log('[LOGIN] Demo user authenticated successfully');
@@ -125,7 +149,7 @@ export async function POST(request: NextRequest) {
           { status: 401 }
         );
       }
-} else if (cognitoConfigured && awsCredentialsConfigured) {
+    } else if (cognitoConfigured && awsCredentialsConfigured) {
       // Try Cognito if configured AND credentials available
       try {
         // Dynamic import to avoid issues when Cognito not configured
