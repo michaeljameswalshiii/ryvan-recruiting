@@ -1208,7 +1208,7 @@ try {
       cost,
     });
 
-    // Log to DynamoDB for dashboard usage tracking
+    // Log to DynamoDB for dashboard usage tracking (app-level AI usage feed)
     logBedrockUsage({
       modelId: `${provider}:${usedModel}`,
       inputTokens: promptTokens,
@@ -1216,7 +1216,10 @@ try {
       queryPreview: lastUserQuery.substring(0, 200),
       toolsUsed,
       latencyMs,
-    }).catch(err => console.error('[USAGE] Failed to log:', err));
+      tenantId,
+      userId,
+      provider,
+    }).catch((err) => console.error('[USAGE] Failed to log:', err));
 
     const response = NextResponse.json({
       response: completion,

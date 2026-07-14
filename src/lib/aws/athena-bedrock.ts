@@ -168,23 +168,37 @@ export async function logBedrockUsage(params: {
   queryPreview: string;
   toolsUsed: string[];
   latencyMs: number;
+  /** Optional overrides when session is missing (e.g. from request headers) */
+  tenantId?: string | null;
+  userId?: string | null;
+  userEmail?: string | null;
+  provider?: string;
 }): Promise<void> {
   try {
-    const tenantId = await getSessionTenantId();
-    const userId = await getSessionUserId();
-    const userEmail = await getSessionUserEmail() || 'anonymous';
-    
-    if (!tenantId || !userId) {
-      console.log('[USAGE] Skipping log - no session');
-      return;
-    }
-    
+    const tenantId =
+      params.tenantId || (await getSessionTenantId()) || 'default';
+    const userId =
+      params.userId || (await getSessionUserId()) || 'anonymous';
+    const userEmail =
+      params.userEmail ||
+      (await getSessionUserEmail()) ||
+      'anonymous';
+
     const timestamp = new Date().toISOString();
-    const estimatedCost = calculateCost(params.modelId, params.inputTokens, params.outputTokens);
-    
+    // Unique SK so concurrent calls don't overwrite each other
+    const unique =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID().slice(0, 8)
+        : Math.random().toString(36).slice(2, 10);
+    const estimatedCost = calculateCost(
+      params.modelId,
+      params.inputTokens,
+      params.outputTokens
+    );
+
     const record: BedrockUsageRecord = {
       PK: `TENANT#${tenantId}`,
-      SK: `USAGE#${timestamp}`,
+      SK: `USAGE#${timestamp}#${unique}`,
       tenantId,
       userId,
       userEmail,
@@ -193,16 +207,23 @@ export async function logBedrockUsage(params: {
       outputTokens: params.outputTokens,
       totalTokens: params.inputTokens + params.outputTokens,
       estimatedCost,
-      queryPreview: params.queryPreview.substring(0, 200),
-      toolsUsed: params.toolsUsed,
-      latencyMs: params.latencyMs,
+      queryPreview: (params.queryPreview || '').substring(0, 200),
+      toolsUsed: params.toolsUsed || [],
+      latencyMs: params.latencyMs || 0,
       timestamp,
     };
-    
+
     await putItem(bedrockUsageTable, record);
-    console.log('[USAGE] Logged:', params.modelId, params.inputTokens, params.outputTokens);
+    console.log(
+      '[USAGE] Logged:',
+      params.provider || 'bedrock',
+      params.modelId,
+      params.inputTokens,
+      params.outputTokens,
+      `$${estimatedCost.toFixed(4)}`
+    );
   } catch (error) {
-console.error('[USAGE] Failed to log:', error);
+    console.error('[USAGE] Failed to log:', error);
   }
 }
 
@@ -279,28 +300,29 @@ export async function getBedrockUsageSummary(
   const { start, end } = getDateRange(period);
   
   try {
-    const records = await queryItems<BedrockUsageRecord>(
+    const { items: records } = await queryItems<BedrockUsageRecord>(
       bedrockUsageTable,
       'PK = :pk AND SK BETWEEN :start AND :end',
       {
         ':pk': `TENANT#${tenantId}`,
+        // Inclusive upper bound: pad end so USAGE#timestamp#uuid still matches
         ':start': `USAGE#${start}`,
-        ':end': `USAGE#${end}`,
+        ':end': `USAGE#${end}~`,
       }
     );
-    
+
     let totalInvocations = 0;
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
     let estimatedCost = 0;
-    
+
     for (const record of records) {
       totalInvocations++;
-      totalInputTokens += record.inputTokens;
-      totalOutputTokens += record.outputTokens;
-      estimatedCost += record.estimatedCost;
+      totalInputTokens += record.inputTokens || 0;
+      totalOutputTokens += record.outputTokens || 0;
+      estimatedCost += record.estimatedCost || 0;
     }
-    
+
     return {
       totalInvocations,
       totalInputTokens,
@@ -343,37 +365,37 @@ export async function getUsageByUser(
   const { start, end } = getDateRange(period);
   
   try {
-    const records = await queryItems<BedrockUsageRecord>(
+    const { items: records } = await queryItems<BedrockUsageRecord>(
       bedrockUsageTable,
       'PK = :pk AND SK BETWEEN :start AND :end',
       {
         ':pk': `TENANT#${tenantId}`,
         ':start': `USAGE#${start}`,
-        ':end': `USAGE#${end}`,
+        ':end': `USAGE#${end}~`,
       }
     );
-    
+
     // Group by user
     const byUserMap = new Map<string, UsageByUser>();
-    
+
     for (const record of records) {
       const existing = byUserMap.get(record.userId);
-      
+
       if (existing) {
         existing.invocations++;
-        existing.totalTokens += record.totalTokens;
-        existing.estimatedCost += record.estimatedCost;
+        existing.totalTokens += record.totalTokens || 0;
+        existing.estimatedCost += record.estimatedCost || 0;
       } else {
         byUserMap.set(record.userId, {
           userId: record.userId,
           userEmail: record.userEmail,
           invocations: 1,
-          totalTokens: record.totalTokens,
-          estimatedCost: record.estimatedCost,
+          totalTokens: record.totalTokens || 0,
+          estimatedCost: record.estimatedCost || 0,
         });
       }
     }
-    
+
     // Convert to array and sort
     return Array.from(byUserMap.values())
       .sort((a, b) => b.invocations - a.invocations)
@@ -399,37 +421,39 @@ export async function getUsageByModel(
   const { start, end } = getDateRange(period);
   
   try {
-    const records = await queryItems<BedrockUsageRecord>(
+    const { items: records } = await queryItems<BedrockUsageRecord>(
       bedrockUsageTable,
       'PK = :pk AND SK BETWEEN :start AND :end',
       {
         ':pk': `TENANT#${tenantId}`,
         ':start': `USAGE#${start}`,
-        ':end': `USAGE#${end}`,
+        ':end': `USAGE#${end}~`,
       }
     );
-    
+
     // Group by model
     const byModelMap = new Map<string, UsageByModel>();
-    
+
     for (const record of records) {
       const existing = byModelMap.get(record.modelId);
-      
+
       if (existing) {
         existing.invocations++;
-        existing.totalTokens += record.totalTokens;
-        existing.estimatedCost += record.estimatedCost;
+        existing.totalTokens += record.totalTokens || 0;
+        existing.estimatedCost += record.estimatedCost || 0;
       } else {
         byModelMap.set(record.modelId, {
           modelId: record.modelId,
           invocations: 1,
-          totalTokens: record.totalTokens,
-          estimatedCost: record.estimatedCost,
+          totalTokens: record.totalTokens || 0,
+          estimatedCost: record.estimatedCost || 0,
         });
       }
     }
-    
-    return Array.from(byModelMap.values()).sort((a, b) => b.invocations - a.invocations);
+
+    return Array.from(byModelMap.values()).sort(
+      (a, b) => b.invocations - a.invocations
+    );
   } catch (error) {
     console.error('[USAGE] getUsageByModel error:', error);
     return [];
@@ -453,28 +477,28 @@ export async function getRecentCalls(
   const { start, end } = getDateRange(period);
   
   try {
-    const records = await queryItems<BedrockUsageRecord>(
+    const { items: records } = await queryItems<BedrockUsageRecord>(
       bedrockUsageTable,
       'PK = :pk AND SK BETWEEN :start AND :end',
       {
         ':pk': `TENANT#${tenantId}`,
         ':start': `USAGE#${start}`,
-        ':end': `USAGE#${end}`,
+        ':end': `USAGE#${end}~`,
       }
     );
-    
+
     // Sort by timestamp descending and take limit
     const sorted = records
-      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
       .slice(0, limit);
-    
+
     return sorted.map((record, idx) => ({
       id: `${record.SK}-${idx}`,
       timestamp: record.timestamp,
       modelId: record.modelId,
-      inputTokens: record.inputTokens,
-      outputTokens: record.outputTokens,
-      estimatedCost: record.estimatedCost,
+      inputTokens: record.inputTokens || 0,
+      outputTokens: record.outputTokens || 0,
+      estimatedCost: record.estimatedCost || 0,
       userId: record.userId,
       userEmail: record.userEmail,
       queryPreview: record.queryPreview,

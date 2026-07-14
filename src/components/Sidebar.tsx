@@ -36,7 +36,7 @@ const debugItems = [
   { name: 'AI Apollo', href: '/dashboard/ai-apollo', icon: Bug },
   { name: 'AI Assistant', href: '/dashboard/ai-assistant', icon: Bug },
   { name: 'Issues', href: '/dashboard/issues', icon: Bug },
-  { name: 'Usage', href: '/dashboard/usage', icon: Bug },
+  { name: 'Usage', href: '/dashboard/usage', icon: BarChart3 },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
   { name: 'Dynamo Search Tool', href: '/dashboard/dynamo-search', icon: Database },
 ];
