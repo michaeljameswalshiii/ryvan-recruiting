@@ -40,6 +40,8 @@ export default async function CandidateDetailPage({ params }: Props) {
     resumeFileName: (c.resume_file_name || c.resumeFileName || "") as string,
     resumeKey: (c.resume_key || c.resumeKey || c.resume_s3_key || "") as string,
     summary: (c.summary || "") as string,
+    /** Profile notes field (includes careers apply message) */
+    notes: (c.notes || "") as string,
     company: (c.company || c.companyName || c.current_company || "") as string,
     skills: Array.isArray(c.skills)
       ? c.skills.filter((s: any) => typeof s === "string")

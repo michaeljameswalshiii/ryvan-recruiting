@@ -620,11 +620,22 @@ export default function JobDetailPage() {
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-sm text-gray-900 truncate">{name}</p>
                         <p className="text-xs text-gray-500 truncate">
-                          {lc.candidateEmail || lc.notes || "No email"}
+                          {lc.candidateEmail || "No email"}
                           {lc.dateApplied
                             ? ` · Applied ${new Date(lc.dateApplied).toLocaleDateString()}`
                             : null}
                         </p>
+                        {lc.notes &&
+                          String(lc.notes).trim() &&
+                          String(lc.notes).trim() !==
+                            "Applied via careers site" && (
+                            <p className="mt-1 text-xs text-slate-700 line-clamp-2 whitespace-pre-wrap">
+                              <span className="font-medium text-slate-500">
+                                Message:{" "}
+                              </span>
+                              {String(lc.notes)}
+                            </p>
+                          )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">

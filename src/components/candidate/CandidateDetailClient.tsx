@@ -577,6 +577,16 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   value={contactInfo.fullAddress || '—'}
                 />
               </div>
+              {typeof safe.notes === 'string' && safe.notes.trim() && (
+                <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/80 p-4">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-900/80">
+                    Application message / notes
+                  </h3>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-amber-950">
+                    {safe.notes}
+                  </p>
+                </div>
+              )}
             </section>
 
             {/* Pipeline stage */}

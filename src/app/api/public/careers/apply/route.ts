@@ -24,6 +24,7 @@ import {
   jsonWithCors,
   optionsCors,
 } from "@/lib/careers/public";
+import { addNoteToCandidate } from "@/lib/events/candidate-events";
 
 const MAX_RESUME_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_EXT = [".pdf", ".docx", ".doc"];
@@ -296,13 +297,39 @@ export async function POST(request: NextRequest) {
       location: job.location || "",
     });
 
+    // Surface candidate message in Activity timeline (not only buried in notes field)
+    if (lead.id) {
+      try {
+        const activityText = [
+          message
+            ? `Careers application message for "${job.title}":\n\n${message}`
+            : `Applied via careers site for: ${job.title}`,
+          linkedinUrl ? `LinkedIn: ${linkedinUrl}` : "",
+          resumeFileName ? `Resume attached: ${resumeFileName}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        await addNoteToCandidate(lead.id, activityText, "website-careers", {
+          noteType: "Application",
+          stage: "sourced",
+          jobId,
+          jobTitle: job.title,
+        });
+      } catch (noteErr) {
+        console.warn("[careers/apply] activity note warning:", noteErr);
+      }
+    }
+
     try {
       await linkCandidateToJob(tenantId, jobId, {
         candidateId: lead.id!,
         candidateName: lead.name,
         candidateEmail: lead.email || email,
         stage: "sourced",
-        notes: message ? message.slice(0, 500) : "Applied via careers site",
+        // Keep full message on the job link so it shows under the candidate on the job page
+        notes: message
+          ? message.slice(0, 1000)
+          : "Applied via careers site",
       });
     } catch (linkErr) {
       console.warn("[careers/apply] link warning:", linkErr);
