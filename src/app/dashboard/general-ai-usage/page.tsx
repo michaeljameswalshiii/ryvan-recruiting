@@ -369,13 +369,16 @@ export default function GeneralAiUsagePage() {
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600">
               <Wrench className="h-3 w-3" />
-              Tools enabled
+              Research + CRM write
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900">
+              Confirm before save
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-500">
-            Open-ended assistant with multi-turn context, file attachments, and
-            research tools. The cheapest capable model is chosen automatically
-            (Haiku for simple, Sonnet for files/tools/complex).
+            Chat, research, and CRM actions (candidates, companies, jobs). Write
+            actions ask you to confirm before saving. Models auto-route (Haiku /
+            Sonnet).
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">

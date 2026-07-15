@@ -11,6 +11,7 @@ import { executeApolloSearch, APOLLO_TOOL_NAME, APOLLO_TOOL_DESCRIPTION } from "
 import { executeApolloCompanySearch, APOLLO_COMPANY_TOOL_NAME, APOLLO_COMPANY_TOOL_DESCRIPTION } from "./apollo-company";
 import { executeTavilySearch, TAVILY_TOOL_NAME, TAVILY_TOOL_DESCRIPTION } from "./tavily";
 import { executeInternalData, INTERNAL_TOOL_NAME, INTERNAL_TOOL_DESCRIPTION } from "./internal";
+import { CRM_WRITE_TOOLS } from "./crm-write";
 
 // ============================================================================
 // Registry
@@ -52,6 +53,15 @@ function initializeRegistry(): void {
     description: INTERNAL_TOOL_DESCRIPTION,
     execute: executeInternalData,
   };
+
+  // CRM write tools (create/update candidate, company, job, stages, link)
+  for (const t of CRM_WRITE_TOOLS) {
+    TOOL_REGISTRY[t.name] = {
+      name: t.name,
+      description: t.description,
+      execute: t.execute as ToolDefinition["execute"],
+    };
+  }
 }
 
 // Initialize on module load

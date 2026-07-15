@@ -15,6 +15,7 @@ import { formatApolloCompany } from "./apollo-company";
 import { executeTavilySearch, TAVILY_TOOL_NAME, TAVILY_TOOL_DESCRIPTION } from "./tavily";
 import { formatTavilyResult } from "./tavily";
 import { executeInternalData, INTERNAL_TOOL_NAME, INTERNAL_TOOL_DESCRIPTION } from "./internal";
+import { CRM_WRITE_TOOLS } from "./crm-write";
 import { executeTool, getTools, getTool, hasTool, getToolDescription, TOOL_NAMES } from "./registry";
 
 // ============================================================================
@@ -39,6 +40,9 @@ export type { TavilySearchParams, TavilySearchResultData, TavilyResult } from ".
 // Internal
 export { executeInternalData, INTERNAL_TOOL_NAME, INTERNAL_TOOL_DESCRIPTION } from "./internal";
 export type { InternalDataType, InternalDataAction, InternalDataParams } from "./internal";
+
+// CRM write tools
+export { CRM_WRITE_TOOLS } from "./crm-write";
 
 // Registry
 export { executeTool, getTools, getTool, hasTool, getToolDescription, TOOL_NAMES };
@@ -108,16 +112,26 @@ export function getToolSchemas(): Array<{
     },
     {
       name: "internal_data",
-      description: "Get the user's existing leads, clients, or pipeline data from the database.",
+      description:
+        "Read ATS data: leads/candidates, clients, jobs, pipeline. action list|get.",
       input_schema: {
         type: "object",
         properties: {
-          data_type: { type: "string", description: "Type: leads, clients, or pipeline" },
-          action: { type: "string", description: "Action: list, get, or count" },
+          data_type: {
+            type: "string",
+            description: "leads | candidates | clients | jobs | pipeline",
+          },
+          action: { type: "string", description: "list, get, or count" },
+          id: { type: "string", description: "id when action is get" },
         },
         required: ["data_type"],
       },
     },
+    ...CRM_WRITE_TOOLS.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.schema,
+    })),
   ];
 }
 

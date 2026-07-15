@@ -11,6 +11,7 @@ import { ToolResult, ToolContext } from "./types";
 import { getAllLeads, getLeadById } from "../../db/repositories/lead-repository";
 import { getAllClients, getClientById } from "../../db/repositories/client-repository";
 import { getAllPipeline, getPipelineById } from "../../db/repositories/pipeline-repository";
+import { getAllJobs, getJobById } from "../../db/repositories/job-repository";
 
 // ============================================================================
 // Types
@@ -19,7 +20,7 @@ import { getAllPipeline, getPipelineById } from "../../db/repositories/pipeline-
 /**
  * Internal data types
  */
-export type InternalDataType = "leads" | "clients" | "pipeline";
+export type InternalDataType = "leads" | "clients" | "pipeline" | "jobs" | "candidates";
 
 /**
  * Internal data actions
@@ -30,8 +31,9 @@ export type InternalDataAction = "list" | "get";
  * Tool metadata
  */
 export const INTERNAL_TOOL_NAME = "internal_data";
-export const INTERNAL_TOOL_DESCRIPTION = 
-  "Access your organization's internal data (leads, clients, pipeline). Requires tenant authentication.";
+export const INTERNAL_TOOL_DESCRIPTION =
+  "Read your organization's ATS data: leads/candidates, clients/companies, jobs, pipeline. " +
+  "Use list or get (with id). Requires sign-in. Read-only — use create_* / update_* tools to change data.";
 
 /**
  * Internal data input parameters
@@ -65,14 +67,22 @@ export async function executeInternalData(
     };
   }
   
-  // Validate data type
-  const validTypes: InternalDataType[] = ["leads", "clients", "pipeline"];
+  // Validate data type (candidates is alias for leads)
+  const validTypes: InternalDataType[] = [
+    "leads",
+    "candidates",
+    "clients",
+    "pipeline",
+    "jobs",
+  ];
   if (!input.data_type || !validTypes.includes(input.data_type)) {
     return {
       success: false,
       error: `Invalid data type. Must be one of: ${validTypes.join(", ")}`,
     };
   }
+  const dataType =
+    input.data_type === "candidates" ? "leads" : input.data_type;
   
   // Validate action
   const validActions: InternalDataAction[] = ["list", "get"];
@@ -95,10 +105,22 @@ export async function executeInternalData(
     const tenantId = context.tenantId;
     let data: unknown;
     
-    switch (input.data_type) {
+    switch (dataType) {
       case "leads":
         if (input.action === "list") {
-          data = await getAllLeads(tenantId);
+          const leads = await getAllLeads(tenantId);
+          // Compact list for model context
+          data = Array.isArray(leads)
+            ? leads.slice(0, 80).map((l) => ({
+                id: l.id,
+                name: l.name,
+                email: l.email,
+                title: l.title,
+                status: l.status,
+                phone: l.phone,
+                location: l.location,
+              }))
+            : [];
         } else {
           data = await getLeadById(tenantId, input.id!);
         }
@@ -106,13 +128,42 @@ export async function executeInternalData(
         
       case "clients":
         if (input.action === "list") {
-          data = await getAllClients(tenantId);
+          const clients = await getAllClients(tenantId);
+          data = Array.isArray(clients)
+            ? clients.slice(0, 80).map((c) => ({
+                id: c.id,
+                name: c.name,
+                industry: c.industry,
+                city: c.city,
+                state: c.state,
+                status: c.status,
+              }))
+            : [];
         } else {
           data = await getClientById(tenantId, input.id!);
         }
         break;
+
+      case "jobs":
+        if (input.action === "list") {
+          const jobs = await getAllJobs(tenantId);
+          data = Array.isArray(jobs)
+            ? jobs.slice(0, 80).map((j) => ({
+                id: j.id,
+                title: j.title,
+                companyId: j.companyId,
+                companyName: j.companyName,
+                status: j.status,
+                location: j.location,
+                candidateCount: j.candidates?.length || 0,
+              }))
+            : [];
+        } else {
+          data = await getJobById(tenantId, input.id!);
+        }
+        break;
         
-case "pipeline":
+      case "pipeline":
         if (input.action === "list") {
           data = await getAllPipeline(tenantId);
         } else {

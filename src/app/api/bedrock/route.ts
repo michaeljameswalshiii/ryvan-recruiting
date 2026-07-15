@@ -27,6 +27,7 @@ import { logBedrockUsage } from "@/lib/aws/athena-bedrock";
 import { SYSTEM_PROMPTS, getBasePrompt } from "@/lib/prompts/bedrock-system";
 import { getClaudeAssistantPrompt } from "@/lib/prompts/claude-assistant";
 import { getToolSchemas, executeTool, ToolContext, ToolResult, ToolParams } from "@/lib/ai/tools";
+import { CRM_WRITE_TOOLS } from "@/lib/ai/tools/crm-write";
 import {
   getDecryptedAnthropicKey,
   getDecryptedGrokKey,
@@ -73,17 +74,35 @@ interface BedrockRequest {
   useSearch?: boolean;
 }
 
-const GENERAL_AI_SYSTEM_PROMPT = `You are a professional general-purpose AI assistant on AWS Bedrock (Claude models are auto-selected for cost and capability).
+const GENERAL_AI_SYSTEM_PROMPT = `You are a professional general-purpose AI assistant on AWS Bedrock with access to this recruiting ATS (Turnkey / RyVan).
 
-You help with a wide range of work: analysis, writing, research, brainstorming, document review, data interpretation, planning, and problem-solving. You are not limited to recruiting, though you may use recruiting tools when relevant.
+You help with analysis, writing, research, document review, AND operating the CRM when the user asks.
 
-Capabilities:
-- Reason carefully and maintain conversation context across turns
-- Honor revision requests ("shorter", "more formal", "fix the third point") using prior messages
-- Use tools when they improve the answer: people/company search (Apollo), web search (Tavily), and internal ATS data when the user asks about their own pipeline/leads/clients
-- When the user attaches file content, analyze it carefully and cite specifics from the attachment
-- Be clear, structured, and professional. Prefer actionable answers over fluff
-- If a tool fails or data is missing, say so and continue with what you know`;
+READ tools:
+- internal_data: list/get leads (candidates), clients (companies), jobs, pipeline
+- apollo / apollo_company_search: external people & company search
+- tavily: web search
+
+WRITE tools (CRM mutations — same data as the UI):
+- create_candidate, update_candidate, update_candidate_stage
+- create_company, update_company
+- create_job, update_job
+- link_candidate_to_job, update_job_candidate_stage
+
+CRITICAL confirmation rules for ALL write tools:
+1. First call the tool WITHOUT confirmed (or confirmed:false). You will get status "needs_confirmation" and a preview.
+2. Show the user a clear summary of what will change and ask them to confirm.
+3. Only after the user explicitly agrees (yes / confirm / go ahead / do it), call the SAME tool again with the same fields AND confirmed:true.
+4. NEVER claim data was saved until a tool returns status created/updated/linked/stage_updated.
+5. NEVER invent candidate_id, company_id, or job_id — look them up with internal_data first.
+6. Tenant isolation is automatic from the session; do not ask for tenant id.
+
+Other rules:
+- Maintain multi-turn context; honor revision requests
+- Use tools when they improve the answer
+- Analyze file attachments carefully when present
+- Be clear and professional; prefer actionable answers
+- If a tool fails, say so and continue with what you know`;
 
 /**
  * Tool result data from tool execution
@@ -369,7 +388,7 @@ function selectModelForGeneralAI(
   const longContent = q.length > 4000 || historyChars > 12000;
 
   const toolIntent =
-    /\b(search|find people|find companies|apollo|research|look up|linkedin|pipeline|candidates|leads|web search|latest news|tavily)\b/i.test(
+    /\b(search|find people|find companies|apollo|research|look up|linkedin|pipeline|candidates|leads|web search|latest news|tavily|create |add |update |move |link |save |job|company|client)\b/i.test(
       q
     );
 
@@ -478,6 +497,12 @@ interface BedrockTool {
  * Get tool schemas in Anthropic format
  */
 function getToolSchemasForBedrock(): BedrockTool[] {
+  const writeTools: BedrockTool[] = CRM_WRITE_TOOLS.map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: t.schema,
+  }));
+
   return [
     {
       name: "apollo",
@@ -519,17 +544,22 @@ function getToolSchemasForBedrock(): BedrockTool[] {
     },
     {
       name: "internal_data",
-      description: "Get the user's existing leads, clients, or pipeline data from the ATS database.",
+      description:
+        "Read ATS data: leads/candidates, clients/companies, jobs, pipeline. action list|get. Use before updates to find ids.",
       input_schema: {
         type: "object",
         properties: {
-          data_type: { type: "string", description: "Type: leads, clients, or pipeline" },
-          action: { type: "string", description: "Action: list or get" },
+          data_type: {
+            type: "string",
+            description: "leads | candidates | clients | jobs | pipeline",
+          },
+          action: { type: "string", description: "list or get" },
           id: { type: "string", description: "Record id when action is get" },
         },
         required: ["data_type", "action"],
       },
     },
+    ...writeTools,
   ];
 }
 
@@ -671,6 +701,19 @@ async function executeToolByName(
       return raw.length > 40000 ? raw.slice(0, 40000) + "\n…[truncated]" : raw;
     }
     return `Error: ${result.error || "Unknown error"}`;
+  }
+
+  // CRM write tools (create/update candidate, company, job, stages, link)
+  if (CRM_WRITE_TOOLS.some((t) => t.name === toolName)) {
+    const result = await executeTool(
+      toolName,
+      toolInput as ToolParams,
+      toolContext
+    );
+    if (result.success && result.data !== undefined) {
+      return JSON.stringify(result.data);
+    }
+    return `Error: ${result.error || "Write tool failed"}`;
   }
 
   if (toolName === "apollo_company_search" || toolName === "apollo_company") {
