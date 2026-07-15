@@ -25,9 +25,14 @@ export async function generateMetadata({ params }: Props) {
   const tenantId = getCareersTenantId(null);
   if (!tenantId) return { title: "Job | Careers" };
   const job = await getJobById(tenantId, id);
+  if (!job) return { title: "Job | Careers" };
+  // Use public projection so company names are not leaked in <meta>
+  const pub = toPublicJob(job, getAppBaseUrl());
   return {
-    title: job?.title ? `${job.title} | Careers` : "Job | Careers",
-    description: job?.description?.slice(0, 160) || "View role and apply",
+    title: `${pub.title} | Careers`,
+    description:
+      pub.description.replace(/\s+/g, " ").trim().slice(0, 160) ||
+      "View role and apply",
   };
 }
 

@@ -237,10 +237,11 @@ export function redactCompanyNames(
     out = out.replace(re, "our client");
   }
 
+  // Preserve newlines (needed for list parsing). Only collapse runs of spaces/tabs.
   out = out
-    .replace(/\bour client(?:[''\u2019]s)?(?:\s+our client(?:[''\u2019]s)?)+/gi, "our client")
-    .replace(/\s{2,}/g, " ")
-    .replace(/\s+([,.;:])/g, "$1");
+    .replace(/\bour client(?:[''\u2019]s)?(?:[ \t]+our client(?:[''\u2019]s)?)+/gi, "our client")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+([,.;:])/g, "$1");
 
   return out;
 }
