@@ -96,12 +96,17 @@ return useMutation({
       location?: string;
       salaryRange?: string;
       employmentType?: string;
+      showOnWebsite?: boolean;
     }) => {
       const formData = new FormData();
       formData.set('title', jobData.title);
       formData.set('companyId', jobData.companyId);
       formData.set('companyName', jobData.companyName);
       formData.set('status', jobData.status || 'Open');
+      formData.set(
+        'showOnWebsite',
+        jobData.showOnWebsite === true ? 'true' : 'false'
+      );
       
       if (jobData.description) formData.set('description', jobData.description);
       if (jobData.location) formData.set('location', jobData.location);
@@ -157,6 +162,7 @@ export function useUpdateJob() {
         companyId?: string;
         companyName?: string;
         status?: string;
+        showOnWebsite?: boolean;
       };
     }) => {
       const formData = new FormData();
@@ -168,6 +174,9 @@ export function useUpdateJob() {
       if (jobData.companyId) formData.set('companyId', jobData.companyId);
       if (jobData.companyName) formData.set('companyName', jobData.companyName);
       if (jobData.status) formData.set('status', jobData.status);
+      if (jobData.showOnWebsite !== undefined) {
+        formData.set('showOnWebsite', jobData.showOnWebsite ? 'true' : 'false');
+      }
       
       const result = await updateJobAction(jobId, formData);
       if (result.error) {

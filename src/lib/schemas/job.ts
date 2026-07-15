@@ -59,6 +59,13 @@ export const jobSchema = z.object({
   
   // Job status
   status: z.enum(jobStatuses).default('Open'),
+
+  /**
+   * When true, Open jobs appear on public /careers feed and embeds.
+   * When false, job stays internal even if Open.
+   * Undefined (legacy): treated as true so existing public jobs keep showing.
+   */
+  showOnWebsite: z.boolean().optional(),
   
   // Linked candidates
   candidates: z.array(linkedCandidateSchema).default([]),

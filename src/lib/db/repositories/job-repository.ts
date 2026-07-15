@@ -158,6 +158,8 @@ export async function createJob(tenantId: string, data: CreateJobInput): Promise
     companyId: data.companyId,
     companyName: data.companyName,
     status: data.status || 'Open',
+    // New jobs default off the public site until recruiter opts in
+    showOnWebsite: data.showOnWebsite === true,
     candidates: [],
     created_at: now,
     modified_at: now,
@@ -224,6 +226,11 @@ export async function updateJob(
     updates.push('#status = :status');
     values[':status'] = data.status;
     names['#status'] = 'status';
+  }
+  if (data.showOnWebsite !== undefined) {
+    updates.push('#showOnWebsite = :showOnWebsite');
+    values[':showOnWebsite'] = data.showOnWebsite === true;
+    names['#showOnWebsite'] = 'showOnWebsite';
   }
 
   if (updates.length === 0) {

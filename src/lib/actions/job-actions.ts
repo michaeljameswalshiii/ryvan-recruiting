@@ -237,6 +237,7 @@ export async function createJobAction(formData: FormData) {
     return { error: 'No tenant ID found. Please log in again.' };
   }
 
+  const showRaw = formData.get('showOnWebsite');
   const rawData = {
     title: formData.get('title') as string,
     description: formData.get('description') as string || '',
@@ -246,6 +247,9 @@ export async function createJobAction(formData: FormData) {
     companyId: formData.get('companyId') as string,
     companyName: formData.get('companyName') as string,
     status: formData.get('status') as string || 'Open',
+    showOnWebsite:
+      showRaw !== null &&
+      ['true', '1', 'yes'].includes(String(showRaw).toLowerCase()),
   };
 
   console.log('[createJobAction] rawData:', JSON.stringify(rawData));
@@ -288,6 +292,12 @@ export async function updateJobAction(jobId: string, formData: FormData) {
     if (value !== null && value !== undefined && value !== '') {
       rawData[field] = value;
     }
+  }
+
+  // Boolean: allow explicit false (FormData is always string)
+  if (formData.has('showOnWebsite')) {
+    const v = String(formData.get('showOnWebsite')).toLowerCase();
+    rawData.showOnWebsite = v === 'true' || v === '1' || v === 'yes';
   }
 
 try {

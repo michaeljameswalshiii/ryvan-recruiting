@@ -17,7 +17,7 @@ interface JobEditModalProps {
 }
 
 type JobDataType = {
-  [key: string]: string;
+  [key: string]: string | boolean;
 };
 
 export default function JobEditModal({ isOpen, onClose, job, onSuccess }: JobEditModalProps) {
@@ -31,6 +31,7 @@ export default function JobEditModal({ isOpen, onClose, job, onSuccess }: JobEdi
     employmentType: job.employmentType || 'Full-time',
     companyName: job.companyName || '',
     status: job.status || 'Open',
+    showOnWebsite: job.showOnWebsite !== false,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -56,12 +57,16 @@ export default function JobEditModal({ isOpen, onClose, job, onSuccess }: JobEdi
     if (formData.companyName?.trim() !== (job.companyName || '')) {
       jobData.companyName = formData.companyName.trim();
     }
-if (formData.status !== job.status) {
+    if (formData.status !== job.status) {
       jobData.status = formData.status;
     }
+    const wasShown = job.showOnWebsite !== false;
+    if (formData.showOnWebsite !== wasShown) {
+      jobData.showOnWebsite = formData.showOnWebsite;
+    }
 
-    // Extra safety: remove any remaining empty strings
-    Object.keys(jobData).forEach(key => {
+    // Extra safety: remove any remaining empty strings (keep booleans)
+    Object.keys(jobData).forEach((key) => {
       if (jobData[key] === '') delete jobData[key];
     });
 
@@ -74,7 +79,10 @@ if (formData.status !== job.status) {
     }
 
     try {
-      const result = await updateJob.mutateAsync({ jobId: job.id, jobData });
+      const result = await updateJob.mutateAsync({
+        jobId: job.id,
+        jobData: jobData as any,
+      });
       
       if (result && result.error) {
         throw new Error(result.error);
@@ -124,6 +132,23 @@ if (formData.status !== job.status) {
             <Label>Description</Label>
             <Textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} rows={6} />
           </div>
+
+          <label className="flex items-start gap-2 rounded-md border p-3 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4"
+              checked={formData.showOnWebsite}
+              onChange={(e) =>
+                setFormData({ ...formData, showOnWebsite: e.target.checked })
+              }
+            />
+            <span>
+              <span className="font-medium">Show on website</span>
+              <span className="block text-xs text-muted-foreground mt-0.5">
+                Public careers page and embeds (only while status is Open).
+              </span>
+            </span>
+          </label>
 
           <div className="flex justify-end gap-3">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>

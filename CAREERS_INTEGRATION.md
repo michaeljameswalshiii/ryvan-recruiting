@@ -85,9 +85,21 @@ On Squarespace: add a **button/link** “Careers” → `/careers`, or embed wit
 
 1. Create job in ATS (or General AI).  
 2. Set status **Open**.  
-3. It appears on `/careers` and any embed within seconds.  
-4. Set **Closed** / **On Hold** → it disappears from the public feed.  
-5. Applications show as candidates with source `website-careers`, linked to the job.
+3. Turn on **Show on website** (job detail page toggle, edit modal, or create form).  
+4. It appears on `/careers` and any embed within seconds.  
+5. Turn **Show on website** off → hidden from public feed even if still Open.  
+6. Set **Closed** / **On Hold** → also disappears from the public feed.  
+7. Applications show as candidates with source `website-careers`, linked to the job.
+
+### Visibility rules
+
+| Status | Show on website | Public careers? |
+|--------|-----------------|-----------------|
+| Open | On (or legacy unset) | **Yes** |
+| Open | Off | No |
+| Closed / On Hold | any | No |
+
+Legacy jobs without the field stay public while Open (so existing listings do not vanish). New jobs default **off** until you opt in.
 
 ## Security notes
 

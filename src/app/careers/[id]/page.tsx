@@ -5,7 +5,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getJobById } from "@/lib/db/repositories/job-repository";
-import { getCareersTenantId, getAppBaseUrl, toPublicJob } from "@/lib/careers/public";
+import {
+  getCareersTenantId,
+  getAppBaseUrl,
+  isJobListedOnWebsite,
+  toPublicJob,
+} from "@/lib/careers/public";
 import { CareersApplyForm } from "./apply-form";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +34,7 @@ export default async function CareersJobPage({ params }: Props) {
   if (!tenantId) notFound();
 
   const job = await getJobById(tenantId, id);
-  if (!job || (job.status || "").trim().toLowerCase() !== "open") notFound();
+  if (!job || !isJobListedOnWebsite(job)) notFound();
 
   const pub = toPublicJob(job, getAppBaseUrl());
 

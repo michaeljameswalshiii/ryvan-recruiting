@@ -65,6 +65,7 @@ export default function JobsPage() {
     description: '',
     salaryRange: '',
     status: 'Open',
+    showOnWebsite: false,
   });
 
   const handleCompanySelect = (companyId: string) => {
@@ -91,6 +92,7 @@ export default function JobsPage() {
         description: formData.description.trim(),
         salaryRange: formData.salaryRange.trim(),
         status: formData.status,
+        showOnWebsite: formData.showOnWebsite,
       });
 
       toast.success('Job created successfully!');
@@ -102,6 +104,7 @@ export default function JobsPage() {
         description: '',
         salaryRange: '',
         status: 'Open',
+        showOnWebsite: false,
       });
       refetch();
     } catch (err: any) {
@@ -277,6 +280,23 @@ export default function JobsPage() {
                 <option value="Closed">Closed</option>
               </select>
             </div>
+
+            <label className="flex items-start gap-2 rounded-md border border-input p-3 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4"
+                checked={formData.showOnWebsite}
+                onChange={(e) =>
+                  setFormData({ ...formData, showOnWebsite: e.target.checked })
+                }
+              />
+              <span>
+                <span className="font-medium">Show on website</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">
+                  List this job on the public careers page and embeds when status is Open.
+                </span>
+              </span>
+            </label>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>

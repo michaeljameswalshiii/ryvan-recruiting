@@ -5,7 +5,12 @@
 
 import Link from "next/link";
 import { getAllJobs } from "@/lib/db/repositories/job-repository";
-import { getCareersTenantId, getAppBaseUrl, toPublicJob } from "@/lib/careers/public";
+import {
+  getCareersTenantId,
+  getAppBaseUrl,
+  isJobListedOnWebsite,
+  toPublicJob,
+} from "@/lib/careers/public";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -27,9 +32,7 @@ export default async function CareersPage() {
     try {
       const all = await getAllJobs(tenantId);
       jobs = all
-        .filter(
-          (j) => j.id && (j.status || "").trim().toLowerCase() === "open"
-        )
+        .filter((j) => j.id && isJobListedOnWebsite(j))
         .map((j) => toPublicJob(j, baseUrl))
         .sort((a, b) => (b.postedAt || "").localeCompare(a.postedAt || ""));
     } catch (e) {

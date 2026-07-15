@@ -8,6 +8,8 @@ import {
   Building2,
   Calendar,
   DollarSign,
+  ExternalLink,
+  Globe,
   Loader2,
   MapPin,
   Pencil,
@@ -231,6 +233,30 @@ export default function JobDetailPage() {
     });
   };
 
+  /** Explicit true = on; false = off; undefined (legacy) = treated as on while Open */
+  const isShownOnWebsite = (job as any)?.showOnWebsite !== false;
+  const isOpenStatus =
+    String((job as any)?.status || "")
+      .trim()
+      .toLowerCase() === "open";
+
+  const onToggleShowOnWebsite = async (next: boolean) => {
+    if (!jobId) return;
+    try {
+      await updateJob.mutateAsync({
+        jobId,
+        jobData: { showOnWebsite: next },
+      });
+      toast.success(
+        next
+          ? "Job will appear on the public careers site (when Open)"
+          : "Job hidden from the public careers site"
+      );
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update website visibility");
+    }
+  };
+
   const linkedIds = useMemo(() => {
     return new Set(
       linkedCandidates.map((c: any) => c.candidateId).filter(Boolean)
@@ -374,6 +400,17 @@ export default function JobDetailPage() {
             >
               {formatStatusLabel(job.status)}
             </span>
+            {isShownOnWebsite && isOpenStatus ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+                <Globe className="h-3 w-3" />
+                On website
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                <Globe className="h-3 w-3" />
+                Not on website
+              </span>
+            )}
           </div>
         </div>
 
@@ -396,6 +433,38 @@ export default function JobDetailPage() {
                 <option value={job.status}>{job.status}</option>
               )}
           </select>
+
+          <label
+            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm cursor-pointer select-none ${
+              isShownOnWebsite
+                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                : "border-gray-200 bg-white text-gray-700"
+            } ${updateJob.isPending ? "opacity-60 pointer-events-none" : ""}`}
+            title="Open jobs with this on appear on /careers and Squarespace embeds"
+          >
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-gray-300"
+              checked={isShownOnWebsite}
+              disabled={updateJob.isPending}
+              onChange={(e) => void onToggleShowOnWebsite(e.target.checked)}
+            />
+            <Globe className="h-4 w-4 shrink-0" />
+            <span className="font-medium">Show on website</span>
+          </label>
+
+          {isShownOnWebsite && isOpenStatus && job.id && (
+            <a
+              href={`/careers/${job.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
+            >
+              <ExternalLink className="h-4 w-4" />
+              View public page
+            </a>
+          )}
+
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
             <Pencil className="h-4 w-4 mr-2" />
             Edit Job
@@ -813,6 +882,16 @@ export default function JobDetailPage() {
             <dl className="space-y-3 text-sm">
               <SnapshotRow label="Employment type" value={job.employmentType || "Full-time"} />
               <SnapshotRow label="Status" value={formatStatusLabel(job.status)} />
+              <SnapshotRow
+                label="Website"
+                value={
+                  isShownOnWebsite && isOpenStatus
+                    ? "Published on careers"
+                    : isShownOnWebsite
+                      ? "Flag on (set status Open to list)"
+                      : "Hidden from careers"
+                }
+              />
               <SnapshotRow label="Compensation" value={job.salaryRange || "—"} highlight />
               <SnapshotRow label="Location" value={job.location || "—"} />
               <SnapshotRow label="Company" value={job.companyName || "—"} />

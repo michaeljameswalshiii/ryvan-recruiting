@@ -14,6 +14,7 @@ import {
   assertCareersAccess,
   clientIp,
   getCareersTenantId,
+  isJobListedOnWebsite,
   jsonWithCors,
   optionsCors,
 } from "@/lib/careers/public";
@@ -77,10 +78,10 @@ export async function POST(request: NextRequest) {
     }
 
     const job = await getJobById(tenantId, jobId);
-    if (!job || (job.status || "").trim().toLowerCase() !== "open") {
+    if (!job || !isJobListedOnWebsite(job)) {
       return jsonWithCors(
         request,
-        { error: "This job is not open for applications" },
+        { error: "This job is not open for applications on the careers site" },
         404
       );
     }

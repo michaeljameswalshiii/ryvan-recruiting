@@ -16,11 +16,29 @@ export type PublicJob = {
   employmentType: string;
   companyName: string;
   status: string;
+  showOnWebsite: boolean;
   postedAt: string | null;
   updatedAt: string | null;
   applyUrl: string;
   detailUrl: string;
 };
+
+/**
+ * Eligible for public careers listing:
+ * - status is Open (case-insensitive)
+ * - showOnWebsite is not explicitly false
+ *   (legacy jobs without the field stay public; new jobs default false)
+ */
+export function isJobListedOnWebsite(job: {
+  status?: string;
+  showOnWebsite?: boolean;
+}): boolean {
+  const open = (job.status || "").trim().toLowerCase() === "open";
+  if (!open) return false;
+  if (job.showOnWebsite === false) return false;
+  // true or undefined (legacy) → listed
+  return true;
+}
 
 export function getCareersTenantId(requested?: string | null): string | null {
   const configured = (process.env.CAREERS_TENANT_ID || "").trim();
@@ -73,6 +91,7 @@ export function toPublicJob(job: Job, baseUrl: string): PublicJob {
     employmentType: job.employmentType || "Full-time",
     companyName: job.companyName || "",
     status: job.status || "Open",
+    showOnWebsite: job.showOnWebsite !== false,
     postedAt: job.created_at || null,
     updatedAt: job.modified_at || null,
     applyUrl: `${baseUrl}/careers/${id}#apply`,

@@ -17,6 +17,7 @@ import {
   getCareersTenantId,
   jsonWithCors,
   optionsCors,
+  isJobListedOnWebsite,
   toPublicJob,
 } from "@/lib/careers/public";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -55,12 +56,9 @@ export async function GET(request: NextRequest) {
     const jobId = request.nextUrl.searchParams.get("id");
     const baseUrl = getAppBaseUrl(request);
 
-    const isOpen = (status?: string) =>
-      (status || "").trim().toLowerCase() === "open";
-
     if (jobId) {
       const job = await getJobById(tenantId, jobId);
-      if (!job || !isOpen(job.status)) {
+      if (!job || !isJobListedOnWebsite(job)) {
         return jsonWithCors(request, { error: "Job not found" }, 404);
       }
       return jsonWithCors(request, {
@@ -71,7 +69,7 @@ export async function GET(request: NextRequest) {
 
     const all = await getAllJobs(tenantId);
     const jobs = all
-      .filter((j) => j.id && isOpen(j.status))
+      .filter((j) => j.id && isJobListedOnWebsite(j))
       .map((j) => toPublicJob(j, baseUrl))
       .sort((a, b) => {
         const ta = a.postedAt || "";
