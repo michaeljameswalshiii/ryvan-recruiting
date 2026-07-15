@@ -21,6 +21,7 @@ const PUBLIC_API_ROUTES = [
   '/api/tavily',
   '/api/boolean',
   '/api/health',
+  '/api/public',
 ];
 
 // API routes that need session injection (for client-side calls from dashboard)
