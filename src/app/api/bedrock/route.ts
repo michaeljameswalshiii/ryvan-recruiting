@@ -179,22 +179,54 @@ interface RequestLogMetadata {
  * - Opus 4.7: Very complex multi-step planning, large context (most capable)
  */
 
-// Haiku 4.5 - Fast/cheap for simple queries
-const MODEL_HAIKU = "us.anthropic.claude-haiku-4-2025-01-15";
+// Model IDs must match AWS Bedrock foundation / inference profile IDs
+// (verify with: aws bedrock list-inference-profiles --region us-east-1)
 
-// Sonnet 4.6 - Default for most agentic work  
-// Using global model for cross-region access
+// Haiku 4.5 - Fast/cheap for simple queries
+const MODEL_HAIKU = "global.anthropic.claude-haiku-4-5-20251001-v1:0";
+
+// Sonnet 4.6 - Default for most agentic work (cross-region global profile)
 const MODEL_SONNET = "global.anthropic.claude-sonnet-4-6";
 
-// Opus 4.7 - For very complex multi-step tasks
-const MODEL_OPUS = "us.anthropic.claude-opus-4-7-2025-01-15";
+// Opus 4.7 - For very complex multi-step tasks (not used by General AI auto-route)
+const MODEL_OPUS = "global.anthropic.claude-opus-4-7";
 
-// Fallback: Try legacy format if main models fail
-const MODEL_SONNET_FALLBACK = "us.anthropic.claude-sonnet-4-6-20250219";
-const MODEL_HAIKU_FALLBACK = "anthropic.claude-haiku-4-2025-01-15";
+// Fallbacks if primary inference profile is unavailable in the account/region
+const MODEL_HAIKU_FALLBACK = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
+const MODEL_SONNET_FALLBACK = "us.anthropic.claude-sonnet-4-6";
+const MODEL_HAIKU_LEGACY = "us.anthropic.claude-3-haiku-20240307-v1:0";
 
 // Default model (Sonnet 4.6 for agentic work with native tool calling)
 const DEFAULT_MODEL = MODEL_SONNET;
+
+/** Ordered fallbacks when a model id is rejected by Bedrock */
+function modelFallbackChain(primary: string): string[] {
+  const chain = [primary];
+  const id = primary.toLowerCase();
+  if (id.includes("haiku")) {
+    chain.push(MODEL_HAIKU, MODEL_HAIKU_FALLBACK, MODEL_HAIKU_LEGACY, MODEL_SONNET);
+  } else if (id.includes("opus")) {
+    chain.push(MODEL_OPUS, MODEL_SONNET, MODEL_SONNET_FALLBACK);
+  } else {
+    chain.push(MODEL_SONNET, MODEL_SONNET_FALLBACK, MODEL_HAIKU);
+  }
+  // de-dupe preserve order
+  return [...new Set(chain)];
+}
+
+function isInvalidModelError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  const name =
+    err && typeof err === "object" && "name" in err
+      ? String((err as { name?: string }).name)
+      : "";
+  return (
+    name === "ValidationException" ||
+    /model identifier is invalid|ValidationException|doesn't support|not authorized to use model|access denied.*model/i.test(
+      message
+    )
+  );
+}
 
 // Anthropic API version for Bedrock
 const ANTHROPIC_VERSION = "bedrock-2023-05-31";
@@ -513,7 +545,12 @@ async function invokeClaude(
   tools: BedrockTool[] = [],
   systemPrompt: string = "",
   modelId: string = DEFAULT_MODEL
-): Promise<{ content: ClaudeContent[]; stop_reason?: string }> {
+): Promise<{
+  content: ClaudeContent[];
+  stop_reason?: string;
+  /** Actual model id that succeeded (may differ after fallback) */
+  modelId: string;
+}> {
   // Anthropic Messages API: only user/assistant roles in messages array
   const safeMessages = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
@@ -535,29 +572,51 @@ async function invokeClaude(
     body.tool_choice = { type: "auto" };
   }
 
-  console.log(
-    `[MCP] Invoking ${modelId} with ${safeMessages.length} messages, ${tools.length} tools`
-  );
+  const candidates = modelFallbackChain(modelId);
+  let lastError: unknown;
 
-  const command = new InvokeModelCommand({
-    modelId,
-    contentType: "application/json",
-    accept: "application/json",
-    body: JSON.stringify(body),
-  });
+  for (const candidate of candidates) {
+    try {
+      console.log(
+        `[MCP] Invoking ${candidate} with ${safeMessages.length} messages, ${tools.length} tools`
+      );
 
-  const response = await bedrockClient.send(command);
-  const result = JSON.parse(new TextDecoder().decode(response.body));
+      const command = new InvokeModelCommand({
+        modelId: candidate,
+        contentType: "application/json",
+        accept: "application/json",
+        body: JSON.stringify(body),
+      });
 
-  const usage = result.usage;
-  console.log(
-    `[MCP] Claude response - stop_reason: ${result.stop_reason} | tokens: ${usage?.input_tokens}/${usage?.output_tokens}`
-  );
+      const response = await bedrockClient.send(command);
+      const result = JSON.parse(new TextDecoder().decode(response.body));
 
-  return {
-    content: result.content || [],
-    stop_reason: result.stop_reason,
-  };
+      const usage = result.usage;
+      console.log(
+        `[MCP] Claude response (${candidate}) - stop_reason: ${result.stop_reason} | tokens: ${usage?.input_tokens}/${usage?.output_tokens}`
+      );
+
+      return {
+        content: result.content || [],
+        stop_reason: result.stop_reason,
+        modelId: candidate,
+      };
+    } catch (err) {
+      lastError = err;
+      if (isInvalidModelError(err) && candidate !== candidates[candidates.length - 1]) {
+        console.warn(
+          `[MCP] Model ${candidate} rejected, trying next fallback:`,
+          err instanceof Error ? err.message : err
+        );
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("All Bedrock model candidates failed");
 }
 
 /**
@@ -682,7 +741,7 @@ async function runMCPAgent(
     systemPrompt?: string;
     modelId?: string;
   }
-): Promise<{ text: string; toolsUsed: string[] }> {
+): Promise<{ text: string; toolsUsed: string[]; modelId: string }> {
   const systemPrompt =
     options?.systemPrompt ||
     `You are an MCP (Multi-step Cognitive Processor) agent powered by Claude Sonnet 4.6.
@@ -692,7 +751,7 @@ Only use tools when they genuinely help. Be concise and actionable.`;
 
   const tools = getToolSchemasForBedrock();
   const toolsUsed = new Set<string>();
-  const modelId = options?.modelId || DEFAULT_MODEL;
+  let modelId = options?.modelId || DEFAULT_MODEL;
 
   // Prior turns (user/assistant text only), then current user query
   const prior = (options?.history || [])
@@ -716,6 +775,8 @@ Only use tools when they genuinely help. Be concise and actionable.`;
     console.log(`[MCP] Iteration ${iteration + 1}/${MAX_ITERATIONS} (history=${prior.length})`);
 
     const result = await invokeClaude(messages, tools, systemPrompt, modelId);
+    // Stick to the model that actually worked after any fallback
+    modelId = result.modelId;
     const content = result.content;
 
     const toolUses = content.filter(
@@ -730,7 +791,7 @@ Only use tools when they genuinely help. Be concise and actionable.`;
       );
       const text = textBlock?.text || "No response";
       console.log(`[MCP] Final response: ${text.substring(0, 100)}...`);
-      return { text, toolsUsed: Array.from(toolsUsed) };
+      return { text, toolsUsed: Array.from(toolsUsed), modelId };
     }
 
     console.log(`[MCP] Executing ${toolUses.length} tool(s) in parallel...`);
@@ -756,6 +817,7 @@ Only use tools when they genuinely help. Be concise and actionable.`;
   return {
     text: "Maximum iterations reached. Please refine your query.",
     toolsUsed: Array.from(toolsUsed),
+    modelId,
   };
 }
 
@@ -1341,6 +1403,7 @@ try {
           typeof c === "object" && c.type === "text"
       );
       completion = textBlock?.text || "No response";
+      usedModel = result.modelId;
       toolsUsed = [];
     } else if ((useTools || generalMode) && lastUserQuery) {
       const toolContext: ToolContext = {
@@ -1367,6 +1430,7 @@ try {
         modelId: usedModel,
       });
       completion = agentResult.text;
+      usedModel = agentResult.modelId;
       toolsUsed =
         agentResult.toolsUsed.length > 0
           ? agentResult.toolsUsed
@@ -1397,6 +1461,7 @@ try {
           typeof c === "object" && c.type === "text"
       );
       completion = textBlock?.text || "No response";
+      usedModel = result.modelId;
     }
 
 // ============================================================================
