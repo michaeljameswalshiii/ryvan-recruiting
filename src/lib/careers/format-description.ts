@@ -204,29 +204,41 @@ export function parseJobDescription(raw: string): DescBlock[] {
 
 /**
  * Remove client company names from public-facing title/description text.
+ * Also redacts the first significant word (e.g. "Auxilio" from "Auxilio Partners")
+ * and curly-apostrophe possessives ("Auxilio's", "Auxilio's").
  */
 export function redactCompanyNames(
   text: string,
   companyNames: Array<string | undefined | null>
 ): string {
   let out = text || "";
-  const names = companyNames
-    .filter((n): n is string => !!n && n.trim().length >= 2)
-    .map((n) => n.trim())
-    // longest first so "Auxilio Partners" beats "Auxilio"
-    .sort((a, b) => b.length - a.length);
+  const expanded: string[] = [];
+
+  for (const n of companyNames) {
+    if (!n || n.trim().length < 2) continue;
+    const full = n.trim();
+    expanded.push(full);
+    // First word of multi-word names (min 4 chars to avoid "The", "A")
+    const first = full.split(/\s+/)[0];
+    if (first && first.length >= 4 && !/^(the|and|inc|llc|ltd|corp)$/i.test(first)) {
+      expanded.push(first);
+    }
+  }
+
+  const names = [...new Set(expanded)].sort((a, b) => b.length - a.length);
 
   for (const name of names) {
-    // Escape regex special chars
     const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // Possessive / plain forms
-    const re = new RegExp(`\\b${esc}(?:['’]s)?\\b`, "gi");
+    // Plain, ASCII possessive, curly ’ possessive, and broken encoding ??s
+    const re = new RegExp(
+      `\\b${esc}(?:[''\u2019\u2018]s|\\?\\?s)?\\b`,
+      "gi"
+    );
     out = out.replace(re, "our client");
   }
 
-  // Clean awkward doubles
   out = out
-    .replace(/\bour client(?:['’]s)?\s+our client(?:['’]s)?\b/gi, "our client")
+    .replace(/\bour client(?:[''\u2019]s)?(?:\s+our client(?:[''\u2019]s)?)+/gi, "our client")
     .replace(/\s{2,}/g, " ")
     .replace(/\s+([,.;:])/g, "$1");
 
