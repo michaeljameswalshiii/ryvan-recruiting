@@ -1,6 +1,6 @@
 /**
  * Public careers listing — no login required.
- * Configure CAREERS_TENANT_ID so Open jobs appear here.
+ * Searchable list; company names hidden by default (agency mode).
  */
 
 import Link from "next/link";
@@ -9,18 +9,21 @@ import {
   getCareersTenantId,
   getAppBaseUrl,
   isJobListedOnWebsite,
+  shouldHideCompanyOnCareers,
   toPublicJob,
 } from "@/lib/careers/public";
+import { CareersJobList } from "@/components/careers/CareersJobList";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Careers | Open Roles",
-  description: "View open positions and apply online.",
+  description: "Search open positions and apply online.",
 };
 
 export default async function CareersPage() {
   const tenantId = getCareersTenantId(null);
   const baseUrl = getAppBaseUrl();
+  const hideCompany = shouldHideCompanyOnCareers();
 
   let jobs: ReturnType<typeof toPublicJob>[] = [];
   let configError: string | null = null;
@@ -50,6 +53,9 @@ export default async function CareersPage() {
               Careers
             </p>
             <h1 className="text-2xl font-semibold text-slate-900">Open roles</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Search roles and apply through our recruiting team.
+            </p>
           </div>
           <Link
             href="/login"
@@ -71,47 +77,15 @@ export default async function CareersPage() {
               No open positions right now
             </p>
             <p className="mt-2 text-sm text-slate-500">
-              Check back soon — new roles appear here when marked Open in the ATS.
+              Check back soon — new roles appear here when published from the ATS.
             </p>
           </div>
         ) : (
-          <ul className="space-y-4">
-            {jobs.map((job) => (
-              <li key={job.id}>
-                <Link
-                  href={`/careers/${job.id}`}
-                  className="block rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <h2 className="text-lg font-semibold text-slate-900">
-                      {job.title}
-                    </h2>
-                    <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
-                      {job.employmentType}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
-                    {job.companyName && <span>{job.companyName}</span>}
-                    {job.location && <span>{job.location}</span>}
-                    {job.salaryRange && <span>{job.salaryRange}</span>}
-                  </div>
-                  {job.description && (
-                    <p className="mt-3 line-clamp-2 text-sm text-slate-600">
-                      {job.description}
-                    </p>
-                  )}
-                  <p className="mt-3 text-sm font-medium text-slate-900">
-                    View &amp; apply →
-                  </p>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <CareersJobList jobs={jobs} hideCompany={hideCompany} />
         )}
 
         <p className="mt-10 text-center text-xs text-slate-400">
-          Powered by Turnkey Optimization · Jobs sync from the ATS when status is
-          Open
+          Applications go to our recruiting team · Powered by Turnkey Optimization
         </p>
       </main>
     </div>

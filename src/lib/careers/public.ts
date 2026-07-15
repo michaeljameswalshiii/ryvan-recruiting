@@ -80,16 +80,29 @@ export function getAppBaseUrl(request?: NextRequest): string {
   return "https://turnkey-optimization.vercel.app";
 }
 
+/**
+ * Agency default: hide client company on public careers so candidates apply
+ * through the recruiter, not the hiring company site.
+ * Set CAREERS_SHOW_COMPANY_NAME=true to show company publicly.
+ */
+export function shouldHideCompanyOnCareers(): boolean {
+  const v = (process.env.CAREERS_SHOW_COMPANY_NAME || "").trim().toLowerCase();
+  if (v === "true" || v === "1" || v === "yes") return false;
+  return true;
+}
+
 export function toPublicJob(job: Job, baseUrl: string): PublicJob {
   const id = job.id || "";
+  const hideCompany = shouldHideCompanyOnCareers();
   return {
     id,
     title: job.title || "Untitled role",
-    description: (job.description || "").slice(0, 5000),
+    description: (job.description || "").slice(0, 8000),
     location: job.location || "",
     salaryRange: job.salaryRange || "",
     employmentType: job.employmentType || "Full-time",
-    companyName: job.companyName || "",
+    // Never leak client name on public API when agency mode is on
+    companyName: hideCompany ? "" : job.companyName || "",
     status: job.status || "Open",
     showOnWebsite: job.showOnWebsite !== false,
     postedAt: job.created_at || null,

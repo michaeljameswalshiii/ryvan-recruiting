@@ -1,5 +1,6 @@
 /**
  * Public job detail + apply form
+ * Client company name hidden by default (agency confidential).
  */
 
 import Link from "next/link";
@@ -9,9 +10,11 @@ import {
   getCareersTenantId,
   getAppBaseUrl,
   isJobListedOnWebsite,
+  shouldHideCompanyOnCareers,
   toPublicJob,
 } from "@/lib/careers/public";
 import { CareersApplyForm } from "./apply-form";
+import { JobDescription } from "@/components/careers/JobDescription";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +40,7 @@ export default async function CareersJobPage({ params }: Props) {
   if (!job || !isJobListedOnWebsite(job)) notFound();
 
   const pub = toPublicJob(job, getAppBaseUrl());
+  const hideCompany = shouldHideCompanyOnCareers();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
@@ -52,7 +56,7 @@ export default async function CareersJobPage({ params }: Props) {
             {pub.title}
           </h1>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
-            {pub.companyName && <span>{pub.companyName}</span>}
+            {!hideCompany && pub.companyName && <span>{pub.companyName}</span>}
             {pub.location && <span>{pub.location}</span>}
             {pub.employmentType && <span>{pub.employmentType}</span>}
             {pub.salaryRange && <span>{pub.salaryRange}</span>}
@@ -65,8 +69,8 @@ export default async function CareersJobPage({ params }: Props) {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
             About the role
           </h2>
-          <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-            {pub.description || "No description provided."}
+          <div className="mt-4">
+            <JobDescription description={pub.description} />
           </div>
         </section>
 
@@ -76,8 +80,8 @@ export default async function CareersJobPage({ params }: Props) {
         >
           <h2 className="text-lg font-semibold text-slate-900">Apply</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Your application is sent to our recruiting team and tracked in the
-            ATS.
+            Submit your application below. It goes to our recruiting team — you
+            will not be redirected to the hiring company&apos;s website.
           </p>
           <div className="mt-6">
             <CareersApplyForm jobId={pub.id} jobTitle={pub.title} />

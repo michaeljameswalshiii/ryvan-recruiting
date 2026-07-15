@@ -1,20 +1,22 @@
 /**
  * Turnkey careers embed for Squarespace / WordPress / static sites.
+ * Company names are omitted by the public API (agency mode).
  *
- * Usage (Code block):
+ * Usage:
  *   <div id="turnkey-careers"></div>
  *   <script
  *     src="https://turnkey-optimization.vercel.app/careers-embed.js"
  *     data-api-base="https://turnkey-optimization.vercel.app"
  *     data-container="turnkey-careers"
- *     data-key=""
- *     data-tenant=""
  *     defer
  *   ></script>
  */
 (function () {
   function scriptEl() {
-    return document.currentScript || document.querySelector("script[src*='careers-embed']");
+    return (
+      document.currentScript ||
+      document.querySelector("script[src*='careers-embed']")
+    );
   }
 
   function cfg() {
@@ -35,40 +37,88 @@
       .replace(/"/g, "&quot;");
   }
 
+  function preview(desc) {
+    if (!desc) return "";
+    var t = String(desc)
+      .replace(/<\s*br\s*\/?>/gi, " ")
+      .replace(/<\s*li[^>]*>/gi, " • ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/[•·▪◦\-–—]\s*/g, "• ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (t.length > 160) t = t.slice(0, 159).trim() + "…";
+    return t;
+  }
+
   function render(jobs, root, apiBase) {
-    if (!jobs.length) {
-      root.innerHTML =
-        '<p style="font-family:system-ui,sans-serif;color:#64748b">No open positions at this time.</p>';
-      return;
-    }
-    var html = '<div style="font-family:system-ui,-apple-system,sans-serif;display:grid;gap:12px">';
-    for (var i = 0; i < jobs.length; i++) {
-      var j = jobs[i];
-      var href = j.detailUrl || j.applyUrl || apiBase + "/careers/" + j.id;
-      html +=
-        '<a href="' +
-        esc(href) +
-        '" target="_blank" rel="noopener" style="display:block;padding:16px;border:1px solid #e2e8f0;border-radius:12px;text-decoration:none;color:inherit">' +
-        '<div style="font-weight:600;font-size:17px;color:#0f172a">' +
-        esc(j.title) +
-        "</div>" +
-        '<div style="margin-top:6px;font-size:13px;color:#64748b">' +
-        [j.companyName, j.location, j.employmentType, j.salaryRange]
+    var html =
+      '<div style="font-family:system-ui,-apple-system,sans-serif">' +
+      '<input id="tk-careers-q" type="search" placeholder="Search roles…" ' +
+      'style="width:100%;box-sizing:border-box;padding:10px 12px;margin-bottom:12px;' +
+      "border:1px solid #e2e8f0;border-radius:10px;font-size:14px\" />" +
+      '<div id="tk-careers-list"></div></div>';
+    root.innerHTML = html;
+
+    var input = root.querySelector("#tk-careers-q");
+    var list = root.querySelector("#tk-careers-list");
+
+    function paint(filter) {
+      var q = (filter || "").toLowerCase().trim();
+      var shown = jobs.filter(function (j) {
+        if (!q) return true;
+        var hay = [j.title, j.description, j.location, j.employmentType, j.salaryRange]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.indexOf(q) !== -1;
+      });
+
+      if (!shown.length) {
+        list.innerHTML =
+          '<p style="color:#64748b;font-size:14px">No roles match your search.</p>';
+        return;
+      }
+
+      var out = '<div style="display:grid;gap:12px">';
+      for (var i = 0; i < shown.length; i++) {
+        var j = shown[i];
+        var href = j.detailUrl || j.applyUrl || apiBase + "/careers/" + j.id;
+        var meta = [j.location, j.employmentType, j.salaryRange]
           .filter(Boolean)
           .map(esc)
-          .join(" · ") +
-        "</div>" +
-        (j.description
-          ? '<p style="margin:10px 0 0;font-size:14px;color:#475569;line-height:1.45">' +
-            esc(j.description.slice(0, 180)) +
-            (j.description.length > 180 ? "…" : "") +
-            "</p>"
-          : "") +
-        '<div style="margin-top:10px;font-size:13px;font-weight:600;color:#0f172a">View & apply →</div>' +
-        "</a>";
+          .join(" · ");
+        var prev = preview(j.description);
+        out +=
+          '<a href="' +
+          esc(href) +
+          '" target="_blank" rel="noopener" style="display:block;padding:16px;border:1px solid #e2e8f0;' +
+          'border-radius:12px;text-decoration:none;color:inherit">' +
+          '<div style="font-weight:600;font-size:17px;color:#0f172a">' +
+          esc(j.title) +
+          "</div>" +
+          (meta
+            ? '<div style="margin-top:6px;font-size:13px;color:#64748b">' +
+              meta +
+              "</div>"
+            : "") +
+          (prev
+            ? '<p style="margin:10px 0 0;font-size:14px;color:#475569;line-height:1.45">' +
+              esc(prev) +
+              "</p>"
+            : "") +
+          '<div style="margin-top:10px;font-size:13px;font-weight:600;color:#0f172a">View & apply →</div>' +
+          "</a>";
+      }
+      out += "</div>";
+      list.innerHTML = out;
     }
-    html += "</div>";
-    root.innerHTML = html;
+
+    paint("");
+    if (input) {
+      input.addEventListener("input", function () {
+        paint(input.value);
+      });
+    }
   }
 
   function boot() {
