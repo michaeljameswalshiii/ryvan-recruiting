@@ -18,7 +18,8 @@ import {
   ChevronUp, 
   ChevronDown, 
   Info,
-  Database
+  Database,
+  MessageSquare,
 } from 'lucide-react';
 
 const menuItems = [
@@ -27,6 +28,7 @@ const menuItems = [
   { name: 'Companies', href: '/dashboard/companies', icon: Building2 },
   { name: 'Contact Info', href: '/dashboard/contact-info', icon: Info },
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase },
+  { name: 'General AI Usage', href: '/dashboard/general-ai-usage', icon: MessageSquare },
   { name: 'Reporting', href: '/dashboard/reporting', icon: BarChart3 },
   { name: 'Email', href: '/dashboard/email', icon: Mail },
 ];

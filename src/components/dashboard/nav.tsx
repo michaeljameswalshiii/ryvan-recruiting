@@ -22,6 +22,7 @@ import {
   ChevronUp,
   ChevronDown,
   Info,
+  MessageSquare,
 } from "lucide-react";
 import { logout } from "@/lib/api/auth-client";
 import { useTheme } from "@/components/ThemeProvider";
@@ -38,6 +39,7 @@ const navItems = [
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
   { href: "/dashboard/contact-info", label: "Contact Info", icon: Info },
   { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
+  { href: "/dashboard/general-ai-usage", label: "General AI Usage", icon: MessageSquare },
   { href: "/dashboard/issues", label: "Issues", icon: AlertCircle },
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },

@@ -66,10 +66,24 @@ interface BedrockRequest {
   model?: string;
   useTools?: boolean;
   assistantMode?: boolean;
+  /** Open-ended chat (General AI Usage) — Sonnet + tools + multi-turn history */
+  generalMode?: boolean;
   /** 'bedrock' (platform) | 'anthropic' | 'grok' (BYOK) */
   provider?: AiProviderId;
   useSearch?: boolean;
 }
+
+const GENERAL_AI_SYSTEM_PROMPT = `You are a professional general-purpose AI assistant powered by Claude Sonnet on AWS Bedrock.
+
+You help with a wide range of work: analysis, writing, research, brainstorming, document review, data interpretation, planning, and problem-solving. You are not limited to recruiting, though you may use recruiting tools when relevant.
+
+Capabilities:
+- Reason carefully and maintain conversation context across turns
+- Honor revision requests ("shorter", "more formal", "fix the third point") using prior messages
+- Use tools when they improve the answer: people/company search (Apollo), web search (Tavily), and internal ATS data when the user asks about their own pipeline/leads/clients
+- When the user attaches file content, analyze it carefully and cite specifics from the attachment
+- Be clear, structured, and professional. Prefer actionable answers over fluff
+- If a tool fails or data is missing, say so and continue with what you know`;
 
 /**
  * Tool result data from tool execution
@@ -370,7 +384,7 @@ function getToolSchemasForBedrock(): BedrockTool[] {
   return [
     {
       name: "apollo",
-      description: "Search for candidates, people, or companies using Apollo.io. Use to find emails, phones, LinkedIn profiles for recruiting or sales.",
+      description: "Search for people/candidates using Apollo.io (emails, phones, LinkedIn, titles).",
       input_schema: {
         type: "object",
         properties: {
@@ -382,8 +396,21 @@ function getToolSchemasForBedrock(): BedrockTool[] {
       },
     },
     {
+      name: "apollo_company_search",
+      description: "Search for companies/organizations using Apollo.io (industry, size, website, location).",
+      input_schema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Company name, industry, or keyword" },
+          location: { type: "string", description: "Location filter" },
+          per_page: { type: "number", description: "Number of results (default 10)" },
+        },
+        required: ["query"],
+      },
+    },
+    {
       name: "tavily",
-      description: "Search the web for latest news, current events, weather, stock prices, or general information.",
+      description: "Search the web for latest news, current events, research, or general information.",
       input_schema: {
         type: "object",
         properties: {
@@ -395,14 +422,15 @@ function getToolSchemasForBedrock(): BedrockTool[] {
     },
     {
       name: "internal_data",
-      description: "Get the user's existing leads, clients, or pipeline data from the database.",
+      description: "Get the user's existing leads, clients, or pipeline data from the ATS database.",
       input_schema: {
         type: "object",
         properties: {
           data_type: { type: "string", description: "Type: leads, clients, or pipeline" },
-          action: { type: "string", description: "Action: list, get, or count" },
+          action: { type: "string", description: "Action: list or get" },
+          id: { type: "string", description: "Record id when action is get" },
         },
-        required: ["data_type"],
+        required: ["data_type", "action"],
       },
     },
   ];
@@ -418,46 +446,49 @@ function getToolSchemasForBedrock(): BedrockTool[] {
 async function invokeClaude(
   messages: ClaudeMessage[],
   tools: BedrockTool[] = [],
-  systemPrompt: string = ""
+  systemPrompt: string = "",
+  modelId: string = DEFAULT_MODEL
 ): Promise<{ content: ClaudeContent[]; stop_reason?: string }> {
-  const selectedModel = DEFAULT_MODEL;
-  
-// Build request body with system prompt in correct field
-  // NOTE: Only temperature - cannot use both temperature and top_p in Bedrock
+  // Anthropic Messages API: only user/assistant roles in messages array
+  const safeMessages = messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({ role: m.role, content: m.content }));
+
   const body: Record<string, unknown> = {
     anthropic_version: ANTHROPIC_VERSION,
     max_tokens: MODEL_CONFIG.maxTokens,
     temperature: MODEL_CONFIG.temperature,
-    messages,
+    messages: safeMessages,
   };
-  
-  // Place system prompt in top-level field (correct for Anthropic API)
+
   if (systemPrompt) {
     body.system = systemPrompt;
   }
-  
-  // Add tools if provided
+
   if (tools.length > 0) {
     body.tools = tools;
     body.tool_choice = { type: "auto" };
   }
-  
-  console.log(`[MCP] Invoking ${selectedModel} with ${messages.length} messages, ${tools.length} tools`);
-  
+
+  console.log(
+    `[MCP] Invoking ${modelId} with ${safeMessages.length} messages, ${tools.length} tools`
+  );
+
   const command = new InvokeModelCommand({
-    modelId: selectedModel,
+    modelId,
     contentType: "application/json",
     accept: "application/json",
     body: JSON.stringify(body),
   });
-  
-const response = await bedrockClient.send(command);
+
+  const response = await bedrockClient.send(command);
   const result = JSON.parse(new TextDecoder().decode(response.body));
-  
-  // Log token usage
+
   const usage = result.usage;
-  console.log(`[MCP] Claude response - stop_reason: ${result.stop_reason} | tokens: ${usage?.input_tokens}/${usage?.output_tokens}`);
-  
+  console.log(
+    `[MCP] Claude response - stop_reason: ${result.stop_reason} | tokens: ${usage?.input_tokens}/${usage?.output_tokens}`
+  );
+
   return {
     content: result.content || [],
     stop_reason: result.stop_reason,
@@ -499,8 +530,60 @@ async function executeToolByName(
     }
     return `Error: ${result.error || "Unknown error"}`;
   }
-  
-  return `Tool not found: ${toolName}`;
+
+  if (toolName === "internal_data") {
+    const result = await executeTool(
+      "internal_data",
+      {
+        data_type: toolInput.data_type || "leads",
+        action: toolInput.action || "list",
+        id: toolInput.id,
+      } as ToolParams,
+      toolContext
+    );
+    if (result.success && result.data !== undefined) {
+      const raw = JSON.stringify(result.data);
+      // Cap payload size for model context
+      return raw.length > 40000 ? raw.slice(0, 40000) + "\n…[truncated]" : raw;
+    }
+    return `Error: ${result.error || "Unknown error"}`;
+  }
+
+  if (toolName === "apollo_company_search" || toolName === "apollo_company") {
+    const result = await executeTool(
+      "apollo_company_search",
+      { query, per_page: toolInput.per_page || 10, location: toolInput.location } as ToolParams,
+      toolContext
+    );
+    if (result.success && result.data) {
+      const data = result.data as {
+        companies?: Array<{ name?: string; website?: string; industry?: string; employees?: string }>;
+      };
+      if (data.companies?.length) {
+        return data.companies
+          .slice(0, 10)
+          .map(
+            (c) =>
+              `${c.name || "Company"} — ${c.industry || "n/a"} | ${c.website || "n/a"} | size: ${c.employees || "n/a"}`
+          )
+          .join("\n");
+      }
+      return "No companies found";
+    }
+    return `Error: ${result.error || "Unknown error"}`;
+  }
+
+  // Fallback: registry execute for any registered tool
+  const fallback = await executeTool(
+    toolName,
+    { query, ...toolInput } as ToolParams,
+    toolContext
+  );
+  if (fallback.success && fallback.data !== undefined) {
+    const raw = typeof fallback.data === "string" ? fallback.data : JSON.stringify(fallback.data);
+    return raw.length > 40000 ? raw.slice(0, 40000) + "\n…[truncated]" : raw;
+  }
+  return `Tool not found or failed: ${toolName}${fallback.error ? ` — ${fallback.error}` : ""}`;
 }
 
 /**
@@ -524,76 +607,91 @@ async function executeSingleTool(
 
 /**
  * Run MCP Agent Loop - Model decides when to use tools
- * Robust implementation with parallel tool execution
- * 
- * @param query - User query
- * @param toolContext - Tool execution context
- * @returns Final response string
+ * Supports multi-turn history so revisions work in the same chat.
  */
 async function runMCPAgent(
   query: string,
-  toolContext: ToolContext
-): Promise<string> {
-  const systemPrompt = `You are an MCP (Multi-step Cognitive Processor) agent powered by Claude Sonnet 4.6.
+  toolContext: ToolContext,
+  options?: {
+    history?: ChatMessage[];
+    systemPrompt?: string;
+    modelId?: string;
+  }
+): Promise<{ text: string; toolsUsed: string[] }> {
+  const systemPrompt =
+    options?.systemPrompt ||
+    `You are an MCP (Multi-step Cognitive Processor) agent powered by Claude Sonnet 4.6.
 Specialize in talent sourcing, recruiting, and business development using Apollo.io.
 Think step-by-step: Plan → Use tools when needed → Observe results → Reflect → Final Answer.
 Only use tools when they genuinely help. Be concise and actionable.`;
 
   const tools = getToolSchemasForBedrock();
-  
-  // Initial messages (system prompt in messages array)
+  const toolsUsed = new Set<string>();
+  const modelId = options?.modelId || DEFAULT_MODEL;
+
+  // Prior turns (user/assistant text only), then current user query
+  const prior = (options?.history || [])
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .filter((m) => typeof m.content === "string" && m.content.trim().length > 0)
+    .slice(-20)
+    .map((m) => ({
+      role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
+      content: m.content,
+    }));
+
   let messages: ClaudeMessage[] = [
+    ...prior,
     { role: "user", content: query },
   ];
-  
+
   const MAX_ITERATIONS = 5;
   let iteration = 0;
-  
+
   while (iteration < MAX_ITERATIONS) {
-    console.log(`[MCP] Iteration ${iteration + 1}/${MAX_ITERATIONS}`);
-    
-    // Invoke model with tools and system prompt
-    const result = await invokeClaude(messages, tools, systemPrompt);
+    console.log(`[MCP] Iteration ${iteration + 1}/${MAX_ITERATIONS} (history=${prior.length})`);
+
+    const result = await invokeClaude(messages, tools, systemPrompt, modelId);
     const content = result.content;
-    
-    // Check for tool uses
-    const toolUses = content.filter((c): c is ClaudeContent & { type: "tool_use" } => 
-      typeof c === "object" && c.type === "tool_use"
+
+    const toolUses = content.filter(
+      (c): c is ClaudeContent & { type: "tool_use" } =>
+        typeof c === "object" && c.type === "tool_use"
     );
-    
+
     if (toolUses.length === 0) {
-      // No tools called - return final response
-      const textBlock = content.find((c): c is ClaudeContent & { type: "text" } => 
-        typeof c === "object" && c.type === "text"
+      const textBlock = content.find(
+        (c): c is ClaudeContent & { type: "text" } =>
+          typeof c === "object" && c.type === "text"
       );
       const text = textBlock?.text || "No response";
       console.log(`[MCP] Final response: ${text.substring(0, 100)}...`);
-      return text;
+      return { text, toolsUsed: Array.from(toolsUsed) };
     }
-    
-    // Execute tools IN PARALLEL
+
     console.log(`[MCP] Executing ${toolUses.length} tool(s) in parallel...`);
-    const executions = toolUses.map(tool => executeSingleTool(tool, toolContext));
+    for (const tu of toolUses) {
+      toolsUsed.add(tu.name);
+    }
+    const executions = toolUses.map((tool) => executeSingleTool(tool, toolContext));
     const toolResults = await Promise.all(executions);
-    
-    // Format tool results for Claude
-    const formattedToolResults = toolResults.map(r => ({
-      type: "tool_result",
+
+    const formattedToolResults = toolResults.map((r) => ({
+      type: "tool_result" as const,
       tool_use_id: r.tool_use_id,
       content: r.content,
     })) as ClaudeContent[];
-    
-    // Add assistant's tool_use to messages
+
     messages.push({ role: "assistant", content });
-    
-    // Add tool results as user message
     messages.push({ role: "user", content: formattedToolResults });
-    
+
     iteration++;
   }
-  
+
   console.log(`[MCP] Max iterations (${MAX_ITERATIONS}) reached`);
-  return "Maximum iterations reached. Please refine your query.";
+  return {
+    text: "Maximum iterations reached. Please refine your query.",
+    toolsUsed: Array.from(toolsUsed),
+  };
 }
 
 // ============================================================================
@@ -894,6 +992,7 @@ try {
       model: requestedModel,
       useTools = true,
       assistantMode = false,
+      generalMode = false,
       provider: requestedProvider,
     } = body;
     
@@ -955,12 +1054,22 @@ try {
 
     lastUserQuery = userMessage?.content || "";
 
+    // General AI Usage always uses platform Bedrock Sonnet
+    if (generalMode) {
+      provider = "bedrock";
+    }
+
     const selectedModel =
       provider === "anthropic"
         ? process.env.ANTHROPIC_BYOK_MODEL || "claude-sonnet-4-20250514"
         : provider === "grok"
           ? process.env.GROK_BYOK_MODEL || process.env.XAI_BYOK_MODEL || "grok-3"
-          : selectModel(lastUserQuery, requestedModel);
+          : generalMode
+            ? MODEL_SONNET
+            : selectModel(
+                lastUserQuery,
+                requestedModel === "sonnet" ? MODEL_SONNET : requestedModel
+              );
     
     console.log("=== MODEL SELECTION ===");
     console.log("Provider:", provider);
@@ -1135,47 +1244,77 @@ try {
       }
     }
     // ---------- Platform Bedrock (existing) ----------
-    else if (assistantMode) {
+    else if (assistantMode && !generalMode) {
       // Claude-only Assistant mode (no external tools, just conversation)
       console.log("Running Claude Assistant mode (no tools)...");
       const conversation = buildConversationMessages(messages);
       const systemPrompt = SYSTEM_PROMPTS.base + "\n\n" + SYSTEM_PROMPTS.override;
-      
-      const messagesForModel: ClaudeMessage[] = [
-        { role: "system", content: systemPrompt },
-        ...conversation.map(m => ({ role: m.role, content: m.content })),
-      ];
-      
-      const result = await invokeClaude(messagesForModel, []);
-      const textBlock = result.content.find((c): c is ClaudeContent & { type: "text" } => 
-        typeof c === "object" && c.type === "text"
+
+      const messagesForModel: ClaudeMessage[] = conversation.map((m) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content,
+      }));
+
+      const result = await invokeClaude(messagesForModel, [], systemPrompt, usedModel);
+      const textBlock = result.content.find(
+        (c): c is ClaudeContent & { type: "text" } =>
+          typeof c === "object" && c.type === "text"
       );
       completion = textBlock?.text || "No response";
-      toolsUsed = []; // No tools in assistant mode
-    } else if (useTools && lastUserQuery) {
+      toolsUsed = [];
+    } else if ((useTools || generalMode) && lastUserQuery) {
       const toolContext: ToolContext = {
         tenantId,
         userId,
         requestUrl: appUrl,
       };
 
-      console.log("Running MCP agent with native tool calling...");
-      completion = await runMCPAgent(lastUserQuery, toolContext);
-      toolsUsed = ["apollo", "tavily"]; // Log that tools were available
+      const conversation = buildConversationMessages(messages);
+      // Prior turns only (current query is passed separately)
+      const history = conversation.slice(0, -1);
+
+      console.log(
+        generalMode
+          ? "Running General AI agent (Sonnet + tools + multi-turn)..."
+          : "Running MCP agent with native tool calling..."
+      );
+
+      const agentResult = await runMCPAgent(lastUserQuery, toolContext, {
+        history,
+        systemPrompt: generalMode
+          ? GENERAL_AI_SYSTEM_PROMPT
+          : undefined,
+        modelId: usedModel,
+      });
+      completion = agentResult.text;
+      toolsUsed =
+        agentResult.toolsUsed.length > 0
+          ? agentResult.toolsUsed
+          : useTools || generalMode
+            ? ["available:apollo,tavily,internal_data"]
+            : [];
     } else {
       // Simple mode - just invoke without tools
       console.log("Running simple model invocation without tools...");
       const conversation = buildConversationMessages(messages);
-      const systemPrompt = SYSTEM_PROMPTS.base + "\n\n" + SYSTEM_PROMPTS.override;
-      
-      const messagesForModel: ClaudeMessage[] = [
-        { role: "system", content: systemPrompt },
-        ...conversation.map(m => ({ role: m.role, content: m.content })),
-      ];
-      
-      const result = await invokeClaude(messagesForModel, []);
-      const textBlock = result.content.find((c): c is ClaudeContent & { type: "text" } => 
-        typeof c === "object" && c.type === "text"
+      const systemPrompt = generalMode
+        ? GENERAL_AI_SYSTEM_PROMPT
+        : SYSTEM_PROMPTS.base + "\n\n" + SYSTEM_PROMPTS.override;
+
+      const messagesForModel: ClaudeMessage[] = conversation.map((m) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content,
+      }));
+
+      const result = await invokeClaude(
+        messagesForModel,
+        [],
+        systemPrompt,
+        usedModel
+      );
+      const textBlock = result.content.find(
+        (c): c is ClaudeContent & { type: "text" } =>
+          typeof c === "object" && c.type === "text"
       );
       completion = textBlock?.text || "No response";
     }
@@ -1209,12 +1348,16 @@ try {
     });
 
     // Log to DynamoDB for dashboard usage tracking (await so failures are visible)
+    // General AI Usage appears on /dashboard/usage with a [General AI] prefix
+    const previewPrefix = generalMode ? "[General AI] " : "";
     const usageLog = await logBedrockUsage({
       modelId: `${provider}:${usedModel}`,
       inputTokens: promptTokens,
       outputTokens: completionTokens,
-      queryPreview: lastUserQuery.substring(0, 200),
-      toolsUsed,
+      queryPreview: (previewPrefix + lastUserQuery).substring(0, 200),
+      toolsUsed: generalMode
+        ? Array.from(new Set(["general-ai", ...toolsUsed]))
+        : toolsUsed,
       latencyMs,
       tenantId,
       userId,
