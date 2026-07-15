@@ -5,7 +5,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import type { Job } from "@/lib/schemas/job";
-import { redactCompanyNames } from "@/lib/careers/format-description";
 
 /** Public job card shown on external sites /careers */
 export type PublicJob = {
@@ -96,32 +95,16 @@ export function toPublicJob(job: Job, baseUrl: string): PublicJob {
   const id = job.id || "";
   const hideCompany = shouldHideCompanyOnCareers();
 
-  let title = job.title || "Untitled role";
-  let description = (job.description || "").slice(0, 8000);
-
-  if (hideCompany) {
-    const names = [job.companyName];
-    // Titles like "Auxilio Partners - Finance Role" → drop leading company
-    if (job.companyName) {
-      const c = job.companyName.trim();
-      const re = new RegExp(
-        `^${c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[-–—:|]\\s*`,
-        "i"
-      );
-      title = title.replace(re, "").trim() || title;
-    }
-    title = redactCompanyNames(title, names);
-    description = redactCompanyNames(description, names);
-  }
-
+  // Title + description are shown as written by the recruiter.
+  // We only hide the structured companyName field (UI label / API field).
+  // If the company is named in the body, that is intentional content.
   return {
     id,
-    title,
-    description,
+    title: job.title || "Untitled role",
+    description: (job.description || "").slice(0, 8000),
     location: job.location || "",
     salaryRange: job.salaryRange || "",
     employmentType: job.employmentType || "Full-time",
-    // Never leak client name on public API when agency mode is on
     companyName: hideCompany ? "" : job.companyName || "",
     status: job.status || "Open",
     showOnWebsite: job.showOnWebsite !== false,
