@@ -7,9 +7,7 @@ This file documents best practices and workflows for the TurnkeyOptimization pro
 
 **Live URL**: https://turnkey-optimization.vercel.app
 
-**Login Credentials**:
-- Email: waving1@gmail.com
-- Password: Nassau#94
+**Login**: Use your Cognito / profile credentials. **Never commit passwords or API keys** to this repo.
 
 **Vercel Project**: michaeljameswalshiiis-projects/turnkey-optimization
 

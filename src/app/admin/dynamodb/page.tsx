@@ -9,7 +9,7 @@
  * - Save/Cancel editing
  * - PATCH API for updates
  * 
- * TODO: Add auth guard for production
+ * Auth: API requires admin session; middleware protects /admin routes.
  */
 
 "use client";

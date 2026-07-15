@@ -36,7 +36,7 @@ const PROTECTED_API_ROUTES = [
 ];
 
 // Protected routes that require authentication
-const PROTECTED_ROUTES = ['/dashboard', '/candidates'];
+const PROTECTED_ROUTES = ['/dashboard', '/candidates', '/admin', '/api/admin'];
 
 // Session cookie name
 const SESSION_COOKIE = 'turnkey-session';
@@ -180,34 +180,39 @@ export async function middleware(request: NextRequest) {
     });
   }
 
-// === PROTECTED ROUTES (Dashboard) - Require auth ===
+// === PROTECTED ROUTES (Dashboard / admin) - Require auth ===
   if (isProtectedRoute(pathname)) {
     const session = getSession(request);
-    
-    // No session at all - redirect to login
+    const isApiRoute = pathname.startsWith('/api/');
+
+    // No session at all
     if (!session?.userId) {
+      console.log(`[Middleware] No session for ${pathname}`);
+      if (isApiRoute) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
-      console.log(`[Middleware] No session for ${pathname}, redirecting to login`);
       return NextResponse.redirect(loginUrl);
     }
 
-    // If we have accessToken, validate with Cognito
-    // If no accessToken (demo/simple auth), allow through - dashboard layout will validate server-side
-    // IMPORTANT: Skip validation if no accessToken exists (simple auth mode)
+    // If we have accessToken, validate with Cognito.
+    // Simple DynamoDB auth sessions may omit accessToken; route handlers re-check.
     if (session.accessToken && session.accessToken.length > 0) {
       console.log(`[Middleware] Validating Cognito token for ${pathname}...`);
       const isValid = await validateSessionToken(session.accessToken, session.refreshToken);
-      
+
       if (!isValid) {
+        console.log(`[Middleware] Token invalid for ${pathname}`);
+        if (isApiRoute) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
         const loginUrl = new URL('/login', request.url);
         loginUrl.searchParams.set('redirect', pathname);
-        console.log(`[Middleware] Token invalid for ${pathname}, redirecting to login`);
         return NextResponse.redirect(loginUrl);
       }
       console.log(`[Middleware] Token valid, allowing ${pathname}`);
     } else {
-      // No accessToken - demo/simple auth mode, skip Cognito validation
       console.log(`[Middleware] No accessToken (simple auth), allowing ${pathname}`);
     }
 

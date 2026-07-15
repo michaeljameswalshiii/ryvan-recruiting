@@ -1,45 +1,51 @@
 /**
- * Test: Confirm user in Cognito and set password
+ * Confirm a Cognito user and set password (ops script).
+ *
+ * Usage:
+ *   COGNITO_USER_POOL_ID=... COGNITO_USERNAME=... NEW_PASSWORD=... node test-confirm-user.js
  */
 
-const { CognitoIdentityProviderClient, AdminSetUserPasswordCommand, AdminEnableUserCommand } = require('@aws-sdk/client-cognito-identity-provider');
+const {
+  CognitoIdentityProviderClient,
+  AdminSetUserPasswordCommand,
+  AdminEnableUserCommand,
+} = require("@aws-sdk/client-cognito-identity-provider");
 
-const client = new CognitoIdentityProviderClient({ region: 'us-east-1' });
-const USER_POOL_ID = 'us-east-1_ouSZGnQwC';
+const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID;
+const USERNAME = process.env.COGNITO_USERNAME;
+const PASSWORD = process.env.NEW_PASSWORD;
+const region = process.env.AWS_REGION || "us-east-1";
 
-// User from earlier - can just use the email to look up
-const USERNAME = '54f87418-c021-70c1-0393-c8c47cd21cc3'; // waving1@gmail.com's sub
-const PASSWORD = 'Nassau#94';
-
-async function confirmUser() {
-  console.log(`Confirming user: ${USERNAME}`);
-  console.log(`Setting password: ${PASSWORD}`);
-  
-  // First enable the user
-  try {
-    await client.send(new AdminEnableUserCommand({
-      UserPoolId: USER_POOL_ID,
-      Username: USERNAME,
-    }));
-    console.log('✅ User enabled');
-  } catch (err) {
-    if (err.name === 'InvalidParameterException' || err.message?.includes('already')) {
-      console.log('ℹ️ User already enabled');
-    } else {
-      throw err;
-    }
-  }
-  
-  // Then set the password (permanent so they don't need to change it)
-  const result = await client.send(new AdminSetUserPasswordCommand({
-    UserPoolId: USER_POOL_ID,
-    Username: USERNAME,
-    Password: PASSWORD,
-    Permanent: true,
-  }));
-  
-  console.log('✅ Password set!');
-  console.log(result);
+if (!USER_POOL_ID || !USERNAME || !PASSWORD) {
+  console.error(
+    "Set COGNITO_USER_POOL_ID, COGNITO_USERNAME, and NEW_PASSWORD"
+  );
+  process.exit(1);
 }
 
-confirmUser().catch(console.error);
+async function main() {
+  const client = new CognitoIdentityProviderClient({ region });
+
+  await client.send(
+    new AdminEnableUserCommand({
+      UserPoolId: USER_POOL_ID,
+      Username: USERNAME,
+    })
+  );
+
+  await client.send(
+    new AdminSetUserPasswordCommand({
+      UserPoolId: USER_POOL_ID,
+      Username: USERNAME,
+      Password: PASSWORD,
+      Permanent: true,
+    })
+  );
+
+  console.log("Password set for user:", USERNAME);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

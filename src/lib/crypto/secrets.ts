@@ -5,16 +5,18 @@
 import crypto from 'crypto';
 
 function getEncryptionKey(): Buffer {
-  const secret =
-    process.env.AI_CREDENTIALS_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.AWS_SECRET_ACCESS_KEY ||
-    process.env.MY_AWS_SECRET_ACCESS_KEY;
+  const secret = process.env.AI_CREDENTIALS_SECRET || process.env.NEXTAUTH_SECRET;
 
   if (!secret) {
-    // Dev fallback — production should set AI_CREDENTIALS_SECRET
+    // Never fall back to AWS keys or a hard-coded string — that makes
+    // stored BYOK secrets recoverable by anyone who knows the fallback.
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'AI_CREDENTIALS_SECRET (or NEXTAUTH_SECRET) must be set in production'
+      );
+    }
     console.warn(
-      '[secrets] AI_CREDENTIALS_SECRET not set; using weak dev key. Set AI_CREDENTIALS_SECRET in Vercel.'
+      '[secrets] AI_CREDENTIALS_SECRET not set; using weak dev key. Set AI_CREDENTIALS_SECRET before deploying.'
     );
     return crypto.createHash('sha256').update('turnkey-dev-only-ai-secret').digest();
   }
