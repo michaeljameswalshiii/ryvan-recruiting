@@ -73,7 +73,7 @@ interface BedrockRequest {
   useSearch?: boolean;
 }
 
-const GENERAL_AI_SYSTEM_PROMPT = `You are a professional general-purpose AI assistant powered by Claude Sonnet on AWS Bedrock.
+const GENERAL_AI_SYSTEM_PROMPT = `You are a professional general-purpose AI assistant on AWS Bedrock (Claude models are auto-selected for cost and capability).
 
 You help with a wide range of work: analysis, writing, research, brainstorming, document review, data interpretation, planning, and problem-solving. You are not limited to recruiting, though you may use recruiting tools when relevant.
 
@@ -233,12 +233,14 @@ function analyzeQueryComplexity(query: string): QueryComplexity {
     "prioritize", "rank", "score", "evaluate", "assess"
   ];
   
-  // Simple indicators: basic lookup, single entity, quick fact
+  // Simple indicators: basic lookup, rewrite, short asks
   const simpleKeywords = [
     "what is", "who is", "find", "show", "get", "list",
     "email", "phone", "contact", "linkedin",
-    "summarize", " summarize", "quick", "just",
-    "weather", "stock", "price", "today"
+    "summarize", "summary", "quick", "just",
+    "rewrite", "rephrase", "shorter", "longer", "fix grammar",
+    "typo", "title", "subject line", "bullet", "bullets",
+    "weather", "stock", "price", "today", "hello", "hi ",
   ];
   
   // Count keyword matches
@@ -250,7 +252,12 @@ function analyzeQueryComplexity(query: string): QueryComplexity {
     return "complex";
   }
   
-  if (simpleMatches >= 1 && complexMatches === 0 && wordCount < 15) {
+  // Short prompts: prefer simple/cheap unless clearly complex
+  if (complexMatches === 0 && wordCount <= 12) {
+    return "simple";
+  }
+
+  if (simpleMatches >= 1 && complexMatches === 0 && wordCount < 25) {
     return "simple";
   }
   
@@ -294,6 +301,64 @@ function selectModel(query: string, requestedModel?: string): string {
       console.log(`Routing to Sonnet 4.6 (default for agentic work)`);
       return MODEL_SONNET;
   }
+}
+
+/**
+ * Friendly label for UI badges (not the full Bedrock model id).
+ */
+function friendlyModelLabel(modelId: string): string {
+  const id = (modelId || "").toLowerCase();
+  if (id.includes("haiku")) return "Claude Haiku";
+  if (id.includes("opus")) return "Claude Opus";
+  if (id.includes("sonnet")) return "Claude Sonnet";
+  if (id.includes("grok")) return "Grok";
+  if (id.includes("nova")) return "Amazon Nova";
+  // strip provider prefixes like bedrock:us.anthropic...
+  const tail = modelId.split(/[/:]/).pop() || modelId;
+  return tail.length > 40 ? `${tail.slice(0, 37)}…` : tail;
+}
+
+/**
+ * Auto-route for General AI Usage — user never picks a model.
+ *
+ * Policy (prefer cheapest capable model):
+ * - Files / long context / research-tool intent → Sonnet
+ * - Simple short Q&A / rewrite / summarize → Haiku
+ * - Moderate / complex reasoning → Sonnet
+ * - Opus is not used here (cost); escalate only if product policy changes
+ */
+function selectModelForGeneralAI(
+  query: string,
+  options?: { historyChars?: number }
+): string {
+  const q = query || "";
+  const historyChars = options?.historyChars ?? 0;
+  const hasFileMarker = /---\s*Attached file:|---\s*End of /i.test(q);
+  const longContent = q.length > 4000 || historyChars > 12000;
+
+  const toolIntent =
+    /\b(search|find people|find companies|apollo|research|look up|linkedin|pipeline|candidates|leads|web search|latest news|tavily)\b/i.test(
+      q
+    );
+
+  if (hasFileMarker || longContent || toolIntent) {
+    console.log(
+      "[General AI] → Sonnet (files / long context / tool-intent)"
+    );
+    return MODEL_SONNET;
+  }
+
+  const complexity = analyzeQueryComplexity(q);
+  if (complexity === "simple") {
+    console.log("[General AI] → Haiku (simple query)");
+    return MODEL_HAIKU;
+  }
+
+  // moderate + complex → Sonnet (skip Opus on General AI for cost)
+  console.log(
+    `[General AI] → Sonnet (${complexity} query; tools available)`
+  );
+  return MODEL_SONNET;
 }
 
 /**
@@ -1054,10 +1119,15 @@ try {
 
     lastUserQuery = userMessage?.content || "";
 
-    // General AI Usage always uses platform Bedrock Sonnet
+    // General AI Usage always uses platform Bedrock (auto-routed model)
     if (generalMode) {
       provider = "bedrock";
     }
+
+    const historyChars = messages.reduce(
+      (n, m) => n + (typeof m.content === "string" ? m.content.length : 0),
+      0
+    );
 
     const selectedModel =
       provider === "anthropic"
@@ -1065,16 +1135,26 @@ try {
         : provider === "grok"
           ? process.env.GROK_BYOK_MODEL || process.env.XAI_BYOK_MODEL || "grok-3"
           : generalMode
-            ? MODEL_SONNET
+            ? selectModelForGeneralAI(lastUserQuery, { historyChars })
             : selectModel(
                 lastUserQuery,
-                requestedModel === "sonnet" ? MODEL_SONNET : requestedModel
+                // "auto" / "sonnet" aliases from older clients
+                requestedModel === "auto" || requestedModel === "sonnet"
+                  ? undefined
+                  : requestedModel === "haiku"
+                    ? MODEL_HAIKU
+                    : requestedModel === "opus"
+                      ? MODEL_OPUS
+                      : requestedModel
               );
-    
+
+    const modelLabel = friendlyModelLabel(selectedModel);
+
     console.log("=== MODEL SELECTION ===");
     console.log("Provider:", provider);
+    console.log("General AI auto-route:", generalMode);
     console.log("Requested model:", requestedModel || "none");
-    console.log("Selected model:", selectedModel);
+    console.log("Selected model:", selectedModel, `(${modelLabel})`);
     console.log("Query preview:", lastUserQuery.substring(0, 50));
 
     // Bedrock path needs AWS config
@@ -1275,7 +1355,7 @@ try {
 
       console.log(
         generalMode
-          ? "Running General AI agent (Sonnet + tools + multi-turn)..."
+          ? `Running General AI agent (${modelLabel} + tools + multi-turn)...`
           : "Running MCP agent with native tool calling..."
       );
 
@@ -1372,6 +1452,8 @@ try {
       toolsUsed,
       provider,
       model: usedModel,
+      modelLabel: friendlyModelLabel(usedModel),
+      autoRouted: !!generalMode,
       usageLogged: usageLog.ok,
       usageTenantId: usageLog.tenantId,
       rateLimit: {

@@ -42,7 +42,34 @@ interface Message {
   timestamp: string;
   attachments?: { fileName: string; charCount: number }[];
   toolsUsed?: string[];
+  /** Full Bedrock model id */
   model?: string;
+  /** Friendly name for badge, e.g. "Claude Haiku" */
+  modelLabel?: string;
+}
+
+/** Client-side fallback if API omits modelLabel */
+function labelFromModelId(modelId?: string): string {
+  if (!modelId) return 'Claude';
+  const id = modelId.toLowerCase();
+  if (id.includes('haiku')) return 'Claude Haiku';
+  if (id.includes('opus')) return 'Claude Opus';
+  if (id.includes('sonnet')) return 'Claude Sonnet';
+  return modelId.length > 36 ? `${modelId.slice(0, 33)}…` : modelId;
+}
+
+function modelBadgeClass(label?: string): string {
+  const l = (label || '').toLowerCase();
+  if (l.includes('haiku')) {
+    return 'border-sky-200 bg-sky-50 text-sky-800';
+  }
+  if (l.includes('opus')) {
+    return 'border-violet-200 bg-violet-50 text-violet-800';
+  }
+  if (l.includes('sonnet')) {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+  }
+  return 'border-slate-200 bg-slate-50 text-slate-700';
 }
 
 const STORAGE_KEY = 'general-ai-usage-messages-v1';
@@ -98,6 +125,7 @@ export default function GeneralAiUsagePage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [lastMeta, setLastMeta] = useState<{
     model?: string;
+    modelLabel?: string;
     toolsUsed?: string[];
   } | null>(null);
 
@@ -252,7 +280,8 @@ export default function GeneralAiUsagePage() {
         body: JSON.stringify({
           messages: historyForApi,
           provider: 'bedrock',
-          model: 'sonnet',
+          // Server auto-routes Haiku vs Sonnet — do not force a model
+          model: 'auto',
           generalMode: true,
           useTools: true,
           assistantMode: false,
@@ -279,7 +308,10 @@ export default function GeneralAiUsagePage() {
         const toolsUsed: string[] = Array.isArray(result.toolsUsed)
           ? result.toolsUsed
           : [];
-        setLastMeta({ model: result.model, toolsUsed });
+        const modelLabel =
+          (typeof result.modelLabel === 'string' && result.modelLabel) ||
+          labelFromModelId(result.model);
+        setLastMeta({ model: result.model, modelLabel, toolsUsed });
         setMessages((prev) => [
           ...prev,
           {
@@ -289,6 +321,7 @@ export default function GeneralAiUsagePage() {
             timestamp: nowIso(),
             toolsUsed,
             model: result.model,
+            modelLabel,
           },
         ]);
       }
@@ -326,9 +359,13 @@ export default function GeneralAiUsagePage() {
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">
               General AI Usage
             </h1>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
+              <Sparkles className="h-3 w-3" />
+              Auto model routing
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600">
               <Cloud className="h-3 w-3" />
-              Claude Sonnet · Bedrock
+              AWS Bedrock
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600">
               <Wrench className="h-3 w-3" />
@@ -337,7 +374,8 @@ export default function GeneralAiUsagePage() {
           </div>
           <p className="mt-1 text-sm text-slate-500">
             Open-ended assistant with multi-turn context, file attachments, and
-            research tools. Use New chat to start fresh.
+            research tools. The cheapest capable model is chosen automatically
+            (Haiku for simple, Sonnet for files/tools/complex).
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
@@ -439,19 +477,34 @@ export default function GeneralAiUsagePage() {
                         {m.displayContent ?? m.content}
                       </p>
                       {m.role === 'assistant' &&
-                        m.toolsUsed &&
-                        m.toolsUsed.length > 0 &&
-                        !m.toolsUsed[0]?.startsWith('available:') && (
-                          <div className="mt-2 flex flex-wrap gap-1 border-t border-slate-100 pt-2">
-                            {m.toolsUsed.map((t) => (
+                        ((m.modelLabel || m.model) ||
+                          (m.toolsUsed &&
+                            m.toolsUsed.length > 0 &&
+                            !m.toolsUsed[0]?.startsWith('available:'))) && (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
+                            {(m.modelLabel || m.model) && (
                               <span
-                                key={t}
-                                className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500"
+                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${modelBadgeClass(
+                                  m.modelLabel || labelFromModelId(m.model)
+                                )}`}
+                                title={m.model || m.modelLabel}
                               >
-                                <Wrench className="h-2.5 w-2.5" />
-                                {t}
+                                <Sparkles className="h-2.5 w-2.5" />
+                                {m.modelLabel || labelFromModelId(m.model)}
                               </span>
-                            ))}
+                            )}
+                            {m.toolsUsed &&
+                              m.toolsUsed.length > 0 &&
+                              !m.toolsUsed[0]?.startsWith('available:') &&
+                              m.toolsUsed.map((t) => (
+                                <span
+                                  key={t}
+                                  className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500"
+                                >
+                                  <Wrench className="h-2.5 w-2.5" />
+                                  {t}
+                                </span>
+                              ))}
                           </div>
                         )}
                     </div>
@@ -494,7 +547,7 @@ export default function GeneralAiUsagePage() {
                   <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
                     <span className="inline-flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Thinking with Sonnet…
+                      Choosing model and thinking…
                     </span>
                   </div>
                 </div>
@@ -608,11 +661,16 @@ export default function GeneralAiUsagePage() {
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-slate-400">
             <span>
               Multi-turn context · File upload (txt, md, csv, json, docx, pdf) ·
-              Excel as CSV
+              Excel as CSV · Auto Haiku / Sonnet
             </span>
-            {lastMeta?.model && (
-              <span className="font-mono text-slate-500">
-                last: {lastMeta.model}
+            {lastMeta?.modelLabel && (
+              <span
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${modelBadgeClass(
+                  lastMeta.modelLabel
+                )}`}
+                title={lastMeta.model}
+              >
+                Last used: {lastMeta.modelLabel}
               </span>
             )}
             {messages.length > 0 && (
