@@ -3,7 +3,6 @@
  * Searchable list; company names hidden by default (agency mode).
  */
 
-import Link from "next/link";
 import { getAllJobs } from "@/lib/db/repositories/job-repository";
 import {
   getCareersTenantId,
@@ -47,22 +46,14 @@ export default async function CareersPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Careers
-            </p>
-            <h1 className="text-2xl font-semibold text-slate-900">Open roles</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Search roles and apply through our recruiting team.
-            </p>
-          </div>
-          <Link
-            href="/login"
-            className="text-sm text-slate-500 hover:text-slate-800"
-          >
-            Recruiter login
-          </Link>
+        <div className="mx-auto max-w-3xl px-6 py-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Careers
+          </p>
+          <h1 className="text-2xl font-semibold text-slate-900">Open roles</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Search roles and apply through our recruiting team.
+          </p>
         </div>
       </header>
 
