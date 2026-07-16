@@ -39,7 +39,19 @@ export const updateTenantSchema = z.object({
     .max(50)
     .regex(/^[a-z0-9-]+$/)
     .optional(),
-  logo_url: z.string().url().optional().or(z.literal("")),
+  // Absolute URL or app-relative path (/api/... or /branding/...)
+  logo_url: z
+    .string()
+    .refine(
+      (v) =>
+        !v ||
+        v.startsWith("/") ||
+        v.startsWith("http://") ||
+        v.startsWith("https://"),
+      "Must be a URL or path"
+    )
+    .optional()
+    .or(z.literal("")),
   primary_color: z
     .string()
     .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)

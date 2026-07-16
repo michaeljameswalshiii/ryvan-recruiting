@@ -37,19 +37,30 @@ export type CareersTenantContext = {
   tagline?: string | null;
 };
 
-function brandFromTenant(t: {
-  name?: string;
-  subdomain?: string;
-  logo_url?: string;
-  primary_color?: string;
-  careers_tagline?: string;
-} | null, fallbackSlug: string): Pick<
-  CareersTenantContext,
-  "name" | "logoUrl" | "primaryColor" | "tagline"
-> {
+function brandFromTenant(
+  t: {
+    name?: string;
+    subdomain?: string;
+    logo_url?: string;
+    logo_s3_key?: string;
+    primary_color?: string;
+    careers_tagline?: string;
+  } | null,
+  fallbackSlug: string
+): Pick<CareersTenantContext, "name" | "logoUrl" | "primaryColor" | "tagline"> {
+  const slug = (t?.subdomain || fallbackSlug || "careers").toLowerCase();
+  // Prefer stored URL; if S3 key exists use public proxy; else static branding file
+  let logoUrl = t?.logo_url || null;
+  if (!logoUrl && t?.logo_s3_key) {
+    logoUrl = `/api/public/careers/logo?tenant=${encodeURIComponent(slug)}`;
+  }
+  if (!logoUrl) {
+    // Static multi-tenant fallback: public/branding/{slug}-logo.svg|png
+    logoUrl = `/branding/${slug}-logo.svg`;
+  }
   return {
     name: t?.name || fallbackSlug,
-    logoUrl: t?.logo_url || null,
+    logoUrl,
     primaryColor: t?.primary_color || null,
     tagline: t?.careers_tagline || null,
   };

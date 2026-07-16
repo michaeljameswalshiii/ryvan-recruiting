@@ -2,7 +2,6 @@
  * Multi-tenant job detail + apply: /careers/{tenantSlug}/{jobId}
  */
 
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getJobById } from "@/lib/db/repositories/job-repository";
 import {
@@ -14,6 +13,7 @@ import {
 } from "@/lib/careers/public";
 import { CareersApplyForm } from "@/components/careers/CareersApplyForm";
 import { JobDescription } from "@/components/careers/JobDescription";
+import { CareersBrandHeader } from "@/components/careers/CareersBrandHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -47,28 +47,23 @@ export default async function TenantCareersJobPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-3xl px-6 py-5">
-          <Link
-            href={`/careers/${ctx.slug}`}
-            className="text-sm text-slate-500 hover:text-slate-800"
-          >
-            ← All open roles
-          </Link>
-          <p className="mt-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-            {ctx.name}
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">
-            {pub.title}
-          </h1>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
+      <CareersBrandHeader
+        name={ctx.name}
+        slug={ctx.slug}
+        logoUrl={ctx.logoUrl}
+        primaryColor={ctx.primaryColor}
+        tagline={ctx.tagline}
+        backHref={`/careers/${ctx.slug}`}
+        pageTitle={pub.title}
+        pageMeta={
+          <>
             {!hideCompany && pub.companyName && <span>{pub.companyName}</span>}
             {pub.location && <span>{pub.location}</span>}
             {pub.employmentType && <span>{pub.employmentType}</span>}
             {pub.salaryRange && <span>{pub.salaryRange}</span>}
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <main className="mx-auto max-w-3xl space-y-8 px-6 py-10">
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

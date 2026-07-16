@@ -13,6 +13,7 @@ import {
   toPublicJob,
 } from "@/lib/careers/public";
 import { CareersJobList } from "@/components/careers/CareersJobList";
+import { CareersBrandHeader } from "@/components/careers/CareersBrandHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export async function generateMetadata({ params }: Props) {
   if (!ctx) return { title: "Careers" };
   return {
     title: `Careers | ${ctx.name}`,
-    description: `Open roles at ${ctx.name}`,
+    description: ctx.tagline || `Open roles at ${ctx.name}`,
   };
 }
 
@@ -60,49 +61,15 @@ export default async function TenantCareersPage({ params }: Props) {
     loadError = "Unable to load open roles right now.";
   }
 
-  const accent = ctx.primaryColor || "#2563eb";
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      <header
-        className="border-b border-slate-200 bg-white"
-        style={{ borderBottomColor: `${accent}33` }}
-      >
-        <div className="mx-auto max-w-3xl px-6 py-5">
-          <div className="flex items-center gap-3">
-            {ctx.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={ctx.logoUrl}
-                alt=""
-                className="h-10 w-10 rounded-lg object-contain"
-              />
-            ) : (
-              <div
-                className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold"
-                style={{ backgroundColor: accent }}
-              >
-                {(ctx.name || "C").charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div>
-              <p
-                className="text-xs font-semibold uppercase tracking-wider"
-                style={{ color: accent }}
-              >
-                Careers
-              </p>
-              <h1 className="text-2xl font-semibold text-slate-900">
-                {ctx.name}
-              </h1>
-            </div>
-          </div>
-          <p className="mt-2 text-sm text-slate-500">
-            {ctx.tagline ||
-              "Search open roles and apply through our recruiting team."}
-          </p>
-        </div>
-      </header>
+      <CareersBrandHeader
+        name={ctx.name}
+        slug={ctx.slug}
+        logoUrl={ctx.logoUrl}
+        primaryColor={ctx.primaryColor}
+        tagline={ctx.tagline}
+      />
 
       <main className="mx-auto max-w-3xl px-6 py-10">
         {loadError ? (

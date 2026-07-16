@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,17 +11,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Loader2, Building2 } from "lucide-react";
+import { Loader2, Building2, Upload, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 
 export function OrgSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [name, setName] = useState("");
   const [subdomain, setSubdomain] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#2563eb");
   const [tagline, setTagline] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     (async () => {
@@ -45,6 +47,31 @@ export function OrgSettings() {
       }
     })();
   }, []);
+
+  const uploadLogo = async (file: File) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/tenant/branding", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Upload failed");
+        return;
+      }
+      setLogoUrl(data.logo_url || "");
+      toast.success("Logo uploaded — lives on your careers page");
+    } catch {
+      toast.error("Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,6 +97,7 @@ export function OrgSettings() {
       toast.success("Organization updated");
       if (data.tenant) {
         setSubdomain(data.tenant.subdomain || subdomain);
+        if (data.tenant.logo_url) setLogoUrl(data.tenant.logo_url);
       }
     } catch {
       toast.error("Save failed");
@@ -124,17 +152,64 @@ export function OrgSettings() {
               required
             />
           </div>
-          <div>
-            <Label htmlFor="org-logo">Logo URL</Label>
-            <Input
-              id="org-logo"
-              type="url"
-              value={logoUrl}
-              onChange={(e) => setLogoUrl(e.target.value)}
-              placeholder="https://..."
-              className="mt-1"
+
+          <div className="rounded-xl border border-dashed border-slate-300 p-4 space-y-3">
+            <Label className="flex items-center gap-2">
+              <ImageIcon className="h-4 w-4" />
+              Careers logo
+            </Label>
+            {logoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt="Logo preview"
+                className="h-16 w-auto max-w-[220px] object-contain"
+              />
+            )}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif,.png,.jpg,.jpeg,.webp,.svg"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void uploadLogo(f);
+              }}
             />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={uploading}
+                onClick={() => fileRef.current?.click()}
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Uploading…
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Upload logo
+                  </>
+                )}
+              </Button>
+            </div>
+            <div>
+              <Label htmlFor="org-logo" className="text-xs text-muted-foreground">
+                Or paste image URL
+              </Label>
+              <Input
+                id="org-logo"
+                value={logoUrl}
+                onChange={(e) => setLogoUrl(e.target.value)}
+                placeholder="https://… or /branding/…"
+                className="mt-1"
+              />
+            </div>
           </div>
+
           <div>
             <Label htmlFor="org-color">Primary color</Label>
             <div className="mt-1 flex gap-2 items-center">
