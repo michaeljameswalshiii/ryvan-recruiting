@@ -33,14 +33,10 @@ import {
   ArrowDownRight,
   Minus,
   UserRound,
-  Mail,
-  BarChart3,
-  Plus,
   ChevronRight,
   Activity,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
 
@@ -198,91 +194,36 @@ export function DashboardHome({
     },
   ];
 
-  const quickLinks = [
-    {
-      href: '/dashboard/candidates/new',
-      label: 'Add candidate',
-      desc: 'Source or create',
-      icon: Users,
-      color: 'bg-blue-50 text-blue-700',
-    },
-    {
-      href: '/dashboard/jobs',
-      label: 'Jobs pipeline',
-      desc: `${stats.jobs.open} open`,
-      icon: Briefcase,
-      color: 'bg-emerald-50 text-emerald-700',
-    },
-    {
-      href: '/dashboard/companies',
-      label: 'Companies',
-      desc: `${stats.companies.total} accounts`,
-      icon: Building2,
-      color: 'bg-violet-50 text-violet-700',
-    },
-    {
-      href: '/dashboard/contact-info',
-      label: 'Contacts',
-      desc: 'People directory',
-      icon: Mail,
-      color: 'bg-sky-50 text-sky-700',
-    },
-    {
-      href: '/dashboard/reporting',
-      label: 'Full reporting',
-      desc: 'Deep analytics',
-      icon: BarChart3,
-      color: 'bg-amber-50 text-amber-800',
-    },
-    {
-      href: '/dashboard/candidates',
-      label: 'Candidates',
-      desc: `${stats.inMotion} in motion`,
-      icon: UserRound,
-      color: 'bg-rose-50 text-rose-700',
-    },
-  ];
-
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="space-y-6 max-w-7xl">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
             Dashboard
           </h1>
-          <p className="text-sm text-gray-500">
-            Your recruiting pulse — {stats.periodLabel}. Click any card to drill in.
+          <p className="text-sm text-gray-500 mt-0.5">
+            Recruiting pulse for {stats.periodLabel}. KPI cards drill into detail.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
-            {PERIODS.map((p) => {
-              const active = period === p.key;
-              return (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() => setPeriod(p.key)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                    active
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-          </div>
-          <Button
-            size="sm"
-            className="bg-blue-600 hover:bg-blue-700"
-            onClick={() => router.push('/dashboard/candidates/new')}
-          >
-            <Plus className="h-4 w-4 mr-1.5" />
-            Add candidate
-          </Button>
+        <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm self-start">
+          {PERIODS.map((p) => {
+            const active = period === p.key;
+            return (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => setPeriod(p.key)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                  active
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -337,28 +278,7 @@ export function DashboardHome({
         </div>
       )}
 
-      {/* Quick links */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        {quickLinks.map((q) => (
-          <Link
-            key={q.href + q.label}
-            href={q.href}
-            className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:border-blue-200 hover:shadow transition-all group"
-          >
-            <div
-              className={`h-10 w-10 rounded-xl flex items-center justify-center ${q.color}`}
-            >
-              <q.icon className="h-5 w-5" />
-            </div>
-            <div className="mt-3 text-sm font-semibold text-gray-900 group-hover:text-blue-700">
-              {q.label}
-            </div>
-            <div className="text-xs text-gray-500">{q.desc}</div>
-          </Link>
-        ))}
-      </div>
-
-      {/* Main grid */}
+      {/* Funnel + attention */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Funnel */}
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

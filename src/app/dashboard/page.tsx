@@ -15,14 +15,14 @@ function parsePeriod(raw?: string): PeriodKey {
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-5 max-w-7xl animate-pulse">
+    <div className="space-y-6 max-w-7xl animate-pulse">
       <div className="h-10 w-72 bg-gray-100 rounded-xl" />
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {[...Array(6)].map((_, i) => (
           <div key={i} className="h-28 bg-gray-100 rounded-2xl" />
         ))}
       </div>
-      <div className="h-28 bg-gray-100 rounded-2xl" />
+      <div className="h-24 bg-gray-100 rounded-2xl" />
       <div className="grid md:grid-cols-2 gap-4">
         <div className="h-72 bg-gray-100 rounded-2xl" />
         <div className="h-72 bg-gray-100 rounded-2xl" />
