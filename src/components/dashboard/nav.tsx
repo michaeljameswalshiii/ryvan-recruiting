@@ -18,7 +18,6 @@ import {
   Mail,
   Kanban,
   AlertCircle,
-  Bug,
   ChevronUp,
   ChevronDown,
   Info,
@@ -39,13 +38,12 @@ const navItems = [
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
   { href: "/dashboard/contact-info", label: "Contact Info", icon: Info },
   { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
-  { href: "/dashboard/general-ai-usage", label: "General AI Usage", icon: MessageSquare },
+  { href: "/dashboard/general-ai-usage", label: "AI Assistant", icon: MessageSquare },
   { href: "/dashboard/issues", label: "Issues", icon: AlertCircle },
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
   { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
   { href: "/dashboard/settings", label: "Email", icon: Mail },
-  { href: "/dashboard/debug-env", label: "Debug", icon: Bug },
   { href: "/dashboard/dynamo-search", label: "Dynamo Search Tool", icon: Database },
 ];
 

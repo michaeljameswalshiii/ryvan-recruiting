@@ -28,15 +28,13 @@ const menuItems = [
   { name: 'Companies', href: '/dashboard/companies', icon: Building2 },
   { name: 'Contact Info', href: '/dashboard/contact-info', icon: Info },
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase },
-  { name: 'General AI Usage', href: '/dashboard/general-ai-usage', icon: MessageSquare },
+  { name: 'AI Assistant', href: '/dashboard/general-ai-usage', icon: MessageSquare },
   { name: 'Reporting', href: '/dashboard/reporting', icon: BarChart3 },
   { name: 'Email', href: '/dashboard/email', icon: Mail },
 ];
 
 const debugItems = [
-  { name: 'Debug Env', href: '/dashboard/debug-env', icon: Bug },
   { name: 'AI Apollo', href: '/dashboard/ai-apollo', icon: Bug },
-  { name: 'AI Assistant', href: '/dashboard/ai-assistant', icon: Bug },
   { name: 'Issues', href: '/dashboard/issues', icon: Bug },
   { name: 'Usage', href: '/dashboard/usage', icon: BarChart3 },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },

@@ -357,7 +357,7 @@ export default function GeneralAiUsagePage() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-              General AI Usage
+              AI Assistant
             </h1>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
               <Sparkles className="h-3 w-3" />
@@ -629,7 +629,7 @@ export default function GeneralAiUsagePage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Message General AI… (Enter to send, Shift+Enter for new line)"
+              placeholder="Message AI Assistant… (Enter to send, Shift+Enter for new line)"
               rows={1}
               disabled={isLoading}
               className="max-h-40 min-h-[2.5rem] flex-1 resize-none bg-transparent py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"

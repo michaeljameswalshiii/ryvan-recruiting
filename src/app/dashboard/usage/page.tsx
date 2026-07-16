@@ -86,11 +86,6 @@ export default async function UsageDashboardPage() {
         <div className="flex items-center gap-2">
           <Link href="/dashboard/general-ai-usage">
             <Badge variant="outline" className="gap-2 cursor-pointer hover:bg-slate-50">
-              General AI Usage
-            </Badge>
-          </Link>
-          <Link href="/dashboard/ai-assistant">
-            <Badge variant="outline" className="gap-2 cursor-pointer hover:bg-slate-50">
               Open AI Assistant
             </Badge>
           </Link>
