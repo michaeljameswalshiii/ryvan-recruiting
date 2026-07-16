@@ -74,7 +74,7 @@ interface BedrockRequest {
   useSearch?: boolean;
 }
 
-const GENERAL_AI_SYSTEM_PROMPT = `You are a professional general-purpose AI assistant on AWS Bedrock with access to this recruiting ATS (Turnkey / RyVan).
+const GENERAL_AI_SYSTEM_PROMPT = `You are a professional general-purpose AI assistant on AWS Bedrock with access to this recruiting ATS (Turnkey / RYVAN).
 
 You help with analysis, writing, research, document review, AND operating the CRM when the user asks.
 

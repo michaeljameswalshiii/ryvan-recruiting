@@ -14,7 +14,7 @@ async function main() {
   const password = 'Trio@2026';
   const userId = 'b498a438-8041-7016-f5ee-c4eb3aa4dab5';
   
-  // First, find or create tenant for Ryvan Recruiting
+  // First, find or create tenant for RYVAN Recruiting
   const tenantsTable = 'turnkey-tenants';
   const profilesTable = 'turnkey-profiles';
   
@@ -23,19 +23,19 @@ async function main() {
     TableName: tenantsTable,
     FilterExpression: 'contains(#name, :name)',
     ExpressionAttributeNames: { '#name': 'name' },
-    ExpressionAttributeValues: { ':name': { S: 'Ryvan' } }
+    ExpressionAttributeValues: { ':name': { S: 'RYVAN' } }
   }));
   
   let tenantId = 'tenant-ryvan-2026';
   
   if (!tenantScan.Items || tenantScan.Items.length === 0) {
     // Create tenant
-    console.log('Creating tenant for Ryvan Recruiting...');
+    console.log('Creating tenant for RYVAN Recruiting...');
     await client.send(new PutItemCommand({
       TableName: tenantsTable,
       Item: {
         id: { S: tenantId },
-        name: { S: 'Ryvan Recruiting' },
+        name: { S: 'RYVAN' },
         subdomain: { S: 'ryvan' },
         created_at: { S: new Date().toISOString() }
       }

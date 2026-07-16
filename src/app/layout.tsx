@@ -7,7 +7,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "RyVan Recruiting",
+  title: "RYVAN Recruiting",
   description: "Turnkey Optimization Platform",
 };
 

@@ -1,4 +1,4 @@
-# Turnkey Optimization (RyVan Recruiting)
+# Turnkey Optimization (RYVAN Recruiting)
 
 Modern AI-powered recruiting CRM.
 

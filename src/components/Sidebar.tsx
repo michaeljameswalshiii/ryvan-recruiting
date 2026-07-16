@@ -116,7 +116,7 @@ export default function Sidebar({ role }: SidebarProps) {
             R
           </div>
           <div>
-            <div className="font-semibold text-xl tracking-tight">RyVan Recruiting</div>
+            <div className="font-semibold text-xl tracking-tight">RYVAN Recruiting</div>
             <div className="text-xs text-gray-500">
               {role ? roleLabel(role) : 'Trio ATS'}
             </div>
@@ -192,7 +192,7 @@ export default function Sidebar({ role }: SidebarProps) {
       )}
 
       <div className="p-4 border-t mt-auto">
-        <div className="text-xs text-gray-500 text-center">© 2026 RyVan Recruiting</div>
+        <div className="text-xs text-gray-500 text-center">© 2026 RYVAN Recruiting</div>
       </div>
     </div>
   );
