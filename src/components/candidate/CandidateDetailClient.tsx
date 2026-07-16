@@ -783,6 +783,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
               size="sm"
               onClick={() => setMergeOpen(true)}
               title="Merge with a duplicate candidate"
+              className="border-blue-200 text-blue-700 hover:bg-blue-50"
             >
               <Combine className="h-3.5 w-3.5 mr-1.5" />
               Merge
