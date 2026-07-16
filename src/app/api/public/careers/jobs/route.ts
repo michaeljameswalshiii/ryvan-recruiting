@@ -1,11 +1,8 @@
 /**
- * Public careers job feed — no login required.
+ * Public careers job feed — multi-tenant.
  *
- * GET /api/public/careers/jobs
- *   ?tenant=optional-slug-or-id  (defaults to CAREERS_TENANT_ID)
- *   ?key=...                    (if CAREERS_PUBLIC_KEY is set)
- *
- * Returns Open jobs only, public-safe fields.
+ * GET /api/public/careers/jobs?tenant={slug}
+ * GET /api/public/careers/jobs?tenant={slug}&id={jobId}
  */
 
 import { NextRequest } from "next/server";
@@ -14,10 +11,10 @@ import {
   assertCareersAccess,
   clientIp,
   getAppBaseUrl,
-  getCareersTenantId,
   jsonWithCors,
   optionsCors,
   isJobListedOnWebsite,
+  resolveCareersTenant,
   toPublicJob,
 } from "@/lib/careers/public";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -41,15 +38,15 @@ export async function GET(request: NextRequest) {
     }
 
     const tenantParam = request.nextUrl.searchParams.get("tenant");
-    const tenantId = getCareersTenantId(tenantParam);
-    if (!tenantId) {
+    const ctx = await resolveCareersTenant(tenantParam);
+    if (!ctx) {
       return jsonWithCors(
         request,
         {
           error:
-            "Careers feed not configured. Set CAREERS_TENANT_ID on the server.",
+            "Unknown or missing tenant. Pass ?tenant={slug} (e.g. ryvan).",
         },
-        503
+        tenantParam ? 404 : 400
       );
     }
 
@@ -57,20 +54,20 @@ export async function GET(request: NextRequest) {
     const baseUrl = getAppBaseUrl(request);
 
     if (jobId) {
-      const job = await getJobById(tenantId, jobId);
+      const job = await getJobById(ctx.tenantId, jobId);
       if (!job || !isJobListedOnWebsite(job)) {
         return jsonWithCors(request, { error: "Job not found" }, 404);
       }
       return jsonWithCors(request, {
-        job: toPublicJob(job, baseUrl),
-        tenant: tenantParam || "default",
+        job: toPublicJob(job, baseUrl, ctx.slug),
+        tenant: { slug: ctx.slug, name: ctx.name },
       });
     }
 
-    const all = await getAllJobs(tenantId);
+    const all = await getAllJobs(ctx.tenantId);
     const jobs = all
       .filter((j) => j.id && isJobListedOnWebsite(j))
-      .map((j) => toPublicJob(j, baseUrl))
+      .map((j) => toPublicJob(j, baseUrl, ctx.slug))
       .sort((a, b) => {
         const ta = a.postedAt || "";
         const tb = b.postedAt || "";
@@ -80,7 +77,7 @@ export async function GET(request: NextRequest) {
     return jsonWithCors(request, {
       jobs,
       count: jobs.length,
-      tenant: tenantParam || "default",
+      tenant: { slug: ctx.slug, name: ctx.name, id: ctx.tenantId },
       generatedAt: new Date().toISOString(),
     });
   } catch (err) {

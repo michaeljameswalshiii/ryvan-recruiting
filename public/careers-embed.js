@@ -1,12 +1,13 @@
 /**
- * Turnkey careers embed for Squarespace / WordPress / static sites.
- * Company names are omitted by the public API (agency mode).
+ * Turnkey multi-tenant careers embed.
  *
- * Usage:
+ * Required: data-tenant="ryvan" (or your tenant subdomain/slug)
+ *
  *   <div id="turnkey-careers"></div>
  *   <script
  *     src="https://turnkey-optimization.vercel.app/careers-embed.js"
  *     data-api-base="https://turnkey-optimization.vercel.app"
+ *     data-tenant="ryvan"
  *     data-container="turnkey-careers"
  *     defer
  *   ></script>
@@ -50,7 +51,7 @@
     return t;
   }
 
-  function render(jobs, root, apiBase) {
+  function render(jobs, root, apiBase, tenantSlug) {
     var html =
       '<div style="font-family:system-ui,-apple-system,sans-serif">' +
       '<input id="tk-careers-q" type="search" placeholder="Search roles…" ' +
@@ -82,7 +83,11 @@
       var out = '<div style="display:grid;gap:12px">';
       for (var i = 0; i < shown.length; i++) {
         var j = shown[i];
-        var href = j.detailUrl || j.applyUrl || apiBase + "/careers/" + j.id;
+        var slug = j.tenantSlug || tenantSlug;
+        var href =
+          j.detailUrl ||
+          j.applyUrl ||
+          apiBase + "/careers/" + encodeURIComponent(slug) + "/" + j.id;
         var meta = [j.location, j.employmentType, j.salaryRange]
           .filter(Boolean)
           .map(esc)
@@ -126,12 +131,18 @@
     var root = document.getElementById(c.containerId);
     if (!root) return;
 
+    if (!c.tenant) {
+      root.innerHTML =
+        '<p style="font-family:system-ui,sans-serif;color:#b91c1c">Missing data-tenant on embed script (e.g. data-tenant="ryvan").</p>';
+      return;
+    }
+
     var base = (c.apiBase || window.location.origin).replace(/\/$/, "");
-    var url = base + "/api/public/careers/jobs";
-    var qs = [];
-    if (c.tenant) qs.push("tenant=" + encodeURIComponent(c.tenant));
-    if (c.key) qs.push("key=" + encodeURIComponent(c.key));
-    if (qs.length) url += "?" + qs.join("&");
+    var url =
+      base +
+      "/api/public/careers/jobs?tenant=" +
+      encodeURIComponent(c.tenant);
+    if (c.key) url += "&key=" + encodeURIComponent(c.key);
 
     root.innerHTML =
       '<p style="font-family:system-ui,sans-serif;color:#94a3b8">Loading open roles…</p>';
@@ -144,7 +155,8 @@
         });
       })
       .then(function (data) {
-        render(data.jobs || [], root, base);
+        var slug = (data.tenant && data.tenant.slug) || c.tenant;
+        render(data.jobs || [], root, base, slug);
       })
       .catch(function (err) {
         root.innerHTML =

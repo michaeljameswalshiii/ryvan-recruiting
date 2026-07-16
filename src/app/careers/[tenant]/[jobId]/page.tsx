@@ -1,50 +1,48 @@
 /**
- * Public job detail + apply form
- * Client company name hidden by default (agency confidential).
+ * Multi-tenant job detail + apply: /careers/{tenantSlug}/{jobId}
  */
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getJobById } from "@/lib/db/repositories/job-repository";
 import {
-  getCareersTenantId,
   getAppBaseUrl,
   isJobListedOnWebsite,
+  resolveCareersTenant,
   shouldHideCompanyOnCareers,
   toPublicJob,
 } from "@/lib/careers/public";
-import { CareersApplyForm } from "./apply-form";
+import { CareersApplyForm } from "@/components/careers/CareersApplyForm";
 import { JobDescription } from "@/components/careers/JobDescription";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ tenant: string; jobId: string }> };
 
 export async function generateMetadata({ params }: Props) {
-  const { id } = await params;
-  const tenantId = getCareersTenantId(null);
-  if (!tenantId) return { title: "Job | Careers" };
-  const job = await getJobById(tenantId, id);
+  const { tenant, jobId } = await params;
+  const ctx = await resolveCareersTenant(tenant);
+  if (!ctx) return { title: "Job | Careers" };
+  const job = await getJobById(ctx.tenantId, jobId);
   if (!job) return { title: "Job | Careers" };
-  // Use public projection so company names are not leaked in <meta>
-  const pub = toPublicJob(job, getAppBaseUrl());
+  const pub = toPublicJob(job, getAppBaseUrl(), ctx.slug);
   return {
-    title: `${pub.title} | Careers`,
+    title: `${pub.title} | ${ctx.name} Careers`,
     description:
       pub.description.replace(/\s+/g, " ").trim().slice(0, 160) ||
       "View role and apply",
   };
 }
 
-export default async function CareersJobPage({ params }: Props) {
-  const { id } = await params;
-  const tenantId = getCareersTenantId(null);
-  if (!tenantId) notFound();
+export default async function TenantCareersJobPage({ params }: Props) {
+  const { tenant, jobId } = await params;
+  const ctx = await resolveCareersTenant(tenant);
+  if (!ctx) notFound();
 
-  const job = await getJobById(tenantId, id);
+  const job = await getJobById(ctx.tenantId, jobId);
   if (!job || !isJobListedOnWebsite(job)) notFound();
 
-  const pub = toPublicJob(job, getAppBaseUrl());
+  const pub = toPublicJob(job, getAppBaseUrl(), ctx.slug);
   const hideCompany = shouldHideCompanyOnCareers();
 
   return (
@@ -52,12 +50,15 @@ export default async function CareersJobPage({ params }: Props) {
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-3xl px-6 py-5">
           <Link
-            href="/careers"
+            href={`/careers/${ctx.slug}`}
             className="text-sm text-slate-500 hover:text-slate-800"
           >
             ← All open roles
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-900">
+          <p className="mt-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+            {ctx.name}
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold text-slate-900">
             {pub.title}
           </h1>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
@@ -85,11 +86,16 @@ export default async function CareersJobPage({ params }: Props) {
         >
           <h2 className="text-lg font-semibold text-slate-900">Apply</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Submit your application below. It goes to our recruiting team — you
-            will not be redirected to the hiring company&apos;s website.
+            Submit your application below. It goes to the {ctx.name} recruiting
+            team — you will not be redirected to the hiring company&apos;s
+            website.
           </p>
           <div className="mt-6">
-            <CareersApplyForm jobId={pub.id} jobTitle={pub.title} />
+            <CareersApplyForm
+              jobId={pub.id}
+              jobTitle={pub.title}
+              tenantSlug={ctx.slug}
+            />
           </div>
         </section>
       </main>

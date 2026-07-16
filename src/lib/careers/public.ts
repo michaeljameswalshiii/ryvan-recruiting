@@ -1,10 +1,14 @@
 /**
- * Public careers feed helpers — safe fields only, no session required.
+ * Public careers feed helpers — multi-tenant safe fields, no session required.
  * @serverOnly
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import type { Job } from "@/lib/schemas/job";
+import {
+  getTenantById,
+  getTenantBySubdomain,
+} from "@/lib/db/repositories/tenant-repository";
 
 /** Public job card shown on external sites /careers */
 export type PublicJob = {
@@ -21,6 +25,13 @@ export type PublicJob = {
   updatedAt: string | null;
   applyUrl: string;
   detailUrl: string;
+  tenantSlug: string;
+};
+
+export type CareersTenantContext = {
+  tenantId: string;
+  slug: string;
+  name: string;
 };
 
 /**
@@ -36,35 +47,109 @@ export function isJobListedOnWebsite(job: {
   const open = (job.status || "").trim().toLowerCase() === "open";
   if (!open) return false;
   if (job.showOnWebsite === false) return false;
-  // true or undefined (legacy) → listed
   return true;
-}
-
-export function getCareersTenantId(requested?: string | null): string | null {
-  const configured = (process.env.CAREERS_TENANT_ID || "").trim();
-  if (!configured) return null;
-
-  // Optional slug map: ryvan:tenant-xxx,acme:tenant-yyy
-  const slugMap = parseTenantSlugMap(process.env.CAREERS_TENANT_SLUGS || "");
-  if (requested) {
-    const key = requested.trim();
-    if (slugMap[key]) return slugMap[key];
-    // Allow exact tenant id match only if it equals configured primary
-    // or appears as a value in the slug map
-    if (key === configured) return configured;
-    if (Object.values(slugMap).includes(key)) return key;
-    return null;
-  }
-  return configured;
 }
 
 function parseTenantSlugMap(raw: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of raw.split(",")) {
     const [slug, id] = part.split(":").map((s) => s?.trim());
-    if (slug && id) out[slug] = id;
+    if (slug && id) out[slug.toLowerCase()] = id;
   }
   return out;
+}
+
+export function isJobIdLike(value: string): boolean {
+  const v = value.trim();
+  // UUID
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+  ) {
+    return true;
+  }
+  // common job id shapes
+  if (/^[0-9a-f]{24,}$/i.test(v)) return true;
+  return false;
+}
+
+/**
+ * Resolve a public careers tenant from a URL slug (or env default).
+ * Order: env slug map → tenants.subdomain → tenant id direct match.
+ */
+export async function resolveCareersTenant(
+  requested?: string | null
+): Promise<CareersTenantContext | null> {
+  const slugMap = parseTenantSlugMap(process.env.CAREERS_TENANT_SLUGS || "");
+  const defaultId = (process.env.CAREERS_TENANT_ID || "").trim();
+  const defaultSlug = (
+    process.env.CAREERS_DEFAULT_SLUG ||
+    Object.keys(slugMap)[0] ||
+    "ryvan"
+  )
+    .trim()
+    .toLowerCase();
+
+  const raw = (requested || "").trim().toLowerCase();
+
+  // No slug: use default tenant
+  if (!raw) {
+    if (!defaultId) return null;
+    const t = await getTenantById(defaultId);
+    return {
+      tenantId: defaultId,
+      slug: (t?.subdomain || defaultSlug).toLowerCase(),
+      name: t?.name || "Careers",
+    };
+  }
+
+  // Explicit env map wins (handles duplicate subdomains)
+  if (slugMap[raw]) {
+    const tenantId = slugMap[raw];
+    const t = await getTenantById(tenantId);
+    return {
+      tenantId,
+      slug: raw,
+      name: t?.name || raw,
+    };
+  }
+
+  // Look up by subdomain on tenants table
+  const bySub = await getTenantBySubdomain(raw);
+  if (bySub?.id) {
+    return {
+      tenantId: bySub.id,
+      slug: (bySub.subdomain || raw).toLowerCase(),
+      name: bySub.name || raw,
+    };
+  }
+
+  // Direct tenant id
+  if (raw.startsWith("tenant-") || raw.length > 20) {
+    const t = await getTenantById(raw);
+    if (t?.id) {
+      return {
+        tenantId: t.id,
+        slug: (t.subdomain || raw).toLowerCase(),
+        name: t.name || "Careers",
+      };
+    }
+  }
+
+  return null;
+}
+
+/** @deprecated Prefer resolveCareersTenant — sync helper for env-only paths */
+export function getCareersTenantId(requested?: string | null): string | null {
+  const configured = (process.env.CAREERS_TENANT_ID || "").trim();
+  const slugMap = parseTenantSlugMap(process.env.CAREERS_TENANT_SLUGS || "");
+  if (requested) {
+    const key = requested.trim().toLowerCase();
+    if (slugMap[key]) return slugMap[key];
+    if (key === configured) return configured;
+    if (Object.values(slugMap).includes(requested.trim())) return requested.trim();
+    return null;
+  }
+  return configured || null;
 }
 
 export function getAppBaseUrl(request?: NextRequest): string {
@@ -81,8 +166,7 @@ export function getAppBaseUrl(request?: NextRequest): string {
 }
 
 /**
- * Agency default: hide client company on public careers so candidates apply
- * through the recruiter, not the hiring company site.
+ * Agency default: hide client company label on public careers.
  * Set CAREERS_SHOW_COMPANY_NAME=true to show company publicly.
  */
 export function shouldHideCompanyOnCareers(): boolean {
@@ -91,13 +175,15 @@ export function shouldHideCompanyOnCareers(): boolean {
   return true;
 }
 
-export function toPublicJob(job: Job, baseUrl: string): PublicJob {
+export function toPublicJob(
+  job: Job,
+  baseUrl: string,
+  tenantSlug: string
+): PublicJob {
   const id = job.id || "";
   const hideCompany = shouldHideCompanyOnCareers();
+  const slug = (tenantSlug || "careers").toLowerCase();
 
-  // Title + description are shown as written by the recruiter.
-  // We only hide the structured companyName field (UI label / API field).
-  // If the company is named in the body, that is intentional content.
   return {
     id,
     title: job.title || "Untitled role",
@@ -110,16 +196,12 @@ export function toPublicJob(job: Job, baseUrl: string): PublicJob {
     showOnWebsite: job.showOnWebsite !== false,
     postedAt: job.created_at || null,
     updatedAt: job.modified_at || null,
-    applyUrl: `${baseUrl}/careers/${id}#apply`,
-    detailUrl: `${baseUrl}/careers/${id}`,
+    applyUrl: `${baseUrl}/careers/${slug}/${id}#apply`,
+    detailUrl: `${baseUrl}/careers/${slug}/${id}`,
+    tenantSlug: slug,
   };
 }
 
-/**
- * Auth for public careers API.
- * If CAREERS_PUBLIC_KEY is unset, feed is open (tenant still required).
- * If set, require header x-careers-key or query ?key=
- */
 export function assertCareersAccess(request: NextRequest): {
   ok: true;
 } | { ok: false; response: NextResponse } {

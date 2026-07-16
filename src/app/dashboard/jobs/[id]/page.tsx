@@ -455,7 +455,7 @@ export default function JobDetailPage() {
 
           {isShownOnWebsite && isOpenStatus && job.id && (
             <a
-              href={`/careers/${job.id}`}
+              href={`/careers/${process.env.NEXT_PUBLIC_CAREERS_DEFAULT_SLUG || "ryvan"}/${job.id}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-50"

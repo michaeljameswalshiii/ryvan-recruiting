@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 type Props = {
   jobId: string;
   jobTitle: string;
+  tenantSlug: string;
 };
 
 const MAX_MB = 10;
 const ACCEPT = ".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-export function CareersApplyForm({ jobId, jobTitle }: Props) {
+export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -52,6 +53,7 @@ export function CareersApplyForm({ jobId, jobTitle }: Props) {
     try {
       const form = new FormData();
       form.set("jobId", jobId);
+      form.set("tenant", tenantSlug);
       form.set("name", name);
       form.set("email", email);
       form.set("phone", phone);

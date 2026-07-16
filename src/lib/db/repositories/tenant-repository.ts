@@ -108,34 +108,55 @@ export async function getTenantById(tenantId: string): Promise<Tenant | null> {
 }
 
 /**
- * Get a tenant by subdomain
+ * Get a tenant by subdomain (careers slug).
+ * Prefers GSI `subdomain-index`; falls back to table scan if the index is missing.
+ * If multiple tenants share a subdomain, prefer CAREERS_PREFERRED_TENANT_ID when set.
  */
 export async function getTenantBySubdomain(subdomain: string): Promise<Tenant | null> {
-  const cacheKey = `tenant:subdomain:${subdomain}`;
+  const slug = subdomain.trim().toLowerCase();
+  if (!slug) return null;
+
+  const cacheKey = `tenant:subdomain:${slug}`;
   
   // Check cache first
   const cached = await getCached<Tenant>(cacheKey);
   if (cached) {
     return cached;
   }
+
+  const preferred = (process.env.CAREERS_PREFERRED_TENANT_ID || process.env.CAREERS_TENANT_ID || "").trim();
   
   try {
-    const command = new QueryCommand({
-      TableName: getTenantsTable(),
-      IndexName: "subdomain-index",
-      KeyConditionExpression: "subdomain = :subdomain",
-      ExpressionAttributeValues: {
-        ":subdomain": { S: subdomain.toLowerCase() },
-      },
-    });
-    
-    const response = await dynamoClient.send(command);
-    
-    if (!response.Items?.length) {
-      return null;
+    let matches: Tenant[] = [];
+
+    try {
+      const command = new QueryCommand({
+        TableName: getTenantsTable(),
+        IndexName: "subdomain-index",
+        KeyConditionExpression: "subdomain = :subdomain",
+        ExpressionAttributeValues: {
+          ":subdomain": { S: slug },
+        },
+      });
+      const response = await dynamoClient.send(command);
+      matches = (response.Items || []).map((item) => unmarshall(item) as Tenant);
+    } catch (gsiErr) {
+      // GSI may not exist — scan (ok for small tenant tables)
+      console.warn("getTenantBySubdomain: GSI query failed, scanning", gsiErr);
+      const all = await getAllTenants();
+      matches = all.filter(
+        (t) => (t.subdomain || "").trim().toLowerCase() === slug
+      );
     }
     
-    const tenant = unmarshall(response.Items[0]) as Tenant;
+    if (!matches.length) {
+      return null;
+    }
+
+    let tenant = matches[0];
+    if (preferred && matches.some((t) => t.id === preferred)) {
+      tenant = matches.find((t) => t.id === preferred)!;
+    }
     
     // Cache for 5 minutes
     await setCached(cacheKey, tenant, 300);

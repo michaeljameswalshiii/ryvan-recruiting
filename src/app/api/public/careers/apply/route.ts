@@ -19,10 +19,10 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import {
   assertCareersAccess,
   clientIp,
-  getCareersTenantId,
   isJobListedOnWebsite,
   jsonWithCors,
   optionsCors,
+  resolveCareersTenant,
 } from "@/lib/careers/public";
 import { addNoteToCandidate } from "@/lib/events/candidate-events";
 
@@ -178,6 +178,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!tenantParam) {
+      return jsonWithCors(
+        request,
+        { error: "tenant (careers slug) is required" },
+        400
+      );
+    }
+
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return jsonWithCors(request, { error: "Invalid email address" }, 400);
     }
@@ -211,14 +219,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const tenantId = getCareersTenantId(tenantParam);
-    if (!tenantId) {
+    const ctx = await resolveCareersTenant(tenantParam);
+    if (!ctx) {
       return jsonWithCors(
         request,
-        { error: "Careers apply not configured (CAREERS_TENANT_ID)" },
-        503
+        { error: "Unknown careers tenant. Check the careers URL slug." },
+        404
       );
     }
+    const tenantId = ctx.tenantId;
 
     const job = await getJobById(tenantId, jobId);
     if (!job || !isJobListedOnWebsite(job)) {

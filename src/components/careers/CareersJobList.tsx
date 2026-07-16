@@ -9,9 +9,15 @@ type Props = {
   jobs: PublicJob[];
   /** When true, never show client company name (agency mode) */
   hideCompany?: boolean;
+  /** Careers slug segment, e.g. ryvan → /careers/ryvan/{jobId} */
+  tenantSlug: string;
 };
 
-export function CareersJobList({ jobs, hideCompany = true }: Props) {
+export function CareersJobList({
+  jobs,
+  hideCompany = true,
+  tenantSlug,
+}: Props) {
   const [query, setQuery] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -125,7 +131,7 @@ export function CareersJobList({ jobs, hideCompany = true }: Props) {
           {filtered.map((job) => (
             <li key={job.id}>
               <Link
-                href={`/careers/${job.id}`}
+                href={`/careers/${tenantSlug}/${job.id}`}
                 className="block rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md"
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
