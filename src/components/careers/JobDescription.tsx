@@ -22,14 +22,14 @@ export function JobDescription({ description, className = "" }: Props) {
 
   return (
     <div
-      className={`space-y-5 text-[15px] leading-relaxed text-slate-700 ${className}`}
+      className={`space-y-6 text-[15px] leading-[1.65] text-slate-700 ${className}`}
     >
       {blocks.map((b, idx) => {
         if (b.type === "h") {
           return (
             <h3
               key={idx}
-              className="border-b border-slate-100 pb-1.5 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500"
+              className="mt-1 border-b border-slate-200 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500"
             >
               {b.text}
             </h3>
@@ -37,16 +37,14 @@ export function JobDescription({ description, className = "" }: Props) {
         }
         if (b.type === "ul") {
           return (
-            <ul key={idx} className="space-y-2.5">
+            <ul key={idx} className="space-y-3.5">
               {b.items.map((item, j) => (
-                <li key={j} className="flex gap-2.5">
+                <li key={j} className="flex gap-3">
                   <span
-                    className="mt-0.5 shrink-0 font-semibold text-slate-400"
+                    className="mt-[0.35em] h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400"
                     aria-hidden
-                  >
-                    •
-                  </span>
-                  <span className="min-w-0 flex-1">{item}</span>
+                  />
+                  <span className="min-w-0 flex-1 text-slate-700">{item}</span>
                 </li>
               ))}
             </ul>
@@ -54,13 +52,13 @@ export function JobDescription({ description, className = "" }: Props) {
         }
         if (b.type === "ol") {
           return (
-            <ol key={idx} className="space-y-2.5">
+            <ol key={idx} className="space-y-3.5">
               {b.items.map((item, j) => (
-                <li key={j} className="flex gap-2.5">
-                  <span className="mt-0.5 w-5 shrink-0 text-right text-sm font-semibold text-slate-400">
+                <li key={j} className="flex gap-3">
+                  <span className="mt-0.5 w-5 shrink-0 text-right text-xs font-semibold tabular-nums text-slate-400">
                     {j + 1}.
                   </span>
-                  <span className="min-w-0 flex-1">{item}</span>
+                  <span className="min-w-0 flex-1 text-slate-700">{item}</span>
                 </li>
               ))}
             </ol>

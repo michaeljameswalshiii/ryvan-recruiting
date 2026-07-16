@@ -1,6 +1,11 @@
 /**
  * Format job descriptions for public careers pages.
  * Preserves bullets / numbered lists so postings stay readable.
+ *
+ * Handles common source messiness:
+ * - Soft-wrapped lines mid-sentence (merge continuations)
+ * - Headings like RESPONSIBILITIES / QUALIFICATIONS
+ * - Plain lines under a section heading treated as bullets
  */
 
 export type DescBlock =
@@ -17,9 +22,12 @@ function htmlToRoughText(input: string): string {
   s = s.replace(/<\/\s*div\s*>/gi, "\n");
   s = s.replace(/<\/\s*h[1-6]\s*>/gi, "\n\n");
   s = s.replace(/<\s*li[^>]*>/gi, "\n• ");
-  s = s.replace(/<\/\s*li\s*>/gi, "");
+  s = s.replace(/<\/\s*li\s*>/gi, "\n");
   s = s.replace(/<\/\s*(ul|ol)\s*>/gi, "\n\n");
-  s = s.replace(/<\s*\/?\s*(ul|ol|p|div|span|strong|b|em|i|a|h[1-6])[^>]*>/gi, "");
+  s = s.replace(
+    /<\s*\/?\s*(ul|ol|p|div|span|strong|b|em|i|a|h[1-6])[^>]*>/gi,
+    ""
+  );
   s = s.replace(/<[^>]+>/g, "");
   s = s
     .replace(/&nbsp;/g, " ")
@@ -32,11 +40,13 @@ function htmlToRoughText(input: string): string {
 }
 
 function isBulletLine(line: string): boolean {
-  return /^([•·▪◦●\-\*–—]|\u2022)\s+/.test(line) || /^[•·▪◦●]\s*/.test(line);
+  return (
+    /^([•·▪◦●\-\*–—]|\u2022)\s+\S/.test(line) || /^[•·▪◦●]\s*\S/.test(line)
+  );
 }
 
 function isNumberedLine(line: string): boolean {
-  return /^\d+[\.\)]\s+/.test(line);
+  return /^\d+[\.\)]\s+\S/.test(line);
 }
 
 function stripBullet(line: string): string {
@@ -54,47 +64,117 @@ function looksLikeHeading(line: string): boolean {
   const t = line.trim();
   if (t.length < 3 || t.length > 80) return false;
   if (isBulletLine(t) || isNumberedLine(t)) return false;
-  // Short line ending with colon, or ALL CAPS section titles
   if (/:$/.test(t) && t.length < 60) return true;
   if (t === t.toUpperCase() && /[A-Z]/.test(t) && t.split(/\s+/).length <= 8) {
     return true;
   }
-  // Common JD section headers
   return /^(responsibilities|requirements|qualifications|about (the )?role|what you.ll do|benefits|who you are|the role|overview|summary|must have|nice to have)\b/i.test(
     t
   );
 }
 
-/** Section titles that usually introduce a list of duties/requirements */
 function isListSectionHeading(line: string): boolean {
   return /^(key\s+)?responsibilities|requirements|qualifications|what you.?ll do|duties|must have|nice to have|strongly preferred|preferred|required|benefits|about (the )?role|the role|overview|summary|who you are|skills|experience\b/i.test(
     line.replace(/:$/, "").trim()
   );
 }
 
+/** Collapse internal whitespace; fix space before punctuation */
+function cleanItemText(s: string): string {
+  return s
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/([(\[])\s+/g, "$1")
+    .replace(/\s+([)\]])/g, "$1")
+    .trim();
+}
+
+/**
+ * True if `next` looks like a soft-wrap continuation of `prev`
+ * (not a new list item / heading / sentence start).
+ */
+function isContinuation(prev: string, next: string): boolean {
+  if (!prev || !next) return false;
+  if (isBulletLine(next) || isNumberedLine(next) || looksLikeHeading(next)) {
+    return false;
+  }
+  // New sentence starting with capital after end punctuation → new item
+  if (/[.!?]"?$/.test(prev.trim()) && /^[A-Z]/.test(next.trim())) {
+    return false;
+  }
+  // Next starts lowercase, digit mid-phrase, or open paren → continuation
+  if (/^[a-z0-9(]/.test(next.trim())) return true;
+  // Previous ends mid-phrase (comma, colon, or no terminal punct)
+  if (/[,;:]$/.test(prev.trim())) return true;
+  if (!/[.!?]$/.test(prev.trim()) && next.trim().length > 0) {
+    // Prefer merge when previous is long-ish fragment (soft wrap)
+    if (prev.trim().length > 40) return true;
+    // Short previous without period often still a wrap ("Configure and implement")
+    if (!/^[A-Z][a-z]+$/.test(prev.trim())) return true;
+  }
+  return false;
+}
+
+/**
+ * Pre-pass: join soft-wrapped lines so mid-sentence breaks don't become
+ * separate bullets.
+ */
+function joinSoftWraps(lines: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const cur = raw.trim();
+    if (!cur) {
+      out.push("");
+      continue;
+    }
+    if (out.length === 0) {
+      out.push(cur);
+      continue;
+    }
+    // Find last non-empty output line
+    let j = out.length - 1;
+    while (j >= 0 && !out[j].trim()) j--;
+    if (j < 0) {
+      out.push(cur);
+      continue;
+    }
+    const prev = out[j];
+    // Don't join across blank (paragraph break) unless clearly a wrap
+    const hadBlank = j < out.length - 1;
+    if (hadBlank) {
+      out.push(cur);
+      continue;
+    }
+    if (isContinuation(prev, cur)) {
+      out[j] = cleanItemText(`${prev} ${cur}`);
+    } else {
+      out.push(cur);
+    }
+  }
+  return out;
+}
+
 /**
  * Parse plain / semi-HTML description into structured blocks.
- * Also treats plain newline-separated items under a section heading as bullets
- * (common when JD text has no • characters).
  */
 export function parseJobDescription(raw: string): DescBlock[] {
   if (!raw || !raw.trim()) return [];
 
   let text = raw.includes("<") ? htmlToRoughText(raw) : raw;
   text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  // Normalize fancy bullets
   text = text.replace(/[\u2022\u2023\u25E6\u2043\u2219]/g, "•");
 
-  const lines = text.split("\n").map((l) => l.trimEnd());
+  let lines = text.split("\n").map((l) => l.trimEnd());
+  lines = joinSoftWraps(lines);
+
   const blocks: DescBlock[] = [];
   let i = 0;
-  /** After a list-style heading, plain lines become bullets */
   let listMode = false;
 
   while (i < lines.length) {
     const line = lines[i].trim();
     if (!line) {
-      // Double blank often ends a list section
       const next = lines[i + 1]?.trim() || "";
       if (listMode && !next) listMode = false;
       i++;
@@ -115,13 +195,31 @@ export function parseJobDescription(raw: string): DescBlock[] {
         const L = lines[i].trim();
         if (!L) {
           const next = lines[i + 1]?.trim() || "";
-          if (!next || !isBulletLine(next)) break;
+          if (!next || (!isBulletLine(next) && !isContinuation(items[items.length - 1] || "", next))) {
+            break;
+          }
           i++;
           continue;
         }
-        if (!isBulletLine(L)) break;
-        items.push(stripBullet(L));
-        i++;
+        if (isBulletLine(L)) {
+          items.push(cleanItemText(stripBullet(L)));
+          i++;
+          continue;
+        }
+        // Continuation of previous bullet (soft wrap without bullet glyph)
+        if (
+          items.length &&
+          isContinuation(items[items.length - 1], L) &&
+          !looksLikeHeading(L) &&
+          !isNumberedLine(L)
+        ) {
+          items[items.length - 1] = cleanItemText(
+            `${items[items.length - 1]} ${L}`
+          );
+          i++;
+          continue;
+        }
+        break;
       }
       if (items.length) blocks.push({ type: "ul", items });
       continue;
@@ -138,21 +236,35 @@ export function parseJobDescription(raw: string): DescBlock[] {
           i++;
           continue;
         }
-        if (!isNumberedLine(L)) break;
-        items.push(stripNumber(L));
-        i++;
+        if (isNumberedLine(L)) {
+          items.push(cleanItemText(stripNumber(L)));
+          i++;
+          continue;
+        }
+        if (
+          items.length &&
+          isContinuation(items[items.length - 1], L) &&
+          !looksLikeHeading(L) &&
+          !isBulletLine(L)
+        ) {
+          items[items.length - 1] = cleanItemText(
+            `${items[items.length - 1]} ${L}`
+          );
+          i++;
+          continue;
+        }
+        break;
       }
       if (items.length) blocks.push({ type: "ol", items });
       continue;
     }
 
-    // Under Responsibilities/Requirements/etc., each line is a bullet
+    // Under Responsibilities/Requirements/etc., each non-continuation line is a bullet
     if (listMode) {
       const items: string[] = [];
       while (i < lines.length) {
         const L = lines[i].trim();
         if (!L) {
-          // stop list on blank line if next is heading or end
           const next = lines[i + 1]?.trim() || "";
           if (!next || looksLikeHeading(next)) {
             listMode = false;
@@ -164,7 +276,6 @@ export function parseJobDescription(raw: string): DescBlock[] {
         if (looksLikeHeading(L) || isBulletLine(L) || isNumberedLine(L)) {
           break;
         }
-        // Short sub-headings like "Required" / "Strongly Preferred"
         if (
           L.length < 40 &&
           /^(required|preferred|strongly preferred|nice to have|must have|minimum|bonus)\b/i.test(
@@ -179,7 +290,13 @@ export function parseJobDescription(raw: string): DescBlock[] {
           i++;
           continue;
         }
-        items.push(L);
+        if (items.length && isContinuation(items[items.length - 1], L)) {
+          items[items.length - 1] = cleanItemText(
+            `${items[items.length - 1]} ${L}`
+          );
+        } else {
+          items.push(cleanItemText(L));
+        }
         i++;
       }
       if (items.length) blocks.push({ type: "ul", items });
@@ -196,7 +313,7 @@ export function parseJobDescription(raw: string): DescBlock[] {
       para.push(L);
       i++;
     }
-    blocks.push({ type: "p", text: para.join(" ") });
+    blocks.push({ type: "p", text: cleanItemText(para.join(" ")) });
   }
 
   return blocks;
@@ -204,8 +321,6 @@ export function parseJobDescription(raw: string): DescBlock[] {
 
 /**
  * Remove client company names from public-facing title/description text.
- * Also redacts the first significant word (e.g. "Auxilio" from "Auxilio Partners")
- * and curly-apostrophe possessives ("Auxilio's", "Auxilio's").
  */
 export function redactCompanyNames(
   text: string,
@@ -218,9 +333,12 @@ export function redactCompanyNames(
     if (!n || n.trim().length < 2) continue;
     const full = n.trim();
     expanded.push(full);
-    // First word of multi-word names (min 4 chars to avoid "The", "A")
     const first = full.split(/\s+/)[0];
-    if (first && first.length >= 4 && !/^(the|and|inc|llc|ltd|corp)$/i.test(first)) {
+    if (
+      first &&
+      first.length >= 4 &&
+      !/^(the|and|inc|llc|ltd|corp)$/i.test(first)
+    ) {
       expanded.push(first);
     }
   }
@@ -229,7 +347,6 @@ export function redactCompanyNames(
 
   for (const name of names) {
     const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // Plain, ASCII possessive, curly ’ possessive, and broken encoding ??s
     const re = new RegExp(
       `\\b${esc}(?:[''\u2019\u2018]s|\\?\\?s)?\\b`,
       "gi"
@@ -237,16 +354,18 @@ export function redactCompanyNames(
     out = out.replace(re, "our client");
   }
 
-  // Preserve newlines (needed for list parsing). Only collapse runs of spaces/tabs.
   out = out
-    .replace(/\bour client(?:[''\u2019]s)?(?:[ \t]+our client(?:[''\u2019]s)?)+/gi, "our client")
+    .replace(
+      /\bour client(?:[''\u2019]s)?(?:[ \t]+our client(?:[''\u2019]s)?)+/gi,
+      "our client"
+    )
     .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+([,.;:])/g, "$1");
 
   return out;
 }
 
-/** Plain-text preview for cards (first paragraph / lines, no raw bullets mess) */
+/** Plain-text preview for cards */
 export function descriptionPreview(raw: string, maxLen = 180): string {
   const blocks = parseJobDescription(raw);
   const parts: string[] = [];
