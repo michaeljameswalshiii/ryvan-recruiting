@@ -12,11 +12,13 @@ import {
   Trash2,
   Pencil,
   Eye,
+  Combine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useLeads, useDeleteLead } from '@/lib/hooks/query-lead';
 import { ResumeCreateCard } from '@/components/candidates/ResumeCreateCard';
+import { MergeCandidatesModal } from '@/components/candidate/MergeCandidatesModal';
 import { APPLICATION_STAGES, mapLegacyStageToApplicationStage } from '@/lib/schemas/lead';
 
 type SortKey = 'last_activity' | 'name' | 'added' | 'stage';
@@ -236,6 +238,12 @@ export function CandidatesClient() {
   const [sortKey, setSortKey] = useState<SortKey>('last_activity');
   const [showResumeCard, setShowResumeCard] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [mergeCandidate, setMergeCandidate] = useState<{
+    id: string;
+    name: string;
+    email?: string;
+    createdAt?: string;
+  } | null>(null);
 
   const candidates = useMemo(() => (Array.isArray(leads) ? leads : []), [leads]);
 
@@ -702,7 +710,7 @@ export function CandidatesClient() {
                             <MoreHorizontal className="h-4 w-4 text-gray-500" />
                           </Button>
                           {openMenuId === c.id && (
-                            <div className="absolute right-0 top-9 z-20 w-40 rounded-lg border border-gray-200 bg-white shadow-lg py-1 text-left">
+                            <div className="absolute right-0 top-9 z-20 w-44 rounded-lg border border-gray-200 bg-white shadow-lg py-1 text-left">
                               <button
                                 type="button"
                                 className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
@@ -725,6 +733,21 @@ export function CandidatesClient() {
                               </button>
                               <button
                                 type="button"
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-blue-700 hover:bg-blue-50"
+                                onClick={() => {
+                                  setOpenMenuId(null);
+                                  setMergeCandidate({
+                                    id: c.id,
+                                    name: c.name || 'Candidate',
+                                    email: c.email,
+                                    createdAt: c.added || c.createdAt || c.created_at,
+                                  });
+                                }}
+                              >
+                                <Combine className="h-3.5 w-3.5" /> Merge
+                              </button>
+                              <button
+                                type="button"
                                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
                                 onClick={() => handleDeleteCandidate(c.id, c.name)}
                               >
@@ -741,6 +764,14 @@ export function CandidatesClient() {
             </table>
           </div>
         </div>
+      )}
+
+      {mergeCandidate && (
+        <MergeCandidatesModal
+          open={!!mergeCandidate}
+          onClose={() => setMergeCandidate(null)}
+          currentCandidate={mergeCandidate}
+        />
       )}
     </div>
   );
