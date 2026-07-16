@@ -173,6 +173,7 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
             accept={ACCEPT}
             onChange={(e) => onPickFile(e.target.files?.[0] || null)}
             className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-800"
+            aria-required="true"
           />
         </div>
         {resumeFile ? (
@@ -193,7 +194,7 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
           </p>
         ) : (
           <p className="mt-1.5 text-xs text-slate-500">
-            A resume is required to submit your application.
+            Required — upload a PDF or Word file to apply.
           </p>
         )}
       </div>
