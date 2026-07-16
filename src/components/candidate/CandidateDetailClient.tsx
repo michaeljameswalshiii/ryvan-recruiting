@@ -189,6 +189,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [linkedJobs, setLinkedJobs] = useState<any[]>(
     Array.isArray(safe.linkedJobs) ? safe.linkedJobs : []
   );
+  const [unlinkingJobId, setUnlinkingJobId] = useState<string | null>(null);
 
   const [contactInfo, setContactInfo] = useState({
     name: safe.name || '',
@@ -348,6 +349,35 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       toast.error(err?.message || 'Failed to update stage');
     } finally {
       setUpdatingStage(false);
+    }
+  };
+
+  const handleUnlinkJob = async (job: any) => {
+    const jobId = job.jobId || job.id;
+    const title = job.jobTitle || job.title || 'this job';
+    if (!candidateId || !jobId) return;
+    if (!confirm(`Unlink candidate from "${title}"?`)) return;
+
+    setUnlinkingJobId(jobId);
+    try {
+      const res = await fetch(
+        `/api/data/leads/${candidateId}/job/${jobId}/unlink`,
+        { method: 'POST', credentials: 'include' }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to unlink job');
+      }
+      setLinkedJobs((prev) =>
+        prev.filter((j) => (j.jobId || j.id) !== jobId)
+      );
+      toast.success(`Unlinked from ${title}`);
+      void fetchNotes();
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to unlink job');
+    } finally {
+      setUnlinkingJobId(null);
     }
   };
 
@@ -1185,24 +1215,53 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             </div>
           ) : (
             <div className="space-y-2">
-              {linkedJobs.map((job: any) => (
-                <Link
-                  key={job.jobId || job.id}
-                  href={`/dashboard/jobs/${job.jobId || job.id}`}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-4 py-3 hover:bg-gray-50"
-                >
-                  <div>
-                    <div className="font-medium text-gray-900">
-                      {job.jobTitle || job.title || 'Job'}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {job.companyName || '—'}
-                      {job.stage ? ` · ${job.stage}` : ''}
+              {linkedJobs.map((job: any) => {
+                const jobId = job.jobId || job.id;
+                const isUnlinking = unlinkingJobId === jobId;
+                return (
+                  <div
+                    key={jobId}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-4 py-3 hover:bg-gray-50"
+                  >
+                    <Link
+                      href={`/dashboard/jobs/${jobId}`}
+                      className="min-w-0 flex-1"
+                    >
+                      <div className="font-medium text-gray-900">
+                        {job.jobTitle || job.title || 'Job'}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {job.companyName || '—'}
+                        {job.stage ? ` · ${job.stage}` : ''}
+                      </div>
+                    </Link>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        disabled={isUnlinking || !!unlinkingJobId}
+                        onClick={() => handleUnlinkJob(job)}
+                      >
+                        {isUnlinking ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                        ) : (
+                          <Unlink className="h-3.5 w-3.5 mr-1.5" />
+                        )}
+                        Unlink
+                      </Button>
+                      <Link
+                        href={`/dashboard/jobs/${jobId}`}
+                        className="p-2 text-gray-400 hover:text-gray-600"
+                        title="Open job"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Link>
                     </div>
                   </div>
-                  <ChevronRight className="h-4 w-4 text-gray-400" />
-                </Link>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
