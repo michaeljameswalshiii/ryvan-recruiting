@@ -7,7 +7,14 @@
 
 'use server';
 
-import { putItem, queryItems, eventsTable } from '../db/dynamodb';
+import {
+  putItem,
+  queryItems,
+  getItem,
+  updateItem,
+  deleteItem,
+  eventsTable,
+} from '../db/dynamodb';
 import type {
   EventDetails,
   CandidateEvent,
@@ -272,6 +279,154 @@ export async function getCandidateEvents(
     return {
       events: [],
       hasMore: false,
+    };
+  }
+}
+
+/**
+ * Resolve DynamoDB SK for a candidate event.
+ * Client-facing ids are the ISO timestamp portion of SK (`EVENT#timestamp`).
+ */
+function resolveEventSK(eventId: string): string {
+  if (!eventId) throw new Error('Event ID is required');
+  if (eventId.startsWith('EVENT#')) return eventId;
+  return `EVENT#${eventId}`;
+}
+
+/**
+ * Update an existing candidate activity/note event.
+ * Edits note text, note type labels, title, and description in place.
+ */
+export async function updateCandidateEvent(
+  candidateId: string,
+  eventId: string,
+  updates: {
+    noteText?: string;
+    noteType?: string;
+    title?: string;
+    description?: string;
+  }
+): Promise<RecordEventResponse & { event?: CandidateEventResult }> {
+  try {
+    if (!candidateId || !eventId) {
+      return { success: false, error: 'Candidate ID and event ID are required' };
+    }
+
+    const sk = resolveEventSK(eventId);
+    const pk = `ENTITY#candidate#${candidateId}`;
+
+    const existing = await getItem<CandidateEvent>(eventsTable, {
+      PK: pk,
+      SK: sk,
+    });
+    if (!existing) {
+      return { success: false, error: 'Event not found' };
+    }
+
+    const meta = { ...(existing.metadata || {}) };
+    let title = existing.title;
+    let description = existing.description;
+
+    if (updates.noteText !== undefined) {
+      const text = updates.noteText.trim();
+      if (!text) {
+        return { success: false, error: 'Note text is required' };
+      }
+      meta.noteText = text;
+      description =
+        text.substring(0, 100) + (text.length > 100 ? '...' : '');
+    }
+
+    if (updates.noteType !== undefined) {
+      const noteTypeValue = updates.noteType;
+      const noteTypeLabel =
+        candidateNoteTypes.find((t) => t.value === noteTypeValue)?.label ||
+        noteTypeValue;
+      meta.noteType = noteTypeValue;
+      meta.noteTypeLabel = noteTypeLabel;
+      if (existing.eventType === 'NOTE' || meta.noteText) {
+        title = `Note - ${noteTypeLabel}`;
+      }
+    }
+
+    if (updates.title !== undefined) title = updates.title;
+    if (updates.description !== undefined) description = updates.description;
+
+    meta.updatedAt = new Date().toISOString();
+
+    await updateItem(
+      eventsTable,
+      { PK: pk, SK: sk },
+      'SET #title = :title, #description = :description, #metadata = :metadata',
+      {
+        ':title': title,
+        ':description': description,
+        ':metadata': meta,
+      },
+      {
+        '#title': 'title',
+        '#description': 'description',
+        '#metadata': 'metadata',
+      }
+    );
+
+    const resolvedId = sk.replace('EVENT#', '');
+    return {
+      success: true,
+      eventId: resolvedId,
+      event: {
+        id: resolvedId,
+        entityId: candidateId,
+        entityType: 'candidate',
+        tenantId: existing.tenantId,
+        eventType: existing.eventType as CandidateEventType,
+        title,
+        description,
+        metadata: meta,
+        createdAt: existing.createdAt,
+        createdBy: existing.createdBy,
+        timestamp: resolvedId,
+      },
+    };
+  } catch (error) {
+    console.error('[EVENTS] Failed to update event:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update event',
+    };
+  }
+}
+
+/**
+ * Permanently delete a candidate activity/note event.
+ */
+export async function deleteCandidateEvent(
+  candidateId: string,
+  eventId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!candidateId || !eventId) {
+      return { success: false, error: 'Candidate ID and event ID are required' };
+    }
+
+    const sk = resolveEventSK(eventId);
+    const pk = `ENTITY#candidate#${candidateId}`;
+
+    const existing = await getItem<CandidateEvent>(eventsTable, {
+      PK: pk,
+      SK: sk,
+    });
+    if (!existing) {
+      return { success: false, error: 'Event not found' };
+    }
+
+    await deleteItem(eventsTable, { PK: pk, SK: sk });
+    return { success: true };
+  } catch (error) {
+    console.error('[EVENTS] Failed to delete event:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete event',
     };
   }
 }

@@ -166,6 +166,12 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('Conversation');
   const [addingNote, setAddingNote] = useState(false);
+  /** Inline edit state for activity log rows */
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [editNoteText, setEditNoteText] = useState('');
+  const [editNoteType, setEditNoteType] = useState('Conversation');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
   const [status, setStatus] = useState(safe.status || 'identification');
   const [updatingStage, setUpdatingStage] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -308,6 +314,94 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       toast.error(err?.message || 'Failed to log note');
     } finally {
       setAddingNote(false);
+    }
+  };
+
+  /** Synthetic rows (e.g. profile notes) have no Dynamo event to mutate */
+  const isMutableActivity = (note: any): boolean => {
+    const id = note?.id || note?.timestamp;
+    if (!id || id === 'profile-notes') return false;
+    if (note?.metadata?.fromProfileNotes) return false;
+    return true;
+  };
+
+  const startEditActivity = (note: any) => {
+    if (!isMutableActivity(note)) return;
+    const id = String(note.id || note.timestamp);
+    setEditingEventId(id);
+    setEditNoteText(getNoteBody(note) === '—' ? '' : getNoteBody(note));
+    const meta = note?.metadata || {};
+    setEditNoteType(
+      meta.noteType ||
+        NOTE_TYPES.find((t) => t.label === getNoteTypeLabel(note))?.value ||
+        'Conversation'
+    );
+  };
+
+  const cancelEditActivity = () => {
+    setEditingEventId(null);
+    setEditNoteText('');
+    setEditNoteType('Conversation');
+  };
+
+  const handleSaveEditActivity = async () => {
+    if (!candidateId || !editingEventId) return;
+    if (!editNoteText.trim()) {
+      toast.error('Note text is required');
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/candidate/${candidateId}/events`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: editingEventId,
+          noteText: editNoteText.trim(),
+          noteType: editNoteType,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update note');
+      }
+      toast.success('Note updated');
+      cancelEditActivity();
+      await fetchNotes();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update note');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteActivity = async (note: any) => {
+    if (!candidateId || !isMutableActivity(note)) return;
+    const id = String(note.id || note.timestamp);
+    const label = getNoteTypeLabel(note);
+    if (!confirm(`Delete this ${label} entry from the activity log?`)) return;
+
+    setDeletingEventId(id);
+    try {
+      const res = await fetch(
+        `/api/candidate/${candidateId}/events?eventId=${encodeURIComponent(id)}`,
+        { method: 'DELETE' }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete note');
+      }
+      if (editingEventId === id) cancelEditActivity();
+      toast.success('Activity deleted');
+      // Optimistic remove; then refresh
+      setNotes((prev) =>
+        prev.filter((n) => String(n.id || n.timestamp) !== id)
+      );
+      await fetchNotes();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete note');
+    } finally {
+      setDeletingEventId(null);
     }
   };
 
@@ -863,7 +957,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 </p>
               ) : (
                 <div className="overflow-x-auto rounded-xl border border-gray-100">
-                  <table className="w-full text-sm min-w-[520px]">
+                  <table className="w-full text-sm min-w-[560px]">
                     <thead>
                       <tr className="bg-gray-50/80 border-b border-gray-100 text-left">
                         <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-36">
@@ -875,15 +969,23 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                         <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                           Note
                         </th>
+                        <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-24 text-right">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {activityRows.map((note: any, index: number) => {
                         const label = getNoteTypeLabel(note);
+                        const rowId = String(note.id || note.timestamp || index);
+                        const mutable = isMutableActivity(note);
+                        const isEditing = editingEventId === rowId;
+                        const isDeleting = deletingEventId === rowId;
+
                         return (
                           <tr
                             key={note.id || note.SK || index}
-                            className="hover:bg-gray-50/60"
+                            className="hover:bg-gray-50/60 group"
                           >
                             <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap align-top">
                               {formatDateTime(
@@ -891,14 +993,99 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                               )}
                             </td>
                             <td className="px-3 py-3 align-top">
-                              <span
-                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${noteTypeBadgeClass(label)}`}
-                              >
-                                {label}
-                              </span>
+                              {isEditing ? (
+                                <select
+                                  value={editNoteType}
+                                  onChange={(e) => setEditNoteType(e.target.value)}
+                                  className="h-8 w-full max-w-[11rem] rounded-md border border-gray-200 bg-white px-2 text-xs"
+                                  disabled={savingEdit}
+                                >
+                                  {NOTE_TYPES.map((t) => (
+                                    <option key={t.value} value={t.value}>
+                                      {t.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span
+                                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${noteTypeBadgeClass(label)}`}
+                                >
+                                  {label}
+                                </span>
+                              )}
                             </td>
                             <td className="px-3 py-3 text-sm text-gray-800 align-top">
-                              {getNoteBody(note)}
+                              {isEditing ? (
+                                <div className="flex flex-col gap-2">
+                                  <Input
+                                    value={editNoteText}
+                                    onChange={(e) => setEditNoteText(e.target.value)}
+                                    className="bg-white text-sm h-9"
+                                    disabled={savingEdit}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        void handleSaveEditActivity();
+                                      }
+                                      if (e.key === 'Escape') cancelEditActivity();
+                                    }}
+                                    autoFocus
+                                  />
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      className="h-7 text-xs bg-blue-600 hover:bg-blue-700"
+                                      onClick={() => void handleSaveEditActivity()}
+                                      disabled={savingEdit || !editNoteText.trim()}
+                                    >
+                                      {savingEdit ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      ) : (
+                                        'Save'
+                                      )}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs"
+                                      onClick={cancelEditActivity}
+                                      disabled={savingEdit}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                getNoteBody(note)
+                              )}
+                            </td>
+                            <td className="px-3 py-3 align-top text-right">
+                              {mutable && !isEditing && (
+                                <div className="inline-flex items-center gap-0.5 opacity-70 group-hover:opacity-100">
+                                  <button
+                                    type="button"
+                                    title="Edit"
+                                    onClick={() => startEditActivity(note)}
+                                    disabled={!!deletingEventId || savingEdit}
+                                    className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title="Delete"
+                                    onClick={() => void handleDeleteActivity(note)}
+                                    disabled={isDeleting || savingEdit}
+                                    className="p-1.5 rounded-md text-red-600 hover:bg-red-50 disabled:opacity-40"
+                                  >
+                                    {isDeleting ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         );
@@ -1038,10 +1225,15 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             <div className="space-y-3">
               {activityRows.map((note: any, index: number) => {
                 const label = getNoteTypeLabel(note);
+                const rowId = String(note.id || note.timestamp || index);
+                const mutable = isMutableActivity(note);
+                const isEditing = editingEventId === rowId;
+                const isDeleting = deletingEventId === rowId;
+
                 return (
                   <div
                     key={note.id || note.SK || index}
-                    className="flex gap-4 rounded-xl border border-gray-100 p-4"
+                    className="flex gap-4 rounded-xl border border-gray-100 p-4 group"
                   >
                     <div className="w-36 shrink-0 text-xs text-gray-500">
                       {formatDateTime(
@@ -1049,15 +1241,89 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <span
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium mb-2 ${noteTypeBadgeClass(label)}`}
-                      >
-                        {label}
-                      </span>
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                        {getNoteBody(note)}
-                      </p>
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          <select
+                            value={editNoteType}
+                            onChange={(e) => setEditNoteType(e.target.value)}
+                            className="h-9 rounded-md border border-gray-200 bg-white px-2 text-sm"
+                            disabled={savingEdit}
+                          >
+                            {NOTE_TYPES.map((t) => (
+                              <option key={t.value} value={t.value}>
+                                {t.label}
+                              </option>
+                            ))}
+                          </select>
+                          <Textarea
+                            value={editNoteText}
+                            onChange={(e) => setEditNoteText(e.target.value)}
+                            className="min-h-[72px] bg-white text-sm"
+                            disabled={savingEdit}
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="h-8 text-xs bg-blue-600 hover:bg-blue-700"
+                              onClick={() => void handleSaveEditActivity()}
+                              disabled={savingEdit || !editNoteText.trim()}
+                            >
+                              {savingEdit ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                'Save'
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs"
+                              onClick={cancelEditActivity}
+                              disabled={savingEdit}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium mb-2 ${noteTypeBadgeClass(label)}`}
+                          >
+                            {label}
+                          </span>
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                            {getNoteBody(note)}
+                          </p>
+                        </>
+                      )}
                     </div>
+                    {mutable && !isEditing && (
+                      <div className="shrink-0 flex flex-col gap-1 opacity-70 group-hover:opacity-100">
+                        <button
+                          type="button"
+                          title="Edit"
+                          onClick={() => startEditActivity(note)}
+                          disabled={!!deletingEventId || savingEdit}
+                          className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Delete"
+                          onClick={() => void handleDeleteActivity(note)}
+                          disabled={isDeleting || savingEdit}
+                          className="p-1.5 rounded-md text-red-600 hover:bg-red-50 disabled:opacity-40"
+                        >
+                          {isDeleting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
