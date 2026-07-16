@@ -20,6 +20,8 @@ export function ResumeCreateCard() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [parsing, setParsing] = useState(false);
   const [fileName, setFileName] = useState('');
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepthRef = useRef(0);
 
   const onFile = async (file: File | null | undefined) => {
     if (!file) return;
@@ -77,7 +79,40 @@ export function ResumeCreateCard() {
   };
 
   return (
-    <div className="mb-8 rounded-xl border-2 border-dashed border-blue-300 bg-blue-50/60 p-6">
+    <div
+      className={`mb-8 rounded-xl border-2 border-dashed p-6 transition-colors ${
+        dragActive
+          ? 'border-blue-500 bg-blue-100/80 ring-2 ring-blue-200'
+          : 'border-blue-300 bg-blue-50/60'
+      } ${parsing ? 'opacity-80' : ''}`}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragDepthRef.current += 1;
+        setDragActive(true);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        setDragActive(true);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) setDragActive(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragDepthRef.current = 0;
+        setDragActive(false);
+        if (parsing) return;
+        const file = e.dataTransfer.files?.[0];
+        if (file) void onFile(file);
+      }}
+    >
       <div className="flex flex-col md:flex-row md:items-center gap-4 justify-between">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-blue-100 p-3">
@@ -88,8 +123,9 @@ export function ResumeCreateCard() {
               Create candidate from resume
             </h2>
             <p className="text-sm text-blue-900/70 mt-1">
-              Upload a PDF or Word resume. We&apos;ll extract name, contact info, title,
-              skills, and summary, then open the create form pre-filled.
+              {dragActive
+                ? 'Drop your resume to parse and continue…'
+                : 'Drag & drop a PDF or Word resume, or upload. We extract name, contact info, title, skills, and summary.'}
             </p>
             {fileName && (
               <p className="text-xs text-blue-800 mt-2">Selected: {fileName}</p>

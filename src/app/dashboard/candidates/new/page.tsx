@@ -66,6 +66,8 @@ export default function NewCandidatePage() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [resumeFileName, setResumeFileName] = useState('');
   const [formData, setFormData] = useState(emptyForm);
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepthRef = useRef(0);
 
   // Load draft from Candidates list resume upload
   useEffect(() => {
@@ -278,7 +280,7 @@ export default function NewCandidatePage() {
         </div>
       </div>
 
-      {/* Simple always-working resume upload (native file input) */}
+      {/* Resume upload — click or drag-and-drop */}
       <Card className="mb-8 border-2 border-blue-200 bg-blue-50/50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-blue-950">
@@ -288,8 +290,8 @@ export default function NewCandidatePage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Choose a PDF or Word document. Parsing fills name, email, phone, title, location,
-            LinkedIn, skills, and summary below.
+            Drag and drop a PDF or Word document, or choose a file. Parsing fills name, email,
+            phone, title, location, LinkedIn, skills, and summary below.
           </p>
 
           <input
@@ -302,27 +304,97 @@ export default function NewCandidatePage() {
             onChange={(e) => handleResumeFile(e.target.files?.[0])}
           />
 
-          <div className="flex flex-wrap gap-3 items-center">
-            <Button
-              type="button"
-              disabled={parsing}
-              onClick={() => fileInputRef.current?.click()}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              {parsing ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Parsing resume...
-                </>
-              ) : (
-                <>
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label="Upload resume by clicking or dragging a file"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (!parsing) fileInputRef.current?.click();
+              }
+            }}
+            onClick={() => {
+              if (!parsing) fileInputRef.current?.click();
+            }}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              dragDepthRef.current += 1;
+              setDragActive(true);
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+              setDragActive(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+              if (dragDepthRef.current === 0) setDragActive(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              dragDepthRef.current = 0;
+              setDragActive(false);
+              if (parsing) return;
+              const file = e.dataTransfer.files?.[0];
+              if (file) void handleResumeFile(file);
+            }}
+            className={`rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors cursor-pointer ${
+              dragActive
+                ? 'border-blue-500 bg-blue-100/80 ring-2 ring-blue-200'
+                : 'border-blue-300 bg-white/70 hover:border-blue-400 hover:bg-blue-50/80'
+            } ${parsing ? 'pointer-events-none opacity-70' : ''}`}
+          >
+            {parsing ? (
+              <div className="flex flex-col items-center gap-2 text-blue-900">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <p className="font-medium">Parsing resume…</p>
+                {resumeFileName && (
+                  <p className="text-sm text-muted-foreground">{resumeFileName}</p>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3">
+                <div
+                  className={`rounded-full p-3 ${
+                    dragActive ? 'bg-blue-200' : 'bg-blue-100'
+                  }`}
+                >
+                  <Upload className="h-7 w-7 text-blue-700" />
+                </div>
+                <div>
+                  <p className="font-medium text-blue-950">
+                    {dragActive
+                      ? 'Drop resume to upload'
+                      : 'Drag & drop resume here'}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    PDF, DOC, or DOCX — or click to browse
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  disabled={parsing}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 mt-1"
+                >
                   <Upload className="mr-2 h-4 w-4" />
                   Choose Resume File
-                </>
-              )}
-            </Button>
-            {resumeFileName && (
-              <span className="text-sm text-muted-foreground">File: {resumeFileName}</span>
+                </Button>
+                {resumeFileName && (
+                  <p className="text-sm text-muted-foreground">
+                    File: {resumeFileName}
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
