@@ -81,15 +81,6 @@ function stageLabel(stage: string) {
   return stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function getPrimaryStage(candidate: any): string {
-  // Prefer stage from first linked job (application-centric), then status
-  const linked = Array.isArray(candidate.linkedJobs) ? candidate.linkedJobs : [];
-  if (linked.length > 0 && linked[0]?.stage) {
-    return normalizeStage(linked[0].stage);
-  }
-  return normalizeStage(candidate.status || candidate.stage || 'sourced');
-}
-
 function getProgressIndex(stage: string): number {
   const s = stage.toLowerCase();
   if (['rejected', 'not_interested', 'offer_declined'].includes(s)) return 0;
@@ -99,6 +90,46 @@ function getProgressIndex(stage: string): number {
     }
   }
   return 1;
+}
+
+/**
+ * Resolve display stage from status AND linked job stages.
+ * Prefer the furthest-along non-rejected stage so list UI stays correct even if
+ * status and linkedJobs briefly diverge (legacy bug: status-only updates).
+ */
+function getPrimaryStage(candidate: any): string {
+  const linked = Array.isArray(candidate.linkedJobs) ? candidate.linkedJobs : [];
+  const candidates: string[] = [];
+  const statusRaw = candidate.status || candidate.stage;
+  if (statusRaw) candidates.push(normalizeStage(statusRaw));
+  for (const j of linked) {
+    if (j?.stage) candidates.push(normalizeStage(j.stage));
+  }
+  if (candidates.length === 0) return 'sourced';
+
+  // Rejected wins if status is rejected
+  const statusNorm = statusRaw ? normalizeStage(statusRaw) : '';
+  if (
+    ['rejected', 'not_interested', 'offer_declined', 'withdrawn'].includes(
+      statusNorm
+    )
+  ) {
+    return statusNorm;
+  }
+
+  let best = candidates[0];
+  let bestIdx = getProgressIndex(best);
+  for (const s of candidates) {
+    if (['rejected', 'not_interested', 'offer_declined', 'withdrawn'].includes(s)) {
+      continue;
+    }
+    const idx = getProgressIndex(s);
+    if (idx > bestIdx) {
+      best = s;
+      bestIdx = idx;
+    }
+  }
+  return best;
 }
 
 function getProgressColor(step: number) {

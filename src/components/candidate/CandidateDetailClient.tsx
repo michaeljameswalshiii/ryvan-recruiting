@@ -95,6 +95,37 @@ function stageToApiStatus(stepKey: string): string {
   return map[stepKey] || stepKey;
 }
 
+/**
+ * Effective pipeline status: furthest of lead.status and linkedJobs[].stage.
+ * List UI historically preferred linked job stage only — after status-only
+ * advances those diverged and the person looked stuck on Identified.
+ */
+function resolveEffectiveStatus(candidate: any): string {
+  const linked = Array.isArray(candidate?.linkedJobs) ? candidate.linkedJobs : [];
+  const values: string[] = [];
+  if (candidate?.status) values.push(String(candidate.status));
+  for (const j of linked) {
+    if (j?.stage) values.push(String(j.stage));
+  }
+  if (values.length === 0) return 'identification';
+
+  const statusNorm = normalizeStage(candidate?.status);
+  if (REJECTED.includes(statusNorm)) return statusNorm;
+
+  let best = values[0];
+  let bestIdx = stageIndex(best);
+  for (const v of values) {
+    const n = normalizeStage(v);
+    if (REJECTED.includes(n)) continue;
+    const idx = stageIndex(v);
+    if (idx > bestIdx) {
+      best = v;
+      bestIdx = idx;
+    }
+  }
+  return best;
+}
+
 function getInitials(name: string) {
   if (!name) return '?';
   return name
@@ -173,7 +204,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [editNoteType, setEditNoteType] = useState('Conversation');
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
-  const [status, setStatus] = useState(safe.status || 'identification');
+  const [status, setStatus] = useState(() => resolveEffectiveStatus(safe));
   const [updatingStage, setUpdatingStage] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -421,6 +452,63 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     }
   };
 
+  /** Persist pipeline stage (status + linked job stages) and log activity */
+  const setPipelineStage = async (
+    nextStatus: string,
+    options?: { noteText?: string; silent?: boolean }
+  ) => {
+    if (!candidateId || !nextStatus) return;
+    const previous = status;
+    setUpdatingStage(true);
+    // Optimistic UI so chips / list feel instant
+    setStatus(nextStatus);
+    try {
+      const res = await fetch(`/api/candidate/${candidateId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStatus(previous);
+        throw new Error(data.error || 'Failed to update stage');
+      }
+      if (data.status) setStatus(data.status);
+      // Keep local linkedJobs stage in sync for header / primary job
+      setLinkedJobs((prev) =>
+        prev.map((j) => ({ ...j, stage: data.status || nextStatus }))
+      );
+
+      const label = stageDisplayLabel(data.status || nextStatus);
+      if (!options?.silent) {
+        toast.success(
+          nextStatus === 'rejected'
+            ? 'Candidate rejected'
+            : `Stage updated to ${label}`
+        );
+      }
+
+      const stageNoteType =
+        noteTypeFromStage(nextStatus) ||
+        (nextStatus === 'rejected' ? 'Rejected' : 'Conversation');
+      await fetch(`/api/candidate/${candidateId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          noteText: options?.noteText || `Moved to ${label}`,
+          noteType: stageNoteType,
+          stage: nextStatus,
+        }),
+      }).catch(() => {});
+      await fetchNotes();
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update stage');
+    } finally {
+      setUpdatingStage(false);
+    }
+  };
+
   const updateStage = async (direction: 'back' | 'advance' | 'reject') => {
     if (!candidateId) return;
     let nextStatus = status;
@@ -433,47 +521,19 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       const idx = Math.max(currentStep - 1, 0);
       nextStatus = stageToApiStatus(PIPELINE_STEPS[idx].key);
     }
+    await setPipelineStage(nextStatus);
+  };
 
-    setUpdatingStage(true);
-    try {
-      const res = await fetch(`/api/candidate/${candidateId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to update stage');
-      }
-      setStatus(nextStatus);
-      const label = stageDisplayLabel(nextStatus);
-      toast.success(
-        direction === 'reject'
-          ? 'Candidate rejected'
-          : `Stage updated to ${label}`
-      );
-      // Log with the same stage-driving note type used in the composer
-      // (Submitted / Interview Scheduled / …) so the pipeline and log stay aligned
-      // and we never create a generic "Stage change" row.
-      const stageNoteType =
-        noteTypeFromStage(nextStatus) ||
-        (direction === 'reject' ? 'Rejected' : 'Conversation');
-      await fetch(`/api/candidate/${candidateId}/notes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          noteText: `Moved to ${label}`,
-          noteType: stageNoteType,
-          stage: nextStatus,
-        }),
-      }).catch(() => {});
-      await fetchNotes();
-      router.refresh();
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to update stage');
-    } finally {
-      setUpdatingStage(false);
+  /** Click a pipeline chip to jump directly to that stage */
+  const jumpToStep = async (stepIndex: number) => {
+    if (updatingStage || stepIndex < 0 || stepIndex >= PIPELINE_STEPS.length) {
+      return;
     }
+    if (stepIndex === currentStep) return;
+    const nextStatus = stageToApiStatus(PIPELINE_STEPS[stepIndex].key);
+    await setPipelineStage(nextStatus, {
+      noteText: `Moved to ${PIPELINE_STEPS[stepIndex].label}`,
+    });
   };
 
   const handleUnlinkJob = async (job: any) => {
@@ -857,17 +917,21 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                     const done = currentStep >= 0 && i < currentStep;
                     return (
                       <React.Fragment key={step.key}>
-                        <div
-                          className={`flex-1 text-center rounded-lg border px-2 py-2.5 text-xs font-semibold transition-colors ${
+                        <button
+                          type="button"
+                          disabled={updatingStage}
+                          title={`Set stage to ${step.label}`}
+                          onClick={() => void jumpToStep(i)}
+                          className={`flex-1 text-center rounded-lg border px-2 py-2.5 text-xs font-semibold transition-colors disabled:opacity-60 ${
                             active
                               ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                               : done
-                                ? 'bg-blue-50 text-blue-800 border-blue-200'
-                                : 'bg-gray-50 text-gray-500 border-gray-200'
+                                ? 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
+                                : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 hover:text-gray-700'
                           }`}
                         >
                           {step.label}
-                        </div>
+                        </button>
                         {i < PIPELINE_STEPS.length - 1 && (
                           <ChevronRight className="h-4 w-4 text-gray-300 shrink-0" />
                         )}
@@ -875,6 +939,9 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                     );
                   })}
                 </div>
+                <p className="text-[11px] text-gray-400 mb-1">
+                  Click a stage to jump there, or use Advance / Move Back
+                </p>
                 {currentStep < 0 && (
                   <p className="text-sm text-rose-600 font-medium mb-3">
                     Status: Rejected

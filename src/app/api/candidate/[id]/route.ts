@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionTenantId, getSessionUserId } from '@/lib/server-auth';
 import { getLeadById, deleteLead, updateLead } from '@/lib/db/repositories/lead-repository';
+import { setCandidatePipelineStage } from '@/lib/candidates/stage-sync';
 
 /**
  * GET /api/candidate/[id]
@@ -152,12 +153,37 @@ export async function PUT(
     // Parse body
     const body = await request.json();
 
-    // Update the candidate
+    // Pipeline stage: always keep status + linkedJobs[].stage in sync.
+    // The candidates list prefers linked job stage — status-only updates left
+    // people stuck on Identified after advancing on the detail page.
+    if (body.status !== undefined && body.status !== null && body.status !== '') {
+      const stageResult = await setCandidatePipelineStage(id, String(body.status), {
+        tenantId,
+      });
+      // Apply any remaining non-status fields (name, email, etc.)
+      const { status: _status, linkedJobs: _lj, ...rest } = body;
+      const hasRest = Object.keys(rest).some(
+        (k) => rest[k] !== undefined
+      );
+      const updated = hasRest
+        ? await updateLead(tenantId, id, rest)
+        : await getLeadById(tenantId, id);
+
+      return NextResponse.json({
+        success: true,
+        candidate: updated,
+        stageUpdated: stageResult.stageUpdated,
+        status: stageResult.newStage || body.status,
+        linkedJobsSynced: stageResult.linkedJobsSynced,
+      });
+    }
+
+    // Update the candidate (non-stage fields)
     const updated = await updateLead(tenantId, id, body);
 
-    return NextResponse.json({ 
-      success: true, 
-      candidate: updated 
+    return NextResponse.json({
+      success: true,
+      candidate: updated,
     });
   } catch (error) {
     console.error('[API] Failed to update candidate:', error);
