@@ -14,6 +14,7 @@ import {
 } from "@/lib/careers/public";
 import { CareersJobList } from "@/components/careers/CareersJobList";
 import { CareersBrandHeader } from "@/components/careers/CareersBrandHeader";
+import { CareersTalentNetwork } from "@/components/careers/CareersTalentNetwork";
 
 export const dynamic = "force-dynamic";
 
@@ -82,9 +83,15 @@ export default async function TenantCareersPage({ params }: Props) {
               No open positions right now
             </p>
             <p className="mt-2 text-sm text-slate-500">
-              Check back soon — new roles appear here when published from the
-              ATS.
+              Check back soon — or join our talent network below so we can
+              reach out when a fit opens up.
             </p>
+            <a
+              href="#talent-network"
+              className="mt-4 inline-block text-sm font-medium text-slate-900 underline underline-offset-2 hover:text-slate-700"
+            >
+              Join our talent network →
+            </a>
           </div>
         ) : (
           <CareersJobList
@@ -93,6 +100,13 @@ export default async function TenantCareersPage({ params }: Props) {
             tenantSlug={ctx.slug}
           />
         )}
+
+        {/* Always on — general resume bank for future opportunities */}
+        <CareersTalentNetwork
+          tenantSlug={ctx.slug}
+          orgName={ctx.name}
+          defaultOpen={jobs.length === 0 && !loadError}
+        />
 
         <p className="mt-10 text-center text-xs text-slate-400">
           Applications go to {ctx.name} · Powered by Turnkey Optimization

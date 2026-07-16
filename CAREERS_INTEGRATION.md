@@ -61,8 +61,9 @@ Creates a candidate (`source: website-careers`) and links them to the job.
 
 ## Hosted careers pages (no Squarespace code needed)
 
-- List: `https://YOUR-APP/careers`
-- Detail + apply: `https://YOUR-APP/careers/{jobId}`
+- List: `https://YOUR-APP/careers` or `/careers/{tenantSlug}`
+- Detail + apply: `https://YOUR-APP/careers/{tenantSlug}/{jobId}`
+- **Join our talent network** (always on the list page): general resume for future roles — creates a candidate with source `website-careers-talent-network`, no job link. Form field `interests` = role preferences free text. API: `POST /api/public/careers/apply` with `mode=talent_network` (multipart; resume required; no `jobId`).
 
 On Squarespace: add a **button/link** “Careers” → `/careers`, or embed with an iframe:
 

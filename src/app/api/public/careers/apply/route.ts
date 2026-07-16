@@ -1,11 +1,17 @@
 /**
- * Public careers apply — creates candidate + links to open job.
+ * Public careers apply — creates candidate + links to open job,
+ * OR general talent-network submission (no job).
  *
  * POST /api/public/careers/apply
  * Content-Type: multipart/form-data (preferred) or application/json
  *
- * Fields: jobId, name, email, resume (file PDF/DOCX required),
- *         phone?, message?, linkedinUrl?, resumeUrl?, website? (honeypot)
+ * Job apply fields:
+ *   jobId, tenant, name, email, resume (PDF/DOCX required),
+ *   phone?, message?, linkedinUrl?, website? (honeypot)
+ *
+ * Talent network (mode=talent_network | general):
+ *   tenant, name, email, resume required; jobId omitted
+ *   interests? (role preferences free text), message?, phone?, linkedinUrl?
  */
 
 import { NextRequest } from "next/server";
@@ -156,12 +162,32 @@ export async function POST(request: NextRequest) {
       return jsonWithCors(request, { success: true });
     }
 
+    const modeRaw = String(
+      fields.mode || fields.applicationType || ""
+    )
+      .trim()
+      .toLowerCase();
+    const isTalentNetwork =
+      modeRaw === "talent_network" ||
+      modeRaw === "talent-network" ||
+      modeRaw === "general" ||
+      modeRaw === "future" ||
+      String(fields.talentNetwork || "").toLowerCase() === "true" ||
+      String(fields.general || "").toLowerCase() === "true";
+
     const jobId = String(fields.jobId || fields.job_id || "").trim();
     const name = String(fields.name || "").trim();
     const email = String(fields.email || "").trim();
     const phone = String(fields.phone || "").trim();
     const message = String(
       fields.message || fields.coverLetter || ""
+    ).trim();
+    const interests = String(
+      fields.interests ||
+        fields.interest ||
+        fields.rolePreferences ||
+        fields.preferences ||
+        ""
     ).trim();
     const linkedinUrl = normalizeLinkedIn(
       String(fields.linkedinUrl || fields.linkedin_url || fields.linkedin || "")
@@ -171,10 +197,18 @@ export async function POST(request: NextRequest) {
     ).trim();
     const tenantParam = fields.tenant ? String(fields.tenant) : null;
 
-    if (!jobId || !name || !email) {
+    if (!name || !email) {
       return jsonWithCors(
         request,
-        { error: "jobId, name, and email are required" },
+        { error: "name and email are required" },
+        400
+      );
+    }
+
+    if (!isTalentNetwork && !jobId) {
+      return jsonWithCors(
+        request,
+        { error: "jobId is required (or set mode=talent_network)" },
         400
       );
     }
@@ -191,14 +225,16 @@ export async function POST(request: NextRequest) {
       return jsonWithCors(request, { error: "Invalid email address" }, 400);
     }
 
-    if (name.length > 100 || email.length > 200 || message.length > 2000) {
+    if (
+      name.length > 100 ||
+      email.length > 200 ||
+      message.length > 2000 ||
+      interests.length > 1000
+    ) {
       return jsonWithCors(request, { error: "Input too long" }, 400);
     }
 
-    if (
-      linkedinUrl &&
-      linkedinUrl.length > 300
-    ) {
+    if (linkedinUrl && linkedinUrl.length > 300) {
       return jsonWithCors(request, { error: "LinkedIn URL too long" }, 400);
     }
 
@@ -207,7 +243,6 @@ export async function POST(request: NextRequest) {
       !/^https?:\/\/(www\.)?linkedin\.com\//i.test(linkedinUrl) &&
       !linkedinUrl.includes("linkedin.com")
     ) {
-      // Allow non-linkedin only if it looks like a full URL; otherwise warn
       if (!/^https?:\/\//i.test(linkedinUrl)) {
         return jsonWithCors(
           request,
@@ -230,16 +265,22 @@ export async function POST(request: NextRequest) {
     }
     const tenantId = ctx.tenantId;
 
-    const job = await getJobById(tenantId, jobId);
-    if (!job || !isJobListedOnWebsite(job)) {
-      return jsonWithCors(
-        request,
-        { error: "This job is not open for applications on the careers site" },
-        404
-      );
+    let job: Awaited<ReturnType<typeof getJobById>> = null;
+    if (!isTalentNetwork) {
+      job = await getJobById(tenantId, jobId);
+      if (!job || !isJobListedOnWebsite(job)) {
+        return jsonWithCors(
+          request,
+          {
+            error:
+              "This job is not open for applications on the careers site",
+          },
+          404
+        );
+      }
     }
 
-    // Resume file is required for public careers applications
+    // Resume file is required for all public careers submissions
     if (!resumeFile) {
       return jsonWithCors(
         request,
@@ -257,63 +298,62 @@ export async function POST(request: NextRequest) {
       ReturnType<typeof parseResumeBuffer>
     >["parsed"] | null = null;
 
-    if (resumeFile) {
-      if (resumeFile.size > MAX_RESUME_BYTES) {
-        return jsonWithCors(
-          request,
-          { error: "Resume file too large. Maximum size is 10MB." },
-          400
-        );
-      }
-      if (!isAllowedResume(resumeFile)) {
-        return jsonWithCors(
-          request,
-          {
-            error:
-              "Unsupported resume type. Please upload a PDF or Word (.docx) file.",
-          },
-          400
-        );
-      }
+    if (resumeFile.size > MAX_RESUME_BYTES) {
+      return jsonWithCors(
+        request,
+        { error: "Resume file too large. Maximum size is 10MB." },
+        400
+      );
+    }
+    if (!isAllowedResume(resumeFile)) {
+      return jsonWithCors(
+        request,
+        {
+          error:
+            "Unsupported resume type. Please upload a PDF or Word (.docx) file.",
+        },
+        400
+      );
+    }
+    try {
+      const buffer = Buffer.from(await resumeFile.arrayBuffer());
       try {
-        // Clone bytes for parse + S3 (File stream may only be readable once)
-        const buffer = Buffer.from(await resumeFile.arrayBuffer());
-        try {
-          const result = await parseResumeBuffer(buffer, resumeFile.name);
-          parsedFromResume = result.parsed;
-        } catch (parseErr) {
-          console.warn("[careers/apply] resume parse failed:", parseErr);
-        }
-
-        // Re-wrap buffer as File for existing upload helper
-        const fileForUpload = new File([buffer], resumeFile.name, {
-          type: resumeFile.type || "application/octet-stream",
-        });
-        const uploaded = await uploadResumeToS3(fileForUpload, tenantId);
-        resumeUrl = uploaded.s3Key;
-        resumeFileName = uploaded.fileName;
-      } catch (uploadErr) {
-        console.error("[careers/apply] resume upload failed:", uploadErr);
-        return jsonWithCors(
-          request,
-          {
-            error:
-              uploadErr instanceof Error
-                ? uploadErr.message
-                : "Failed to upload resume. Try again or use a smaller PDF.",
-          },
-          500
-        );
+        const result = await parseResumeBuffer(buffer, resumeFile.name);
+        parsedFromResume = result.parsed;
+      } catch (parseErr) {
+        console.warn("[careers/apply] resume parse failed:", parseErr);
       }
+
+      const fileForUpload = new File([buffer], resumeFile.name, {
+        type: resumeFile.type || "application/octet-stream",
+      });
+      const uploaded = await uploadResumeToS3(fileForUpload, tenantId);
+      resumeUrl = uploaded.s3Key;
+      resumeFileName = uploaded.fileName;
+    } catch (uploadErr) {
+      console.error("[careers/apply] resume upload failed:", uploadErr);
+      return jsonWithCors(
+        request,
+        {
+          error:
+            uploadErr instanceof Error
+              ? uploadErr.message
+              : "Failed to upload resume. Try again or use a smaller PDF.",
+        },
+        500
+      );
     }
 
     // Prefer applicant form values; fill gaps from resume parse
     const p = parsedFromResume;
     const finalPhone = phone || p?.phone || "";
     const finalLinkedIn = linkedinUrl || p?.linkedin || "";
-    // Candidate professional title from resume (not the job posting title)
     const professionalTitle = (p?.title || "").slice(0, 100);
-    const finalLocation = (p?.location || job.location || "").slice(0, 200);
+    const finalLocation = (
+      p?.location ||
+      (job as any)?.location ||
+      ""
+    ).slice(0, 200);
     const finalSummary = (p?.summary || "").slice(0, 2000);
     const finalSkills = p?.skills?.length ? p.skills.slice(0, 30) : undefined;
     const finalExperience = p?.experience?.length
@@ -326,20 +366,44 @@ export async function POST(request: NextRequest) {
       ? p.certifications.slice(0, 15)
       : undefined;
 
-    const notes = [
-      `Applied via public careers page for: ${job.title}`,
-      message ? `Message:\n${message}` : "",
-      finalLinkedIn ? `LinkedIn: ${finalLinkedIn}` : "",
-      resumeFileName
-        ? `Resume file: ${resumeFileName}`
-        : resumeUrl && resumeUrl.startsWith("http")
-          ? `Resume: ${resumeUrl}`
-          : resumeUrl
-            ? `Resume stored: ${resumeUrl}`
-            : "",
-      finalSummary ? `Resume summary:\n${finalSummary.slice(0, 500)}` : "",
-      finalSkills?.length ? `Skills: ${finalSkills.join(", ")}` : "",
-    ]
+    const source = isTalentNetwork
+      ? "website-careers-talent-network"
+      : "website-careers";
+
+    const notes = (
+      isTalentNetwork
+        ? [
+            "Joined talent network via public careers page (future opportunities)",
+            interests
+              ? `Interest / role preferences:\n${interests}`
+              : "",
+            message ? `Message:\n${message}` : "",
+            finalLinkedIn ? `LinkedIn: ${finalLinkedIn}` : "",
+            resumeFileName
+              ? `Resume file: ${resumeFileName}`
+              : resumeUrl
+                ? `Resume stored: ${resumeUrl}`
+                : "",
+            finalSummary
+              ? `Resume summary:\n${finalSummary.slice(0, 500)}`
+              : "",
+            finalSkills?.length ? `Skills: ${finalSkills.join(", ")}` : "",
+          ]
+        : [
+            `Applied via public careers page for: ${job!.title}`,
+            message ? `Message:\n${message}` : "",
+            finalLinkedIn ? `LinkedIn: ${finalLinkedIn}` : "",
+            resumeFileName
+              ? `Resume file: ${resumeFileName}`
+              : resumeUrl
+                ? `Resume stored: ${resumeUrl}`
+                : "",
+            finalSummary
+              ? `Resume summary:\n${finalSummary.slice(0, 500)}`
+              : "",
+            finalSkills?.length ? `Skills: ${finalSkills.join(", ")}` : "",
+          ]
+    )
       .filter(Boolean)
       .join("\n\n")
       .slice(0, 2000);
@@ -348,11 +412,13 @@ export async function POST(request: NextRequest) {
       name,
       email,
       phone: finalPhone,
-      title: professionalTitle || job.title || "",
+      title:
+        professionalTitle ||
+        (!isTalentNetwork ? job?.title || "" : "") ||
+        "",
       status: "identification",
-      source: "website-careers",
+      source,
       notes,
-      // S3 object key (not a public URL) — ResumeViewer presigns via /api/resume-url
       resume_url: resumeUrl || "",
       resume_key: resumeUrl || "",
       resume_s3_key: resumeUrl || "",
@@ -367,49 +433,64 @@ export async function POST(request: NextRequest) {
       salary_requirements: p?.salaryRequirements || undefined,
     } as any);
 
-    // Surface candidate message in Activity timeline (not only buried in notes field)
     if (lead.id) {
       try {
-        const activityText = [
-          message
-            ? `Careers application message for "${job.title}":\n\n${message}`
-            : `Applied via careers site for: ${job.title}`,
-          linkedinUrl ? `LinkedIn: ${linkedinUrl}` : "",
-          resumeFileName ? `Resume attached: ${resumeFileName}` : "",
-        ]
-          .filter(Boolean)
-          .join("\n");
-        await addNoteToCandidate(lead.id, activityText, "website-careers", {
-          noteType: "Application",
+        const activityText = isTalentNetwork
+          ? [
+              "Joined talent network (future opportunities)",
+              interests ? `Interests / role preferences:\n${interests}` : "",
+              message ? `Message:\n${message}` : "",
+              linkedinUrl ? `LinkedIn: ${linkedinUrl}` : "",
+              resumeFileName ? `Resume attached: ${resumeFileName}` : "",
+            ]
+              .filter(Boolean)
+              .join("\n\n")
+          : [
+              message
+                ? `Careers application message for "${job!.title}":\n\n${message}`
+                : `Applied via careers site for: ${job!.title}`,
+              linkedinUrl ? `LinkedIn: ${linkedinUrl}` : "",
+              resumeFileName ? `Resume attached: ${resumeFileName}` : "",
+            ]
+              .filter(Boolean)
+              .join("\n");
+
+        await addNoteToCandidate(lead.id, activityText, source, {
+          noteType: isTalentNetwork ? "Talent network" : "Application",
           stage: "sourced",
-          jobId,
-          jobTitle: job.title,
+          ...(isTalentNetwork
+            ? { talentNetwork: true, interests: interests || undefined }
+            : { jobId, jobTitle: job!.title }),
         });
       } catch (noteErr) {
         console.warn("[careers/apply] activity note warning:", noteErr);
       }
     }
 
-    try {
-      await linkCandidateToJob(tenantId, jobId, {
-        candidateId: lead.id!,
-        candidateName: lead.name,
-        candidateEmail: lead.email || email,
-        stage: "sourced",
-        // Keep full message on the job link so it shows under the candidate on the job page
-        notes: message
-          ? message.slice(0, 1000)
-          : "Applied via careers site",
-      });
-    } catch (linkErr) {
-      console.warn("[careers/apply] link warning:", linkErr);
+    if (!isTalentNetwork && job) {
+      try {
+        await linkCandidateToJob(tenantId, jobId, {
+          candidateId: lead.id!,
+          candidateName: lead.name,
+          candidateEmail: lead.email || email,
+          stage: "sourced",
+          notes: message
+            ? message.slice(0, 1000)
+            : "Applied via careers site",
+        });
+      } catch (linkErr) {
+        console.warn("[careers/apply] link warning:", linkErr);
+      }
     }
 
     return jsonWithCors(request, {
       success: true,
-      message: "Application received. Thank you!",
+      message: isTalentNetwork
+        ? "Thanks for joining our talent network!"
+        : "Application received. Thank you!",
       applicationId: lead.id,
-      job: { id: job.id, title: job.title },
+      talentNetwork: isTalentNetwork,
+      job: job ? { id: job.id, title: job.title } : null,
       resumeUploaded: !!resumeFileName,
     });
   } catch (err) {
