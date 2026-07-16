@@ -26,7 +26,8 @@ import { toast } from 'sonner';
 import { SendEmailModal } from '@/components/email/send-email-modal';
 import { ResumeViewer } from '@/components/candidate/ResumeViewer';
 import { LinkJobModal } from '@/components/candidate/LinkJobModal';
-import { Link2, Unlink } from 'lucide-react';
+import { MergeCandidatesModal } from '@/components/candidate/MergeCandidatesModal';
+import { Link2, Unlink, Combine } from 'lucide-react';
 
 import {
   ACTIVITY_NOTE_TYPES,
@@ -219,6 +220,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     safe.resumeKey || safe.resume_key || ''
   );
   const [linkJobOpen, setLinkJobOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
   const [linkedJobs, setLinkedJobs] = useState<any[]>(
     Array.isArray(safe.linkedJobs) ? safe.linkedJobs : []
   );
@@ -775,6 +777,15 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             >
               <Link2 className="h-3.5 w-3.5 mr-1.5" />
               Link to job
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMergeOpen(true)}
+              title="Merge with a duplicate candidate"
+            >
+              <Combine className="h-3.5 w-3.5 mr-1.5" />
+              Merge
             </Button>
             <Button
               variant="outline"
@@ -1557,6 +1568,17 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
           setLinkedJobs(next);
           void fetchNotes();
           router.refresh();
+        }}
+      />
+
+      <MergeCandidatesModal
+        open={mergeOpen}
+        onClose={() => setMergeOpen(false)}
+        currentCandidate={{
+          id: candidateId,
+          name: contactInfo.name || 'Candidate',
+          email: contactInfo.email,
+          createdAt: safe.createdAt || safe.created_at,
         }}
       />
 
