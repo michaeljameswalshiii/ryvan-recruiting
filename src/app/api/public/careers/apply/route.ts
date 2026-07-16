@@ -352,7 +352,11 @@ export async function POST(request: NextRequest) {
       status: "identification",
       source: "website-careers",
       notes,
+      // S3 object key (not a public URL) — ResumeViewer presigns via /api/resume-url
       resume_url: resumeUrl || "",
+      resume_key: resumeUrl || "",
+      resume_s3_key: resumeUrl || "",
+      resume_file_name: resumeFileName || "",
       linkedin_url: finalLinkedIn || "",
       location: finalLocation,
       summary: finalSummary || undefined,

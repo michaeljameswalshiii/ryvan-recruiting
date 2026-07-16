@@ -268,7 +268,8 @@ export async function getLeadById(tenantId: string, leadId: string): Promise<Lea
 export async function createLead(tenantId: string, data: CreateLeadInput): Promise<Lead> {
   const validated = data;
 
-const lead: Lead = {
+const extra = data as Record<string, unknown>;
+  const lead: Lead & Record<string, unknown> = {
     id: generateId(),
     tenant_id: tenantId,
     name: validated.name,
@@ -284,6 +285,36 @@ const lead: Lead = {
     linkedJobIds: validated.linkedJobIds || [],
     created_at: new Date().toISOString(),
   };
+
+  // Resume metadata (careers apply + dashboard upload) — not all on base Lead type
+  if (extra.resume_file_name || extra.resumeFileName) {
+    lead.resume_file_name = String(extra.resume_file_name || extra.resumeFileName);
+  }
+  if (extra.resume_key || extra.resumeKey || extra.resume_s3_key) {
+    const key = String(
+      extra.resume_key || extra.resumeKey || extra.resume_s3_key || ''
+    );
+    lead.resume_key = key;
+    lead.resume_s3_key = key;
+  }
+  // When resume_url is already an S3 key, mirror it into key fields
+  if (
+    lead.resume_url &&
+    !String(lead.resume_url).startsWith('http') &&
+    !lead.resume_key
+  ) {
+    lead.resume_key = lead.resume_url;
+    lead.resume_s3_key = lead.resume_url;
+  }
+  if (extra.summary) lead.summary = extra.summary;
+  if (extra.skills) lead.skills = extra.skills;
+  if (extra.experience) lead.experience = extra.experience;
+  if (extra.education) lead.education = extra.education;
+  if (extra.certifications) lead.certifications = extra.certifications;
+  if (extra.salary_requirements) {
+    lead.salary_requirements = extra.salary_requirements;
+  }
+  if (extra.full_address) lead.full_address = extra.full_address;
 
   // Save to DynamoDB
   await putItem(leadsTable, lead);

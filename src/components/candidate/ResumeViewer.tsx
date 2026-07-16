@@ -51,6 +51,43 @@ function detectFileType(
   return "unknown";
 }
 
+/**
+ * True when value is an S3 object key (not a browser-loadable URL).
+ * Careers applications store keys like:
+ *   tenants/{tenantId}/careers-resumes/{ts}-file.pdf
+ * Dashboard uploads use:
+ *   resumes/{candidateId}/...
+ * Loading either as a site path produces a 404 in the iframe.
+ */
+function isS3ObjectKey(value?: string | null): boolean {
+  if (!value) return false;
+  const v = value.trim();
+  if (!v) return false;
+  if (
+    v.startsWith("http://") ||
+    v.startsWith("https://") ||
+    v.startsWith("blob:") ||
+    v.startsWith("data:")
+  ) {
+    return false;
+  }
+  // Explicit known prefixes
+  if (
+    v.startsWith("resumes/") ||
+    v.startsWith("candidates/") ||
+    v.startsWith("uploads/") ||
+    v.startsWith("tenants/") ||
+    v.includes("careers-resumes/")
+  ) {
+    return true;
+  }
+  // Generic: looks like an object key (path segments, no scheme, not a site-absolute path alone)
+  if (!v.includes("://") && v.includes("/") && !v.startsWith("/")) {
+    return true;
+  }
+  return false;
+}
+
 export function ResumeViewer({
   url,
   fileName,
@@ -95,7 +132,12 @@ export function ResumeViewer({
       try {
         const params = new URLSearchParams();
         if (candidateId) params.append("candidateId", candidateId);
-        if (fileKey) params.append("fileKey", fileKey);
+        // Prefer explicit fileKey; fall back to url when it is an S3 object key
+        // (careers applies store the key in resume_url)
+        const keyForApi =
+          fileKey ||
+          (isS3ObjectKey(url) ? url : undefined);
+        if (keyForApi) params.append("fileKey", keyForApi);
 
         const response = await fetch(`/api/resume-url?${params.toString()}`, {
           credentials: "include",
@@ -123,24 +165,20 @@ export function ResumeViewer({
         setLoading(false);
       }
     },
-    [candidateId, fileKey, onUrlUpdated]
+    [candidateId, fileKey, url, onUrlUpdated]
   );
 
   useEffect(() => {
-    const isS3Key =
-      url &&
-      (url.startsWith("resumes/") ||
-        url.startsWith("candidates/") ||
-        url.startsWith("uploads/"));
+    const keyLike = isS3ObjectKey(url) || isS3ObjectKey(fileKey);
     const needsRefresh =
       !url ||
       url.includes("X-Amz-Expires=") ||
       url.length < 50 ||
-      isS3Key;
+      keyLike;
 
     if (
       (needsRefresh || !url) &&
-      (candidateId || fileKey) &&
+      (candidateId || fileKey || isS3ObjectKey(url)) &&
       !hasTriedAutoRefresh
     ) {
       const timer = setTimeout(() => {
@@ -154,13 +192,8 @@ export function ResumeViewer({
     const type = detectFileType(url || currentUrl || "", displayName || fileName);
     setFileType(type);
 
-    const isS3Key =
-      url &&
-      (url.startsWith("resumes/") ||
-        url.startsWith("candidates/") ||
-        url.startsWith("uploads/"));
-
-    if (url && !hasTriedAutoRefresh && !isS3Key) {
+    // Never put a raw S3 key into the iframe src — that loads /tenants/... on the app host → 404
+    if (url && !hasTriedAutoRefresh && !isS3ObjectKey(url)) {
       setCurrentUrl(url);
     }
   }, [url, fileName, displayName, hasTriedAutoRefresh, currentUrl]);

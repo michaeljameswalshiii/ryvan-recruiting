@@ -38,7 +38,16 @@ export default async function CandidateDetailPage({ params }: Props) {
     linkedin: (c.linkedin_url || c.linkedin || "") as string,
     resumeUrl: (c.resume_url || c.resumeUrl || "") as string,
     resumeFileName: (c.resume_file_name || c.resumeFileName || "") as string,
-    resumeKey: (c.resume_key || c.resumeKey || c.resume_s3_key || "") as string,
+    // Prefer explicit key; careers applies store the S3 key in resume_url
+    resumeKey: (c.resume_key ||
+      c.resumeKey ||
+      c.resume_s3_key ||
+      (typeof c.resume_url === "string" &&
+      c.resume_url &&
+      !c.resume_url.startsWith("http")
+        ? c.resume_url
+        : "") ||
+      "") as string,
     summary: (c.summary || "") as string,
     /** Profile notes field (includes careers apply message) */
     notes: (c.notes || "") as string,
