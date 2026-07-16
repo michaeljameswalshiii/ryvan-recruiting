@@ -7,6 +7,8 @@
 
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/server-auth';
+import { resolveUserRole } from '@/lib/admin-auth';
+import { normalizeRole } from '@/lib/roles';
 
 /**
  * GET /api/auth/session
@@ -23,11 +25,16 @@ export async function GET() {
       );
     }
 
+    const role =
+      (await resolveUserRole(session.userId, session.email)) ||
+      normalizeRole(session.role);
+
     return NextResponse.json({
       user: {
         id: session.userId,
         email: session.email,
         tenantId: session.tenantId,
+        role,
       }
     });
   } catch (error: any) {

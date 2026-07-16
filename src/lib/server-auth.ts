@@ -64,6 +64,8 @@ export interface SessionData {
   userId: string;
   email: string;
   tenantId: string;
+  /** Canonical role: site_admin | customer_admin | user */
+  role?: string;
   accessToken?: string; // Needed for middleware validation
   refreshToken: string; // Needed for token refresh
 }
@@ -321,8 +323,9 @@ const client = new CognitoIdentityProviderClient({ region, credentials: getAwsCr
     }
   }
   
-// Get tenant from profile
+// Get tenant + role from profile
   let tenantId = '';
+  let role = 'user';
   if (userId) {
     try {
       const dynamoClient = new DynamoDBClient({ region, credentials: getAwsCredentials() });
@@ -337,13 +340,14 @@ const client = new CognitoIdentityProviderClient({ region, credentials: getAwsCr
       if (profileResponse.Item) {
         const profile = unmarshall(profileResponse.Item);
         tenantId = profile.tenant_id || '';
+        role = (profile.role as string) || 'user';
       }
     } catch (err) {
       console.error('Failed to get profile:', err);
     }
   }
   
-  return { userId, email: userEmail, tenantId, AccessToken, IdToken, RefreshToken };
+  return { userId, email: userEmail, tenantId, role, AccessToken, IdToken, RefreshToken };
 }
 
 /**
@@ -442,7 +446,7 @@ const cognitoClient = new CognitoIdentityProviderClient({ region, credentials: g
       tenant_id: tenantId,
       email,
       full_name: fullName,
-      role: 'admin',
+      role: 'customer_admin', // first user of a new tenant
       created_at: new Date().toISOString(),
     }),
   }));

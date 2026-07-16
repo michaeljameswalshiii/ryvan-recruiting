@@ -1,6 +1,8 @@
 ﻿import Sidebar from "@/components/Sidebar";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { getSession } from "@/lib/server-auth";
+import { resolveUserRole } from "@/lib/admin-auth";
+import { normalizeRole } from "@/lib/roles";
 import { redirect } from "next/navigation";
 import { DragDropProvider } from "@/components/providers/dnd-provider";
 
@@ -8,11 +10,7 @@ import { DragDropProvider } from "@/components/providers/dnd-provider";
 export const dynamic = 'force-dynamic';
 
 /**
- * Dashboard Layout - Server-side auth enforcement
- * 
- * This layout validates the session server-side using httpOnly cookies.
- * Unauthenticated users are redirected to /login by middleware,
- * but we also validate here as defense-in-depth.
+ * Dashboard Layout - Server-side auth + role-aware nav
  */
 
 export default async function DashboardLayout({
@@ -20,35 +18,33 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-// Get session from cookie
   const session = await getSession();
   
   if (!session) {
-    // Redirect to login if no valid session
-    // (middleware should catch this, but defense-in-depth)
     redirect('/login');
   }
 
-  // Defensive: validate session has required fields
   if (!session || typeof session !== 'object') {
     console.error('[DashboardLayout] Invalid session:', session);
     redirect('/login');
   }
 
-// Get tenant info from session for display
-  // Note: fullName and role stored in DynamoDB profile, not in cookie
+  const role =
+    (await resolveUserRole(session.userId, session.email)) ||
+    normalizeRole(session.role);
+
   const tenantInfo = {
     userId: session?.userId || '',
     email: session?.email || '',
-    fullName: 'User', // Could fetch from profile if needed
+    fullName: 'User',
     tenantId: session?.tenantId || '',
-    role: 'member', // Could fetch from profile if needed
+    role,
   };
 
-return (
+  return (
     <DragDropProvider>
       <div className="min-h-screen bg-gray-50">
-        <Sidebar />
+        <Sidebar role={role} />
         <div className="ml-72">
           <DashboardHeader user={tenantInfo} />
           <main className="p-6">{children}</main>

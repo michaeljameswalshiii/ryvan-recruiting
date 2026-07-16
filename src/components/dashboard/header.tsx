@@ -1,12 +1,24 @@
-﻿"use client";
+"use client";
 
 import { Bell, Search, User } from "lucide-react";
+import { roleLabel } from "@/lib/roles";
 
 interface DashboardHeaderProps {
-  user?: any;
+  user?: {
+    full_name?: string;
+    fullName?: string;
+    email?: string;
+    role?: string;
+    tenants?: { name?: string };
+  };
 }
 
 export function DashboardHeader({ user }: DashboardHeaderProps) {
+  const displayName = user?.full_name || user?.fullName || user?.email || "User";
+  const subtitle = user?.role
+    ? roleLabel(user.role)
+    : user?.tenants?.name || "";
+
   return (
     <header className="h-16 border-b border-border flex items-center justify-between px-6 bg-background">
       <div className="flex items-center gap-4 flex-1">
@@ -31,8 +43,10 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
             <User className="h-4 w-4 text-primary-foreground" />
           </div>
           <div className="text-sm">
-            <p className="font-medium">{user?.full_name || "User"}</p>
-            <p className="text-muted-foreground text-xs">{user?.tenants?.name}</p>
+            <p className="font-medium">{displayName}</p>
+            {subtitle ? (
+              <p className="text-muted-foreground text-xs">{subtitle}</p>
+            ) : null}
           </div>
         </div>
       </div>

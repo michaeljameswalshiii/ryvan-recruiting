@@ -9,13 +9,13 @@ import {
   queryItems,
   scanItems,
 } from "@/lib/db/dynamodb";
-import { requireAdminSession, isAdminAuthError } from "@/lib/admin-auth";
+import { requireSiteAdminSession, isAdminAuthError } from "@/lib/admin-auth";
 
 /**
  * API Route: Admin DynamoDB Search Tool
  * =====================================
  * Full read + CRUD operations for DynamoDB tables.
- * REQUIRES authenticated admin session (or ADMIN_EMAIL_ALLOWLIST).
+ * REQUIRES Site Admin (multi-tenant). SITE_ADMIN_EMAIL_ALLOWLIST also works.
  * Set ADMIN_API_DISABLED=true to hard-disable.
  *
  * GET  /api/admin/dynamodb
@@ -74,7 +74,7 @@ function parseJsonParam(value: string | null): Record<string, unknown> | null {
 
 export async function GET(request: NextRequest) {
   try {
-    const admin = await requireAdminSession();
+    const admin = await requireSiteAdminSession();
     if (isAdminAuthError(admin)) return admin;
 
     const { searchParams } = new URL(request.url);
@@ -279,7 +279,7 @@ function coerceValue(raw: string): string | number | boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    const admin = await requireAdminSession();
+    const admin = await requireSiteAdminSession();
     if (isAdminAuthError(admin)) return admin;
 
     const { searchParams } = new URL(request.url);
@@ -317,7 +317,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const admin = await requireAdminSession();
+    const admin = await requireSiteAdminSession();
     if (isAdminAuthError(admin)) return admin;
 
     const { searchParams } = new URL(request.url);
@@ -378,7 +378,7 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const admin = await requireAdminSession();
+    const admin = await requireSiteAdminSession();
     if (isAdminAuthError(admin)) return admin;
 
     const { searchParams } = new URL(request.url);

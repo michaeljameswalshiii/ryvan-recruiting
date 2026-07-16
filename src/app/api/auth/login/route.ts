@@ -13,6 +13,8 @@ import { setSessionCookie } from "@/lib/server-auth";
 import { loginSchema } from "@/lib/schemas/auth";
 import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { compareSync } from "bcryptjs";
+import { normalizeRole } from "@/lib/roles";
+import { resolveUserRole } from "@/lib/admin-auth";
 
 const region =
   process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || "us-east-1";
@@ -78,6 +80,7 @@ async function authenticateSimple(email: string, password: string) {
     userId: userId || "",
     email,
     tenantId: tenantId || "",
+    role: profile.role?.S || "user",
   };
 }
 
@@ -106,6 +109,7 @@ export async function POST(request: NextRequest) {
       userId: string;
       email: string;
       tenantId: string;
+      role?: string;
       AccessToken?: string;
       RefreshToken?: string;
     };
@@ -136,10 +140,16 @@ export async function POST(request: NextRequest) {
 
     console.log("[LOGIN] Authentication successful, userId:", session.userId);
 
+    // Canonical role from profile + allowlists (never trust client)
+    const role =
+      (await resolveUserRole(session.userId, session.email)) ||
+      normalizeRole(session.role);
+
     const sessionData = {
       userId: session.userId || "",
       email: session.email || "",
       tenantId: session.tenantId || "",
+      role,
       accessToken: session.AccessToken || "",
       refreshToken: session.RefreshToken || "",
     };
@@ -151,6 +161,7 @@ export async function POST(request: NextRequest) {
           id: session.userId,
           email: session.email,
           tenantId: session.tenantId,
+          role,
         },
       }),
       sessionData

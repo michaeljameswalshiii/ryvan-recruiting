@@ -3,7 +3,8 @@
 Living list of open work for Trio ATS / turnkey-optimization.  
 Historical sprint TODOs live in `docs/archive/todos/`.
 
-Last consolidated: 2026-07-14
+Last consolidated: 2026-07-14  
+Reviewed with product: 1–3 P0; companies pipeline P1; reporting + dynamo admin removed; contacts + job events → P2.
 
 ---
 
@@ -23,54 +24,47 @@ Last consolidated: 2026-07-14
 - [ ] Document setup in one place (or extend Settings help text)
 
 ### 3. Roles / permissions (RBAC)
-Schema has `admin | member | viewer` but UI/API barely enforce it.  
-- [ ] Load role from profile into session/layout  
-- [ ] Gate admin tools (Dynamo Search, debug, usage)  
-- [ ] Settings: list users + change roles  
-- [ ] Optional: recruiter / sales roles for ATS
-
-### 4. Job events stubs (build warnings)
-Missing exports used by job API routes:  
-- [ ] `recordCandidateLinked` / `Unlinked` / `StageChanged`  
-- [ ] `recordJobCreated` / `Updated` / `StatusChanged`  
-(See `src/lib/events/job-events.ts` + API imports.)
+**Shipped (foundation):** `site_admin` | `customer_admin` | `user`  
+- [x] Load role from profile into session/layout  
+- [x] Gate nav + pages (Admin vs Site Admin tools)  
+- [x] Dynamo admin API = Site Admin only  
+- [ ] Settings: list users + change roles within tenant  
+- [ ] Optional: finer ATS permissions (view-only)
 
 ---
 
 ## P1 — Product polish
 
+### 4. Companies pipeline model
+- [ ] Align stage names (legacy 8-stage vs 5-stage “targeting/active/onhold…”)  
+- [ ] Document canonical company stages in schema only  
+
+---
+
+## P2 — Nice to have / tech debt
+
 ### 5. Contacts consistency
 - [ ] Single contacts story: company nested contacts vs `/contact-info` vs `/contacts`  
 - [ ] Finish any remaining contact-info CRUD gaps if still present  
 
-### 6. Companies pipeline model
-- [ ] Align stage names (legacy 8-stage vs 5-stage “targeting/active/onhold…”)  
-- [ ] Document canonical company stages in schema only  
+### 6. Job events stubs (build warnings)
+Missing exports used by job API routes (not blocking day-to-day UI):  
+- [ ] `recordCandidateLinked` / `Unlinked` / `StageChanged`  
+- [ ] `recordJobCreated` / `Updated` / `StatusChanged`  
+(See `src/lib/events/job-events.ts` + API imports.)
 
-### 7. Reporting
-- [ ] Confirm Recharts dashboard covers KPIs you care about  
-- [ ] Optional: QuickSight embed when Athena tables ready  
-
-### 8. Dynamo admin enhancements (optional)
-- [ ] Schema / query builder tabs on Dynamo Search  
-- [ ] Safer delete confirmations  
-
----
-
-## P2 — Nice to have
-
-### 9. Resume parsing depth
+### 7. Resume parsing depth
 - [ ] Richer fields (salary, full address, certs) if product needs them  
 
-### 10. AI usage / BYOK
+### 8. AI usage / BYOK
 - [ ] Usage already logs; optional: real Bedrock token counts from API response  
 - [ ] Grok/Anthropic usage split on Usage dashboard  
 
-### 11. Tenant hygiene
+### 9. Tenant hygiene
 - [ ] Clean orphan tenants / incomplete profiles  
 - [ ] Demo tenant seed data pack (sample jobs, companies)  
 
-### 12. Security
+### 10. Security
 - [ ] Encrypt OAuth refresh tokens (KMS or app secret)  
 - [ ] Rotate demo password policy if demos go external  
 
@@ -83,6 +77,8 @@ Missing exports used by job API routes:
 | Full Email inbox rebuild | Hold (product decision) |
 | External MCP servers | Future; tools registry is enough for now |
 | Bulk brand rename | Abandoned earlier |
+| Reporting KPI review / QuickSight embed | Removed from active backlog (existing reporting is enough for now) |
+| Dynamo admin enhancements (query builder tabs) | Removed — current Dynamo Search is enough |
 
 ---
 
