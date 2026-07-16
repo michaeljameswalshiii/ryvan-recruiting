@@ -42,6 +42,27 @@ const NOTE_TYPES = [
   { value: 'other', label: 'Other' },
 ] as const;
 
+/** Human labels for system event types in the activity log */
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  NOTE: 'Note',
+  EMAIL_SENT: 'Email sent',
+  EMAIL_OPENED: 'Email opened',
+  STATUS_CHANGED: 'Stage change',
+  STATUS_CHANGE: 'Stage change',
+  STAGE_CHANGED: 'Stage change',
+  STAGE_CHANGE: 'Stage change',
+  PIPELINE_MOVE: 'Pipeline',
+  JOB_LINKED: 'Job linked',
+  JOB_UNLINKED: 'Job unlinked',
+  JOB_STAGE_CHANGED: 'Job stage',
+  PROFILE_UPDATED: 'Profile update',
+  INTERVIEW_SCHEDULED: 'Interview',
+  INTERVIEW_COMPLETED: 'Interview done',
+  CALL_COMPLETED: 'Call',
+  CANDIDATE_CREATED: 'Created',
+  CANDIDATE_IMPORTED: 'Imported',
+};
+
 /** 5-step pipeline matching Candidates list + mockup */
 const PIPELINE_STEPS = [
   { key: 'identified', label: 'Identified', match: ['sourced', 'identification', 'outreach', 'new', 'contacted', 'identified', 'left_message'] },
@@ -121,10 +142,15 @@ function noteTypeBadgeClass(label: string) {
   if (l.includes('interview')) return 'bg-violet-100 text-violet-800 border-violet-200';
   if (l.includes('submit')) return 'bg-sky-100 text-sky-800 border-sky-200';
   if (l.includes('email')) return 'bg-blue-100 text-blue-800 border-blue-200';
-  if (l.includes('left message') || l.includes('phone'))
+  if (l.includes('left message') || l.includes('phone') || l.includes('call'))
     return 'bg-amber-100 text-amber-900 border-amber-200';
-  if (l.includes('conversation') || l.includes('call'))
+  if (l.includes('conversation'))
     return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+  if (l.includes('job linked') || l.includes('job unlinked'))
+    return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+  if (l.includes('job stage') || l.includes('stage') || l.includes('pipeline'))
+    return 'bg-orange-100 text-orange-900 border-orange-200';
+  if (l.includes('profile')) return 'bg-slate-100 text-slate-800 border-slate-200';
   return 'bg-slate-100 text-slate-700 border-slate-200';
 }
 
@@ -217,20 +243,32 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     if (meta.noteType) {
       const match = NOTE_TYPES.find((t) => t.value === meta.noteType);
       if (match) return match.label;
-      return String(meta.noteType).replace(/_/g, ' ');
+      const pretty = String(meta.noteType).replace(/_/g, ' ');
+      return pretty.charAt(0).toUpperCase() + pretty.slice(1);
     }
-    if (note?.eventType && note.eventType !== 'NOTE') {
-      return String(note.eventType).replace(/_/g, ' ');
+    const et = note?.eventType as string | undefined;
+    if (et && EVENT_TYPE_LABELS[et]) return EVENT_TYPE_LABELS[et];
+    if (et && et !== 'NOTE') {
+      return String(et).replace(/_/g, ' ');
     }
     return 'Note';
   };
 
-  const getNoteBody = (note: any): string =>
-    note?.metadata?.noteText ||
-    note?.description ||
-    note?.title ||
-    note?.noteText ||
-    '—';
+  const getNoteBody = (note: any): string => {
+    const meta = note?.metadata || {};
+    if (meta.noteText) return String(meta.noteText);
+    if (note?.description) return String(note.description);
+    if (note?.title) return String(note.title);
+    if (note?.noteText) return String(note.noteText);
+    // Compose from job metadata when present
+    if (meta.jobTitle) {
+      const stage = meta.stage || meta.newStage;
+      return stage
+        ? `${meta.jobTitle} · ${String(stage).replace(/_/g, ' ')}`
+        : String(meta.jobTitle);
+    }
+    return '—';
+  };
 
   const handleAddNote = async () => {
     if (!newNote.trim() || !candidateId) return;
@@ -355,6 +393,15 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       setContactInfo({ ...editForm });
       setShowEditModal(false);
       toast.success('Contact information updated');
+      await fetch(`/api/candidate/${candidateId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          noteText: `Contact info updated (${editForm.name || 'candidate'})`,
+          noteType: 'profile_updated',
+        }),
+      }).catch(() => {});
+      await fetchNotes();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update');
     } finally {
@@ -402,7 +449,41 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     { id: 'jobs' as const, label: 'Linked Jobs' },
   ];
 
-  const activityRows = useMemo(() => notes, [notes]);
+  const activityRows = useMemo(() => {
+    const rows = [...notes];
+    // Surface careers apply / profile notes field once if not already in events
+    const profileNotes =
+      typeof safe.notes === 'string' ? safe.notes.trim() : '';
+    if (profileNotes) {
+      const already = rows.some(
+        (n) =>
+          getNoteBody(n)?.includes(profileNotes.slice(0, 40)) ||
+          n?.metadata?.fromProfileNotes
+      );
+      if (!already) {
+        rows.push({
+          id: 'profile-notes',
+          eventType: 'NOTE',
+          createdAt: safe.createdAt || safe.created_at || new Date().toISOString(),
+          metadata: {
+            noteText: profileNotes,
+            noteType: 'Application message',
+            noteTypeLabel: 'Application / notes',
+            fromProfileNotes: true,
+          },
+          description: profileNotes,
+        });
+      }
+    }
+    // Newest first
+    rows.sort((a, b) => {
+      const ta = new Date(a.createdAt || a.timestamp || 0).getTime();
+      const tb = new Date(b.createdAt || b.timestamp || 0).getTime();
+      return tb - ta;
+    });
+    return rows;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes, safe.notes, safe.createdAt]);
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-5 pb-10">
@@ -681,9 +762,14 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
 
             {/* Notes & activity log */}
             <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-4">
-                Notes & Activity Log
-              </h2>
+              <div className="mb-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Notes & Activity Log
+                </h2>
+                <p className="text-xs text-gray-400 mt-1">
+                  Communications, job links, stage changes, and manual notes
+                </p>
+              </div>
 
               <div className="flex flex-col sm:flex-row gap-2 mb-5">
                 <select
@@ -1128,6 +1214,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
         }))}
         onLinked={(next) => {
           setLinkedJobs(next);
+          void fetchNotes();
           router.refresh();
         }}
       />

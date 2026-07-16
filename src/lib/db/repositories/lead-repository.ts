@@ -537,8 +537,12 @@ export async function updateCandidateStageInJob(
   const jobIndex = currentLinkedJobs.findIndex(j => j.jobId === jobId);
   
   const now = new Date().toISOString();
+  let oldStage = "";
+  let jobTitle = "Job";
   
   if (jobIndex >= 0) {
+    oldStage = currentLinkedJobs[jobIndex].stage || "";
+    jobTitle = currentLinkedJobs[jobIndex].jobTitle || "Job";
     // Update existing job entry
     currentLinkedJobs[jobIndex] = {
       ...currentLinkedJobs[jobIndex],
@@ -552,7 +556,27 @@ export async function updateCandidateStageInJob(
   }
 
   // Update the lead with new linkedJobs
-  return updateLead(tenantId, leadId, { linkedJobs: currentLinkedJobs as any });
+  const updated = await updateLead(tenantId, leadId, {
+    linkedJobs: currentLinkedJobs as any,
+  });
+
+  try {
+    const { recordJobStageChanged } = await import(
+      "@/lib/events/candidate-events"
+    );
+    await recordJobStageChanged(
+      leadId,
+      jobId,
+      jobTitle,
+      oldStage,
+      newStage,
+      userId || "system"
+    );
+  } catch (e) {
+    console.warn("[updateCandidateStageInJob] activity:", e);
+  }
+
+  return updated;
 }
 
 /**
@@ -616,7 +640,7 @@ export async function linkCandidateToJobForApplication(
   companyId?: string,
   companyName?: string,
   initialStage: string = 'sourced',
-  options?: { skipDualWrite?: boolean }
+  options?: { skipDualWrite?: boolean; skipActivityLog?: boolean }
 ): Promise<Lead | null> {
   // Get the current lead
   const lead = await getLeadById(tenantId, leadId);
@@ -692,6 +716,19 @@ export async function linkCandidateToJobForApplication(
     }
   }
 
+  // Activity log (skip if caller will log — API may also log; use option)
+  if (!options?.skipActivityLog) {
+    try {
+      const { recordJobLinked } = await import("@/lib/events/candidate-events");
+      await recordJobLinked(leadId, jobId, jobTitle, "system", {
+        companyName,
+        stage: initialStage,
+      });
+    } catch (e) {
+      console.warn("[linkCandidateToJobForApplication] activity:", e);
+    }
+  }
+
   return updated;
 }
 
@@ -703,7 +740,7 @@ export async function unlinkCandidateFromJobForApplication(
   tenantId: string,
   leadId: string,
   jobId: string,
-  options?: { skipDualWrite?: boolean }
+  options?: { skipDualWrite?: boolean; skipActivityLog?: boolean }
 ): Promise<Lead | null> {
   // Get the current lead
   const lead = await getLeadById(tenantId, leadId);
@@ -713,6 +750,7 @@ export async function unlinkCandidateFromJobForApplication(
 
   // Filter out the job from linkedJobs
   const currentLinkedJobs = lead.linkedJobs || [];
+  const removed = currentLinkedJobs.find((j) => j.jobId === jobId);
   const newLinkedJobs = currentLinkedJobs.filter(j => j.jobId !== jobId);
   
   // Also update legacy linkedJobIds
@@ -742,6 +780,22 @@ export async function unlinkCandidateFromJobForApplication(
         "[unlinkCandidateFromJobForApplication] job dual-write:",
         err
       );
+    }
+  }
+
+  if (!options?.skipActivityLog) {
+    try {
+      const { recordJobUnlinked } = await import(
+        "@/lib/events/candidate-events"
+      );
+      await recordJobUnlinked(
+        leadId,
+        jobId,
+        removed?.jobTitle || jobId,
+        "system"
+      );
+    } catch (e) {
+      console.warn("[unlinkCandidateFromJobForApplication] activity:", e);
     }
   }
 

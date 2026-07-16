@@ -293,6 +293,12 @@ const candidateNoteTypes = [
   { value: 'Interview Scheduled', label: 'Interview Scheduled' },
   { value: 'Submitted', label: 'Submitted' },
   { value: 'Email Sent', label: 'Email Sent' },
+  { value: 'Left Message', label: 'Left Message' },
+  { value: 'stage_change', label: 'Stage change' },
+  { value: 'job_linked', label: 'Job linked' },
+  { value: 'job_unlinked', label: 'Job unlinked' },
+  { value: 'job_stage_change', label: 'Job stage' },
+  { value: 'profile_updated', label: 'Profile update' },
 ];
 
 /**
@@ -662,6 +668,121 @@ export async function recordCandidateAssigned(
         assignedTo,
         previousOwner,
         assignedAt: new Date().toISOString(),
+      },
+    },
+    createdBy
+  );
+}
+
+/** Candidate linked to a job (application) */
+export async function recordJobLinked(
+  candidateId: string,
+  jobId: string,
+  jobTitle: string,
+  createdBy: string,
+  options?: { companyName?: string; stage?: string }
+): Promise<RecordEventResponse> {
+  const stage = options?.stage || "sourced";
+  const company = options?.companyName ? ` @ ${options.companyName}` : "";
+  return recordEvent(
+    candidateId,
+    "JOB_LINKED",
+    {
+      title: "Linked to job",
+      description: `Linked to ${jobTitle}${company} · stage: ${stage.replace(/_/g, " ")}`,
+      metadata: {
+        noteText: `Linked to job: ${jobTitle}${company}`,
+        noteType: "job_linked",
+        noteTypeLabel: "Job linked",
+        jobId,
+        jobTitle,
+        companyName: options?.companyName,
+        stage,
+        changedBy: createdBy,
+      },
+    },
+    createdBy
+  );
+}
+
+/** Candidate unlinked from a job */
+export async function recordJobUnlinked(
+  candidateId: string,
+  jobId: string,
+  jobTitle: string,
+  createdBy: string
+): Promise<RecordEventResponse> {
+  return recordEvent(
+    candidateId,
+    "JOB_UNLINKED",
+    {
+      title: "Unlinked from job",
+      description: `Unlinked from ${jobTitle || jobId}`,
+      metadata: {
+        noteText: `Unlinked from job: ${jobTitle || jobId}`,
+        noteType: "job_unlinked",
+        noteTypeLabel: "Job unlinked",
+        jobId,
+        jobTitle,
+        changedBy: createdBy,
+      },
+    },
+    createdBy
+  );
+}
+
+/** Stage change on a specific linked job */
+export async function recordJobStageChanged(
+  candidateId: string,
+  jobId: string,
+  jobTitle: string,
+  oldStage: string,
+  newStage: string,
+  createdBy: string
+): Promise<RecordEventResponse> {
+  const from = (oldStage || "—").replace(/_/g, " ");
+  const to = (newStage || "—").replace(/_/g, " ");
+  return recordEvent(
+    candidateId,
+    "JOB_STAGE_CHANGED",
+    {
+      title: "Job stage changed",
+      description: `${jobTitle}: ${from} → ${to}`,
+      metadata: {
+        noteText: `Job stage on "${jobTitle}": ${from} → ${to}`,
+        noteType: "job_stage_change",
+        noteTypeLabel: "Job stage",
+        jobId,
+        jobTitle,
+        oldStage,
+        newStage,
+        stage: newStage,
+        changedBy: createdBy,
+      },
+    },
+    createdBy
+  );
+}
+
+/** Profile / contact fields updated */
+export async function recordProfileUpdated(
+  candidateId: string,
+  summary: string,
+  createdBy: string,
+  fields?: string[]
+): Promise<RecordEventResponse> {
+  return recordEvent(
+    candidateId,
+    "PROFILE_UPDATED",
+    {
+      title: "Profile updated",
+      description: summary,
+      metadata: {
+        noteText: summary,
+        noteType: "profile_updated",
+        noteTypeLabel: "Profile update",
+        fields: fields || [],
+        changedBy: createdBy,
       },
     },
     createdBy

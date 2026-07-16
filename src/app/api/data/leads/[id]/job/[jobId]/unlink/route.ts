@@ -24,7 +24,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Unlink the candidate from the job using repository function
+    // Unlink + activity log in repository
     const updated = await unlinkCandidateFromJobForApplication(
       tenantId,
       leadIdFromPath,

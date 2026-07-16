@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionTenantId } from '@/lib/server-auth';
+import { getSessionTenantId, getSessionUserId, getSession } from '@/lib/server-auth';
 import { updateCandidateStageInJob } from '@/lib/db/repositories/lead-repository';
 
 export async function PUT(
@@ -14,9 +14,6 @@ export async function PUT(
   { params }: { params: Promise<{ id: string; jobId: string }> }
 ) {
   try {
-    const { id: jobId } = await params;
-    const { id: leadId } = await params;
-    
     // Get leadId from URL params
     const url = new URL(request.url);
     const pathParts = url.pathname.split('/');
@@ -35,12 +32,19 @@ export async function PUT(
       return NextResponse.json({ error: 'Stage is required' }, { status: 400 });
     }
 
-    // Update the stage using repository function
+    const session = await getSession();
+    const actor =
+      session?.email ||
+      (await getSessionUserId()) ||
+      'system';
+
+    // Stage update + activity log in repository
     const updated = await updateCandidateStageInJob(
       tenantId,
       leadIdFromPath,
       jobIdFromPath,
-      stage
+      stage,
+      actor
     );
 
     if (!updated) {

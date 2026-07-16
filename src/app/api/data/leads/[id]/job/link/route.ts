@@ -30,7 +30,7 @@ export async function POST(
       return NextResponse.json({ error: 'jobId and jobTitle are required' }, { status: 400 });
     }
 
-    // Link the candidate to the job using repository function
+    // Link + activity log happen in repository
     const updated = await linkCandidateToJobForApplication(
       tenantId,
       leadIdFromPath,

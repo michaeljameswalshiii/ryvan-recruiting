@@ -25,14 +25,20 @@ export type CandidateEventType =
   | 'CANDIDATE_CREATED'
   | 'CANDIDATE_VIEWED'
   | 'STATUS_CHANGED'
+  | 'STATUS_CHANGE' // legacy spelling used by older writers
   | 'STAGE_CHANGED'
+  | 'STAGE_CHANGE'
   | 'INTERVIEW_SCHEDULED'
   | 'INTERVIEW_COMPLETED'
   | 'TASK_CREATED'
   | 'TASK_COMPLETED'
   | 'CANDIDATE_ASSIGNED'
   | 'CALL_COMPLETED'
-  | 'PIPELINE_MOVE';
+  | 'PIPELINE_MOVE'
+  | 'JOB_LINKED'
+  | 'JOB_UNLINKED'
+  | 'JOB_STAGE_CHANGED'
+  | 'PROFILE_UPDATED';
 
 export interface CandidateEvent {
   // DynamoDB keys
