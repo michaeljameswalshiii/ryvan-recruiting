@@ -1,27 +1,50 @@
 ﻿/**
  * Security Middleware
- * 
- * Protects all /dashboard routes.
- * Explicitly allows /api/auth/* to prevent redirect loops.
- * Injects x-tenant-id and x-user-id headers for AI APIs.
- * 
+ *
+ * Model: protect the ATS (dashboard / admin / internal candidates), leave
+ * public surfaces open — especially multi-tenant careers pages applicants use
+ * without an account.
+ *
+ * Public exceptions (no login):
+ *   - Pages:  /careers/*, /login, /signup, /invite/*
+ *   - APIs:   /api/public/* (careers jobs + apply), /api/auth/*
+ *
+ * Protected (session required):
+ *   - /dashboard/*, /candidates/*, /admin/*, /api/admin/*
+ *
+ * Injects x-tenant-id and x-user-id for selected authenticated APIs.
+ *
  * @serverOnly
  */
 
 import { NextResponse, type NextRequest } from "next/server";
 
 // ============================================================================
-// TEMPORARY DEBUG MODE FOR BEDROCK TESTING
+// Route classification
 // ============================================================================
 
-// All public routes - bypass auth immediately
+/**
+ * Public **pages** — applicants and unauthenticated browsers.
+ * Careers is the intentional exception to "must log in to use the site".
+ */
+const PUBLIC_PAGE_ROUTES = [
+  '/careers', // /careers, /careers/{slug}, /careers/{slug}/{jobId}
+  '/login',
+  '/signup',
+  '/invite', // invite accept flow
+];
+
+/**
+ * Public **APIs** — no session cookie required.
+ * Careers feed + apply live under /api/public/careers/*
+ */
 const PUBLIC_API_ROUTES = [
   '/api/auth',
+  '/api/public', // careers jobs, apply, logo — multi-tenant public surface
   '/api/apollo',
   '/api/tavily',
   '/api/boolean',
   '/api/health',
-  '/api/public',
 ];
 
 // API routes that need session injection (for client-side calls from dashboard)
@@ -46,14 +69,20 @@ const SESSION_COOKIE = 'turnkey-session';
  * Check if route is public (no auth required)
  */
 function isPublicRoute(pathname: string): boolean {
-  return PUBLIC_API_ROUTES.some(route => pathname.startsWith(route));
+  if (PUBLIC_API_ROUTES.some((route) => pathname.startsWith(route))) {
+    return true;
+  }
+  if (PUBLIC_PAGE_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`))) {
+    return true;
+  }
+  return false;
 }
 
 /**
  * Check if route is protected (requires auth)
  */
 function isProtectedRoute(pathname: string): boolean {
-  return PROTECTED_ROUTES.some(route => pathname.startsWith(route));
+  return PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
 }
 
 /**

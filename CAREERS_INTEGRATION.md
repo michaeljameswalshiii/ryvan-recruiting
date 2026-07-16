@@ -2,6 +2,20 @@
 
 Post jobs **once in the ATS**. External sites only list Open roles and send applications back.
 
+## Auth model (public exception)
+
+The ATS requires login for `/dashboard/*`. **Careers does not.**
+
+| Surface | Auth | How |
+|---------|------|-----|
+| `/careers`, `/careers/{tenant}`, `/careers/{tenant}/{jobId}` | **Public** | Middleware `PUBLIC_PAGE_ROUTES` |
+| `/api/public/careers/*` (jobs, apply, logo) | **Public** | Middleware `PUBLIC_API_ROUTES` + no session in handlers |
+| `/dashboard/*`, internal candidates, admin | **Login required** | Middleware `PROTECTED_ROUTES` |
+
+Tenant is resolved from the **URL slug** (or `CAREERS_TENANT_ID` / `CAREERS_TENANT_SLUGS` env), never from a user session. That keeps multi-tenant isolation without cookies.
+
+Optional `CAREERS_PUBLIC_KEY` is a **site key** (not a user password) for embed/API callers — not required for the hosted `/careers` pages.
+
 ## Setup (Vercel env)
 
 | Variable | Required | Purpose |
