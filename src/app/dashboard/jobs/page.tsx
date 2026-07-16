@@ -276,7 +276,9 @@ export default function JobsPage() {
                 className="w-full border border-input rounded-md p-2 text-sm"
               >
                 <option value="Open">Open</option>
-                <option value="On Hold">On Hold</option>
+                <option value="Paused">Paused</option>
+                <option value="Filled">Filled</option>
+                <option value="Lost">Lost</option>
                 <option value="Closed">Closed</option>
               </select>
             </div>

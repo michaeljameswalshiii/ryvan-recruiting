@@ -34,9 +34,10 @@ const employmentTypes = [
 
 const jobStatuses = [
   'Open',
+  'Paused',
+  'Filled',
+  'Lost',
   'Closed',
-  'On Hold',
-  'Draft',
 ];
 
 export default function JobModal({

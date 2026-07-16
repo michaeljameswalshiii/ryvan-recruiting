@@ -494,7 +494,7 @@ export async function getReportingStats(
       (j) => normalizeJobStatus(j.status) === 'Open'
     );
     const onHoldJobs = safeJobs.filter(
-      (j) => normalizeJobStatus(j.status) === 'On Hold'
+      (j) => normalizeJobStatus(j.status) === 'Paused'
     );
     const closedJobs = safeJobs.filter(
       (j) => normalizeJobStatus(j.status) === 'Closed'
@@ -730,14 +730,19 @@ export async function getReportingStats(
   }
 }
 
-function normalizeJobStatus(raw?: string): 'Open' | 'On Hold' | 'Closed' {
+function normalizeJobStatus(
+  raw?: string
+): 'Open' | 'Paused' | 'Filled' | 'Lost' | 'Closed' {
   const s = String(raw || 'Open')
     .trim()
     .toLowerCase()
-    .replace(/[_\s]+/g, ' ');
-  if (s === 'closed' || s === 'filled' || s === 'cancelled') return 'Closed';
-  if (s === 'on hold' || s === 'onhold' || s === 'paused' || s === 'hold')
-    return 'On Hold';
+    .replace(/[_\s-]+/g, ' ');
+  if (s === 'paused' || s === 'on hold' || s === 'onhold' || s === 'hold')
+    return 'Paused';
+  if (s === 'filled' || s === 'placed' || s === 'hired' || s === 'won')
+    return 'Filled';
+  if (s === 'lost' || s === 'cancelled' || s === 'canceled') return 'Lost';
+  if (s === 'closed' || s === 'close' || s === 'ended') return 'Closed';
   return 'Open';
 }
 

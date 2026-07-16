@@ -16,6 +16,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useDeleteJob } from '@/lib/hooks/query-job';
+import {
+  normalizeJobStatus,
+  jobStatusBadgeClasses,
+  jobStatusSortRank,
+  type JobStatus,
+} from '@/lib/jobs/status';
 
 export type JobListItem = {
   id: string;
@@ -33,7 +39,15 @@ export type JobListItem = {
 
 type SortKey = 'last_activity' | 'title' | 'added' | 'candidates' | 'status';
 
-type JobBucket = 'all' | 'open' | 'on_hold' | 'closed' | 'with_candidates' | 'no_candidates';
+type JobBucket =
+  | 'all'
+  | 'open'
+  | 'paused'
+  | 'filled'
+  | 'lost'
+  | 'closed'
+  | 'with_candidates'
+  | 'no_candidates';
 
 interface JobListViewProps {
   jobs: JobListItem[];
@@ -64,17 +78,12 @@ function avatarColor(name: string) {
   return palette[hash];
 }
 
-function normalizeStatus(raw?: string): 'Open' | 'On Hold' | 'Closed' {
-  const s = String(raw || 'Open').trim().toLowerCase().replace(/[_\s]+/g, ' ');
-  if (s === 'closed' || s === 'filled' || s === 'cancelled') return 'Closed';
-  if (s === 'on hold' || s === 'onhold' || s === 'paused' || s === 'hold') return 'On Hold';
-  return 'Open';
+function normalizeStatus(raw?: string): JobStatus {
+  return normalizeJobStatus(raw);
 }
 
 function statusBadgeClasses(status: string) {
-  if (status === 'Closed') return 'bg-slate-100 text-slate-700 border-slate-200';
-  if (status === 'On Hold') return 'bg-amber-50 text-amber-800 border-amber-200';
-  return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  return jobStatusBadgeClasses(status);
 }
 
 function formatShortDate(value?: string) {
@@ -107,9 +116,7 @@ function formatRelativeActivity(value?: string) {
 }
 
 function statusSortRank(status: string) {
-  if (status === 'Open') return 3;
-  if (status === 'On Hold') return 2;
-  return 1;
+  return jobStatusSortRank(status);
 }
 
 export function JobListView({ jobs }: JobListViewProps) {
@@ -141,14 +148,18 @@ export function JobListView({ jobs }: JobListViewProps) {
     const counts = {
       all: enriched.length,
       open: 0,
-      on_hold: 0,
+      paused: 0,
+      filled: 0,
+      lost: 0,
       closed: 0,
       with_candidates: 0,
       no_candidates: 0,
     };
     for (const j of enriched) {
       if (j.status === 'Open') counts.open++;
-      if (j.status === 'On Hold') counts.on_hold++;
+      if (j.status === 'Paused') counts.paused++;
+      if (j.status === 'Filled') counts.filled++;
+      if (j.status === 'Lost') counts.lost++;
       if (j.status === 'Closed') counts.closed++;
       if (j.candidateCount > 0) counts.with_candidates++;
       else counts.no_candidates++;
@@ -163,8 +174,14 @@ export function JobListView({ jobs }: JobListViewProps) {
         case 'open':
           if (j.status !== 'Open') return false;
           break;
-        case 'on_hold':
-          if (j.status !== 'On Hold') return false;
+        case 'paused':
+          if (j.status !== 'Paused') return false;
+          break;
+        case 'filled':
+          if (j.status !== 'Filled') return false;
+          break;
+        case 'lost':
+          if (j.status !== 'Lost') return false;
           break;
         case 'closed':
           if (j.status !== 'Closed') return false;
@@ -249,18 +266,36 @@ export function JobListView({ jobs }: JobListViewProps) {
       text: 'text-emerald-900',
     },
     {
-      key: 'on_hold',
-      label: 'On Hold',
-      sub: 'Paused',
-      count: stats.on_hold,
+      key: 'paused',
+      label: 'Paused',
+      sub: 'Temporarily on hold',
+      count: stats.paused,
       ring: 'ring-amber-100',
       bg: 'bg-amber-50/80',
       text: 'text-amber-900',
     },
     {
+      key: 'filled',
+      label: 'Filled',
+      sub: 'Placed / won',
+      count: stats.filled,
+      ring: 'ring-sky-100',
+      bg: 'bg-sky-50/80',
+      text: 'text-sky-900',
+    },
+    {
+      key: 'lost',
+      label: 'Lost',
+      sub: 'Lost the req',
+      count: stats.lost,
+      ring: 'ring-rose-100',
+      bg: 'bg-rose-50/80',
+      text: 'text-rose-900',
+    },
+    {
       key: 'closed',
       label: 'Closed',
-      sub: 'Filled / ended',
+      sub: 'Closed out',
       count: stats.closed,
       ring: 'ring-slate-100',
       bg: 'bg-slate-50/80',
@@ -271,9 +306,9 @@ export function JobListView({ jobs }: JobListViewProps) {
       label: 'With Pipeline',
       sub: 'Has candidates',
       count: stats.with_candidates,
-      ring: 'ring-sky-100',
-      bg: 'bg-sky-50/80',
-      text: 'text-sky-900',
+      ring: 'ring-indigo-100',
+      bg: 'bg-indigo-50/80',
+      text: 'text-indigo-900',
     },
     {
       key: 'no_candidates',
@@ -289,7 +324,7 @@ export function JobListView({ jobs }: JobListViewProps) {
   return (
     <div className="space-y-5">
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-8 gap-3">
         {statCards.map((card) => {
           const active = bucket === card.key;
           return (

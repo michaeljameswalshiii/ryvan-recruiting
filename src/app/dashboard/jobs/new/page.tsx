@@ -27,7 +27,7 @@ interface Job {
   employmentType?: string;
   companyId?: string;
   companyName?: string;
-  status: "Open" | "On Hold" | "Closed";
+  status: "Open" | "Paused" | "Filled" | "Lost" | "Closed";
   candidates?: Array<{
     candidateId: string;
     candidateName: string;
@@ -38,9 +38,10 @@ interface Job {
 }
 
 const jobStages = [
-  { id: 'open', label: 'Open Positions', color: 'bg-green-500' },
-  { id: 'on_hold', label: 'On Hold', color: 'bg-yellow-500' },
+  { id: 'open', label: 'Open', color: 'bg-green-500' },
+  { id: 'paused', label: 'Paused', color: 'bg-yellow-500' },
   { id: 'filled', label: 'Filled', color: 'bg-blue-500' },
+  { id: 'lost', label: 'Lost', color: 'bg-rose-500' },
   { id: 'closed', label: 'Closed', color: 'bg-gray-500' },
 ];
 

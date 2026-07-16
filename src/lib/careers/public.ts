@@ -76,7 +76,10 @@ export function isJobListedOnWebsite(job: {
   status?: string;
   showOnWebsite?: boolean;
 }): boolean {
-  const open = (job.status || "").trim().toLowerCase() === "open";
+  // Only canonical Open (legacy OPEN/active also normalize to Open)
+  const status = (job.status || "").trim().toLowerCase().replace(/[_\s-]+/g, " ");
+  const open =
+    status === "open" || status === "active" || status === "hiring" || status === "live";
   if (!open) return false;
   if (job.showOnWebsite === false) return false;
   return true;

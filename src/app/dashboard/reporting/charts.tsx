@@ -575,7 +575,7 @@ function JobsTab({ stats }: { stats: ReportingStats }) {
   const j = stats.jobs;
   const chartData = [
     { name: 'Open', count: j.open, fill: '#10b981' },
-    { name: 'On Hold', count: j.onHold, fill: '#f59e0b' },
+    { name: 'Paused', count: j.onHold, fill: '#f59e0b' },
     { name: 'Closed', count: j.closed, fill: '#94a3b8' },
   ];
 

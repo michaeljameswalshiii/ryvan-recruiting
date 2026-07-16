@@ -33,12 +33,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { APPLICATION_STAGES } from "@/lib/schemas/lead";
+import {
+  JOB_STATUSES,
+  normalizeJobStatus,
+  jobStatusBadgeClasses,
+  isJobOpenForCareers,
+  type JobStatus,
+} from "@/lib/jobs/status";
 import { toast } from "sonner";
 
-const JOB_STATUSES = ["OPEN", "PAUSED", "CLOSED"] as const;
 const STAGES = APPLICATION_STAGES.map((s) => s.value);
-
-type JobStatus = (typeof JOB_STATUSES)[number];
 
 /** Pipeline buckets shown in the WIP tracker (mockup-style). */
 const PIPELINE_BUCKETS = [
@@ -125,19 +129,11 @@ function avatarColor(name: string) {
 }
 
 function formatStatusLabel(status?: string) {
-  if (!status) return "Open";
-  return String(status)
-    .replace(/_/g, " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return normalizeJobStatus(status);
 }
 
 function statusBadgeClasses(status?: string) {
-  const s = String(status || "open").toLowerCase();
-  if (s.includes("open")) return "bg-emerald-50 text-emerald-700 border-emerald-200";
-  if (s.includes("pause") || s.includes("hold")) return "bg-amber-50 text-amber-800 border-amber-200";
-  if (s.includes("close")) return "bg-gray-100 text-gray-700 border-gray-200";
-  return "bg-blue-50 text-blue-700 border-blue-200";
+  return jobStatusBadgeClasses(status);
 }
 
 function shortJobId(id?: string) {
@@ -225,20 +221,24 @@ export default function JobDetailPage() {
     return Math.min(100, Math.round(sum / linkedCandidates.length));
   }, [linkedCandidates]);
 
-  const onChangeJobStatus = async (status: JobStatus) => {
+  const onChangeJobStatus = async (status: string) => {
     if (!jobId) return;
-    await updateJob.mutateAsync({
-      jobId,
-      jobData: { status },
-    });
+    const canonical = normalizeJobStatus(status);
+    try {
+      await updateJob.mutateAsync({
+        jobId,
+        jobData: { status: canonical },
+      });
+      toast.success(`Status set to ${canonical}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update status");
+    }
   };
 
   /** Explicit true = on; false = off; undefined (legacy) = treated as on while Open */
   const isShownOnWebsite = (job as any)?.showOnWebsite !== false;
-  const isOpenStatus =
-    String((job as any)?.status || "")
-      .trim()
-      .toLowerCase() === "open";
+  const currentJobStatus = normalizeJobStatus((job as any)?.status);
+  const isOpenStatus = isJobOpenForCareers((job as any)?.status);
 
   const onToggleShowOnWebsite = async (next: boolean) => {
     if (!jobId) return;
@@ -416,8 +416,8 @@ export default function JobDetailPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           <select
-            value={job.status || "OPEN"}
-            onChange={(e) => onChangeJobStatus(e.target.value as JobStatus)}
+            value={currentJobStatus}
+            onChange={(e) => onChangeJobStatus(e.target.value)}
             disabled={updateJob.isPending}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
             aria-label="Job status"
@@ -427,11 +427,6 @@ export default function JobDetailPage() {
                 {status}
               </option>
             ))}
-            {/* Preserve whatever status is currently stored if not in the enum */}
-            {job.status &&
-              !JOB_STATUSES.includes(job.status as JobStatus) && (
-                <option value={job.status}>{job.status}</option>
-              )}
           </select>
 
           <label

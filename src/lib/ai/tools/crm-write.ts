@@ -678,7 +678,7 @@ export async function executeCreateJob(
 
 export const UPDATE_JOB_TOOL = "update_job";
 export const UPDATE_JOB_DESCRIPTION =
-  "Update a job (title, status Open/On Hold/Closed, location, description, salary). " +
+  "Update a job (title, status Open/Paused/Filled/Lost/Closed, location, description, salary). " +
   "Requires job_id. Preview first, then confirmed:true.";
 
 export async function executeUpdateJob(
@@ -1050,7 +1050,7 @@ export const CRM_WRITE_TOOLS: Array<{
           type: "string",
           description: "Full-time|Part-time|Contract|Internship",
         },
-        status: { type: "string", description: "Open|On Hold|Closed" },
+        status: { type: "string", description: "Open|Paused|Filled|Lost|Closed" },
         confirmed: { type: "boolean", description: "true to apply after user confirms" },
       },
       required: ["title", "company_id"],
@@ -1068,7 +1068,7 @@ export const CRM_WRITE_TOOLS: Array<{
         location: { type: "string", description: "Location" },
         description: { type: "string", description: "Description" },
         salary_range: { type: "string", description: "Salary" },
-        status: { type: "string", description: "Open|On Hold|Closed" },
+        status: { type: "string", description: "Open|Paused|Filled|Lost|Closed" },
         confirmed: { type: "boolean", description: "true to apply after user confirms" },
       },
       required: ["job_id"],

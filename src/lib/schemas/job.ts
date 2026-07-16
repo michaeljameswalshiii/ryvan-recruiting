@@ -1,4 +1,17 @@
 ﻿import { z } from 'zod';
+import {
+  normalizeJobStatus,
+  JOB_STATUSES as JOB_STATUS_VALUES,
+} from '@/lib/jobs/status';
+
+// Re-export helpers so callers can import from schema or jobs/status
+export {
+  normalizeJobStatus,
+  isJobOpenForCareers,
+  jobStatusBadgeClasses,
+  JOB_STATUSES,
+  JOB_STATUS_META,
+} from '@/lib/jobs/status';
 
 /**
  * Job Candidate Stage Enum
@@ -19,9 +32,17 @@ export type JobCandidateStage = typeof jobCandidateStages[number];
 /**
  * Job Status Enum
  * Overall status of the job posting
+ * Open | Paused | Filled | Lost | Closed
+ * (legacy "On Hold" / OPEN / PAUSED normalize via jobStatusField)
  */
-export const jobStatuses = ['Open', 'On Hold', 'Closed'] as const;
-export type JobStatus = typeof jobStatuses[number];
+export const jobStatuses = JOB_STATUS_VALUES;
+export type JobStatus = (typeof jobStatuses)[number];
+
+/** Accepts legacy values (On Hold, OPEN, …) and coerces to canonical */
+export const jobStatusField = z.preprocess(
+  (val) => normalizeJobStatus(typeof val === 'string' ? val : 'Open'),
+  z.enum(jobStatuses as unknown as [string, ...string[]])
+);
 
 /**
  * Linked Candidate Schema
@@ -57,8 +78,8 @@ export const jobSchema = z.object({
   companyId: z.string().uuid().optional(),
   companyName: z.string().max(200).optional(),
   
-  // Job status
-  status: z.enum(jobStatuses).default('Open'),
+  // Job status (legacy values normalized)
+  status: jobStatusField.default('Open'),
 
   /**
    * When true, Open jobs appear on public /careers feed and embeds.

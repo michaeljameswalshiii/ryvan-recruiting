@@ -21,7 +21,7 @@ import {
   unlinkCandidateFromJob,
   updateCandidateStageInJob
 } from '../db/repositories';
-import { createJobSchema } from '../schemas/job';
+import { createJobSchema, normalizeJobStatus } from '../schemas/job';
 
 /**
  * Helper to safely convert any value to ISO string
@@ -246,7 +246,7 @@ export async function createJobAction(formData: FormData) {
     employmentType: formData.get('employmentType') as string || 'Full-time',
     companyId: formData.get('companyId') as string,
     companyName: formData.get('companyName') as string,
-    status: formData.get('status') as string || 'Open',
+    status: formData.get('status') as string || 'Open', // normalized by createJobSchema / jobStatusField
     showOnWebsite:
       showRaw !== null &&
       ['true', '1', 'yes'].includes(String(showRaw).toLowerCase()),
@@ -290,7 +290,8 @@ export async function updateJobAction(jobId: string, formData: FormData) {
   for (const field of fields) {
     const value = formData.get(field);
     if (value !== null && value !== undefined && value !== '') {
-      rawData[field] = value;
+      rawData[field] =
+        field === 'status' ? normalizeJobStatus(String(value)) : value;
     }
   }
 

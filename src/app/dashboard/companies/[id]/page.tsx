@@ -571,8 +571,8 @@ function JobsTab({ companyId, companyName }: { companyId: string; companyName: s
                   )}
                 </div>
                 <Badge variant={
-                  job.status === "Open" ? "default" :
-                  job.status === "On Hold" ? "outline" :
+                  job.status === "Open" || job.status === "OPEN" ? "default" :
+                  job.status === "Paused" || job.status === "On Hold" || job.status === "PAUSED" ? "outline" :
                   job.status === "Closed" ? "secondary" : "secondary"
                 }>
                   {job.status || "Open"}

@@ -24,6 +24,7 @@ import {
   type UpdateCandidateStageInput,
   jobCandidateStages,
   jobStatuses,
+  normalizeJobStatus,
 } from '../../schemas/job';
 
 // Cache TTL: 5 minutes
@@ -79,15 +80,13 @@ export async function getAllJobs(tenantId: string): Promise<Job[]> {
 }
 
 /**
- * Get jobs by status (Open, Closed, On Hold)
+ * Get jobs by status (Open, Paused, Filled, Lost, Closed — legacy values normalized)
  */
 export async function getJobsByStatus(tenantId: string, status: string): Promise<Job[]> {
-  return queryItems<Job>(
-    jobsTable,
-    'tenant_id = :tenantId AND #status = :status',
-    { ':tenantId': tenantId, ':status': status },
-    { '#status': 'status' }
-  );
+  const canonical = normalizeJobStatus(status);
+  // Filter in memory so legacy values (On Hold, OPEN, …) still match
+  const all = await getAllJobs(tenantId);
+  return all.filter((j) => normalizeJobStatus(j.status) === canonical);
 }
 
 /**
@@ -95,7 +94,7 @@ export async function getJobsByStatus(tenantId: string, status: string): Promise
  */
 export async function getOpenJobs(tenantId: string): Promise<Job[]> {
   const allJobs = await getAllJobs(tenantId);
-  return allJobs.filter(job => job.status === 'Open');
+  return allJobs.filter((job) => normalizeJobStatus(job.status) === 'Open');
 }
 
 /**
@@ -157,7 +156,7 @@ export async function createJob(tenantId: string, data: CreateJobInput): Promise
     employmentType: data.employmentType || 'Full-time',
     companyId: data.companyId,
     companyName: data.companyName,
-    status: data.status || 'Open',
+    status: normalizeJobStatus(data.status || 'Open'),
     // New jobs default off the public site until recruiter opts in
     showOnWebsite: data.showOnWebsite === true,
     candidates: [],
@@ -224,7 +223,7 @@ export async function updateJob(
   }
   if (data.status !== undefined) {
     updates.push('#status = :status');
-    values[':status'] = data.status;
+    values[':status'] = normalizeJobStatus(String(data.status));
     names['#status'] = 'status';
   }
   if (data.showOnWebsite !== undefined) {
@@ -520,8 +519,13 @@ export async function getJobStats(tenantId: string): Promise<{
 
   return {
     totalJobs: allJobs.length,
-    openJobs: allJobs.filter(j => j.status === 'Open').length,
-    closedJobs: allJobs.filter(j => j.status === 'Closed').length,
+    openJobs: allJobs.filter(
+      (j) => normalizeJobStatus(j.status) === 'Open'
+    ).length,
+    closedJobs: allJobs.filter((j) => {
+      const s = normalizeJobStatus(j.status);
+      return s === 'Closed' || s === 'Filled' || s === 'Lost';
+    }).length,
     jobsWithCandidates,
     totalCandidateApplications,
   };

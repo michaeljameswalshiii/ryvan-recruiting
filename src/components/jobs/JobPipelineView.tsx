@@ -18,17 +18,29 @@ interface JobPipelineViewProps {
   jobs: Job[];
 }
 
+function matchStage(status: string, stageId: string): boolean {
+  const s = String(status || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s-]+/g, ' ');
+  if (stageId === 'open') return s === 'open' || s === 'active' || s === 'hiring';
+  if (stageId === 'paused' || stageId === 'on_hold')
+    return s === 'paused' || s === 'on hold' || s === 'hold' || s === 'pause';
+  if (stageId === 'filled')
+    return s === 'filled' || s === 'placed' || s === 'hired' || s === 'won';
+  if (stageId === 'lost')
+    return s === 'lost' || s === 'cancelled' || s === 'canceled';
+  if (stageId === 'closed') return s === 'closed' || s === 'close' || s === 'ended';
+  return false;
+}
+
 export function JobPipelineView({ stages, jobs }: JobPipelineViewProps) {
   const getJobsByStage = (stageId: string) => {
-    if (stageId === 'open') return jobs.filter(j => j.status === 'Open');
-    if (stageId === 'on_hold') return jobs.filter(j => j.status === 'On Hold');
-    if (stageId === 'filled') return jobs.filter(j => j.status === 'Filled');
-    if (stageId === 'closed') return jobs.filter(j => j.status === 'Closed');
-    return [];
+    return jobs.filter((j) => matchStage(j.status, stageId));
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
       {stages.map((stage) => {
         const stageJobs = getJobsByStage(stage.id);
         return (
