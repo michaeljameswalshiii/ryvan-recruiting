@@ -1,46 +1,48 @@
-﻿/**
+/**
  * Application-Centric Unlink Job API
- * Unlinks a candidate from a job, removing from linkedJobs[]
- * 
  * POST /api/data/leads/[id]/job/[jobId]/unlink
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getSessionTenantId } from '@/lib/server-auth';
-import { unlinkCandidateFromJobForApplication } from '@/lib/db/repositories/lead-repository';
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionTenantId } from "@/lib/server-auth";
+import { unlinkCandidateFromJobForApplication } from "@/lib/db/repositories/lead-repository";
 
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string; jobId: string }> }
 ) {
   try {
-    const url = new URL(request.url);
-    const pathParts = url.pathname.split('/');
-    const leadIdFromPath = pathParts[pathParts.indexOf('leads') + 1];
-    const jobIdFromPath = pathParts[pathParts.indexOf('job') + 2];
-    
-    const tenantId = await getSessionTenantId();
-    if (!tenantId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { id: leadId, jobId } = await params;
+
+    if (!leadId || !jobId) {
+      return NextResponse.json(
+        { error: "Candidate id and job id are required" },
+        { status: 400 }
+      );
     }
 
-    // Unlink + activity log in repository
+    const tenantId = await getSessionTenantId();
+    if (!tenantId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const updated = await unlinkCandidateFromJobForApplication(
       tenantId,
-      leadIdFromPath,
-      jobIdFromPath
+      leadId,
+      jobId
     );
 
     if (!updated) {
-      return NextResponse.json({ error: 'Failed to unlink job' }, { status: 500 });
+      return NextResponse.json({ error: "Failed to unlink job" }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, lead: updated });
-  } catch (error: any) {
-    console.error('[UnlinkJob] Error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to unlink job' },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    console.error("[UnlinkJob] Error:", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to unlink job";
+    // Surface "not linked" style cases as 400
+    const status = message.toLowerCase().includes("not found") ? 404 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

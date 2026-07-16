@@ -757,9 +757,9 @@ export async function unlinkCandidateFromJobForApplication(
   const currentLinkedJobIds = lead.linkedJobIds || [];
   const newLinkedJobIds = currentLinkedJobIds.filter(id => id !== jobId);
 
-  // If nothing changed, no need to update
+  // If nothing changed, job was not linked (or wrong jobId)
   if (newLinkedJobs.length === currentLinkedJobs.length) {
-    return lead;
+    throw new Error("Candidate is not linked to this job");
   }
 
   // Update the lead
@@ -788,12 +788,18 @@ export async function unlinkCandidateFromJobForApplication(
       const { recordJobUnlinked } = await import(
         "@/lib/events/candidate-events"
       );
-      await recordJobUnlinked(
+      const result = await recordJobUnlinked(
         leadId,
         jobId,
         removed?.jobTitle || jobId,
         "system"
       );
+      if (!result.success) {
+        console.warn(
+          "[unlinkCandidateFromJobForApplication] activity failed:",
+          result.error
+        );
+      }
     } catch (e) {
       console.warn("[unlinkCandidateFromJobForApplication] activity:", e);
     }
