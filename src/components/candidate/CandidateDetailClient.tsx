@@ -179,6 +179,12 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [aiOutput, setAiOutput] = useState<string>('');
   const [resumeUrl, setResumeUrl] = useState(safe.resumeUrl || '');
+  const [resumeFileName, setResumeFileName] = useState(
+    safe.resumeFileName || ''
+  );
+  const [resumeKey, setResumeKey] = useState(
+    safe.resumeKey || safe.resume_key || ''
+  );
   const [linkJobOpen, setLinkJobOpen] = useState(false);
   const [linkedJobs, setLinkedJobs] = useState<any[]>(
     Array.isArray(safe.linkedJobs) ? safe.linkedJobs : []
@@ -901,11 +907,9 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                     variant="outline"
                     size="sm"
                     className="h-8 text-xs"
-                    onClick={() =>
-                      router.push(`/dashboard/candidates/${candidateId}/edit`)
-                    }
+                    onClick={() => setActiveTab('resume')}
                   >
-                    Update
+                    Manage
                   </Button>
                 </div>
               </div>
@@ -1120,29 +1124,33 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       {/* ── Resume tab ───────────────────────────────────────────── */}
       {activeTab === 'resume' && (
         <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 min-h-[480px]">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-gray-900">Resume</h2>
-            {resumeUrl && (
-              <Button variant="outline" size="sm" asChild>
-                <a href={resumeUrl} target="_blank" rel="noreferrer">
-                  <Download className="h-4 w-4 mr-1.5" /> Download
-                </a>
-              </Button>
-            )}
-          </div>
-          {resumeUrl || candidateId ? (
-            <ResumeViewer
-              url={resumeUrl}
-              fileName={safe.resumeFileName}
-              candidateId={candidateId}
-              fileKey={safe.resumeKey}
-              onUrlUpdated={(u) => setResumeUrl(u)}
-            />
-          ) : (
-            <div className="text-center py-16 text-gray-500 text-sm">
-              No resume on file. Edit the candidate to upload one.
+          <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Resume</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Remove a broken file, then upload a replacement
+              </p>
             </div>
-          )}
+          </div>
+          <ResumeViewer
+            url={resumeUrl}
+            fileName={resumeFileName || safe.resumeFileName}
+            candidateId={candidateId}
+            fileKey={resumeKey || safe.resumeKey}
+            onUrlUpdated={(u) => setResumeUrl(u)}
+            onResumeChanged={(info) => {
+              if (!info) {
+                setResumeUrl('');
+                setResumeFileName('');
+                setResumeKey('');
+                return;
+              }
+              setResumeUrl(info.resumeUrl || '');
+              setResumeFileName(info.fileName || '');
+              setResumeKey(info.fileKey || info.resumeUrl || '');
+              void fetchNotes();
+            }}
+          />
         </section>
       )}
 

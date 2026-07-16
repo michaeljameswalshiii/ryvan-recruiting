@@ -2,6 +2,7 @@
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getLeadById } from '@/lib/db/repositories/lead-repository';
+import { getSessionTenantId } from '@/lib/server-auth';
 
 // 7 days in seconds for long-lived presigned URLs
 const SEVEN_DAYS_SECONDS = 604800;
@@ -54,7 +55,9 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const candidateId = searchParams.get('candidateId');
     const fileKey = searchParams.get('fileKey');
-    const tenantId = searchParams.get('tenantId') || 'default';
+    const sessionTenant = await getSessionTenantId();
+    const tenantId =
+      sessionTenant || searchParams.get('tenantId') || 'default';
 
     if (!candidateId && !fileKey) {
       return NextResponse.json(
@@ -67,7 +70,7 @@ export async function GET(req: NextRequest) {
 
 // If no fileKey provided, get it from candidate record
     if (!s3Key && candidateId) {
-      console.log('resume-url: getting resume for candidate', candidateId);
+      console.log('resume-url: getting resume for candidate', candidateId, tenantId);
       const candidate = await getLeadById(tenantId, candidateId);
 
       if (!candidate) {
@@ -77,8 +80,27 @@ export async function GET(req: NextRequest) {
         );
       }
 
-      // Use resume_url as S3 key (stored in DB)
-      s3Key = candidate.resume_url || '';
+      // Prefer explicit key fields; resume_url may be S3 key or full URL
+      const c = candidate as any;
+      s3Key =
+        c.resume_key ||
+        c.resume_s3_key ||
+        c.resumeKey ||
+        candidate.resume_url ||
+        '';
+      // If full URL, extract path as key
+      if (s3Key.startsWith('http')) {
+        try {
+          const path = new URL(s3Key).pathname.replace(/^\//, '');
+          const bucket = process.env.AWS_S3_BUCKET_NAME || '';
+          s3Key =
+            bucket && path.startsWith(bucket + '/')
+              ? path.slice(bucket.length + 1)
+              : path;
+        } catch {
+          /* keep */
+        }
+      }
     }
 
     if (!s3Key) {
