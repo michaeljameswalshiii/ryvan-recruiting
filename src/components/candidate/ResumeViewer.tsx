@@ -254,6 +254,18 @@ export function ResumeViewer({
   const zoomIn = () => setZoom((prev) => Math.min(prev + 25, 200));
   const zoomOut = () => setZoom((prev) => Math.max(prev - 25, 50));
 
+  /**
+   * Chrome/Edge PDF viewer: hide left thumbnail/nav pane so the page
+   * fills the full frame. Hash params are ignored by S3/signed URLs.
+   */
+  const pdfEmbedUrl = (src: string) => {
+    if (!src) return src;
+    const hash = "navpanes=0&scrollbar=1&view=FitH";
+    // Replace existing hash if present (keep query string for signed URLs)
+    const base = src.split("#")[0];
+    return `${base}#${hash}`;
+  };
+
   const actionBar = (
     <div className="flex flex-wrap items-center gap-2">
       <input
@@ -481,22 +493,23 @@ export function ResumeViewer({
         </div>
       </div>
 
-      <div className="flex-1 bg-gray-200 overflow-auto">
+      <div className="flex-1 bg-gray-200 overflow-hidden min-h-0">
         {currentUrl ? (
           <div
-            className="min-h-full flex justify-center"
+            className="h-full w-full flex justify-center overflow-auto"
             style={{
-              transform: `scale(${zoom / 100})`,
+              transform: zoom === 100 ? undefined : `scale(${zoom / 100})`,
               transformOrigin: "top center",
             }}
           >
             <iframe
-              src={currentUrl}
-              className="w-full h-full border-0"
+              src={pdfEmbedUrl(currentUrl)}
+              className="border-0 bg-white"
               style={{
-                width: `${10000 / zoom}%`,
+                width: zoom === 100 ? "100%" : `${10000 / zoom}%`,
                 height: "100%",
-                minHeight: "800px",
+                minHeight: "100%",
+                minWidth: "100%",
               }}
               title={displayName || fileName || "Resume PDF"}
               onLoad={handleLoad}

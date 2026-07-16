@@ -125,7 +125,7 @@ export function ResumeCreateCard() {
             <p className="text-sm text-blue-900/70 mt-1">
               {dragActive
                 ? 'Drop your resume to parse and continue…'
-                : 'Drag & drop a PDF or Word resume, or upload. We extract name, contact info, title, skills, and summary.'}
+                : 'Drag & drop a PDF or Word resume, or upload. We extract name, contact, title, skills, summary, experience, and education.'}
             </p>
             {fileName && (
               <p className="text-xs text-blue-800 mt-2">Selected: {fileName}</p>

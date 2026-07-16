@@ -23,6 +23,7 @@ import {
   clearResumeDraft,
   loadResumeDraft,
   mapParsedResumeToForm,
+  mergeFormWithParsed,
   parseResumeFile,
 } from '@/lib/candidates/resume-parse-client';
 
@@ -54,6 +55,7 @@ const emptyForm = {
   resume_url: '',
   summary: '',
   skills: '',
+  salary_requirements: '',
 };
 
 export default function NewCandidatePage() {
@@ -82,9 +84,16 @@ export default function NewCandidatePage() {
       setResumeFileName(draft.fileName || draft.form.resume_file_name || '');
       setParsedFromResume(true);
 
-      const pending = (window as any).__turnkeyPendingResumeFile;
-      if (pending instanceof File) {
-        setUploadedFile(pending);
+      if (typeof window !== 'undefined') {
+        (window as any).__turnkeyParsedResumeStructured = {
+          experience: draft.form.experience || [],
+          education: draft.form.education || [],
+          certifications: draft.form.certifications || [],
+        };
+        const pending = (window as any).__turnkeyPendingResumeFile;
+        if (pending instanceof File) {
+          setUploadedFile(pending);
+        }
       }
 
       clearResumeDraft();
@@ -123,27 +132,37 @@ export default function NewCandidatePage() {
         fileName: file.name,
       });
 
-      setFormData((prev) => ({
-        ...prev,
-        ...mapped,
-        status: prev.status,
-        // keep user-edited fields only if parse left them empty
-        name: mapped.name || prev.name,
-        title: mapped.title || prev.title,
-        email: mapped.email || prev.email,
-        phone: mapped.phone || prev.phone,
-        location: mapped.location || prev.location,
-        linkedin_url: mapped.linkedin_url || prev.linkedin_url,
-        summary: mapped.summary || prev.summary,
-        skills: mapped.skills || prev.skills,
-        notes: mapped.notes || prev.notes,
-        resume_url: mapped.resume_url || prev.resume_url,
-        source: 'resume',
-      }));
+      setFormData((prev) =>
+        mergeFormWithParsed(prev, {
+          ...mapped,
+          status: prev.status,
+          source: 'resume',
+        }) as typeof emptyForm
+      );
+
+      // Stash structured arrays for create payload
+      (window as any).__turnkeyParsedResumeStructured = {
+        experience: mapped.experience || [],
+        education: mapped.education || [],
+        certifications: mapped.certifications || [],
+      };
 
       setUploadedFile(file);
       setParsedFromResume(true);
-      toast.success('Resume parsed — form fields updated');
+      const filled = [
+        mapped.name && 'name',
+        mapped.email && 'email',
+        mapped.phone && 'phone',
+        mapped.title && 'title',
+        mapped.skills && 'skills',
+        mapped.summary && 'summary',
+        (mapped.experience?.length ?? 0) > 0 && 'experience',
+      ].filter(Boolean);
+      toast.success(
+        filled.length
+          ? `Resume parsed — filled ${filled.join(', ')}`
+          : 'Resume parsed — review fields and edit as needed'
+      );
     } catch (err: any) {
       console.error(err);
       toast.error(err?.message || 'Failed to parse resume');
@@ -191,6 +210,11 @@ export default function NewCandidatePage() {
     setLoading(true);
 
     try {
+      const structured =
+        (typeof window !== 'undefined' &&
+          (window as any).__turnkeyParsedResumeStructured) ||
+        {};
+
       const payload: Record<string, unknown> = {
         name: formData.name.trim(),
         email: formData.email || undefined,
@@ -203,6 +227,7 @@ export default function NewCandidatePage() {
         linkedin_url: formData.linkedin_url || undefined,
         resume_url: formData.resume_url || undefined,
         summary: formData.summary || undefined,
+        salary_requirements: formData.salary_requirements || undefined,
       };
 
       if (formData.skills) {
@@ -210,6 +235,19 @@ export default function NewCandidatePage() {
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean);
+      }
+
+      if (Array.isArray(structured.experience) && structured.experience.length) {
+        payload.experience = structured.experience;
+      }
+      if (Array.isArray(structured.education) && structured.education.length) {
+        payload.education = structured.education;
+      }
+      if (
+        Array.isArray(structured.certifications) &&
+        structured.certifications.length
+      ) {
+        payload.certifications = structured.certifications;
       }
 
       const response = await fetch('/api/candidate', {

@@ -1,6 +1,6 @@
-﻿/**
- * Resume Parser - Server-side functions
- * Use /api/parse-resume for client-side PDF parsing
+/**
+ * Resume Parser - client helpers
+ * Use /api/parse-resume for PDF/DOCX parsing
  */
 
 export interface ResumeExperience {
@@ -34,7 +34,6 @@ export interface ParsedResume {
 
 /**
  * Parse a resume file using the server API
- * This handles PDF/DOCX parsing server-side
  */
 export async function processResumeFile(file: File): Promise<ParsedResume> {
   const formData = new FormData();
@@ -65,9 +64,25 @@ export async function processResumeFile(file: File): Promise<ParsedResume> {
     email: resume.email || '',
     linkedin: resume.linkedin || '',
     professionalSummary: resume.summary || '',
-    experience: [],
+    experience: (resume.experience || []).map((e: any) => ({
+      company: e.company || '',
+      title: e.title || '',
+      location: e.location || '',
+      dates: e.dates || '',
+      bullets: e.description
+        ? String(e.description)
+            .split('\n')
+            .map((b: string) => b.trim())
+            .filter(Boolean)
+        : [],
+    })),
     technologies: resume.skills || [],
-    education: [],
+    education: (resume.education || []).map((e: any) => ({
+      school: e.school || '',
+      degree: e.degree || '',
+      field: e.field || '',
+      year: e.dates || e.year || '',
+    })),
     rawText: data.rawText || '',
   };
 }

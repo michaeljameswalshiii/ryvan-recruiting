@@ -11,6 +11,8 @@ import {
 } from "@/lib/db/repositories/lead-repository";
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { addNoteToCandidate } from "@/lib/events/candidate-events";
+import { parseResumeBuffer } from "@/lib/candidates/resume-extract-server";
+import { mergeParsedIntoEmptyFields } from "@/lib/candidates/resume-text-parser";
 
 function getS3Client() {
   const region =
@@ -157,7 +159,9 @@ export async function DELETE(
 }
 
 /**
- * POST multipart: file field "resume" — upload replacement (does not re-parse profile fields unless parse=1)
+ * POST multipart: file field "resume" — upload replacement.
+ * By default re-parses the file and fills empty profile fields only
+ * (pass parse=0 to skip parse, or fill=overwrite to replace scalars when present).
  */
 export async function POST(
   request: NextRequest,
@@ -198,6 +202,10 @@ export async function POST(
       return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 400 });
     }
 
+    const parseFlag = String(form.get("parse") ?? "1").toLowerCase();
+    const shouldParse = parseFlag !== "0" && parseFlag !== "false";
+    const fillMode = String(form.get("fill") ?? "empty").toLowerCase(); // empty | overwrite
+
     // Remove old S3 object if present
     const c = candidate as any;
     const oldKey = extractS3Key(
@@ -232,7 +240,54 @@ export async function POST(
       })
     );
 
-    await updateLead(tenantId, id, { resume_url: s3Key } as any);
+    const updatePayload: Record<string, unknown> = {
+      resume_url: s3Key,
+    };
+    let filledKeys: string[] = [];
+    let parsedSummary: Record<string, unknown> | null = null;
+
+    if (shouldParse) {
+      try {
+        const { parsed, method } = await parseResumeBuffer(buffer, file.name);
+        parsedSummary = {
+          name: parsed.name,
+          title: parsed.title,
+          email: parsed.email,
+          skills: parsed.skills?.length ?? 0,
+          experience: parsed.experience?.length ?? 0,
+          education: parsed.education?.length ?? 0,
+          method,
+        };
+
+        if (fillMode === "overwrite") {
+          if (parsed.name) updatePayload.name = parsed.name;
+          if (parsed.email) updatePayload.email = parsed.email;
+          if (parsed.phone) updatePayload.phone = parsed.phone;
+          if (parsed.title) updatePayload.title = parsed.title;
+          if (parsed.location) updatePayload.location = parsed.location;
+          if (parsed.linkedin) updatePayload.linkedin_url = parsed.linkedin;
+          if (parsed.summary) updatePayload.summary = parsed.summary;
+          if (parsed.salaryRequirements) {
+            updatePayload.salary_requirements = parsed.salaryRequirements;
+          }
+          if (parsed.skills?.length) updatePayload.skills = parsed.skills;
+          if (parsed.experience?.length) updatePayload.experience = parsed.experience;
+          if (parsed.education?.length) updatePayload.education = parsed.education;
+          if (parsed.certifications?.length) {
+            updatePayload.certifications = parsed.certifications;
+          }
+          filledKeys = Object.keys(updatePayload).filter((k) => k !== "resume_url");
+        } else {
+          const merged = mergeParsedIntoEmptyFields(c, parsed);
+          Object.assign(updatePayload, merged);
+          filledKeys = Object.keys(merged);
+        }
+      } catch (parseErr) {
+        console.warn("[POST resume] parse failed (upload still saved):", parseErr);
+      }
+    }
+
+    await updateLead(tenantId, id, updatePayload as any);
 
     try {
       const { DynamoDBClient, UpdateItemCommand } = await import(
@@ -277,9 +332,15 @@ export async function POST(
     }
 
     const session = await getSession();
+    const filledNote =
+      filledKeys.length > 0
+        ? ` Filled empty fields: ${filledKeys.join(", ")}.`
+        : shouldParse
+          ? " Profile fields already set; no empty fields filled."
+          : "";
     await addNoteToCandidate(
       id,
-      `Resume replaced: ${file.name}`,
+      `Resume replaced: ${file.name}.${filledNote}`,
       session?.email || "system",
       { noteType: "profile_updated" }
     ).catch(() => {});
@@ -289,6 +350,8 @@ export async function POST(
       resume_url: s3Key,
       resume_file_name: file.name,
       fileKey: s3Key,
+      filledFields: filledKeys,
+      parsed: parsedSummary,
     });
   } catch (error) {
     console.error("[POST resume]", error);

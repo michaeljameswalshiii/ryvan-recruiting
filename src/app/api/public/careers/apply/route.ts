@@ -4,8 +4,8 @@
  * POST /api/public/careers/apply
  * Content-Type: multipart/form-data (preferred) or application/json
  *
- * Fields: jobId, name, email, phone?, message?, linkedinUrl?,
- *         resume (file PDF/DOCX)?, resumeUrl?, website? (honeypot)
+ * Fields: jobId, name, email, resume (file PDF/DOCX required),
+ *         phone?, message?, linkedinUrl?, resumeUrl?, website? (honeypot)
  */
 
 import { NextRequest } from "next/server";
@@ -25,6 +25,7 @@ import {
   resolveCareersTenant,
 } from "@/lib/careers/public";
 import { addNoteToCandidate } from "@/lib/events/candidate-events";
+import { parseResumeBuffer } from "@/lib/candidates/resume-extract-server";
 
 const MAX_RESUME_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_EXT = [".pdf", ".docx", ".doc"];
@@ -252,6 +253,9 @@ export async function POST(request: NextRequest) {
 
     let resumeUrl = resumeUrlField;
     let resumeFileName = "";
+    let parsedFromResume: Awaited<
+      ReturnType<typeof parseResumeBuffer>
+    >["parsed"] | null = null;
 
     if (resumeFile) {
       if (resumeFile.size > MAX_RESUME_BYTES) {
@@ -272,7 +276,20 @@ export async function POST(request: NextRequest) {
         );
       }
       try {
-        const uploaded = await uploadResumeToS3(resumeFile, tenantId);
+        // Clone bytes for parse + S3 (File stream may only be readable once)
+        const buffer = Buffer.from(await resumeFile.arrayBuffer());
+        try {
+          const result = await parseResumeBuffer(buffer, resumeFile.name);
+          parsedFromResume = result.parsed;
+        } catch (parseErr) {
+          console.warn("[careers/apply] resume parse failed:", parseErr);
+        }
+
+        // Re-wrap buffer as File for existing upload helper
+        const fileForUpload = new File([buffer], resumeFile.name, {
+          type: resumeFile.type || "application/octet-stream",
+        });
+        const uploaded = await uploadResumeToS3(fileForUpload, tenantId);
         resumeUrl = uploaded.s3Key;
         resumeFileName = uploaded.fileName;
       } catch (uploadErr) {
@@ -290,10 +307,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Prefer applicant form values; fill gaps from resume parse
+    const p = parsedFromResume;
+    const finalPhone = phone || p?.phone || "";
+    const finalLinkedIn = linkedinUrl || p?.linkedin || "";
+    // Candidate professional title from resume (not the job posting title)
+    const professionalTitle = (p?.title || "").slice(0, 100);
+    const finalLocation = (p?.location || job.location || "").slice(0, 200);
+    const finalSummary = (p?.summary || "").slice(0, 2000);
+    const finalSkills = p?.skills?.length ? p.skills.slice(0, 30) : undefined;
+    const finalExperience = p?.experience?.length
+      ? p.experience.slice(0, 12)
+      : undefined;
+    const finalEducation = p?.education?.length
+      ? p.education.slice(0, 8)
+      : undefined;
+    const finalCerts = p?.certifications?.length
+      ? p.certifications.slice(0, 15)
+      : undefined;
+
     const notes = [
       `Applied via public careers page for: ${job.title}`,
       message ? `Message:\n${message}` : "",
-      linkedinUrl ? `LinkedIn: ${linkedinUrl}` : "",
+      finalLinkedIn ? `LinkedIn: ${finalLinkedIn}` : "",
       resumeFileName
         ? `Resume file: ${resumeFileName}`
         : resumeUrl && resumeUrl.startsWith("http")
@@ -301,22 +337,31 @@ export async function POST(request: NextRequest) {
           : resumeUrl
             ? `Resume stored: ${resumeUrl}`
             : "",
+      finalSummary ? `Resume summary:\n${finalSummary.slice(0, 500)}` : "",
+      finalSkills?.length ? `Skills: ${finalSkills.join(", ")}` : "",
     ]
       .filter(Boolean)
-      .join("\n\n");
+      .join("\n\n")
+      .slice(0, 2000);
 
     const lead = await createLead(tenantId, {
       name,
       email,
-      phone,
-      title: job.title || "",
+      phone: finalPhone,
+      title: professionalTitle || job.title || "",
       status: "identification",
       source: "website-careers",
       notes,
       resume_url: resumeUrl || "",
-      linkedin_url: linkedinUrl || "",
-      location: job.location || "",
-    });
+      linkedin_url: finalLinkedIn || "",
+      location: finalLocation,
+      summary: finalSummary || undefined,
+      skills: finalSkills,
+      experience: finalExperience as any,
+      education: finalEducation as any,
+      certifications: finalCerts,
+      salary_requirements: p?.salaryRequirements || undefined,
+    } as any);
 
     // Surface candidate message in Activity timeline (not only buried in notes field)
     if (lead.id) {

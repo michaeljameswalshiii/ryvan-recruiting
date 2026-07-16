@@ -289,6 +289,18 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
 
       setUploadProgress("Updating candidate record...");
 
+      // Fetch current candidate so we only fill empty profile fields
+      let existing: Record<string, any> = {};
+      try {
+        const curRes = await fetch(`/api/data/leads/${candidateId}`);
+        if (curRes.ok) {
+          const curData = await curRes.json();
+          existing = curData.lead || curData.item || curData || {};
+        }
+      } catch {
+        /* proceed with fill from parse when existing unknown */
+      }
+
       const updatePayload: any = {};
       if (fileKey || newResumeUrl) {
         updatePayload.resume_url = fileKey || newResumeUrl;
@@ -297,21 +309,33 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
         updatePayload.resume_file_name = selectedFile.name;
       }
 
-      if (parsedData.name) updatePayload.name = parsedData.name;
-      if (parsedData.email) updatePayload.email = parsedData.email;
-      if (parsedData.phone) updatePayload.phone = parsedData.phone;
-      if (parsedData.title) updatePayload.title = parsedData.title;
-      if (parsedData.location) updatePayload.location = parsedData.location;
-      if (parsedData.fullAddress) updatePayload.full_address = parsedData.fullAddress;
-      if (parsedData.linkedin) updatePayload.linkedin_url = parsedData.linkedin;
-      if (parsedData.salaryRequirements) updatePayload.salary_requirements = parsedData.salaryRequirements;
-      if (parsedData.summary) updatePayload.summary = parsedData.summary;
-      if (parsedData.skills && parsedData.skills.length > 0) updatePayload.skills = parsedData.skills;
-      if (parsedData.experience && parsedData.experience.length > 0) updatePayload.experience = parsedData.experience;
-      if (parsedData.education && parsedData.education.length > 0) updatePayload.education = parsedData.education;
-      if (parsedData.certifications && parsedData.certifications.length > 0) {
-        updatePayload.certifications = parsedData.certifications;
-      }
+      const isEmpty = (v: unknown) =>
+        v === undefined ||
+        v === null ||
+        v === "" ||
+        (Array.isArray(v) && v.length === 0);
+
+      const fillIfEmpty = (key: string, value: unknown) => {
+        if (value === undefined || value === null || value === "") return;
+        if (Array.isArray(value) && value.length === 0) return;
+        if (isEmpty(existing[key])) {
+          updatePayload[key] = value;
+        }
+      };
+
+      fillIfEmpty("name", parsedData.name);
+      fillIfEmpty("email", parsedData.email);
+      fillIfEmpty("phone", parsedData.phone);
+      fillIfEmpty("title", parsedData.title);
+      fillIfEmpty("location", parsedData.location);
+      fillIfEmpty("full_address", parsedData.fullAddress);
+      fillIfEmpty("linkedin_url", parsedData.linkedin);
+      fillIfEmpty("salary_requirements", parsedData.salaryRequirements);
+      fillIfEmpty("summary", parsedData.summary);
+      fillIfEmpty("skills", parsedData.skills);
+      fillIfEmpty("experience", parsedData.experience);
+      fillIfEmpty("education", parsedData.education);
+      fillIfEmpty("certifications", parsedData.certifications);
 
       const updateResponse = await fetch(`/api/data/leads/${candidateId}`, {
         method: 'PUT',

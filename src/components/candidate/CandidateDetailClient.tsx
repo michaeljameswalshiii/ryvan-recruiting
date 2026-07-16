@@ -1059,34 +1059,37 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
 
       {/* ── Resume tab ───────────────────────────────────────────── */}
       {activeTab === 'resume' && (
-        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 min-h-[480px]">
-          <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col h-[calc(100vh-10rem)] min-h-[520px]">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 gap-2 flex-wrap shrink-0">
             <div>
               <h2 className="text-base font-semibold text-gray-900">Resume</h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Remove a broken file, then upload a replacement
+                Full-page view — replace or remove from the toolbar below
               </p>
             </div>
           </div>
-          <ResumeViewer
-            url={resumeUrl}
-            fileName={resumeFileName || safe.resumeFileName}
-            candidateId={candidateId}
-            fileKey={resumeKey || safe.resumeKey}
-            onUrlUpdated={(u) => setResumeUrl(u)}
-            onResumeChanged={(info) => {
-              if (!info) {
-                setResumeUrl('');
-                setResumeFileName('');
-                setResumeKey('');
-                return;
-              }
-              setResumeUrl(info.resumeUrl || '');
-              setResumeFileName(info.fileName || '');
-              setResumeKey(info.fileKey || info.resumeUrl || '');
-              void fetchNotes();
-            }}
-          />
+          <div className="flex-1 min-h-0">
+            <ResumeViewer
+              url={resumeUrl}
+              fileName={resumeFileName || safe.resumeFileName}
+              candidateId={candidateId}
+              fileKey={resumeKey || safe.resumeKey}
+              className="h-full"
+              onUrlUpdated={(u) => setResumeUrl(u)}
+              onResumeChanged={(info) => {
+                if (!info) {
+                  setResumeUrl('');
+                  setResumeFileName('');
+                  setResumeKey('');
+                  return;
+                }
+                setResumeUrl(info.resumeUrl || '');
+                setResumeFileName(info.fileName || '');
+                setResumeKey(info.fileKey || info.resumeUrl || '');
+                void fetchNotes();
+              }}
+            />
+          </div>
         </section>
       )}
 
