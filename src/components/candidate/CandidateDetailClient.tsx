@@ -25,6 +25,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { SendEmailModal } from '@/components/email/send-email-modal';
 import { ResumeViewer } from '@/components/candidate/ResumeViewer';
+import { LinkJobModal } from '@/components/candidate/LinkJobModal';
+import { Link2 } from 'lucide-react';
 
 /** Activity / note types shown in the log composer */
 const NOTE_TYPES = [
@@ -151,6 +153,10 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [aiOutput, setAiOutput] = useState<string>('');
   const [resumeUrl, setResumeUrl] = useState(safe.resumeUrl || '');
+  const [linkJobOpen, setLinkJobOpen] = useState(false);
+  const [linkedJobs, setLinkedJobs] = useState<any[]>(
+    Array.isArray(safe.linkedJobs) ? safe.linkedJobs : []
+  );
 
   const [contactInfo, setContactInfo] = useState({
     name: safe.name || '',
@@ -172,9 +178,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const currentStepLabel =
     currentStep >= 0 ? PIPELINE_STEPS[currentStep].label : 'Rejected';
   const primaryJob =
-    Array.isArray(safe.linkedJobs) && safe.linkedJobs.length > 0
-      ? safe.linkedJobs[0]
-      : null;
+    linkedJobs.length > 0 ? linkedJobs[0] : null;
 
   const skills: string[] = Array.isArray(safe.skills) ? safe.skills : [];
   const experience: any[] = Array.isArray(safe.experience) ? safe.experience : [];
@@ -463,6 +467,14 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
           </div>
 
           <div className="flex flex-wrap gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLinkJobOpen(true)}
+            >
+              <Link2 className="h-3.5 w-3.5 mr-1.5" />
+              Link to job
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -1051,23 +1063,35 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       {/* ── Linked jobs tab ──────────────────────────────────────── */}
       {activeTab === 'jobs' && (
         <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
             <h2 className="text-base font-semibold text-gray-900">Linked Jobs</h2>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => router.push('/dashboard/jobs')}
-            >
-              <Briefcase className="h-4 w-4 mr-1.5" /> Browse jobs
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => setLinkJobOpen(true)}>
+                <Link2 className="h-4 w-4 mr-1.5" />
+                Link to job
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => router.push('/dashboard/jobs')}
+              >
+                <Briefcase className="h-4 w-4 mr-1.5" /> Browse jobs
+              </Button>
+            </div>
           </div>
-          {!Array.isArray(safe.linkedJobs) || safe.linkedJobs.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-12">
-              No jobs linked yet. Link this candidate from a job detail page.
-            </p>
+          {linkedJobs.length === 0 ? (
+            <div className="text-center py-12 space-y-3">
+              <p className="text-sm text-gray-500">
+                No jobs linked yet. Link this candidate to an open role.
+              </p>
+              <Button size="sm" onClick={() => setLinkJobOpen(true)}>
+                <Link2 className="h-4 w-4 mr-1.5" />
+                Link to job
+              </Button>
+            </div>
           ) : (
             <div className="space-y-2">
-              {safe.linkedJobs.map((job: any) => (
+              {linkedJobs.map((job: any) => (
                 <Link
                   key={job.jobId || job.id}
                   href={`/dashboard/jobs/${job.jobId || job.id}`}
@@ -1089,6 +1113,24 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
           )}
         </section>
       )}
+
+      <LinkJobModal
+        open={linkJobOpen}
+        onOpenChange={setLinkJobOpen}
+        candidateId={candidateId}
+        candidateName={contactInfo.name || 'Candidate'}
+        currentLinkedJobs={linkedJobs.map((j: any) => ({
+          jobId: j.jobId || j.id,
+          jobTitle: j.jobTitle || j.title,
+          companyId: j.companyId,
+          companyName: j.companyName,
+          stage: j.stage,
+        }))}
+        onLinked={(next) => {
+          setLinkedJobs(next);
+          router.refresh();
+        }}
+      />
 
       {/* Edit contact modal */}
       {showEditModal && (

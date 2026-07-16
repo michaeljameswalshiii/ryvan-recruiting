@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { Loader2, X, Search, Briefcase, Building2 } from "lucide-react";
@@ -6,16 +6,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useJobs } from "@/lib/hooks/query-job";
-import { useQueryClient } from "@tanstack/react-query";
-import { leadKeys } from "@/lib/hooks/query-lead";
 import { toast } from "sonner";
+
+export type LinkedJobSummary = {
+  jobId: string;
+  jobTitle?: string;
+  companyId?: string;
+  companyName?: string;
+  stage?: string;
+};
 
 interface LinkJobModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   candidateId: string;
   candidateName: string;
-  currentLinkedJobIds: string[];
+  currentLinkedJobs?: LinkedJobSummary[];
+  /** Called with the updated linked jobs list after save */
+  onLinked?: (linkedJobs: LinkedJobSummary[]) => void;
 }
 
 export function LinkJobModal({
@@ -23,37 +31,43 @@ export function LinkJobModal({
   onOpenChange,
   candidateId,
   candidateName,
-  currentLinkedJobIds = [],
+  currentLinkedJobs = [],
+  onLinked,
 }: LinkJobModalProps) {
-  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-// Fetch all jobs - ensure always an array
   const { data: jobsData = [], isLoading } = useJobs();
-  const allJobs: any[] = Array.isArray(jobsData) ? jobsData : [];
+  const allJobs: any[] = Array.isArray(jobsData)
+    ? jobsData
+    : Array.isArray((jobsData as any)?.jobs)
+      ? (jobsData as any).jobs
+      : [];
 
-  // Initialize selected job IDs when modal opens
+  const currentIds = currentLinkedJobs
+    .map((j) => j.jobId)
+    .filter(Boolean);
+
   useEffect(() => {
     if (open) {
-      setSelectedJobIds(currentLinkedJobIds || []);
+      setSelectedJobIds(currentIds);
       setSearchQuery("");
     }
-  }, [open, currentLinkedJobIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, candidateId]);
 
-  // Filter jobs based on search query
   const filteredJobs = allJobs.filter((job: any) => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
       job.title?.toLowerCase().includes(query) ||
       job.companyName?.toLowerCase().includes(query) ||
+      job.company_name?.toLowerCase().includes(query) ||
       job.location?.toLowerCase().includes(query)
     );
   });
 
-  // Toggle job selection
   const toggleJob = (jobId: string) => {
     setSelectedJobIds((prev) =>
       prev.includes(jobId)
@@ -62,52 +76,73 @@ export function LinkJobModal({
     );
   };
 
-  // Get selected job objects
   const selectedJobs = allJobs.filter((job: any) =>
     selectedJobIds.includes(job.id)
   );
 
-// Handle save - use the modern linkedJobs model
   const handleSave = async () => {
     setIsSaving(true);
-
     try {
-      const response = await fetch(`/api/data/leads/${candidateId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          // NEW: Build proper linkedJobs entries
-          linkedJobs: selectedJobs.map((job: any) => ({
+      const toAdd = selectedJobIds.filter((id) => !currentIds.includes(id));
+      const toRemove = currentIds.filter((id) => !selectedJobIds.includes(id));
+
+      for (const jobId of toAdd) {
+        const job = allJobs.find((j: any) => j.id === jobId);
+        if (!job) continue;
+        const res = await fetch(`/api/data/leads/${candidateId}/job/link`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
             jobId: job.id,
-            jobTitle: job.title,
-            companyId: job.companyId,
-            companyName: job.companyName,
-            stage: "sourced",           // default starting stage
-            stageUpdatedAt: new Date().toISOString(),
-            stageUpdatedBy: "", 
-            notes: [],
-          })),
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || result.error) {
-        throw new Error(result.error || "Failed to update linked jobs");
+            jobTitle: job.title || "Job",
+            companyId: job.companyId || job.company_id,
+            companyName: job.companyName || job.company_name,
+            initialStage: "sourced",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || `Failed to link ${job.title}`);
+        }
       }
 
-      // Strong refresh
-      queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: leadKeys.details() });
-      queryClient.invalidateQueries({ queryKey: ["leads"] });
-      queryClient.invalidateQueries({ queryKey: ["linkedJobsForCandidate", candidateId] });
+      for (const jobId of toRemove) {
+        const res = await fetch(
+          `/api/data/leads/${candidateId}/job/${jobId}/unlink`,
+          {
+            method: "POST",
+            credentials: "include",
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || "Failed to unlink job");
+        }
+      }
 
+      // Build updated list for UI
+      const kept = currentLinkedJobs.filter((j) =>
+        selectedJobIds.includes(j.jobId)
+      );
+      const added: LinkedJobSummary[] = toAdd.map((jobId) => {
+        const job = allJobs.find((j: any) => j.id === jobId);
+        return {
+          jobId,
+          jobTitle: job?.title || "Job",
+          companyId: job?.companyId || job?.company_id,
+          companyName: job?.companyName || job?.company_name,
+          stage: "sourced",
+        };
+      });
+      const next = [...kept, ...added];
+
+      onLinked?.(next);
       toast.success(
         selectedJobIds.length > 0
-          ? `Successfully linked ${selectedJobIds.length} job(s)`
-          : "Jobs unlinked successfully"
+          ? `Linked ${selectedJobIds.length} job(s)`
+          : "Jobs unlinked"
       );
-
       onOpenChange(false);
     } catch (err: any) {
       console.error("Save linked jobs error:", err);
@@ -121,18 +156,15 @@ export function LinkJobModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => onOpenChange(false)}
       />
 
-      {/* Modal */}
-      <div className="relative z-10 w-full max-w-lg mx-4 bg-card border border-border rounded-xl shadow-xl overflow-hidden">
-        {/* Header */}
+      <div className="relative z-10 w-full max-w-lg mx-4 bg-card border border-border rounded-xl shadow-xl overflow-hidden bg-white">
         <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/30">
           <div>
-            <h2 className="text-lg font-semibold">Link Jobs to Candidate</h2>
+            <h2 className="text-lg font-semibold">Link to job</h2>
             <p className="text-sm text-muted-foreground">{candidateName}</p>
           </div>
           <Button
@@ -144,7 +176,6 @@ export function LinkJobModal({
           </Button>
         </div>
 
-        {/* Search */}
         <div className="px-6 py-4 border-b">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -153,11 +184,11 @@ export function LinkJobModal({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
+              autoFocus
             />
           </div>
         </div>
 
-        {/* Selected Jobs */}
         {selectedJobIds.length > 0 && (
           <div className="px-6 py-3 border-b bg-muted/20">
             <p className="text-xs font-medium text-muted-foreground mb-2">
@@ -170,8 +201,9 @@ export function LinkJobModal({
                   variant="default"
                   className="flex items-center gap-1 pr-1"
                 >
-                  <span>{job.title}</span>
+                  <span className="max-w-[180px] truncate">{job.title}</span>
                   <button
+                    type="button"
                     onClick={() => toggleJob(job.id)}
                     className="ml-1 hover:text-destructive"
                   >
@@ -183,7 +215,6 @@ export function LinkJobModal({
           </div>
         )}
 
-        {/* Jobs List */}
         <div className="max-h-[300px] overflow-y-auto p-2">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
@@ -193,22 +224,23 @@ export function LinkJobModal({
               </span>
             </div>
           ) : filteredJobs.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="text-center py-8 text-muted-foreground text-sm">
               {searchQuery ? (
                 <p>No jobs match your search</p>
               ) : (
-                <p>No jobs available</p>
+                <p>No jobs available — create a job first</p>
               )}
             </div>
           ) : (
             <div className="space-y-1">
               {filteredJobs.map((job: any) => {
                 const isSelected = selectedJobIds.includes(job.id);
-                const isAlreadyLinked = (currentLinkedJobIds || []).includes(job.id);
+                const isAlreadyLinked = currentIds.includes(job.id);
 
                 return (
                   <button
                     key={job.id}
+                    type="button"
                     onClick={() => toggleJob(job.id)}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${
                       isSelected
@@ -231,7 +263,9 @@ export function LinkJobModal({
                       <div className="flex items-center gap-1 text-sm text-muted-foreground ml-6">
                         <Building2 className="h-3 w-3" />
                         <span className="truncate">
-                          {job.companyName || "No company"}
+                          {job.companyName ||
+                            job.company_name ||
+                            "No company"}
                         </span>
                         {job.location && (
                           <>
@@ -242,7 +276,6 @@ export function LinkJobModal({
                       </div>
                     </div>
 
-                    {/* Checkbox indicator */}
                     <div
                       className={`w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ml-2 ${
                         isSelected
@@ -273,16 +306,12 @@ export function LinkJobModal({
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t bg-muted/30">
           <p className="text-sm text-muted-foreground">
             {selectedJobIds.length} job(s) selected
           </p>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={isSaving}>
@@ -292,7 +321,7 @@ export function LinkJobModal({
                   Saving...
                 </>
               ) : (
-                "Save"
+                "Save links"
               )}
             </Button>
           </div>

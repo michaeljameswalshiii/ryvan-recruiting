@@ -615,7 +615,8 @@ export async function linkCandidateToJobForApplication(
   jobTitle: string,
   companyId?: string,
   companyName?: string,
-  initialStage: string = 'sourced'
+  initialStage: string = 'sourced',
+  options?: { skipDualWrite?: boolean }
 ): Promise<Lead | null> {
   // Get the current lead
   const lead = await getLeadById(tenantId, leadId);
@@ -656,10 +657,42 @@ export async function linkCandidateToJobForApplication(
   const newLinkedJobIds = [...currentLinkedJobIds, jobId];
 
   // Update the lead with both linkedJobs and linkedJobIds
-  return updateLead(tenantId, leadId, { 
+  const updated = await updateLead(tenantId, leadId, {
     linkedJobs: [...currentLinkedJobs, newLinkedJob] as any,
     linkedJobIds: newLinkedJobIds,
   });
+
+  // Dual-write: keep job.candidates in sync (skip when called from job side)
+  if (!options?.skipDualWrite) {
+    try {
+      const { linkCandidateToJob } = await import("./job-repository");
+      await linkCandidateToJob(
+        tenantId,
+        jobId,
+        {
+          candidateId: leadId,
+          candidateName: lead.name || "Candidate",
+          candidateEmail: lead.email || "",
+          stage: initialStage,
+        },
+        { skipDualWrite: true }
+      );
+    } catch (err: any) {
+      // Already linked on job side is fine
+      if (
+        !String(err?.message || "")
+          .toLowerCase()
+          .includes("already linked")
+      ) {
+        console.warn(
+          "[linkCandidateToJobForApplication] job dual-write:",
+          err
+        );
+      }
+    }
+  }
+
+  return updated;
 }
 
 /**
@@ -669,7 +702,8 @@ export async function linkCandidateToJobForApplication(
 export async function unlinkCandidateFromJobForApplication(
   tenantId: string,
   leadId: string,
-  jobId: string
+  jobId: string,
+  options?: { skipDualWrite?: boolean }
 ): Promise<Lead | null> {
   // Get the current lead
   const lead = await getLeadById(tenantId, leadId);
@@ -691,10 +725,27 @@ export async function unlinkCandidateFromJobForApplication(
   }
 
   // Update the lead
-  return updateLead(tenantId, leadId, { 
+  const updated = await updateLead(tenantId, leadId, {
     linkedJobs: newLinkedJobs as any,
     linkedJobIds: newLinkedJobIds,
   });
+
+  // Dual-write: remove from job.candidates
+  if (!options?.skipDualWrite) {
+    try {
+      const { unlinkCandidateFromJob } = await import("./job-repository");
+      await unlinkCandidateFromJob(tenantId, jobId, leadId, {
+        skipDualWrite: true,
+      });
+    } catch (err) {
+      console.warn(
+        "[unlinkCandidateFromJobForApplication] job dual-write:",
+        err
+      );
+    }
+  }
+
+  return updated;
 }
 
 /**

@@ -268,7 +268,8 @@ export async function linkCandidateToJob(
     candidateEmail?: string;
     stage?: string;
     notes?: string;
-  }
+  },
+  options?: { skipDualWrite?: boolean }
 ): Promise<Job | null> {
   // Bypass stale cache for accurate linked list
   const job = await getItem<Job>(jobsTable, {
@@ -320,6 +321,33 @@ export async function linkCandidateToJob(
   // Invalidate cache
   await invalidateTenantCache(tenantId);
 
+  // Dual-write: candidate.linkedJobs (skip when called from lead side)
+  if (!options?.skipDualWrite) {
+    try {
+      const { linkCandidateToJobForApplication } = await import(
+        "./lead-repository"
+      );
+      await linkCandidateToJobForApplication(
+        tenantId,
+        data.candidateId,
+        jobId,
+        job.title || "Job",
+        (job as any).companyId || (job as any).company_id,
+        (job as any).companyName || (job as any).company_name,
+        data.stage || "sourced",
+        { skipDualWrite: true }
+      );
+    } catch (err: any) {
+      if (
+        !String(err?.message || "")
+          .toLowerCase()
+          .includes("already linked")
+      ) {
+        console.warn("[linkCandidateToJob] lead dual-write:", err);
+      }
+    }
+  }
+
   // Return fresh job with candidates array guaranteed
   return (
     updated || {
@@ -336,7 +364,8 @@ export async function linkCandidateToJob(
 export async function unlinkCandidateFromJob(
   tenantId: string,
   jobId: string,
-  candidateId: string
+  candidateId: string,
+  options?: { skipDualWrite?: boolean }
 ): Promise<Job | null> {
   const job = await getJobById(tenantId, jobId);
   
@@ -365,6 +394,19 @@ export async function unlinkCandidateFromJob(
 
   // Invalidate cache
   await invalidateTenantCache(tenantId);
+
+  if (!options?.skipDualWrite) {
+    try {
+      const { unlinkCandidateFromJobForApplication } = await import(
+        "./lead-repository"
+      );
+      await unlinkCandidateFromJobForApplication(tenantId, candidateId, jobId, {
+        skipDualWrite: true,
+      });
+    } catch (err) {
+      console.warn("[unlinkCandidateFromJob] lead dual-write:", err);
+    }
+  }
 
   return updated;
 }
