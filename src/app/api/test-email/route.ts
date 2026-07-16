@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Test Email API Route
  * Send a test email to verify Gmail SMTP configuration
  * 
@@ -65,12 +65,12 @@ export async function POST(request: NextRequest) {
     // Send test email
     const result = await sendGmail({
       to: toEmail,
-      subject: 'Test Email from Turnkey Optimization',
-      text: 'This is a test email from Turnkey Optimization. If you received this, your Gmail SMTP is working!',
+      subject: 'Test Email from Trio Recruiting',
+      text: 'This is a test email from Trio Recruiting. If you received this, your Gmail SMTP is working!',
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
           <h1 style="color: #333;">Test Email</h1>
-          <p>This is a test email from <strong>Turnkey Optimization</strong>.</p>
+          <p>This is a test email from <strong>Trio Recruiting</strong>.</p>
           <p>If you received this, your Gmail SMTP is working!</p>
           <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
           <p style="color: #666; font-size: 12px;">Sent via Gmail SMTP</p>

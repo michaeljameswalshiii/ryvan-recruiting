@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Bedrock AI API Route
  * Upgraded with Claude Sonnet 4.6 + Native MCP Tool Calling
  * 
@@ -74,7 +74,7 @@ interface BedrockRequest {
   useSearch?: boolean;
 }
 
-const GENERAL_AI_SYSTEM_PROMPT = `You are a professional general-purpose AI assistant on AWS Bedrock with access to this recruiting ATS (Turnkey / RYVAN).
+const GENERAL_AI_SYSTEM_PROMPT = `You are a professional general-purpose AI assistant on AWS Bedrock with access to this recruiting ATS (Trio Recruiting).
 
 You help with analysis, writing, research, document review, AND operating the CRM when the user asks.
 

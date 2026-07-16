@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Candidate Email Service
  * Easy to use function for sending emails to candidates
  * 
@@ -93,37 +93,37 @@ export async function sendTemplatedEmail(
 ): Promise<SendToCandidateResult> {
   const templates: Record<string, { subject: string; html: string }> = {
     'interview-invite': {
-      subject: 'Interview Invitation - Turnkey Optimization',
+      subject: 'Interview Invitation - Trio Recruiting',
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #333;">Hello ${candidate.name || 'Candidate'},</h2>
-          <p>Thank you for your interest in Turnkey Optimization.</p>
+          <p>Thank you for your interest in Trio Recruiting.</p>
           <p>We would like to invite you for an interview. Please let us know your availability.</p>
-          <p>Best regards,<br/>The Turnkey Team</p>
+          <p>Best regards,<br/>The Trio Recruiting Team</p>
         </div>
       `,
     },
     rejection: {
-      subject: 'Update on Your Application - Turnkey Optimization',
+      subject: 'Update on Your Application - Trio Recruiting',
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #333;">Hello ${candidate.name || 'Candidate'},</h2>
-          <p>Thank you for your interest in Turnkey Optimization.</p>
+          <p>Thank you for your interest in Trio Recruiting.</p>
           <p>After careful consideration, we have decided to move forward with other candidates.</p>
           <p>We wish you the best in your job search.</p>
-          <p>Best regards,<br/>The Turnkey Team</p>
+          <p>Best regards,<br/>The Trio Recruiting Team</p>
         </div>
       `,
     },
     offer: {
-      subject: 'Job Offer - Turnkey Optimization',
+      subject: 'Job Offer - Trio Recruiting',
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #333;">Hello ${candidate.name || 'Candidate'},</h2>
-          <p>Congratulations! We are pleased to offer you a position at Turnkey Optimization.</p>
+          <p>Congratulations! We are pleased to offer you a position at Trio Recruiting.</p>
           <p>Please review the attached offer details and let us know if you have any questions.</p>
           <p>We're excited to have you join our team!</p>
-          <p>Best regards,<br/>The Turnkey Team</p>
+          <p>Best regards,<br/>The Trio Recruiting Team</p>
         </div>
       `,
     },

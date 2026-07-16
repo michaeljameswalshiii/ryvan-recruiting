@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -21,10 +21,10 @@ interface SendEmailModalProps {
 }
 
 const EMAIL_TEMPLATES = [
-  { id: "interview", label: "Interview Invitation", subject: "Interview Invitation - Turnkey Optimization" },
+  { id: "interview", label: "Interview Invitation", subject: "Interview Invitation - Trio Recruiting" },
   { id: "update", label: "Application Update", subject: "Update on Your Application" },
-  { id: "offer", label: "Job Offer", subject: "Job Offer - Turnkey Optimization" },
-  { id: "rejection", label: "Not Moving Forward", subject: "Update on Your Application - Turnkey Optimization" },
+  { id: "offer", label: "Job Offer", subject: "Job Offer - Trio Recruiting" },
+  { id: "rejection", label: "Not Moving Forward", subject: "Update on Your Application - Trio Recruiting" },
   { id: "custom", label: "Custom Message", subject: "" },
 ];
 
@@ -37,7 +37,7 @@ export function SendEmailModal({ open, onOpenChange, candidate, onSend }: SendEm
 
   React.useEffect(() => {
     if (candidate) {
-      setSubject("Interview Invitation - Turnkey Optimization");
+      setSubject("Interview Invitation - Trio Recruiting");
       setMessage("");
       setSent(false);
       setError("");
@@ -51,45 +51,45 @@ export function SendEmailModal({ open, onOpenChange, candidate, onSend }: SendEm
       if (templateId === "interview") {
         setMessage(`Dear ${candidate?.name || 'Candidate'},
 
-Thank you for your interest in Turnkey Optimization. We have reviewed your application and would like to invite you for an interview.
+Thank you for your interest in Trio Recruiting. We have reviewed your application and would like to invite you for an interview.
 
 Please let us know your availability for the coming week.
 
 Best regards,
-Turnkey Optimization Team`);
+Trio Recruiting Team`);
       } else if (templateId === "offer") {
         setMessage(`Dear ${candidate?.name || 'Candidate'},
 
-Congratulations! We are pleased to offer you a position at Turnkey Optimization.
+Congratulations! We are pleased to offer you a position at Trio Recruiting.
 
 Please review the attached offer details and let us know if you have any questions.
 
 We're excited to have you join our team!
 
 Best regards,
-Turnkey Optimization Team`);
+Trio Recruiting Team`);
       } else if (templateId === "rejection") {
         setMessage(`Dear ${candidate?.name || 'Candidate'},
 
-Thank you for your interest in Turnkey Optimization.
+Thank you for your interest in Trio Recruiting.
 
 After careful consideration, we have decided to move forward with other candidates whose qualifications more closely match our current needs.
 
 We wish you the best in your job search.
 
 Best regards,
-Turnkey Optimization Team`);
+Trio Recruiting Team`);
       } else if (templateId === "update") {
         setMessage(`Dear ${candidate?.name || 'Candidate'},
 
-Thank you for your interest in Turnkey Optimization.
+Thank you for your interest in Trio Recruiting.
 
 We wanted to provide you with an update on your application status.
 
 Please let us know if you have any questions.
 
 Best regards,
-Turnkey Optimization Team`);
+Trio Recruiting Team`);
       }
     }
   };

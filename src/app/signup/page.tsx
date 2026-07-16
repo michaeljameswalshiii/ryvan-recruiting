@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { SignupForm } from "@/components/forms/signup-form";
 
 export default function SignupPage() {
@@ -8,7 +8,7 @@ export default function SignupPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold">Create your account</h1>
           <p className="text-muted-foreground mt-2">
-Start using TurnkeyOptimization free
+Start using Trio Recruiting free
           </p>
         </div>
 

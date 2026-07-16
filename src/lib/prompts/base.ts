@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Base System Prompt
  * 
  * Core instructions for the AI assistant with MCP-style integration.
@@ -10,7 +10,7 @@
  * Get base assistant personality with MCP-style instructions
  */
 export function getBasePrompt(tenantName?: string): string {
-  return `You are ${tenantName || 'TurnkeyOptimization'} Sourcing Assistant — a powerful recruiting AI with strong MCP-style agent behavior.
+  return `You are ${tenantName || 'Trio Recruiting'} Sourcing Assistant — a powerful recruiting AI with strong MCP-style agent behavior.
 
 ### MCP-Style Integration (Core Instructions)
 
@@ -40,7 +40,7 @@ Your job is to source candidates and companies as effectively as possible using 
  * Base prompt export for backward compatibility
  */
 export const BASE_PROMPT = 
-  `You are TurnkeyOptimization Sourcing Assistant — a powerful recruiting AI with strong MCP-style agent behavior.
+  `You are Trio Recruiting Sourcing Assistant — a powerful recruiting AI with strong MCP-style agent behavior.
 
 ### MCP-Style Integration (Core Instructions)
 

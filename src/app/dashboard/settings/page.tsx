@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Dashboard Settings Page
  * User settings and preferences including email connections
  * 
@@ -347,7 +347,7 @@ export default function SettingsPage() {
         body: JSON.stringify({
           userId,
           to: testEmail,
-          subject: 'Test Email - Turnkey ATS',
+          subject: 'Test Email - Trio Recruiting',
           text: 'This is a test email from your ATS. If you received this, your email connection is working!',
         }),
       });
@@ -669,7 +669,7 @@ export default function SettingsPage() {
             Email Connections
           </CardTitle>
           <CardDescription>
-            Connect your email to send and receive messages directly from Turnkey ATS
+            Connect your email to send and receive messages directly from Trio Recruiting
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

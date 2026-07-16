@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Send Email Service
  * Send emails via user's connected Gmail or Outlook account
  * 
@@ -260,13 +260,13 @@ export async function testEmailConnection(
     ? await sendGmailEmail(userId, {
         from: '', // Will be filled by service
         to: testEmail,
-        subject: 'Test Email - Turnkey ATS',
+        subject: 'Test Email - Trio Recruiting',
         text: 'This is a test email from your ATS. If you received this, your email connection is working!',
       })
     : await sendOutlookEmail(userId, {
         from: '',
         to: testEmail,
-        subject: 'Test Email - Turnkey ATS',
+        subject: 'Test Email - Trio Recruiting',
         text: 'This is a test email from your ATS. If you received this, your email connection is working!',
       });
   

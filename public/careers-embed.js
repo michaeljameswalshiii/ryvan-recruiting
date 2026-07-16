@@ -1,5 +1,5 @@
 /**
- * Turnkey multi-tenant careers embed.
+ * Trio Recruiting multi-tenant careers embed.
  *
  * Required: data-tenant="ryvan" (or your tenant subdomain/slug)
  *
