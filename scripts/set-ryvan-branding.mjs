@@ -45,7 +45,7 @@ for (const id of ids) {
       UpdateExpression:
         "SET logo_url = :u, primary_color = :c, careers_tagline = :t",
       ExpressionAttributeValues: {
-        ":u": { S: "/branding/ryvan-logo.svg" },
+        ":u": { S: "/branding/ryvan-logo.jpg" },
         ":c": { S: "#1d4ed8" },
         ":t": {
           S: "Join our network — open roles placed by RYVAN Recruiting.",

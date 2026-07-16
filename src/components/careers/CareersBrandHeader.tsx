@@ -33,8 +33,17 @@ export function CareersBrandHeader({
   pageMeta,
 }: CareersBrandProps) {
   const accent = primaryColor || "#1d4ed8";
-  const resolvedLogo = logoUrl || `/branding/${slug}-logo.svg`;
+  // Prefer tenant logo_url; else try common static extensions for /branding/{slug}-logo.*
+  const fallbacks = [
+    logoUrl,
+    `/branding/${slug}-logo.jpg`,
+    `/branding/${slug}-logo.png`,
+    `/branding/${slug}-logo.webp`,
+    `/branding/${slug}-logo.svg`,
+  ].filter(Boolean) as string[];
+  const [logoIdx, setLogoIdx] = useState(0);
   const [logoFailed, setLogoFailed] = useState(false);
+  const resolvedLogo = fallbacks[Math.min(logoIdx, fallbacks.length - 1)];
 
   return (
     <header
@@ -51,17 +60,23 @@ export function CareersBrandHeader({
         <div className="mx-auto max-w-3xl px-6 py-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="flex items-center gap-4 min-w-0">
-              {!logoFailed ? (
+              {!logoFailed && resolvedLogo ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={resolvedLogo}
                   alt={`${name} logo`}
-                  className="h-14 sm:h-16 w-auto max-w-[240px] object-contain object-left"
-                  onError={() => setLogoFailed(true)}
+                  className="h-16 sm:h-20 w-16 sm:w-20 shrink-0 rounded-full object-contain bg-white shadow-sm ring-1 ring-slate-100"
+                  onError={() => {
+                    if (logoIdx < fallbacks.length - 1) {
+                      setLogoIdx((i) => i + 1);
+                    } else {
+                      setLogoFailed(true);
+                    }
+                  }}
                 />
               ) : (
                 <div
-                  className="flex h-14 w-14 sm:h-16 sm:w-16 rounded-2xl items-center justify-center text-white text-2xl font-bold shrink-0 shadow-sm"
+                  className="flex h-16 w-16 sm:h-20 sm:w-20 rounded-full items-center justify-center text-white text-2xl font-bold shrink-0 shadow-sm"
                   style={{ backgroundColor: accent }}
                   aria-hidden
                 >

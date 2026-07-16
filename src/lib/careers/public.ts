@@ -55,8 +55,8 @@ function brandFromTenant(
     logoUrl = `/api/public/careers/logo?tenant=${encodeURIComponent(slug)}`;
   }
   if (!logoUrl) {
-    // Static multi-tenant fallback: public/branding/{slug}-logo.svg|png
-    logoUrl = `/branding/${slug}-logo.svg`;
+    // Static multi-tenant fallback: public/branding/{slug}-logo.jpg|png|svg
+    logoUrl = `/branding/${slug}-logo.jpg`;
   }
   return {
     name: t?.name || fallbackSlug,
