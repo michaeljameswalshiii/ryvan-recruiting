@@ -70,6 +70,7 @@ export default async function TenantCareersPage({ params }: Props) {
         logoUrl={ctx.logoUrl}
         primaryColor={ctx.primaryColor}
         tagline={ctx.tagline}
+        websiteUrl={ctx.websiteUrl}
       />
 
       <main className="mx-auto max-w-3xl px-6 py-10">

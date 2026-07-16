@@ -53,6 +53,7 @@ export default async function TenantCareersJobPage({ params }: Props) {
         logoUrl={ctx.logoUrl}
         primaryColor={ctx.primaryColor}
         tagline={ctx.tagline}
+        websiteUrl={ctx.websiteUrl}
         backHref={`/careers/${ctx.slug}`}
         pageTitle={pub.title}
         pageMeta={

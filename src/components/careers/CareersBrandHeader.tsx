@@ -9,6 +9,8 @@ export type CareersBrandProps = {
   logoUrl?: string | null;
   primaryColor?: string | null;
   tagline?: string | null;
+  /** Company website — logo becomes a link when set (e.g. Ryvan → ryvanrecruiting.com) */
+  websiteUrl?: string | null;
   /** When set, show back link instead of full hero title treatment */
   backHref?: string;
   backLabel?: string;
@@ -27,6 +29,7 @@ export function CareersBrandHeader({
   logoUrl,
   primaryColor,
   tagline,
+  websiteUrl,
   backHref,
   backLabel = "← All open roles",
   pageTitle,
@@ -60,29 +63,49 @@ export function CareersBrandHeader({
         <div className="mx-auto max-w-3xl px-6 py-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="flex items-center gap-4 min-w-0">
-              {!logoFailed && resolvedLogo ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={resolvedLogo}
-                  alt={`${name} logo`}
-                  className="h-16 sm:h-20 w-16 sm:w-20 shrink-0 rounded-full object-contain bg-white shadow-sm ring-1 ring-slate-100"
-                  onError={() => {
-                    if (logoIdx < fallbacks.length - 1) {
-                      setLogoIdx((i) => i + 1);
-                    } else {
-                      setLogoFailed(true);
-                    }
-                  }}
-                />
-              ) : (
-                <div
-                  className="flex h-16 w-16 sm:h-20 sm:w-20 rounded-full items-center justify-center text-white text-2xl font-bold shrink-0 shadow-sm"
-                  style={{ backgroundColor: accent }}
-                  aria-hidden
-                >
-                  {(name || "C").charAt(0).toUpperCase()}
-                </div>
-              )}
+              {(() => {
+                const logoEl =
+                  !logoFailed && resolvedLogo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={resolvedLogo}
+                      alt={`${name} logo`}
+                      className="h-16 sm:h-20 w-16 sm:w-20 shrink-0 rounded-full object-contain bg-white shadow-sm ring-1 ring-slate-100 transition group-hover:ring-slate-200"
+                      onError={() => {
+                        if (logoIdx < fallbacks.length - 1) {
+                          setLogoIdx((i) => i + 1);
+                        } else {
+                          setLogoFailed(true);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className="flex h-16 w-16 sm:h-20 sm:w-20 rounded-full items-center justify-center text-white text-2xl font-bold shrink-0 shadow-sm"
+                      style={{ backgroundColor: accent }}
+                      aria-hidden
+                    >
+                      {(name || "C").charAt(0).toUpperCase()}
+                    </div>
+                  );
+
+                if (websiteUrl) {
+                  return (
+                    <a
+                      href={websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                      style={{ ["--tw-ring-color" as string]: accent }}
+                      title={`Visit ${name}`}
+                      aria-label={`${name} website`}
+                    >
+                      {logoEl}
+                    </a>
+                  );
+                }
+                return logoEl;
+              })()}
               <div className="min-w-0">
                 <p
                   className="text-xs font-semibold uppercase tracking-[0.18em]"
@@ -90,9 +113,20 @@ export function CareersBrandHeader({
                 >
                   Careers
                 </p>
-                <p className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 truncate">
-                  {name}
-                </p>
+                {websiteUrl ? (
+                  <a
+                    href={websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 truncate hover:underline underline-offset-2 block"
+                  >
+                    {name}
+                  </a>
+                ) : (
+                  <p className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 truncate">
+                    {name}
+                  </p>
+                )}
               </div>
             </div>
           </div>

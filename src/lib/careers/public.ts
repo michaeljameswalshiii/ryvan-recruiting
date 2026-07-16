@@ -35,7 +35,26 @@ export type CareersTenantContext = {
   logoUrl?: string | null;
   primaryColor?: string | null;
   tagline?: string | null;
+  /** External company site — careers logo links here when set */
+  websiteUrl?: string | null;
 };
+
+/** Built-in logo home links (slug → company website). Overridable via CAREERS_WEBSITE_URLS. */
+const DEFAULT_WEBSITE_BY_SLUG: Record<string, string> = {
+  ryvan: "https://www.ryvanrecruiting.com",
+};
+
+/**
+ * Resolve careers logo hyperlink for a tenant slug.
+ * CAREERS_WEBSITE_URLS=ryvan:https://www.ryvanrecruiting.com,acme:https://acme.com
+ */
+export function websiteUrlForCareersSlug(slug: string): string | null {
+  const key = (slug || "").trim().toLowerCase();
+  if (!key) return null;
+  const fromEnv = parseTenantSlugMap(process.env.CAREERS_WEBSITE_URLS || "");
+  if (fromEnv[key]) return fromEnv[key];
+  return DEFAULT_WEBSITE_BY_SLUG[key] || null;
+}
 
 function brandFromTenant(
   t: {
@@ -47,7 +66,10 @@ function brandFromTenant(
     careers_tagline?: string;
   } | null,
   fallbackSlug: string
-): Pick<CareersTenantContext, "name" | "logoUrl" | "primaryColor" | "tagline"> {
+): Pick<
+  CareersTenantContext,
+  "name" | "logoUrl" | "primaryColor" | "tagline" | "websiteUrl"
+> {
   const slug = (t?.subdomain || fallbackSlug || "careers").toLowerCase();
   // Prefer stored URL; if S3 key exists use public proxy; else static branding file
   let logoUrl = t?.logo_url || null;
@@ -58,11 +80,16 @@ function brandFromTenant(
     // Static multi-tenant fallback: public/branding/{slug}-logo.jpg|png|svg
     logoUrl = `/branding/${slug}-logo.jpg`;
   }
+  const websiteUrl =
+    (t as { website_url?: string; websiteUrl?: string } | null)?.website_url ||
+    (t as { websiteUrl?: string } | null)?.websiteUrl ||
+    websiteUrlForCareersSlug(slug);
   return {
     name: t?.name || fallbackSlug,
     logoUrl,
     primaryColor: t?.primary_color || null,
     tagline: t?.careers_tagline || null,
+    websiteUrl: websiteUrl || null,
   };
 }
 
