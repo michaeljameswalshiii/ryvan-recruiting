@@ -901,172 +901,78 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             </section>
           </div>
 
-          {/* Right column — Resume + AI */}
-          <div className="xl:col-span-5 space-y-5">
+          {/* Right column — live resume preview, then AI tools lower */}
+          <div className="xl:col-span-5 space-y-5 xl:sticky xl:top-4 xl:self-start">
             <section className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50/50">
                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Resume
                 </span>
                 <div className="flex flex-wrap gap-1">
-                  {resumeUrl && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-xs"
-                        asChild
-                      >
-                        <a href={resumeUrl} target="_blank" rel="noreferrer">
-                          <ExternalLink className="h-3 w-3 mr-1" /> View
-                        </a>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-xs"
-                        asChild
-                      >
-                        <a href={resumeUrl} download>
-                          <Download className="h-3 w-3 mr-1" /> Download
-                        </a>
-                      </Button>
-                    </>
-                  )}
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-8 text-xs"
                     onClick={() => setActiveTab('resume')}
                   >
-                    Manage
+                    Full screen / manage
                   </Button>
                 </div>
               </div>
-
-              <div className="p-5 space-y-5">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {contactInfo.name}
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    {[contactInfo.title, contactInfo.location]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </p>
-                  {(contactInfo.email || contactInfo.phone) && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      {[contactInfo.email, contactInfo.phone]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <h4 className="text-[11px] font-semibold uppercase tracking-wide text-blue-700 mb-2">
-                    Professional Summary
-                  </h4>
-                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                    {safe.summary ||
-                      'No professional summary on file. Upload or parse a resume to populate this section.'}
-                  </p>
-                </div>
-
-                {experience.length > 0 && (
-                  <div>
-                    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-blue-700 mb-2">
-                      Experience
-                    </h4>
-                    <div className="space-y-3">
-                      {experience.map((exp: any, i: number) => (
-                        <div key={i} className="text-sm">
-                          <div className="font-semibold text-gray-900">
-                            {exp.title || exp.role || 'Role'}
-                          </div>
-                          <div className="text-gray-600">
-                            {[exp.company, exp.dates || exp.date]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </div>
-                          {exp.description && (
-                            <p className="text-gray-600 mt-1 text-xs leading-relaxed whitespace-pre-wrap">
-                              {exp.description}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {education.length > 0 && (
-                  <div>
-                    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-blue-700 mb-2">
-                      Education
-                    </h4>
-                    <div className="space-y-2">
-                      {education.map((ed: any, i: number) => (
-                        <div key={i} className="text-sm">
-                          <div className="font-semibold text-gray-900">
-                            {ed.degree || ed.school || 'Education'}
-                          </div>
-                          <div className="text-gray-600 text-xs">
-                            {[ed.school, ed.dates || ed.date]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {skills.length > 0 && (
-                  <div>
-                    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-blue-700 mb-2">
-                      Skills
-                    </h4>
-                    <div className="flex flex-wrap gap-1.5">
-                      {skills.map((s) => (
-                        <span
-                          key={s}
-                          className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[11px] font-medium text-blue-800"
-                        >
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {!safe.summary &&
-                  experience.length === 0 &&
-                  education.length === 0 &&
-                  skills.length === 0 && (
-                    <div className="text-center py-6 text-sm text-gray-500 border border-dashed rounded-xl">
-                      <FileText className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                      No parsed resume data yet.
-                      {resumeUrl ? (
-                        <a
-                          href={resumeUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block mt-2 text-blue-600 hover:underline"
-                        >
-                          Open original resume file
-                        </a>
-                      ) : (
-                        <p className="mt-1 text-xs">
-                          Edit the candidate to upload a resume.
-                        </p>
-                      )}
-                    </div>
-                  )}
+              <div className="h-[min(70vh,720px)] min-h-[420px]">
+                <ResumeViewer
+                  url={resumeUrl}
+                  fileName={resumeFileName || safe.resumeFileName}
+                  candidateId={candidateId}
+                  fileKey={resumeKey || safe.resumeKey}
+                  className="h-full"
+                  onUrlUpdated={(u) => setResumeUrl(u)}
+                  onResumeChanged={(info) => {
+                    if (!info) {
+                      setResumeUrl('');
+                      setResumeFileName('');
+                      setResumeKey('');
+                      return;
+                    }
+                    setResumeUrl(info.resumeUrl || '');
+                    setResumeFileName(info.fileName || '');
+                    setResumeKey(info.fileKey || info.resumeUrl || '');
+                    void fetchNotes();
+                  }}
+                />
               </div>
             </section>
 
-            {/* AI evaluation tools */}
+            {/* Parsed profile summary (compact) under the file viewer */}
+            {(safe.summary ||
+              experience.length > 0 ||
+              education.length > 0 ||
+              skills.length > 0) && (
+              <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 space-y-3">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                  Parsed profile
+                </h3>
+                {safe.summary && (
+                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap line-clamp-6">
+                    {safe.summary}
+                  </p>
+                )}
+                {skills.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {skills.slice(0, 12).map((s) => (
+                      <span
+                        key={s}
+                        className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-800"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* AI evaluation tools — below resume */}
             <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
               <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-3 flex items-center gap-1.5">
                 <Sparkles className="h-3.5 w-3.5 text-violet-500" />
