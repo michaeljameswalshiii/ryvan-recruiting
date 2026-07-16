@@ -48,8 +48,13 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setStatus("loading");
     setError("");
+    if (!resumeFile) {
+      setStatus("err");
+      setError("Please attach your resume (PDF or Word) to apply");
+      return;
+    }
+    setStatus("loading");
     try {
       const form = new FormData();
       form.set("jobId", jobId);
@@ -60,9 +65,7 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
       form.set("message", message);
       form.set("linkedinUrl", linkedinUrl);
       form.set("website", website);
-      if (resumeFile) {
-        form.set("resume", resumeFile);
-      }
+      form.set("resume", resumeFile);
 
       const res = await fetch("/api/public/careers/apply", {
         method: "POST",
@@ -157,21 +160,22 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
 
       <div>
         <label className="block text-sm font-medium text-slate-700">
-          Resume{" "}
+          Resume *{" "}
           <span className="font-normal text-slate-400">
-            (optional — PDF or Word, max {MAX_MB}MB)
+            (PDF or Word, max {MAX_MB}MB)
           </span>
         </label>
         <div className="mt-1 flex flex-wrap items-center gap-3">
           <input
             ref={fileRef}
             type="file"
+            required
             accept={ACCEPT}
             onChange={(e) => onPickFile(e.target.files?.[0] || null)}
             className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-800"
           />
         </div>
-        {resumeFile && (
+        {resumeFile ? (
           <p className="mt-1.5 text-xs text-slate-500">
             Selected:{" "}
             <span className="font-medium text-slate-700">{resumeFile.name}</span>{" "}
@@ -186,6 +190,10 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
             >
               Remove
             </button>
+          </p>
+        ) : (
+          <p className="mt-1.5 text-xs text-slate-500">
+            A resume is required to submit your application.
           </p>
         )}
       </div>

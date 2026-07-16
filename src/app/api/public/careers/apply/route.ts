@@ -238,6 +238,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resume file is required for public careers applications
+    if (!resumeFile) {
+      return jsonWithCors(
+        request,
+        {
+          error:
+            "A resume is required. Please upload a PDF or Word (.docx) file.",
+        },
+        400
+      );
+    }
+
     let resumeUrl = resumeUrlField;
     let resumeFileName = "";
 
