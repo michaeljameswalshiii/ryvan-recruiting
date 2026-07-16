@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Mail,
@@ -19,12 +19,19 @@ import {
   Sparkles,
   KeyRound,
   Cloud,
+  Users,
+  Building2,
+  CreditCard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { hasPermission } from '@/lib/roles';
+import { TeamSettings } from '@/components/settings/TeamSettings';
+import { OrgSettings } from '@/components/settings/OrgSettings';
+import { PlanSettings } from '@/components/settings/PlanSettings';
 
 interface EmailConnection {
   provider: 'gmail' | 'outlook';
@@ -49,12 +56,17 @@ interface AiCredStatus {
   grokKeyHint?: string;
 }
 
+type SettingsTab = 'account' | 'team' | 'organization' | 'plan';
+
 export default function SettingsPage() {
   const searchParams = useSearchParams();
+  const [tab, setTab] = useState<SettingsTab>('account');
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [connections, setConnections] = useState<EmailConnection[]>([]);
   const [activeConnections, setActiveConnections] = useState<ActiveConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState<string | null>(null);
+  const canTeamAdmin = hasPermission(userRole, 'team_admin');
   
   // Check if OAuth is configured (these would come from env vars on the server side)
   // For client-side, we check via the API response
@@ -164,6 +176,17 @@ export default function SettingsPage() {
     fetchConnections();
     checkOAuthConfig();
     fetchAiCredentials();
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/session', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setUserRole(data.user?.role || null);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
   }, [userId]);
 
   const saveProviderKey = async (keyProvider: 'anthropic' | 'grok') => {
@@ -350,15 +373,48 @@ export default function SettingsPage() {
   const isGmailConnected = activeConnections.some(c => c.provider === 'gmail');
   const isOutlookConnected = activeConnections.some(c => c.provider === 'outlook');
   
+  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
+    { id: 'account', label: 'Account', icon: <Sparkles className="h-4 w-4" /> },
+    { id: 'team', label: 'Team', icon: <Users className="h-4 w-4" />, adminOnly: true },
+    { id: 'organization', label: 'Organization', icon: <Building2 className="h-4 w-4" />, adminOnly: true },
+    { id: 'plan', label: 'Plan', icon: <CreditCard className="h-4 w-4" /> },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Settings</h1>
         <p className="text-muted-foreground mt-2">
-          Manage your account settings and preferences
+          Manage your account, team, organization, and plan
         </p>
       </div>
 
+      <div className="flex flex-wrap gap-2 border-b pb-3">
+        {tabs
+          .filter((t) => !t.adminOnly || canTeamAdmin)
+          .map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                tab === t.id
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+      </div>
+
+      {tab === 'team' && canTeamAdmin && <TeamSettings />}
+      {tab === 'organization' && canTeamAdmin && <OrgSettings />}
+      {tab === 'plan' && <PlanSettings />}
+
+      {tab === 'account' && (
+      <>
       {/* AI Providers — top of page so BYOK keys are easy to find */}
       <Card className="border-blue-100 shadow-sm">
         <CardHeader>
@@ -785,6 +841,8 @@ export default function SettingsPage() {
           </p>
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   );
 }

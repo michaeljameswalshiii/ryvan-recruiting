@@ -140,6 +140,9 @@ export function canAccessPath(
   if (path.startsWith("/dashboard/settings")) {
     return hasPermission(role, "settings");
   }
+  if (path.startsWith("/dashboard/site-admin")) {
+    return hasPermission(role, "site_admin_tools");
+  }
 
   // Core ATS + anything else under /dashboard for authenticated users
   return hasPermission(role, "core_ats");

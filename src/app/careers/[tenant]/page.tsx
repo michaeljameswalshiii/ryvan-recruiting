@@ -60,16 +60,46 @@ export default async function TenantCareersPage({ params }: Props) {
     loadError = "Unable to load open roles right now.";
   }
 
+  const accent = ctx.primaryColor || "#2563eb";
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      <header className="border-b border-slate-200 bg-white">
+      <header
+        className="border-b border-slate-200 bg-white"
+        style={{ borderBottomColor: `${accent}33` }}
+      >
         <div className="mx-auto max-w-3xl px-6 py-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Careers
-          </p>
-          <h1 className="text-2xl font-semibold text-slate-900">{ctx.name}</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Search open roles and apply through our recruiting team.
+          <div className="flex items-center gap-3">
+            {ctx.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={ctx.logoUrl}
+                alt=""
+                className="h-10 w-10 rounded-lg object-contain"
+              />
+            ) : (
+              <div
+                className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold"
+                style={{ backgroundColor: accent }}
+              >
+                {(ctx.name || "C").charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div>
+              <p
+                className="text-xs font-semibold uppercase tracking-wider"
+                style={{ color: accent }}
+              >
+                Careers
+              </p>
+              <h1 className="text-2xl font-semibold text-slate-900">
+                {ctx.name}
+              </h1>
+            </div>
+          </div>
+          <p className="mt-2 text-sm text-slate-500">
+            {ctx.tagline ||
+              "Search open roles and apply through our recruiting team."}
           </p>
         </div>
       </header>

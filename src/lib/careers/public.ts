@@ -32,7 +32,28 @@ export type CareersTenantContext = {
   tenantId: string;
   slug: string;
   name: string;
+  logoUrl?: string | null;
+  primaryColor?: string | null;
+  tagline?: string | null;
 };
+
+function brandFromTenant(t: {
+  name?: string;
+  subdomain?: string;
+  logo_url?: string;
+  primary_color?: string;
+  careers_tagline?: string;
+} | null, fallbackSlug: string): Pick<
+  CareersTenantContext,
+  "name" | "logoUrl" | "primaryColor" | "tagline"
+> {
+  return {
+    name: t?.name || fallbackSlug,
+    logoUrl: t?.logo_url || null,
+    primaryColor: t?.primary_color || null,
+    tagline: t?.careers_tagline || null,
+  };
+}
 
 /**
  * Eligible for public careers listing:
@@ -98,7 +119,7 @@ export async function resolveCareersTenant(
     return {
       tenantId: defaultId,
       slug: (t?.subdomain || defaultSlug).toLowerCase(),
-      name: t?.name || "Careers",
+      ...brandFromTenant(t, "Careers"),
     };
   }
 
@@ -109,7 +130,7 @@ export async function resolveCareersTenant(
     return {
       tenantId,
       slug: raw,
-      name: t?.name || raw,
+      ...brandFromTenant(t, raw),
     };
   }
 
@@ -119,7 +140,7 @@ export async function resolveCareersTenant(
     return {
       tenantId: bySub.id,
       slug: (bySub.subdomain || raw).toLowerCase(),
-      name: bySub.name || raw,
+      ...brandFromTenant(bySub, raw),
     };
   }
 
@@ -130,7 +151,7 @@ export async function resolveCareersTenant(
       return {
         tenantId: t.id,
         slug: (t.subdomain || raw).toLowerCase(),
-        name: t.name || "Careers",
+        ...brandFromTenant(t, "Careers"),
       };
     }
   }

@@ -1,25 +1,60 @@
-﻿/**
+/**
  * Tenant Schema
- * Zod schema for tenant data validation
  */
 
-import { z } from 'zod';
+import { z } from "zod";
+import { PLAN_IDS, TENANT_STATUSES } from "@/lib/plans";
 
 export interface Tenant {
   id: string;
   name: string;
   subdomain: string;
   created_at: string;
+  updated_at?: string;
+  logo_url?: string;
+  primary_color?: string;
+  careers_tagline?: string;
+  plan?: string;
+  seat_limit?: number;
+  status?: string;
+  trial_ends_at?: string;
+  billing_email?: string;
+  stripe_customer_id?: string;
+  stripe_subscription_id?: string;
 }
 
 export const createTenantSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  subdomain: z.string().min(1, 'Subdomain is required').transform(v => v.toLowerCase().replace(/\s+/g, '-')),
+  name: z.string().min(1, "Name is required"),
+  subdomain: z
+    .string()
+    .min(1, "Subdomain is required")
+    .transform((v) => v.toLowerCase().replace(/\s+/g, "-")),
 });
 
 export const updateTenantSchema = z.object({
-  name: z.string().min(1).optional(),
-  subdomain: z.string().min(1).optional(),
+  name: z.string().min(1).max(100).optional(),
+  subdomain: z
+    .string()
+    .min(1)
+    .max(50)
+    .regex(/^[a-z0-9-]+$/)
+    .optional(),
+  logo_url: z.string().url().optional().or(z.literal("")),
+  primary_color: z
+    .string()
+    .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+    .optional()
+    .or(z.literal("")),
+  careers_tagline: z.string().max(200).optional(),
+  billing_email: z.string().email().optional().or(z.literal("")),
+});
+
+/** Site Admin may change plan/seats/status */
+export const siteAdminUpdateTenantSchema = updateTenantSchema.extend({
+  plan: z.enum(PLAN_IDS).optional(),
+  seat_limit: z.number().int().min(1).max(1000).optional(),
+  status: z.enum(TENANT_STATUSES).optional(),
+  trial_ends_at: z.string().optional(),
 });
 
 export const tenantQuerySchema = z.object({
@@ -29,3 +64,6 @@ export const tenantQuerySchema = z.object({
 
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;
 export type UpdateTenantInput = z.infer<typeof updateTenantSchema>;
+export type SiteAdminUpdateTenantInput = z.infer<
+  typeof siteAdminUpdateTenantSchema
+>;

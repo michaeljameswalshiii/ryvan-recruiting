@@ -28,7 +28,9 @@ Reviewed with product: 1–3 P0; companies pipeline P1; reporting + dynamo admin
 - [x] Load role from profile into session/layout  
 - [x] Gate nav + pages (Admin vs Site Admin tools)  
 - [x] Dynamo admin API = Site Admin only  
-- [ ] Settings: list users + change roles within tenant  
+- [x] Settings: Team invites + roles; Organization brand; Plan packaging  
+- [x] Site Admin tenant console (plan/seats/status)  
+- [ ] Stripe Checkout + webhooks  
 - [ ] Optional: finer ATS permissions (view-only)
 
 ---
@@ -90,6 +92,7 @@ Missing exports used by job API routes (not blocking day-to-day UI):
 
 ## Done (recent)
 
+- Multi-tenant SaaS foundation: invites, org brand, plan packaging, Site Admin console, tenant-guard  
 - Issues module (list, detail, comments, attachments)  
 - AI BYOK (Bedrock platform + Anthropic + Grok)  
 - AI usage table + dashboard (ET timestamps)  

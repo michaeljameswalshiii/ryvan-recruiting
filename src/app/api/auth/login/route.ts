@@ -68,6 +68,14 @@ async function authenticateSimple(email: string, password: string) {
   const tenantId = profile.tenant_id?.S;
   const storedHash = profile.password_hash?.S;
 
+  const status = (profile.status?.S || "active").toLowerCase();
+  if (status === "disabled") {
+    throw new Error("Account disabled");
+  }
+  if (status === "invited") {
+    throw new Error("Accept your invite before signing in");
+  }
+
   if (!storedHash) {
     throw new Error("No password set for this account");
   }

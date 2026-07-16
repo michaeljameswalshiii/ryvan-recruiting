@@ -48,6 +48,7 @@ const adminItems: MenuItem[] = [
 ];
 
 const siteAdminItems: MenuItem[] = [
+  { name: 'Tenants', href: '/dashboard/site-admin', icon: Building2, permission: 'site_admin_tools' },
   { name: 'Dynamo Search Tool', href: '/dashboard/dynamo-search', icon: Database, permission: 'dynamo_search' },
 ];
 
