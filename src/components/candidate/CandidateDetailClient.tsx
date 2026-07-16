@@ -28,19 +28,14 @@ import { ResumeViewer } from '@/components/candidate/ResumeViewer';
 import { LinkJobModal } from '@/components/candidate/LinkJobModal';
 import { Link2, Unlink } from 'lucide-react';
 
+import {
+  ACTIVITY_NOTE_TYPES,
+  noteTypeDrivesStage,
+  stageDisplayLabel,
+} from '@/lib/candidates/note-type-stage';
+
 /** Activity / note types shown in the log composer */
-const NOTE_TYPES = [
-  { value: 'general', label: 'Action Type' },
-  { value: 'Conversation', label: 'Conversation' },
-  { value: 'Interview Scheduled', label: 'Interview Scheduled' },
-  { value: 'Submitted', label: 'Submitted' },
-  { value: 'Left Message', label: 'Left Message' },
-  { value: 'Email Sent', label: 'Email Sent' },
-  { value: 'phone_call', label: 'Phone call' },
-  { value: 'follow_up', label: 'Follow-up' },
-  { value: 'meeting', label: 'Meeting' },
-  { value: 'other', label: 'Other' },
-] as const;
+const NOTE_TYPES = ACTIVITY_NOTE_TYPES;
 
 /** Human labels for system event types in the activity log */
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -290,11 +285,23 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
           stage: status || null,
         }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to add note');
       }
-      toast.success('Note logged');
+
+      // Note types like Submitted / Interview / Offer Out also move the pipeline
+      if (data.stageUpdated && data.status) {
+        setStatus(data.status);
+        toast.success(
+          `Note logged · stage set to ${data.stageLabel || stageDisplayLabel(data.status)}`
+        );
+      } else if (noteTypeDrivesStage(noteType) && data.status) {
+        setStatus(data.status);
+        toast.success('Note logged (pipeline already at this stage)');
+      } else {
+        toast.success('Note logged');
+      }
       setNewNote('');
       await fetchNotes();
     } catch (err: any) {
@@ -803,7 +810,8 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   Notes & Activity Log
                 </h2>
                 <p className="text-xs text-gray-400 mt-1">
-                  Communications, job links, stage changes, and manual notes
+                  Stage types (Submitted, Interview, Offer Out, …) update the
+                  pipeline automatically — no separate stage change needed
                 </p>
               </div>
 
@@ -811,11 +819,12 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 <select
                   value={noteType}
                   onChange={(e) => setNoteType(e.target.value)}
-                  className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm sm:w-44"
+                  className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm sm:w-48"
                 >
                   {NOTE_TYPES.map((t) => (
                     <option key={t.value} value={t.value}>
                       {t.label}
+                      {'drivesStage' in t && t.drivesStage ? ' · stage' : ''}
                     </option>
                   ))}
                 </select>
