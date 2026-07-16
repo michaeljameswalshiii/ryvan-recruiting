@@ -1,21 +1,35 @@
-﻿import Sidebar from "@/components/Sidebar";
+import Sidebar from "@/components/Sidebar";
+import { getSession } from "@/lib/server-auth";
+import { resolveUserRole } from "@/lib/admin-auth";
+import { normalizeRole } from "@/lib/roles";
+import { redirect } from "next/navigation";
 
-// Force dynamic rendering to avoid static prerender issues with useTheme
+// Force dynamic rendering (session + role for nav)
 export const dynamic = "force-dynamic";
 
-export default function CandidatesLayout({
+/**
+ * Legacy /candidates/* routes share the same chrome as /dashboard/*.
+ * Sidebar is position:fixed (w-72) — content MUST use ml-72 or it sits under the nav.
+ */
+export default async function CandidatesLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Sidebar */}
-      <Sidebar />
+  const session = await getSession();
+  if (!session) {
+    redirect("/login");
+  }
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {children}
+  const role =
+    (await resolveUserRole(session.userId, session.email)) ||
+    normalizeRole(session.role);
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Sidebar role={role} />
+      <div className="ml-72">
+        <main className="p-6">{children}</main>
       </div>
     </div>
   );

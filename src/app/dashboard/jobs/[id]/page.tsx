@@ -670,7 +670,7 @@ export default function JobDetailPage() {
                         </select>
 
                         <Button variant="outline" size="sm" asChild>
-                          <Link href={`/candidates/${lc.candidateId}`}>View</Link>
+                          <Link href={`/dashboard/candidates/${lc.candidateId}`}>View</Link>
                         </Button>
 
                         <Button
