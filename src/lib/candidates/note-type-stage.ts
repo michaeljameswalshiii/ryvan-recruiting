@@ -28,7 +28,32 @@ export const NOTE_TYPE_TO_STAGE: Record<string, string> = {
   left_message: 'left_message',
   rejected: 'rejected',
   not_interested: 'not_interested',
-  stage_change: '', // handled separately; no remap from type alone
+  // Explicit null-ish: never treat these as stage drivers
+  // (omit empty string — empty is falsy and confused stageFromNoteType)
+};
+
+/**
+ * Preferred activity note type when the pipeline is moved via Advance / Reject.
+ * Keeps the activity log consistent with stage-driving note types (no generic
+ * "Stage change" rows that leave stage out of sync with the log).
+ */
+export const STAGE_TO_NOTE_TYPE: Record<string, string> = {
+  left_message: 'Left Message',
+  identification: 'Conversation',
+  sourced: 'Conversation',
+  submitted: 'Submitted',
+  presented: 'Submitted',
+  pre_screened: 'Submitted',
+  interviewing: 'Interview Scheduled',
+  interview: 'Interview Scheduled',
+  offer_out: 'Offer Out',
+  converted: 'Accepted',
+  placed: 'Accepted',
+  offer_accepted: 'Accepted',
+  rejected: 'Rejected',
+  not_interested: 'Not Interested',
+  offer_declined: 'Rejected',
+  withdrawn: 'Rejected',
 };
 
 /**
@@ -53,21 +78,37 @@ export const ACTIVITY_NOTE_TYPES = [
 
 export function stageFromNoteType(noteType?: string | null): string | null {
   if (!noteType) return null;
-  const direct = NOTE_TYPE_TO_STAGE[noteType];
+  // Never treat generic / system types as stage drivers
+  const raw = noteType.trim();
+  if (!raw || raw === 'stage_change' || raw === 'general' || raw === 'other') {
+    return null;
+  }
+
+  const direct = NOTE_TYPE_TO_STAGE[raw];
   if (direct) return direct;
-  const lower = noteType.trim().toLowerCase().replace(/\s+/g, '_');
+
+  const lower = raw.toLowerCase().replace(/\s+/g, '_');
   const byLower = NOTE_TYPE_TO_STAGE[lower];
   if (byLower) return byLower;
-  // Fuzzy label match
+
+  // Fuzzy label match (avoid matching "stage_change" via accidental substrings)
   if (lower.includes('submit')) return 'submitted';
   if (lower.includes('interview')) return 'interviewing';
   if (lower.includes('offer_out') || lower === 'offer' || lower.includes('offer out'))
     return 'offer_out';
   if (lower.includes('plac') || lower === 'accepted') return 'converted';
-  if (lower.includes('reject')) return 'rejected';
+  if (lower.includes('reject') || lower.includes('not_interested'))
+    return 'rejected';
   if (lower.includes('left_message') || lower.includes('left message'))
     return 'left_message';
   return null;
+}
+
+/** Reverse map: pipeline status → preferred activity note type label/value */
+export function noteTypeFromStage(status?: string | null): string | null {
+  if (!status) return null;
+  const key = String(status).trim().toLowerCase().replace(/\s+/g, '_');
+  return STAGE_TO_NOTE_TYPE[key] || null;
 }
 
 /** Human label for pipeline status values */

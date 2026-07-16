@@ -14,6 +14,8 @@ import {
   deleteCandidateEvent,
 } from '@/lib/events/candidate-events';
 import type { CandidateEventType, EventDetails } from '@/lib/events/types';
+import { applyStageFromNoteType } from '@/lib/candidates/stage-sync';
+import { stageDisplayLabel } from '@/lib/candidates/note-type-stage';
 
 export async function GET(
   request: NextRequest,
@@ -166,10 +168,26 @@ export async function PATCH(
       );
     }
 
+    // Editing to a stage-driving type (e.g. Submitted) also moves the pipeline
+    let stageUpdated = false;
+    let newStatus: string | undefined;
+    let stageLabel: string | undefined;
+    if (noteType !== undefined) {
+      const stageResult = await applyStageFromNoteType(candidateId, noteType);
+      stageUpdated = stageResult.stageUpdated;
+      if (stageResult.newStage) {
+        newStatus = stageResult.newStage;
+        stageLabel = stageDisplayLabel(stageResult.newStage);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       eventId: result.eventId,
       event: result.event,
+      stageUpdated,
+      status: newStatus,
+      stageLabel,
     });
   } catch (error) {
     console.error('[API] Failed to update candidate event:', error);

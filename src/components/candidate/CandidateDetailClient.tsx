@@ -31,6 +31,7 @@ import { Link2, Unlink } from 'lucide-react';
 import {
   ACTIVITY_NOTE_TYPES,
   noteTypeDrivesStage,
+  noteTypeFromStage,
   stageDisplayLabel,
 } from '@/lib/candidates/note-type-stage';
 
@@ -305,11 +306,18 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       } else if (noteTypeDrivesStage(noteType) && data.status) {
         setStatus(data.status);
         toast.success('Note logged (pipeline already at this stage)');
+      } else if (noteTypeDrivesStage(noteType) && !data.status) {
+        // Server couldn't confirm stage write — still try local UI if type maps
+        toast.success('Note logged');
+        toast.message(
+          'Stage may not have updated — use Advance if the pipeline looks wrong'
+        );
       } else {
         toast.success('Note logged');
       }
       setNewNote('');
       await fetchNotes();
+      router.refresh();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to log note');
     } finally {
@@ -365,9 +373,17 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       if (!res.ok) {
         throw new Error(data.error || 'Failed to update note');
       }
-      toast.success('Note updated');
+      if (data.stageUpdated && data.status) {
+        setStatus(data.status);
+        toast.success(
+          `Note updated · stage set to ${data.stageLabel || stageDisplayLabel(data.status)}`
+        );
+      } else {
+        toast.success('Note updated');
+      }
       cancelEditActivity();
       await fetchNotes();
+      router.refresh();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update note');
     } finally {
@@ -430,22 +446,29 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
         throw new Error(data.error || 'Failed to update stage');
       }
       setStatus(nextStatus);
+      const label = stageDisplayLabel(nextStatus);
       toast.success(
         direction === 'reject'
           ? 'Candidate rejected'
-          : `Stage updated to ${direction === 'advance' ? 'next' : 'previous'}`
+          : `Stage updated to ${label}`
       );
-      // Log stage change as activity
+      // Log with the same stage-driving note type used in the composer
+      // (Submitted / Interview Scheduled / …) so the pipeline and log stay aligned
+      // and we never create a generic "Stage change" row.
+      const stageNoteType =
+        noteTypeFromStage(nextStatus) ||
+        (direction === 'reject' ? 'Rejected' : 'Conversation');
       await fetch(`/api/candidate/${candidateId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          noteText: `Stage changed to ${nextStatus.replace(/_/g, ' ')}`,
-          noteType: 'stage_change',
+          noteText: `Moved to ${label}`,
+          noteType: stageNoteType,
           stage: nextStatus,
         }),
       }).catch(() => {});
       await fetchNotes();
+      router.refresh();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update stage');
     } finally {

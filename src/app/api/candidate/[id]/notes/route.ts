@@ -11,12 +11,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { addNoteToCandidate } from '@/lib/events/candidate-events';
-import { getSession, getSessionTenantId } from '@/lib/server-auth';
-import { getLeadById, updateLead } from '@/lib/db/repositories/lead-repository';
-import {
-  stageFromNoteType,
-  stageDisplayLabel,
-} from '@/lib/candidates/note-type-stage';
+import { getSession } from '@/lib/server-auth';
+import { applyStageFromNoteType } from '@/lib/candidates/stage-sync';
+import { stageDisplayLabel } from '@/lib/candidates/note-type-stage';
 
 export async function POST(
   request: NextRequest,
@@ -45,71 +42,16 @@ export async function POST(
     const session = await getSession();
     const user =
       createdBy || session?.email || session?.userId || 'system';
-    const tenantId = await getSessionTenantId();
 
-    // Resolve stage from note type (preferred) or explicit body.stage
-    const impliedStage = stageFromNoteType(noteType);
-    let stageToStore: string | null = stage || null;
-    let stageUpdated = false;
-    let previousStage: string | null = null;
-    let newStage: string | null = null;
-
-    if (tenantId && impliedStage) {
-      try {
-        const lead = await getLeadById(tenantId, id);
-        if (lead) {
-          previousStage = (lead as any).status || null;
-          const current = String(previousStage || '')
-            .trim()
-            .toLowerCase()
-            .replace(/\s+/g, '_');
-          const next = impliedStage.toLowerCase();
-
-          // Always set note metadata to the implied stage
-          stageToStore = impliedStage;
-
-          if (current !== next) {
-            await updateLead(tenantId, id, { status: impliedStage } as any);
-
-            // Keep first linked job stage in sync when present
-            const linked = Array.isArray((lead as any).linkedJobs)
-              ? [...(lead as any).linkedJobs]
-              : [];
-            if (linked.length > 0) {
-              linked[0] = {
-                ...linked[0],
-                stage: impliedStage,
-              };
-              await updateLead(tenantId, id, {
-                linkedJobs: linked,
-              } as any).catch(() => {});
-            }
-
-            stageUpdated = true;
-            newStage = impliedStage;
-          } else {
-            newStage = impliedStage;
-          }
-        }
-      } catch (stageErr) {
-        console.warn('[notes] stage sync failed (note still saved):', stageErr);
-      }
-    } else if (stage) {
+    // Stage-driving note types (Submitted, Interview Scheduled, …) update pipeline
+    const stageResult = await applyStageFromNoteType(id, noteType);
+    let stageToStore = stageResult.stageToStore;
+    if (!stageToStore && stage) {
       stageToStore = stage;
     }
 
-    // Enrich note text slightly when we advanced the pipeline so the log is clear
-    let finalNoteText = noteText.trim();
-    if (stageUpdated && newStage) {
-      const label = stageDisplayLabel(newStage);
-      if (!/stage|pipeline|submitted|interview|offer/i.test(finalNoteText)) {
-        // keep user's text; metadata carries stage
-      }
-      // Prefix once if text doesn't already mention the stage move
-      if (!finalNoteText.toLowerCase().includes(label.toLowerCase())) {
-        finalNoteText = `${finalNoteText}`;
-      }
-    }
+    const { stageUpdated, previousStage, newStage } = stageResult;
+    const finalNoteText = noteText.trim();
 
     const result = await addNoteToCandidate(id, finalNoteText, user, {
       stage: stageToStore || null,
@@ -117,7 +59,6 @@ export async function POST(
       stageUpdated,
       previousStage,
       newStage: newStage || stageToStore,
-      // Mark so clients don't also POST a stage_change note
       autoStageSync: stageUpdated,
     });
 
