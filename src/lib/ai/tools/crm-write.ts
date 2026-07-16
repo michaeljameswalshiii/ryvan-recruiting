@@ -16,6 +16,8 @@ import {
   createClient,
   updateClient,
   getClientById,
+  getAllClients,
+  addContactToClient,
 } from "../../db/repositories/client-repository";
 import {
   createJob,
@@ -115,8 +117,11 @@ function normalizeCandidateStage(raw?: string): string | undefined {
 
 export const CREATE_CANDIDATE_TOOL = "create_candidate";
 export const CREATE_CANDIDATE_DESCRIPTION =
-  "Create a new candidate/lead in the ATS. ALWAYS call once without confirmed to preview, " +
-  "show the user, then call again with confirmed:true after they agree. Requires name.";
+  "Create a new candidate/lead in the recruiting pipeline (Candidates list). " +
+  "NOT for company contacts/hiring managers — use create_contact for Contact Info. " +
+  "ALWAYS call once without confirmed to preview, show the user, then call again with " +
+  "confirmed:true after they agree. Requires name. Optional company is only a note, " +
+  "it does NOT add them under Contact Info.";
 
 export async function executeCreateCandidate(
   params: unknown,
@@ -473,6 +478,117 @@ export async function executeUpdateCompany(
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to update company",
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// create_contact (company contact → Contact Info list)
+// ---------------------------------------------------------------------------
+
+export const CREATE_CONTACT_TOOL = "create_contact";
+export const CREATE_CONTACT_DESCRIPTION =
+  "Add a person as a company contact (hiring manager / business contact). " +
+  "These appear on Contact Info (/dashboard/contact-info), NOT Candidates. " +
+  "Requires name + company_id OR company_name. Preview first, then confirmed:true.";
+
+async function resolveCompanyId(
+  tenantId: string,
+  companyId?: string,
+  companyName?: string
+): Promise<{ id: string; name: string } | { error: string }> {
+  if (companyId) {
+    const c = await getClientById(tenantId, companyId);
+    if (!c?.id) return { error: `Company not found: ${companyId}` };
+    return { id: c.id, name: c.name || c.companyName || companyId };
+  }
+  if (companyName) {
+    const all = await getAllClients(tenantId);
+    const needle = companyName.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const match = all.find((c) => {
+      const n = (c.name || c.companyName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return n === needle || n.includes(needle) || needle.includes(n);
+    });
+    if (!match?.id) {
+      return {
+        error: `No company matching "${companyName}". Create the company first or pass company_id.`,
+      };
+    }
+    return { id: match.id, name: match.name || match.companyName || match.id };
+  }
+  return { error: "company_id or company_name is required" };
+}
+
+export async function executeCreateContact(
+  params: unknown,
+  context: ToolContext
+): Promise<ToolResult> {
+  const deny = needTenant(context);
+  if (deny) return deny;
+
+  const p = (params || {}) as Record<string, unknown>;
+  const name = str(p.name);
+  if (!name) return { success: false, error: "name is required" };
+
+  const companyId = str(p.company_id) || str(p.client_id);
+  const companyName = str(p.company_name) || str(p.company);
+  const resolved = await resolveCompanyId(
+    context.tenantId!,
+    companyId,
+    companyName
+  );
+  if ("error" in resolved) {
+    return { success: false, error: resolved.error };
+  }
+
+  const preview = {
+    name,
+    title: str(p.title) || "",
+    email: str(p.email) || "",
+    phone: str(p.phone) || "",
+    company_id: resolved.id,
+    company_name: resolved.name,
+    isPrimary: p.is_primary === true || p.isPrimary === true || p.is_primary === "true",
+    notes: str(p.notes) || "",
+    destination: "Contact Info (company contact)",
+  };
+
+  const gate = confirmGate(p, CREATE_CONTACT_TOOL, preview);
+  if (gate) return gate;
+
+  try {
+    const updated = await addContactToClient(context.tenantId!, resolved.id, {
+      name: preview.name,
+      title: preview.title,
+      email: preview.email,
+      phone: preview.phone,
+      isPrimary: preview.isPrimary,
+      notes: preview.notes,
+    });
+    const created = (updated.contacts || []).find(
+      (c: any) =>
+        c.name?.toLowerCase() === preview.name.toLowerCase() &&
+        (!preview.email || c.email === preview.email.toLowerCase())
+    );
+    return {
+      success: true,
+      data: {
+        status: "created",
+        contact: {
+          id: created?.id,
+          name: preview.name,
+          company_id: resolved.id,
+          company_name: resolved.name,
+        },
+        message: `Added ${preview.name} as a contact at ${resolved.name}. They appear on Contact Info.`,
+        url_hint: "/dashboard/contact-info",
+      },
+      metadata: { action: CREATE_CONTACT_TOOL, id: created?.id, company_id: resolved.id },
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to create contact",
     };
   }
 }
@@ -858,6 +974,42 @@ export const CRM_WRITE_TOOLS: Array<{
         domain: { type: "string", description: "Website domain" },
         description: { type: "string", description: "Description" },
         confirmed: { type: "boolean", description: "true to apply after user confirms" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: CREATE_CONTACT_TOOL,
+    description: CREATE_CONTACT_DESCRIPTION,
+    execute: executeCreateContact,
+    schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Contact full name (required)" },
+        company_id: {
+          type: "string",
+          description: "Company id (preferred). Or use company_name.",
+        },
+        company_name: {
+          type: "string",
+          description: "Company name to match if company_id unknown (e.g. Chick Fil-A)",
+        },
+        company: {
+          type: "string",
+          description: "Alias for company_name",
+        },
+        title: { type: "string", description: "Job title at the company" },
+        email: { type: "string", description: "Work email" },
+        phone: { type: "string", description: "Phone" },
+        notes: { type: "string", description: "Notes" },
+        is_primary: {
+          type: "boolean",
+          description: "Mark as primary contact for the company",
+        },
+        confirmed: {
+          type: "boolean",
+          description: "false/omit = preview only; true = actually create after user confirms",
+        },
       },
       required: ["name"],
     },
