@@ -33,7 +33,6 @@ import {
   ArrowDownRight,
   Minus,
   UserRound,
-  ChevronRight,
 } from 'lucide-react';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
@@ -187,7 +186,7 @@ export function DashboardHome({
       icon: Clock,
       color: 'text-amber-600',
       bg: 'bg-amber-50',
-      href: '/dashboard/reporting',
+      href: '/dashboard/candidates',
       isString: true,
     },
   ];
@@ -253,17 +252,9 @@ export function DashboardHome({
       {/* Insights */}
       {stats.insights.length > 0 && (
         <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/80 to-white p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-blue-600" />
-              <h2 className="text-sm font-semibold text-gray-900">Insights</h2>
-            </div>
-            <Link
-              href={`/dashboard/reporting?period=${period}`}
-              className="text-xs font-medium text-blue-600 hover:underline inline-flex items-center"
-            >
-              Full reporting <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-4 w-4 text-blue-600" />
+            <h2 className="text-sm font-semibold text-gray-900">Insights</h2>
           </div>
           <ul className="space-y-1.5">
             {stats.insights.map((line, i) => (
@@ -344,10 +335,10 @@ export function DashboardHome({
               </div>
             </div>
             <Link
-              href={`/dashboard/reporting?period=${period}&tab=activity`}
+              href="/dashboard/candidates"
               className="text-xs font-medium text-blue-600 hover:underline"
             >
-              See all
+              Candidates
             </Link>
           </div>
           <div className="space-y-2 max-h-[320px] overflow-y-auto">
@@ -501,12 +492,7 @@ export function DashboardHome({
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-gray-900">Top sources</h2>
-            <Link
-              href={`/dashboard/reporting?period=${period}&tab=sources`}
-              className="text-xs font-medium text-blue-600 hover:underline"
-            >
-              Quality view
-            </Link>
+
           </div>
           <div className="space-y-2">
             {stats.sources.slice(0, 5).map((s) => (

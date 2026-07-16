@@ -42,7 +42,6 @@ const navItems = [
   { href: "/dashboard/issues", label: "Issues", icon: AlertCircle },
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
-  { href: "/dashboard/reporting", label: "Reporting", icon: BarChart3 },
   { href: "/dashboard/settings", label: "Email", icon: Mail },
   { href: "/dashboard/dynamo-search", label: "Dynamo Search Tool", icon: Database },
 ];

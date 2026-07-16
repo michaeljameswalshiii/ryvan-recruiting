@@ -37,7 +37,6 @@ const menuItems: MenuItem[] = [
   { name: 'Contact Info', href: '/dashboard/contact-info', icon: Info, permission: 'core_ats' },
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase, permission: 'core_ats' },
   { name: 'AI Assistant', href: '/dashboard/general-ai-usage', icon: MessageSquare, permission: 'core_ats' },
-  { name: 'Reporting', href: '/dashboard/reporting', icon: BarChart3, permission: 'core_ats' },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings, permission: 'settings' },
 ];
 
