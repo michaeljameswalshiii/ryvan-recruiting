@@ -26,7 +26,7 @@ import { toast } from 'sonner';
 import { SendEmailModal } from '@/components/email/send-email-modal';
 import { ResumeViewer } from '@/components/candidate/ResumeViewer';
 import { LinkJobModal } from '@/components/candidate/LinkJobModal';
-import { Link2 } from 'lucide-react';
+import { Link2, Unlink } from 'lucide-react';
 
 /** Activity / note types shown in the log composer */
 const NOTE_TYPES = [
