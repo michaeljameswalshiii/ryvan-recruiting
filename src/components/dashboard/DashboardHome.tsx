@@ -34,9 +34,7 @@ import {
   Minus,
   UserRound,
   ChevronRight,
-  Activity,
 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
 
@@ -459,9 +457,8 @@ export function DashboardHome({
         </div>
       </div>
 
-      {/* Bottom: top jobs + activity + sources */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* Top jobs */}
+      {/* Active jobs + sources */}
+      <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-gray-900">Active jobs</h2>
@@ -501,7 +498,6 @@ export function DashboardHome({
           </div>
         </div>
 
-        {/* Sources snapshot */}
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-gray-900">Top sources</h2>
@@ -538,101 +534,6 @@ export function DashboardHome({
             )}
           </div>
         </div>
-
-        {/* Recent activity */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-blue-600" />
-              <h2 className="text-base font-semibold text-gray-900">
-                Recent activity
-              </h2>
-            </div>
-            <Link
-              href={`/dashboard/reporting?period=${period}&tab=activity`}
-              className="text-xs font-medium text-blue-600 hover:underline"
-            >
-              More
-            </Link>
-          </div>
-          <div className="space-y-2 max-h-[280px] overflow-y-auto">
-            {stats.recentEvents.slice(0, 8).map((ev) => (
-              <Link
-                key={`${ev.id}-${ev.createdAt}`}
-                href={ev.href || `/dashboard/candidates/${ev.candidateId}`}
-                className="block rounded-xl border border-gray-100 px-3 py-2 hover:bg-gray-50"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-gray-900 truncate">
-                    {ev.title}
-                  </span>
-                  <Badge variant="outline" className="text-[10px] shrink-0">
-                    {ev.eventType}
-                  </Badge>
-                </div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  {ev.createdAt
-                    ? new Date(ev.createdAt).toLocaleString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                      })
-                    : '—'}
-                </div>
-              </Link>
-            ))}
-            {stats.recentEvents.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-8">
-                No recent events
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Company snapshot strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          {
-            label: 'Companies',
-            value: stats.companies.total,
-            sub: 'Total accounts',
-            href: '/dashboard/companies',
-          },
-          {
-            label: 'Closed won',
-            value: stats.companies.closedWon,
-            sub: 'Clients',
-            href: '/dashboard/companies',
-          },
-          {
-            label: 'No contacts',
-            value: stats.companies.noContacts,
-            sub: 'Needs people',
-            href: '/dashboard/contact-info',
-          },
-          {
-            label: 'No open jobs',
-            value: stats.companies.noOpenJobs,
-            sub: 'No active reqs',
-            href: '/dashboard/jobs',
-          },
-        ].map((c) => (
-          <Link
-            key={c.label}
-            href={c.href}
-            className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm hover:border-blue-200 transition-all"
-          >
-            <div className="text-2xl font-semibold tabular-nums text-gray-900">
-              {c.value}
-            </div>
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mt-1">
-              {c.label}
-            </div>
-            <div className="text-[11px] text-gray-400">{c.sub}</div>
-          </Link>
-        ))}
       </div>
     </div>
   );
