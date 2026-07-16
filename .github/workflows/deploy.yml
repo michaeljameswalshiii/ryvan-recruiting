@@ -29,12 +29,8 @@ jobs:
           cache: "npm"
 
       - name: Install Dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci || npm install
-          else
-            npm install
-          fi
+        # Use npm install (not npm ci only) so deploy is resilient if lock drifts
+        run: npm install
 
       - name: Build
         run: npm run build
