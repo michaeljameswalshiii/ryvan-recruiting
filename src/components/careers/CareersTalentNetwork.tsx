@@ -123,10 +123,10 @@ export function CareersTalentNetwork({
             Join our talent network
           </span>
           <span className="mt-1 block text-sm text-slate-500">
-            Not seeing the right role? Submit your resume for future
-            opportunities
-            {orgName ? ` at ${orgName}` : ""}. We&apos;ll reach out when
-            something matches.
+            Don&apos;t see the position you&apos;re looking for? That&apos;s
+            okay. Send us your resume and a quick note about the type of role
+            you&apos;re seeking, and we&apos;ll keep you in mind as new
+            opportunities become available.
           </span>
         </span>
         <ChevronDown
