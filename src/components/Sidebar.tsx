@@ -12,7 +12,6 @@ import {
   AlertTriangle, 
   Kanban, 
   BarChart3, 
-  Mail, 
   Settings, 
   Bug,
   ChevronUp, 
@@ -30,7 +29,6 @@ const menuItems = [
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase },
   { name: 'AI Assistant', href: '/dashboard/general-ai-usage', icon: MessageSquare },
   { name: 'Reporting', href: '/dashboard/reporting', icon: BarChart3 },
-  { name: 'Email', href: '/dashboard/email', icon: Mail },
 ];
 
 const debugItems = [
