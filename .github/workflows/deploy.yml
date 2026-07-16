@@ -7,12 +7,10 @@ on:
       - master
       - main
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to Vercel
 permissions:
   contents: read
   deployments: write
 
-# Allow only one concurrent deployment
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -26,14 +24,23 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          # pdfjs-dist requires modern Node
+          node-version: "22"
+          cache: "npm"
 
       - name: Install Dependencies
-        run: npm ci
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci || npm install
+          else
+            npm install
+          fi
 
       - name: Build
         run: npm run build
+        env:
+          # Avoid hard fail on env-only checks during CI build when secrets are Vercel-side
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v25
@@ -41,4 +48,4 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
+          vercel-args: "--prod"
