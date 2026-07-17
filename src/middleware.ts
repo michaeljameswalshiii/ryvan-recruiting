@@ -41,6 +41,7 @@ const PUBLIC_PAGE_ROUTES = [
 const PUBLIC_API_ROUTES = [
   '/api/auth',
   '/api/public', // careers jobs, apply, logo — multi-tenant public surface
+  '/api/mcp', // Claude MCP HTTP tools — API key auth (not session cookie)
   '/api/apollo',
   '/api/tavily',
   '/api/boolean',

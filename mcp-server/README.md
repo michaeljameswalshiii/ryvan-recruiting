@@ -1,108 +1,60 @@
 # Trio Recruiting MCP Server
 
-Connect **Claude Desktop** or **Claude Code** to your Trio Recruiting ATS via [Model Context Protocol](https://modelcontextprotocol.io).
+Connect **Claude Desktop** or **Claude Code** to Trio via [MCP](https://modelcontextprotocol.io).
 
-## First-slice tools
+## Recommended: keys from the web app (no AWS on the laptop)
+
+1. Sign in to Trio as a **customer admin**
+2. **Settings → Integrations**
+3. **Create API key** — copy the key + ready-made Claude config
+4. Install this folder once: `cd mcp-server && npm install`
+5. Paste config into Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`)
+6. Set the local path to `mcp-server/src/index.ts` and restart Claude
+
+### Env (HTTP mode)
+
+| Variable | Source |
+|----------|--------|
+| `TRIO_MCP_MODE` | `http` |
+| `TRIO_APP_URL` | Shown in Settings (e.g. production URL) |
+| `TRIO_MCP_API_KEY` | Created in Settings (shown once) |
+| `TRIO_TENANT_ID` | Shown in Settings |
+
+No `AWS_*` credentials needed on the Claude machine.
+
+## Tools
 
 | Tool | Description |
 |------|-------------|
-| `search_candidates` | Search leads by name / email / phone / title / status / source |
-| `get_candidate` | Full summary for one candidate id |
-| `add_note` | Append an activity note (no stage change) |
-| `list_jobs` | List jobs; optional status filter |
+| `search_candidates` | Search candidates |
+| `get_candidate` | Get one candidate |
+| `add_note` | Activity note |
+| `list_jobs` | List jobs |
 
-All reads/writes are scoped to **one tenant** from the process environment.
+## App HTTP API (what the MCP process calls)
 
-## Auth model
+All require `Authorization: Bearer <key>` and `X-Trio-Tenant-Id: <tenantId>`:
 
-The MCP process is launched by Claude with env vars (not browser cookies):
+- `GET /api/mcp/v1/candidates?q=&limit=`
+- `GET /api/mcp/v1/candidates/:id`
+- `POST /api/mcp/v1/candidates/:id/notes` `{ "noteText", "noteType?" }`
+- `GET /api/mcp/v1/jobs?status=&limit=`
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `TRIO_MCP_API_KEY` | Yes | Shared secret (must match expected key) |
-| `TRIO_MCP_EXPECTED_API_KEY` | Recommended | Server rejects wrong keys |
-| `TRIO_TENANT_ID` | Yes* | DynamoDB `tenant_id` scope |
-| `TRIO_MCP_API_KEYS` | Optional | Multi-tenant map `key1:tenant-a,key2:tenant-b` (overrides single tenant) |
-| `AWS_REGION` | Yes | e.g. `us-east-1` |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Yes* | Or use local AWS profile chain |
-| `DYNAMODB_*_TABLE` | Optional | Defaults match the web app (`turnkey-leads`, etc.) |
+## Legacy: direct DynamoDB mode
 
-\* Or use `TRIO_MCP_API_KEYS` instead of `TRIO_TENANT_ID`.
-
-Generate a key, e.g.:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
+If `TRIO_APP_URL` is unset and `TRIO_MCP_MODE` is not `http`, the server uses AWS credentials + `TRIO_TENANT_ID` (original first slice). Prefer HTTP mode for people you only give an API key.
 
 ## Install
 
 ```bash
 cd mcp-server
 npm install
+npm start   # requires env; Claude sets env when launching
 ```
 
-Smoke-test (should exit 1 without env):
+## Security
 
-```bash
-npm start
-```
-
-## Claude Desktop
-
-1. Open Claude Desktop → Settings → Developer → Edit Config  
-   (Windows: `%APPDATA%\Claude\claude_desktop_config.json`)
-2. Merge the `mcpServers` block from `claude_desktop_config.example.json`.
-3. **Fix the path** to this repo’s `mcp-server/src/index.ts`.
-4. Set real `TRIO_*` and AWS values.
-5. Fully quit and restart Claude Desktop.
-6. Confirm tools appear under the MCP / tools indicator.
-
-Example (Windows):
-
-```json
-{
-  "mcpServers": {
-    "trio-recruiting": {
-      "command": "npx",
-      "args": [
-        "tsx",
-        "C:/Users/micha/turnkey-optimization/mcp-server/src/index.ts"
-      ],
-      "env": {
-        "TRIO_MCP_API_KEY": "YOUR_SECRET",
-        "TRIO_MCP_EXPECTED_API_KEY": "YOUR_SECRET",
-        "TRIO_TENANT_ID": "tenant-2024-001",
-        "AWS_REGION": "us-east-1",
-        "AWS_ACCESS_KEY_ID": "AKIA...",
-        "AWS_SECRET_ACCESS_KEY": "..."
-      }
-    }
-  }
-}
-```
-
-## Claude Code
-
-Add the same server in Claude Code MCP settings (see `claude_code_mcp.example.json`), or project `.mcp.json` if your Claude Code version supports it.
-
-## Example prompts in Claude
-
-- “Search Trio for candidates named Mario”
-- “Get candidate details for id `…`”
-- “List Open jobs”
-- “Add a note on candidate `…`: Spoke with hiring manager, interview next week”
-
-## Security notes
-
-- Treat `TRIO_MCP_API_KEY` like a password; do not commit it.
-- Prefer IAM credentials limited to the leads/jobs/events tables.
-- This first slice is **local stdio** only (your machine → AWS). Do not expose DynamoDB publicly.
-- `add_note` writes to the events table only; it does not change pipeline stage.
-
-## Next slices (not built yet)
-
-- Stage updates / merge candidates  
-- HTTP MCP transport for remote Claude  
-- Per-user OAuth instead of static API keys  
-- Contact / company tools  
+- Only **customer admins** can create/revoke keys in Settings
+- Keys are stored **hashed**; plaintext shown once
+- Keys are tenant-scoped
+- Revoke anytime from Settings → Integrations

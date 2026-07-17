@@ -22,6 +22,7 @@ import {
   Users,
   Building2,
   CreditCard,
+  Terminal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,6 +33,7 @@ import { hasPermission } from '@/lib/roles';
 import { TeamSettings } from '@/components/settings/TeamSettings';
 import { OrgSettings } from '@/components/settings/OrgSettings';
 import { PlanSettings } from '@/components/settings/PlanSettings';
+import { McpKeysSettings } from '@/components/settings/McpKeysSettings';
 
 interface EmailConnection {
   provider: 'gmail' | 'outlook';
@@ -56,7 +58,7 @@ interface AiCredStatus {
   grokKeyHint?: string;
 }
 
-type SettingsTab = 'account' | 'team' | 'organization' | 'plan';
+type SettingsTab = 'account' | 'team' | 'organization' | 'plan' | 'integrations';
 
 export default function SettingsPage() {
   const searchParams = useSearchParams();
@@ -377,6 +379,12 @@ export default function SettingsPage() {
     { id: 'account', label: 'Account', icon: <Sparkles className="h-4 w-4" /> },
     { id: 'team', label: 'Team', icon: <Users className="h-4 w-4" />, adminOnly: true },
     { id: 'organization', label: 'Organization', icon: <Building2 className="h-4 w-4" />, adminOnly: true },
+    {
+      id: 'integrations',
+      label: 'Integrations',
+      icon: <Terminal className="h-4 w-4" />,
+      adminOnly: true,
+    },
     { id: 'plan', label: 'Plan', icon: <CreditCard className="h-4 w-4" /> },
   ];
 
@@ -411,6 +419,7 @@ export default function SettingsPage() {
 
       {tab === 'team' && canTeamAdmin && <TeamSettings />}
       {tab === 'organization' && canTeamAdmin && <OrgSettings />}
+      {tab === 'integrations' && canTeamAdmin && <McpKeysSettings />}
       {tab === 'plan' && <PlanSettings />}
 
       {tab === 'account' && (
