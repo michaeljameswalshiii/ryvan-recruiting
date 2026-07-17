@@ -19,6 +19,8 @@ import {
   ChevronRight,
   Linkedin,
   DollarSign,
+  Check,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -281,6 +283,11 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({ ...contactInfo });
   const [isSavingContact, setIsSavingContact] = useState(false);
+
+  /** Inline LinkedIn paste/save from header (no full Edit modal) */
+  const [editingLinkedIn, setEditingLinkedIn] = useState(false);
+  const [linkedinDraft, setLinkedinDraft] = useState('');
+  const [savingLinkedIn, setSavingLinkedIn] = useState(false);
 
   const currentStep = stageIndex(status);
   const currentStepLabel =
@@ -672,6 +679,68 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     }
   };
 
+  const openLinkedInEditor = () => {
+    setLinkedinDraft(contactInfo.linkedin || '');
+    setEditingLinkedIn(true);
+  };
+
+  const cancelLinkedInEditor = () => {
+    setEditingLinkedIn(false);
+    setLinkedinDraft('');
+  };
+
+  /** Normalize pasted LinkedIn value to a full URL when possible. */
+  const normalizeLinkedInUrl = (raw: string): string => {
+    const s = raw.trim();
+    if (!s) return '';
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^(www\.)?linkedin\.com\//i.test(s)) {
+      return `https://${s.replace(/^www\./i, 'www.')}`;
+    }
+    // bare slug → /in/slug
+    if (/^[\w-]+$/.test(s)) {
+      return `https://www.linkedin.com/in/${s}`;
+    }
+    return s;
+  };
+
+  const handleSaveLinkedIn = async () => {
+    if (!candidateId) return;
+    const linkedin_url = normalizeLinkedInUrl(linkedinDraft);
+    setSavingLinkedIn(true);
+    try {
+      const res = await fetch(`/api/candidate/${candidateId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkedin_url }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to save LinkedIn');
+      }
+      setContactInfo((prev) => ({ ...prev, linkedin: linkedin_url }));
+      setEditForm((prev) => ({ ...prev, linkedin: linkedin_url }));
+      setEditingLinkedIn(false);
+      setLinkedinDraft('');
+      toast.success(linkedin_url ? 'LinkedIn saved' : 'LinkedIn cleared');
+      await fetch(`/api/candidate/${candidateId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          noteText: linkedin_url
+            ? `LinkedIn updated: ${linkedin_url}`
+            : 'LinkedIn cleared',
+          noteType: 'profile_updated',
+        }),
+      }).catch(() => {});
+      await fetchNotes();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save LinkedIn');
+    } finally {
+      setSavingLinkedIn(false);
+    }
+  };
+
   const runAiTool = async (tool: string) => {
     setAiLoading(tool);
     setAiOutput('');
@@ -796,27 +865,91 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                     {contactInfo.location}
                   </span>
                 )}
-                {contactInfo.linkedin ? (
-                  <a
-                    href={
-                      /^https?:\/\//i.test(contactInfo.linkedin)
-                        ? contactInfo.linkedin
-                        : `https://${contactInfo.linkedin}`
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-[#0A66C2] hover:underline"
-                    title={contactInfo.linkedin}
+                {editingLinkedIn ? (
+                  <form
+                    className="inline-flex items-center gap-1.5 min-w-0 max-w-full"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void handleSaveLinkedIn();
+                    }}
+                  >
+                    <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] shrink-0" />
+                    <Input
+                      autoFocus
+                      value={linkedinDraft}
+                      onChange={(e) => setLinkedinDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          cancelLinkedInEditor();
+                        }
+                      }}
+                      placeholder="Paste LinkedIn URL…"
+                      disabled={savingLinkedIn}
+                      className="h-7 w-[min(100%,18rem)] sm:w-72 text-xs px-2"
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="ghost"
+                      disabled={savingLinkedIn}
+                      className="h-7 w-7 p-0 text-green-700 hover:text-green-800 hover:bg-green-50"
+                      title="Save LinkedIn"
+                    >
+                      {savingLinkedIn ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Check className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={savingLinkedIn}
+                      onClick={cancelLinkedInEditor}
+                      className="h-7 w-7 p-0 text-gray-500"
+                      title="Cancel"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </form>
+                ) : contactInfo.linkedin ? (
+                  <span className="inline-flex items-center gap-1">
+                    <a
+                      href={
+                        /^https?:\/\//i.test(contactInfo.linkedin)
+                          ? contactInfo.linkedin
+                          : `https://${contactInfo.linkedin}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-[#0A66C2] hover:underline"
+                      title={contactInfo.linkedin}
+                    >
+                      <Linkedin className="h-3.5 w-3.5" />
+                      LinkedIn
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={openLinkedInEditor}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                      title="Edit LinkedIn URL"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openLinkedInEditor}
+                    className="inline-flex items-center gap-1.5 text-gray-400 hover:text-[#0A66C2] hover:underline"
+                    title="Add LinkedIn profile URL"
                   >
                     <Linkedin className="h-3.5 w-3.5" />
-                    LinkedIn
-                    <ExternalLink className="h-3 w-3 opacity-60" />
-                  </a>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 text-gray-400">
-                    <Linkedin className="h-3.5 w-3.5" />
-                    No LinkedIn
-                  </span>
+                    Add LinkedIn
+                  </button>
                 )}
                 <span
                   className="inline-flex items-center gap-1.5"
