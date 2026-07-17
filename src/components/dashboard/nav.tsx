@@ -97,7 +97,7 @@ export function DashboardNav({ session }: DashboardNavProps) {
   return (
     <nav className="w-64 h-screen bg-sidebar border-r border-border fixed left-0 top-0 flex flex-col">
       <div className="p-6 border-b border-border flex items-center justify-between">
-        <h1 className="text-xl font-bold">RYVAN Recruiting</h1>
+        <h1 className="text-xl font-bold">Trio Recruiting</h1>
         {/* Theme Toggle */}
         <div className="flex gap-1">
           {themeOptions.map((option) => (

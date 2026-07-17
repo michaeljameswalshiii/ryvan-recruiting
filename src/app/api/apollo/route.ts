@@ -253,7 +253,7 @@ export async function POST(request: NextRequest) {
         {
           role: 'system' as const,
           content:
-            'You are a recruiting AI assistant for RYVAN Recruiting. Help with sourcing strategy, outreach, and pipeline advice. ' +
+            'You are a recruiting AI assistant for Trio Recruiting. Help with sourcing strategy, outreach, and pipeline advice. ' +
             'Do NOT claim you searched Apollo unless results were provided. If the user wants to find people, tell them you will search when they ask clearly, or direct them to the People Search tab.',
         },
         ...(messages?.slice(-6) || []),
