@@ -7,13 +7,20 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
 import { useCreateClient, useUpdateClient, clientKeys } from "@/lib/hooks/query-client";
+import {
+  companyStageOptions,
+  normalizeCompanyStage,
+} from "@/lib/schemas/client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
 interface Company {
   id: string;
   name: string;
+  /** Company-wide email (info@, jobs@, etc.) — not a person contact */
+  email?: string;
   domain?: string;
+  phone?: string;
   industry?: string;
   city?: string;
   state?: string;
@@ -36,17 +43,10 @@ interface CompanyEditModalProps {
   onOpenChange?: (open: boolean) => void;
 }
 
-// Pipeline stages (companies - 8 stages from schema)
-const pipelineStages = [
-  { id: "identification", label: "Identification" },
-  { id: "outreach", label: "Outreach" },
-  { id: "conversation", label: "Conversation" },
-  { id: "presented", label: "Presented" },
-  { id: "meeting", label: "Meeting" },
-  { id: "proposal", label: "Proposal" },
-  { id: "closed_won", label: "Closed Won" },
-  { id: "lost", label: "Lost" },
-];
+const pipelineStages = companyStageOptions.map((s) => ({
+  id: s.id,
+  label: s.label,
+}));
 
 export default function CompanyEditModal({
   company,
@@ -68,7 +68,9 @@ export default function CompanyEditModal({
   // Form state - initialize with company data
   const [formData, setFormData] = useState({
     name: "",
+    email: "",
     domain: "",
+    phone: "",
     industry: "",
     city: "",
     state: "",
@@ -91,7 +93,9 @@ export default function CompanyEditModal({
     if (open && company) {
       setFormData({
         name: company.name || "",
+        email: company.email || "",
         domain: company.domain || "",
+        phone: company.phone || "",
         industry: company.industry || "",
         city: company.city || "",
         state: company.state || "",
@@ -99,7 +103,7 @@ export default function CompanyEditModal({
         revenue: company.revenue || "",
         description: company.description || "",
         linkedin_url: company.linkedin_url || "",
-        status: company.status || "identification",
+        status: normalizeCompanyStage(company.status),
         contactName: company.contactName || "",
         contactEmail: company.contactEmail || "",
         contactPhone: company.contactPhone || "",
@@ -118,7 +122,10 @@ export default function CompanyEditModal({
     try {
       const formDataToSend = new FormData();
       formDataToSend.set("name", formData.name);
+      // Company-wide general email (info@ / jobs@) — optional
+      formDataToSend.set("email", formData.email.trim());
       formDataToSend.set("domain", formData.domain);
+      formDataToSend.set("phone", formData.phone);
       formDataToSend.set("industry", formData.industry);
       formDataToSend.set("city", formData.city);
       formDataToSend.set("state", formData.state);
@@ -130,15 +137,12 @@ export default function CompanyEditModal({
       formDataToSend.set("status", formData.status);
 
       if (company?.id) {
-        // Update existing company
         await updateClientMutation.mutateAsync({
           clientId: company.id,
           formData: formDataToSend,
         });
         toast.success(`${formData.name} updated successfully!`);
       } else {
-        // Create new company - add placeholder email
-        formDataToSend.set("email", `${Date.now()}@placeholder.com`);
         await createClientMutation.mutateAsync(formDataToSend);
         toast.success(`${formData.name} created successfully!`);
       }
@@ -158,7 +162,9 @@ export default function CompanyEditModal({
       // Reset form when closing
       setFormData({
         name: company.name || "",
+        email: company.email || "",
         domain: company.domain || "",
+        phone: company.phone || "",
         industry: company.industry || "",
         city: company.city || "",
         state: company.state || "",
@@ -166,7 +172,7 @@ export default function CompanyEditModal({
         revenue: company.revenue || "",
         description: company.description || "",
         linkedin_url: company.linkedin_url || "",
-        status: company.status || "identification",
+        status: normalizeCompanyStage(company.status),
         contactName: company.contactName || "",
         contactEmail: company.contactEmail || "",
         contactPhone: company.contactPhone || "",
@@ -175,7 +181,9 @@ export default function CompanyEditModal({
       // Reset for new company
       setFormData({
         name: "",
+        email: "",
         domain: "",
+        phone: "",
         industry: "",
         city: "",
         state: "",
@@ -236,15 +244,48 @@ export default function CompanyEditModal({
             />
           </div>
 
-          {/* Website */}
+          {/* Website + Phone */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid gap-2">
+              <Label htmlFor="company-domain">Website</Label>
+              <Input
+                id="company-domain"
+                value={formData.domain}
+                onChange={(e) =>
+                  setFormData({ ...formData, domain: e.target.value })
+                }
+                placeholder="abconstr.com"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="company-phone">Phone</Label>
+              <Input
+                id="company-phone"
+                type="tel"
+                value={formData.phone}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
+                placeholder="(555) 123-4567"
+              />
+            </div>
+          </div>
+
+          {/* Company-wide email (general inbox) */}
           <div className="grid gap-2">
-            <Label htmlFor="company-domain">Website</Label>
+            <Label htmlFor="company-email">Company email</Label>
             <Input
-              id="company-domain"
-              value={formData.domain}
-              onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-              placeholder="abconstr.com"
+              id="company-email"
+              type="email"
+              value={formData.email}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
+              placeholder="info@company.com or jobs@company.com"
             />
+            <p className="text-[11px] text-muted-foreground">
+              General company inbox (not a personal contact). Optional.
+            </p>
           </div>
 
           {/* Industry */}

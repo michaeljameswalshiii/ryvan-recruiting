@@ -19,6 +19,7 @@ import { useRemoveContact } from "@/lib/hooks/query-client";
 import { Building2, MapPin, Users, Globe, Linkedin, Mail, Phone, ArrowLeft, FileText, Clock, Briefcase, User, StickyNote, Plus, Star, Edit2, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { SendEmailModal } from "@/components/email/send-email-modal";
+import { companyStageLabel } from "@/lib/schemas/client";
 
 // Dynamic import for EventTimeline to avoid SSR issues
 const CompanyEventTimeline = dynamic(() => 
@@ -44,8 +45,8 @@ export default function CompanyDetailPage() {
 
   // Hooks must run unconditionally (redirect "new" via effect below)
   const tabFromUrl = searchParams.get("tab");
-  // Default to Contacts so company pages land on people at the account
-  const initialTab = tabFromUrl && validTabIds.has(tabFromUrl) ? tabFromUrl : "contacts";
+  // Overview is the hub: header identity + primary contact + notes
+  const initialTab = tabFromUrl && validTabIds.has(tabFromUrl) ? tabFromUrl : "overview";
   const [activeTab, setActiveTab] = useState(initialTab);
 
   // Keep tab state in sync when URL changes (e.g. in-app links with ?tab=contacts)
@@ -82,12 +83,12 @@ export default function CompanyDetailPage() {
     [allLeads, company?.name]
   );
 
-  // Keep URL in sync when switching tabs so links can open Contacts directly
+  // Keep URL in sync when switching tabs so links can deep-link (?tab=contacts)
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
     const next = new URLSearchParams(searchParams.toString());
-    if (tabId === "contacts") {
-      // Contacts is the default landing tab — keep the bare company URL clean
+    if (tabId === "overview") {
+      // Overview is default — keep the bare company URL clean
       next.delete("tab");
     } else {
       next.set("tab", tabId);
@@ -209,48 +210,113 @@ export default function CompanyDetailPage() {
     );
   }
 
+  const locationLabel = [company.city, company.state, company.country]
+    .filter(Boolean)
+    .join(", ");
+  const websiteHref = company.domain
+    ? company.domain.startsWith("http")
+      ? company.domain
+      : `https://${company.domain}`
+    : company.website
+      ? String(company.website).startsWith("http")
+        ? company.website
+        : `https://${company.website}`
+      : null;
+  const websiteLabel = company.domain || company.website || null;
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-4">
+      {/* Header — company + contact info live here (no duplicate cards on Overview) */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-4 min-w-0">
           <Link href="/dashboard/companies">
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" className="shrink-0">
               <ArrowLeft className="h-5 w-5" />
             </Button>
           </Link>
-          <div className="h-14 w-14 rounded-lg bg-primary/10 flex items-center justify-center">
+          <div className="h-14 w-14 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center">
             <Building2 className="h-7 w-7 text-primary" />
           </div>
-<div>
-            <h1 className="text-2xl font-bold">{company.name}</h1>
-<div className="flex items-center gap-2 text-muted-foreground">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold truncate">{company.name}</h1>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-muted-foreground">
               {company.status && (
-                <Badge variant={company.status === 'closed_won' ? 'default' : company.status === 'lost' ? 'destructive' : 'outline'}>
-                  {company.status === 'identification' ? 'Identification' : 
-                   company.status === 'outreach' ? 'Attempted Outreach' : 
-                   company.status === 'conversation' ? 'Conversation' : 
-                   company.status === 'presented' ? 'Candidate Presented' : 
-                   company.status === 'meeting' ? 'Meeting' : 
-                   company.status === 'proposal' ? 'Proposal' : 
-                   company.status === 'closed_won' ? 'Closed Won' : 
-                   company.status === 'lost' ? 'Lost' : 
-                   company.status}
+                <Badge
+                  variant={
+                    company.status === "closed_won" ||
+                    company.status === "client"
+                      ? "default"
+                      : company.status === "lost" || company.status === "dnu"
+                        ? "destructive"
+                        : "outline"
+                  }
+                >
+                  {companyStageLabel(company.status)}
                 </Badge>
               )}
-              {company.industry && <Badge variant="secondary">{company.industry}</Badge>}
-              {company.city && (
-                <span className="flex items-center gap-1 text-sm">
-                  <MapPin className="h-3 w-3" />
-                  {company.city}, {company.state}
+              {company.industry && (
+                <Badge variant="secondary">{company.industry}</Badge>
+              )}
+              {locationLabel && (
+                <span className="inline-flex items-center gap-1 text-sm">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                  {locationLabel}
                 </span>
               )}
             </div>
+            {(websiteHref ||
+              company.linkedin_url ||
+              company.phone ||
+              company.email) && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                {websiteHref && websiteLabel && (
+                  <a
+                    href={websiteHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                  >
+                    <Globe className="h-3.5 w-3.5 shrink-0" />
+                    {String(websiteLabel).replace(/^https?:\/\//, "")}
+                  </a>
+                )}
+                {company.email &&
+                  !String(company.email).includes("@placeholder.com") && (
+                  <a
+                    href={`mailto:${company.email}`}
+                    className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                    title="Company-wide email"
+                  >
+                    <Mail className="h-3.5 w-3.5 shrink-0" />
+                    {company.email}
+                  </a>
+                )}
+                {company.phone && (
+                  <a
+                    href={`tel:${String(company.phone).replace(/[^\d+]/g, "")}`}
+                    className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                  >
+                    <Phone className="h-3.5 w-3.5 shrink-0" />
+                    {company.phone}
+                  </a>
+                )}
+                {company.linkedin_url && (
+                  <a
+                    href={company.linkedin_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                  >
+                    <Linkedin className="h-3.5 w-3.5 shrink-0" />
+                    LinkedIn
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         </div>
-        
-{/* Action buttons */}
-        <div className="flex gap-2">
+
+        <div className="flex flex-wrap gap-2 shrink-0 sm:justify-end">
           <Button asChild>
             <Link href={`/dashboard/companies/${company.id}/edit`}>
               <Pencil className="mr-2 h-4 w-4" />
@@ -259,13 +325,20 @@ export default function CompanyDetailPage() {
           </Button>
           {company.linkedin_url && (
             <Button variant="outline" asChild>
-              <a href={company.linkedin_url} target="_blank" rel="noopener noreferrer">
+              <a
+                href={company.linkedin_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <Linkedin className="mr-2 h-4 w-4" />
                 LinkedIn
               </a>
             </Button>
           )}
-          <CompanyDeleteButton companyId={company.id} companyName={company.name} />
+          <CompanyDeleteButton
+            companyId={company.id}
+            companyName={company.name}
+          />
         </div>
       </div>
 
@@ -325,7 +398,7 @@ export default function CompanyDetailPage() {
   );
 }
 
-// Overview Tab Component
+// Overview Tab — primary contact + notes/activity (identity is in the page header)
 function OverviewTab({
   company,
   onViewContacts,
@@ -333,122 +406,45 @@ function OverviewTab({
   company: any;
   onViewContacts?: () => void;
 }) {
-  // Get primary contact from contacts array
   const contacts = Array.isArray(company.contacts) ? company.contacts : [];
   const primaryContact = contacts.find((c: any) => c.isPrimary) || contacts[0];
+  const primaryPhone =
+    primaryContact?.preferredPhone ||
+    primaryContact?.phone ||
+    primaryContact?.phones?.[0]?.number;
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      {/* Basic Info */}
-      <div className="p-6 rounded-lg border border-border bg-card space-y-4">
-        <h3 className="font-semibold flex items-center gap-2">
-          <Building2 className="h-5 w-5" />
-          Company Information
-        </h3>
-        
-<div className="space-y-3">
-          {company.industry && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Industry</span>
-              <span className="font-medium">{company.industry}</span>
-            </div>
-          )}
-          {/* Hide Employees and Revenue from UI - kept in DB */}
-          {/* {company.employee_count && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Employees</span>
-              <span className="font-medium">{company.employee_count}</span>
-            </div>
-          )}
-          {company.revenue && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Revenue</span>
-              <span className="font-medium">{company.revenue}</span>
-            </div>
-          )} */}
-          {company.country && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Country</span>
-              <span className="font-medium">{company.country}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Contact Info */}
-      <div className="p-6 rounded-lg border border-border bg-card space-y-4">
-        <h3 className="font-semibold flex items-center gap-2">
-          <Mail className="h-5 w-5" />
-          Contact Information
-        </h3>
-        
-        <div className="space-y-3">
-          {company.domain && (
-            <div className="flex items-center gap-3">
-              <Globe className="h-4 w-4 text-muted-foreground" />
-              <a 
-                href={`https://${company.domain}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
+    <div className="space-y-5">
+      {/* Primary contact */}
+      <div className="p-5 sm:p-6 rounded-2xl border border-border bg-card space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-muted-foreground">
+            <User className="h-4 w-4" />
+            Primary Contact
+            {primaryContact && (
+              <Badge
+                variant="secondary"
+                className="ml-1 bg-yellow-100 text-yellow-800 normal-case tracking-normal"
               >
-                {company.domain}
-              </a>
-            </div>
-          )}
-          {company.linkedin_url && (
-            <div className="flex items-center gap-3">
-              <Linkedin className="h-4 w-4 text-muted-foreground" />
-              <a 
-                href={company.linkedin_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                LinkedIn Profile
-              </a>
-            </div>
-          )}
-          {(company.city || company.state) && (
-            <div className="flex items-center gap-3">
-              <MapPin className="h-4 w-4 text-muted-foreground" />
-              <span>
-                {company.city}{company.city && company.state && ", "}{company.state}
-              </span>
-            </div>
-          )}
-          {onViewContacts && (
-            <Button variant="outline" size="sm" onClick={onViewContacts} className="mt-2">
-              <User className="h-4 w-4 mr-2" />
-              View Contacts ({contacts.length})
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Primary Contact - Show prominently */}
-      {primaryContact && (
-        <div className="md:col-span-2 p-6 rounded-lg border border-border bg-card space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="font-semibold flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Primary Contact
-              <Badge variant="secondary" className="ml-2 bg-yellow-100 text-yellow-800">
                 <Star className="h-3 w-3 mr-1" />
                 Primary
               </Badge>
-            </h3>
-            {onViewContacts && (
-              <Button variant="ghost" size="sm" onClick={onViewContacts}>
-                View all contacts
-              </Button>
             )}
-          </div>
+          </h3>
+          {onViewContacts && (
+            <Button variant="ghost" size="sm" onClick={onViewContacts}>
+              View all contacts
+              {contacts.length > 0 ? ` (${contacts.length})` : ""}
+            </Button>
+          )}
+        </div>
+
+        {primaryContact ? (
           <div className="flex items-center gap-4">
-            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+            <div className="h-12 w-12 shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
               <User className="h-6 w-6 text-primary" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="font-medium">
                 {primaryContact.id ? (
                   <Link
@@ -462,54 +458,70 @@ function OverviewTab({
                 )}
               </p>
               {primaryContact.title && (
-                <p className="text-sm text-muted-foreground">{primaryContact.title}</p>
+                <p className="text-sm text-muted-foreground">
+                  {primaryContact.title}
+                </p>
               )}
-              <div className="flex flex-wrap gap-3 mt-1">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
                 {primaryContact.email && (
-                  <a 
+                  <a
                     href={`mailto:${primaryContact.email}`}
-                    className="flex items-center gap-1 text-sm text-primary hover:underline"
+                    className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                   >
                     <Mail className="h-3 w-3" />
                     {primaryContact.email}
                   </a>
                 )}
-                {(primaryContact.preferredPhone || primaryContact.phone || primaryContact.phones?.[0]?.number) && (
-                  <a 
-                    href={`tel:${primaryContact.preferredPhone || primaryContact.phone || primaryContact.phones?.[0]?.number}`}
-                    className="flex items-center gap-1 text-sm text-primary hover:underline"
+                {primaryPhone && (
+                  <a
+                    href={`tel:${primaryPhone}`}
+                    className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                   >
                     <Phone className="h-3 w-3" />
-                    {primaryContact.preferredPhone || primaryContact.phone || primaryContact.phones?.[0]?.number}
+                    {primaryPhone}
                   </a>
                 )}
               </div>
             </div>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-dashed border-border px-4 py-6">
+            <p className="text-sm text-muted-foreground">
+              No contacts linked to this company yet.
+            </p>
+            {onViewContacts && (
+              <Button variant="outline" size="sm" onClick={onViewContacts}>
+                <User className="h-4 w-4 mr-2" />
+                Manage contacts
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
 
-      {/* Description */}
+      {/* Optional company description */}
       {company.description && (
-        <div className="md:col-span-2 p-6 rounded-lg border border-border bg-card space-y-4">
-          <h3 className="font-semibold flex items-center gap-2">
-            <FileText className="h-5 w-5" />
+        <div className="p-5 sm:p-6 rounded-2xl border border-border bg-card space-y-3">
+          <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-muted-foreground">
+            <FileText className="h-4 w-4" />
             About
           </h3>
-          <p className="text-muted-foreground leading-relaxed">
+          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
             {company.description}
           </p>
         </div>
       )}
+
+      {/* Notes & activity (same component as Timeline tab) */}
+      <CompanyEventTimeline companyId={company.id} />
     </div>
   );
 }
 
-// History Tab Component - Now uses EventTimeline
+// History Tab — full activity (also shown on Overview under Primary Contact)
 function HistoryTab({ company }: { company: any }) {
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold">Activity Timeline</h3>
       <CompanyEventTimeline companyId={company.id} />
     </div>
   );
