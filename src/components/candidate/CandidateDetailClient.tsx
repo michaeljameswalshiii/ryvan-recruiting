@@ -17,6 +17,8 @@ import {
   Sparkles,
   Briefcase,
   ChevronRight,
+  Linkedin,
+  DollarSign,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +37,7 @@ import {
   noteTypeFromStage,
   stageDisplayLabel,
 } from '@/lib/candidates/note-type-stage';
+import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
 
 /** Activity / note types shown in the log composer */
 const NOTE_TYPES = ACTIVITY_NOTE_TYPES;
@@ -60,34 +63,71 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   CANDIDATE_IMPORTED: 'Imported',
 };
 
-/** 5-step pipeline matching Candidates list + mockup */
+/**
+ * Pipeline chips on candidate detail.
+ * Sourced = recruiter-found; Applied = careers self-apply; Interested before Submitted.
+ * Legacy statuses (identification, etc.) still map into these steps.
+ */
 const PIPELINE_STEPS = [
-  { key: 'identified', label: 'Identified', match: ['sourced', 'identification', 'outreach', 'new', 'contacted', 'identified', 'left_message'] },
-  { key: 'submitted', label: 'Submitted', match: ['submitted', 'pre_screened', 'presented', 'conversation', 'qualified'] },
+  {
+    key: 'sourced',
+    label: 'Sourced',
+    match: [
+      'sourced',
+      'identification',
+      'outreach',
+      'new',
+      'contacted',
+      'identified',
+      'left_message',
+      'text',
+      'email',
+      'other',
+    ],
+  },
+  { key: 'applied', label: 'Applied', match: ['applied', 'application'] },
+  { key: 'interested', label: 'Interested', match: ['interested'] },
+  {
+    key: 'submitted',
+    label: 'Submitted',
+    match: ['submitted', 'pre_screened', 'presented', 'conversation', 'qualified'],
+  },
   { key: 'interviewing', label: 'Interviewing', match: ['interviewing', 'interview'] },
-  { key: 'offer_out', label: 'Offer Out', match: ['offer_out', 'offer', 'accept', 'offer_accepted'] },
-  { key: 'accepted', label: 'Accepted', match: ['placed', 'converted', 'hired', 'accepted'] },
+  {
+    key: 'offer_out',
+    label: 'Offer Out',
+    match: ['offer_out', 'offer', 'accept', 'offer_accepted'],
+  },
+  {
+    key: 'accepted',
+    label: 'Accepted',
+    match: ['placed', 'converted', 'hired', 'accepted'],
+  },
 ] as const;
 
 const REJECTED = ['rejected', 'not_interested', 'offer_declined', 'withdrawn'];
 
 function normalizeStage(raw?: string): string {
-  if (!raw) return 'identified';
+  if (!raw) return 'sourced';
   return String(raw).trim().toLowerCase().replace(/\s+/g, '_');
 }
 
 function stageIndex(status?: string): number {
   const s = normalizeStage(status);
   if (REJECTED.includes(s)) return -1;
+  // Exact key match first so "interested" does not collide with "not_interested"
+  // (not_interested already filtered above).
   for (let i = PIPELINE_STEPS.length - 1; i >= 0; i--) {
-    if (PIPELINE_STEPS[i].match.includes(s) || PIPELINE_STEPS[i].key === s) return i;
+    if (PIPELINE_STEPS[i].key === s || PIPELINE_STEPS[i].match.includes(s)) return i;
   }
   return 0;
 }
 
 function stageToApiStatus(stepKey: string): string {
   const map: Record<string, string> = {
-    identified: 'identification',
+    sourced: 'sourced',
+    applied: 'applied',
+    interested: 'interested',
     submitted: 'submitted',
     interviewing: 'interviewing',
     offer_out: 'offer_out',
@@ -99,7 +139,7 @@ function stageToApiStatus(stepKey: string): string {
 /**
  * Effective pipeline status: furthest of lead.status and linkedJobs[].stage.
  * List UI historically preferred linked job stage only — after status-only
- * advances those diverged and the person looked stuck on Identified.
+ * advances those diverged and the person looked stuck on early stages.
  */
 function resolveEffectiveStatus(candidate: any): string {
   const linked = Array.isArray(candidate?.linkedJobs) ? candidate.linkedJobs : [];
@@ -108,7 +148,7 @@ function resolveEffectiveStatus(candidate: any): string {
   for (const j of linked) {
     if (j?.stage) values.push(String(j.stage));
   }
-  if (values.length === 0) return 'identification';
+  if (values.length === 0) return 'sourced';
 
   const statusNorm = normalizeStage(candidate?.status);
   if (REJECTED.includes(statusNorm)) return statusNorm;
@@ -313,7 +353,8 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   };
 
   const handleAddNote = async () => {
-    if (!newNote.trim() || !candidateId) return;
+    if (!candidateId) return;
+    // Detail text optional — action type alone is enough
     setAddingNote(true);
     try {
       const res = await fetch(`/api/candidate/${candidateId}/notes`, {
@@ -755,6 +796,37 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                     {contactInfo.location}
                   </span>
                 )}
+                {contactInfo.linkedin ? (
+                  <a
+                    href={
+                      /^https?:\/\//i.test(contactInfo.linkedin)
+                        ? contactInfo.linkedin
+                        : `https://${contactInfo.linkedin}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[#0A66C2] hover:underline"
+                    title={contactInfo.linkedin}
+                  >
+                    <Linkedin className="h-3.5 w-3.5" />
+                    LinkedIn
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </a>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-gray-400">
+                    <Linkedin className="h-3.5 w-3.5" />
+                    No LinkedIn
+                  </span>
+                )}
+                <span
+                  className="inline-flex items-center gap-1.5"
+                  title="Salary target / range"
+                >
+                  <DollarSign className="h-3.5 w-3.5 text-gray-400" />
+                  {contactInfo.salaryRequirements?.trim()
+                    ? contactInfo.salaryRequirements
+                    : 'Salary not set'}
+                </span>
               </div>
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {primaryJob && (
@@ -764,6 +836,9 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 )}
                 <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-800">
                   {currentStepLabel}
+                </span>
+                <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">
+                  Added {formatShortDate(safe.createdAt)} · {safe.source || 'Manual'}
                 </span>
               </div>
             </div>
@@ -865,54 +940,16 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
           {/* Left column */}
           <div className="xl:col-span-7 space-y-5">
-            {/* Contact information */}
-            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-                  Contact Information
-                </h2>
-                <span className="text-xs text-gray-400">
-                  Added {formatShortDate(safe.createdAt)} · Source:{' '}
-                  {safe.source || 'Manual'}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-                <Field label="Full Name" value={contactInfo.name} />
-                <Field
-                  label="Email"
-                  value={contactInfo.email}
-                  href={
-                    contactInfo.email ? `mailto:${contactInfo.email}` : undefined
-                  }
-                />
-                <Field label="Phone" value={contactInfo.phone} />
-                <Field label="Location" value={contactInfo.location} />
-                <Field label="Current Title" value={contactInfo.title} />
-                <Field
-                  label="Salary Target"
-                  value={contactInfo.salaryRequirements || 'Not specified'}
-                />
-                <Field
-                  label="LinkedIn"
-                  value={contactInfo.linkedin || 'Not added'}
-                  href={contactInfo.linkedin || undefined}
-                />
-                <Field
-                  label="Address"
-                  value={contactInfo.fullAddress || '—'}
-                />
-              </div>
-              {typeof safe.notes === 'string' && safe.notes.trim() && (
-                <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/80 p-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-900/80">
-                    Application message / notes
-                  </h3>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-amber-950">
-                    {safe.notes}
-                  </p>
-                </div>
-              )}
-            </section>
+            {typeof safe.notes === 'string' && safe.notes.trim() && (
+              <section className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-900/80">
+                  Application message / notes
+                </h3>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-amber-950">
+                  {safe.notes}
+                </p>
+              </section>
+            )}
 
             {/* Pipeline stage */}
             <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
@@ -923,7 +960,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   : ''}
               </h2>
               <div className="mt-4">
-                <div className="flex items-center gap-1 mb-2">
+                <div className="flex flex-wrap items-center gap-1 mb-2">
                   {PIPELINE_STEPS.map((step, i) => {
                     const active = i === currentStep;
                     const done = currentStep >= 0 && i < currentStep;
@@ -934,7 +971,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                           disabled={updatingStage}
                           title={`Set stage to ${step.label}`}
                           onClick={() => void jumpToStep(i)}
-                          className={`flex-1 text-center rounded-lg border px-2 py-2.5 text-xs font-semibold transition-colors disabled:opacity-60 ${
+                          className={`min-w-[4.5rem] flex-1 text-center rounded-lg border px-1.5 py-2 text-[11px] sm:text-xs font-semibold transition-colors disabled:opacity-60 ${
                             active
                               ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                               : done
@@ -945,7 +982,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                           {step.label}
                         </button>
                         {i < PIPELINE_STEPS.length - 1 && (
-                          <ChevronRight className="h-4 w-4 text-gray-300 shrink-0" />
+                          <ChevronRight className="h-4 w-4 text-gray-300 shrink-0 hidden sm:block" />
                         )}
                       </React.Fragment>
                     );
@@ -1006,7 +1043,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   Notes & Activity Log
                 </h2>
                 <p className="text-xs text-gray-400 mt-1">
-                  Stage types (Submitted, Interview, Offer Out, …) update the
+                  Stage types (Applied, Interested, Submitted, …) update the
                   pipeline automatically — no separate stage change needed
                 </p>
               </div>
@@ -1027,7 +1064,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 <Input
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Add note detail here..."
+                  placeholder="Optional note detail..."
                   className="flex-1 bg-white"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1038,7 +1075,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 />
                 <Button
                   onClick={handleAddNote}
-                  disabled={!newNote.trim() || addingNote}
+                  disabled={addingNote}
                   className="bg-blue-600 hover:bg-blue-700 shrink-0"
                 >
                   {addingNote ? (
@@ -1158,7 +1195,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                                   </div>
                                 </div>
                               ) : (
-                                getNoteBody(note)
+                                <ExpandableNoteText text={getNoteBody(note)} />
                               )}
                             </td>
                             <td className="px-3 py-3 align-top text-right">
@@ -1394,9 +1431,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                           >
                             {label}
                           </span>
-                          <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                            {getNoteBody(note)}
-                          </p>
+                          <ExpandableNoteText text={getNoteBody(note)} />
                         </>
                       )}
                     </div>
@@ -1677,36 +1712,6 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
           await fetchNotes();
         }}
       />
-    </div>
-  );
-}
-
-function Field({
-  label,
-  value,
-  href,
-}: {
-  label: string;
-  value?: string;
-  href?: string;
-}) {
-  return (
-    <div>
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">
-        {label}
-      </div>
-      {href && value && value !== '—' && value !== 'Not added' ? (
-        <a
-          href={href}
-          target={href.startsWith('http') ? '_blank' : undefined}
-          rel="noreferrer"
-          className="text-sm text-blue-600 hover:underline break-all"
-        >
-          {value}
-        </a>
-      ) : (
-        <div className="text-sm text-gray-900 break-words">{value || '—'}</div>
-      )}
     </div>
   );
 }
