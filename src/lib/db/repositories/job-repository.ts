@@ -164,6 +164,10 @@ export async function createJob(tenantId: string, data: CreateJobInput): Promise
     modified_at: now,
   };
 
+  if (data.preScreenQuestions !== undefined) {
+    job.preScreenQuestions = data.preScreenQuestions;
+  }
+
   // Save to DynamoDB
   await putItem(jobsTable, job);
 
@@ -230,6 +234,11 @@ export async function updateJob(
     updates.push('#showOnWebsite = :showOnWebsite');
     values[':showOnWebsite'] = data.showOnWebsite === true;
     names['#showOnWebsite'] = 'showOnWebsite';
+  }
+  if (data.preScreenQuestions !== undefined) {
+    updates.push('#preScreenQuestions = :preScreenQuestions');
+    values[':preScreenQuestions'] = data.preScreenQuestions;
+    names['#preScreenQuestions'] = 'preScreenQuestions';
   }
 
   if (updates.length === 0) {
@@ -424,12 +433,14 @@ export async function updateCandidateStageInJob(
     throw new Error('Job not found');
   }
 
-  // Update the candidate's stage in the array
+  // Update the candidate's stage in the array (+ stageUpdatedAt for desk "stale" calc)
+  const now = new Date().toISOString();
   const updatedCandidates = (job.candidates || []).map(c => {
     if (c.candidateId === data.candidateId) {
       return {
         ...c,
         stage: data.stage,
+        stageUpdatedAt: now,
         notes: data.notes !== undefined ? data.notes : c.notes,
       };
     }
@@ -442,7 +453,7 @@ export async function updateCandidateStageInJob(
     'SET #candidates = :candidates, #modified_at = :modified_at',
     {
       ':candidates': updatedCandidates,
-      ':modified_at': new Date().toISOString(),
+      ':modified_at': now,
     },
     {
       '#candidates': 'candidates',

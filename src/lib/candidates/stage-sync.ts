@@ -11,6 +11,7 @@ import {
   getSessionUserId,
 } from '@/lib/server-auth';
 import { getLeadById, updateLead } from '@/lib/db/repositories/lead-repository';
+import { updateCandidateStageInJob } from '@/lib/db/repositories/job-repository';
 import { stageFromNoteType } from '@/lib/candidates/note-type-stage';
 
 /** Normalize status strings for equality checks */
@@ -145,6 +146,32 @@ export async function setCandidatePipelineStage(
     }
 
     await updateLead(tenantId, candidateId, patch as any);
+
+    // Also sync job.candidates[] (desk next-actions reads stage from the job record).
+    // Prefer linkedJobs; fall back to any job ids we can infer.
+    const jobIds = new Set<string>();
+    for (const j of linked) {
+      if (j?.jobId) jobIds.add(String(j.jobId));
+    }
+    if (options?.primaryJobOnly && linked[0]?.jobId) {
+      jobIds.clear();
+      jobIds.add(String(linked[0].jobId));
+    }
+    for (const jobId of jobIds) {
+      try {
+        await updateCandidateStageInJob(tenantId, jobId, {
+          candidateId,
+          stage: target as any,
+        });
+      } catch (syncErr) {
+        console.warn(
+          '[stage-sync] job.candidates stage sync failed',
+          jobId,
+          candidateId,
+          syncErr
+        );
+      }
+    }
 
     return {
       stageUpdated: true,
