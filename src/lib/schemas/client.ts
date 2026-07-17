@@ -5,16 +5,21 @@
  * Validation schema for client/company data
  */
 
-// Pipeline stages for companies (same as candidates)
+// Pipeline stages for companies (BD + account status)
+// Keep legacy `presented` in the enum so old records still validate;
+// UI options use Proposal instead (same meaning).
 const companyStageValues = [
   'identification',
-  'outreach', 
+  'outreach',
   'conversation',
-  'presented',
+  'presented', // legacy — prefer `proposal`
   'meeting',
   'proposal',
   'closed_won',
-  'lost'
+  'client',
+  'known_user',
+  'dnu',
+  'lost',
 ] as const;
 
 // -----------------------------------------------------------------------------
@@ -49,6 +54,8 @@ export const contactSchema = z.object({
   preferredPhoneType: z.string().max(20).optional().or(z.literal('')),
   isPrimary: z.boolean().default(false),
   notes: z.string().max(500).optional().or(z.literal('')),
+  /** Personal LinkedIn profile URL (same idea as candidates) */
+  linkedin_url: z.string().max(300).optional().or(z.literal('')),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
 });
@@ -109,12 +116,33 @@ export const companyStageOptions = [
   { id: 'identification', label: 'Identification', color: 'bg-blue-500' },
   { id: 'outreach', label: 'Outreach', color: 'bg-yellow-500' },
   { id: 'conversation', label: 'Conversation', color: 'bg-purple-500' },
-  { id: 'presented', label: 'Presented', color: 'bg-indigo-500' },
   { id: 'meeting', label: 'Meeting', color: 'bg-orange-500' },
   { id: 'proposal', label: 'Proposal', color: 'bg-pink-500' },
   { id: 'closed_won', label: 'Closed Won', color: 'bg-green-500' },
+  { id: 'client', label: 'Client', color: 'bg-emerald-600' },
+  { id: 'known_user', label: 'Known User', color: 'bg-sky-500' },
+  { id: 'dnu', label: 'DNU', color: 'bg-slate-500' },
   { id: 'lost', label: 'Lost', color: 'bg-red-500' },
 ] as const;
+
+/** Normalize legacy company stage values for forms / display */
+export function normalizeCompanyStage(status?: string | null): string {
+  if (!status) return 'identification';
+  const s = String(status).trim().toLowerCase().replace(/\s+/g, '_');
+  if (s === 'presented' || s === 'candidate_presented') return 'proposal';
+  if (s === 'won' || s === 'active') return 'closed_won';
+  if (s === 'do_not_use' || s === 'donotuse') return 'dnu';
+  if (s === 'knownuser' || s === 'known') return 'known_user';
+  return s;
+}
+
+export function companyStageLabel(status?: string | null): string {
+  const key = normalizeCompanyStage(status);
+  const found = companyStageOptions.find((o) => o.id === key);
+  if (found) return found.label;
+  if (key === 'presented') return 'Proposal';
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 // Also export as companyStages for backward compatibility
 export { companyStageOptions as companyStages };

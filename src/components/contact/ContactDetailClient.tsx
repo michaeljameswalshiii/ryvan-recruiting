@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import {
   Mail,
   Phone,
-  MapPin,
   Pencil,
   Trash2,
   Loader2,
@@ -15,6 +14,10 @@ import {
   ChevronRight,
   Star,
   Users,
+  Linkedin,
+  ExternalLink,
+  Check,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,32 +30,14 @@ import {
 } from '@/lib/actions/contact-actions';
 import { getDisplayPhone, getDisplayPhoneType } from '@/lib/contacts/phone';
 import { SendEmailModal } from '@/components/email/send-email-modal';
+import {
+  CONTACT_ACTIVITY_TYPES,
+  stripActivityTypePrefix,
+} from '@/lib/contacts/activity-types';
+import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
 
-/** Contact activity types (BD-focused, matches prior contact tooling) */
-const NOTE_TYPES = [
-  '01 Left Voicemail',
-  '02 Email Sent',
-  '03 Email Received',
-  '04 Text Sent',
-  '05 Text Received',
-  '06 LinkedIn Message Sent',
-  '07 Conversation Engaged',
-  '08 No Answer',
-  '09 Initial Outreach',
-  '10 Qualification Call',
-  '11 Discovery Call',
-  '12 Demo / Presentation',
-  '13 Proposal Sent',
-  '14 Proposal Review',
-  '15 Contract Sent',
-  '16 Contract Signed',
-  '17 Meeting Scheduled',
-  '18 Meeting Completed',
-  '19 Follow-up Needed',
-  '20 Follow-up Completed',
-  '21 Note',
-  '22 Other',
-];
+/** Contact activity types (no numeric prefixes) */
+const NOTE_TYPES = [...CONTACT_ACTIVITY_TYPES];
 
 function getInitials(name: string) {
   if (!name) return '?';
@@ -107,35 +92,6 @@ function noteTypeBadgeClass(label: string) {
   return 'bg-indigo-50 text-indigo-800 border-indigo-100';
 }
 
-function Field({
-  label,
-  value,
-  href,
-}: {
-  label: string;
-  value?: string;
-  href?: string;
-}) {
-  return (
-    <div>
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">
-        {label}
-      </div>
-      {href && value && value !== '—' ? (
-        <a
-          href={href}
-          target={href.startsWith('http') ? '_blank' : undefined}
-          rel="noreferrer"
-          className="text-sm text-blue-600 hover:underline break-all"
-        >
-          {value}
-        </a>
-      ) : (
-        <div className="text-sm text-gray-900 break-words">{value || '—'}</div>
-      )}
-    </div>
-  );
-}
 
 interface ContactDetailClientProps {
   contact: any;
@@ -164,7 +120,7 @@ export default function ContactDetailClient({
   >('overview');
   const [activities, setActivities] = useState<any[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
-  const [noteType, setNoteType] = useState('21 Note');
+  const [noteType, setNoteType] = useState('Note');
   const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
@@ -177,9 +133,16 @@ export default function ContactDetailClient({
     phone: displayPhone || '',
     notes: typeof contact.notes === 'string' ? contact.notes : '',
     isPrimary: !!contact.isPrimary,
+    linkedin_url:
+      contact.linkedin_url || contact.linkedin || contact.linkedinUrl || '',
   });
   const [showEditModal, setShowEditModal] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  /** Inline LinkedIn paste/save in header (same pattern as candidates) */
+  const [editingLinkedIn, setEditingLinkedIn] = useState(false);
+  const [linkedinDraft, setLinkedinDraft] = useState('');
+  const [savingLinkedIn, setSavingLinkedIn] = useState(false);
 
   const removeContact = useRemoveContact();
   const updateContact = useUpdateContact();
@@ -230,29 +193,87 @@ export default function ContactDetailClient({
       phone: getDisplayPhone(contact) || '',
       notes: typeof contact.notes === 'string' ? contact.notes : '',
       isPrimary: !!contact.isPrimary,
+      linkedin_url:
+        contact.linkedin_url || contact.linkedin || contact.linkedinUrl || '',
     });
   }, [contact]);
 
-  const getActivityType = (act: any) =>
-    act.type || act.metadata?.noteType || act.metadata?.noteTypeLabel || 'Note';
+  const normalizeLinkedInUrl = (raw: string): string => {
+    const s = raw.trim();
+    if (!s) return '';
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^(www\.)?linkedin\.com\//i.test(s)) {
+      return `https://${s.replace(/^www\./i, 'www.')}`;
+    }
+    if (/^[\w-]+$/.test(s)) {
+      return `https://www.linkedin.com/in/${s}`;
+    }
+    return s;
+  };
 
-  const getActivityBody = (act: any) =>
-    act.content ||
-    act.description ||
-    act.metadata?.noteText ||
-    act.title ||
-    '—';
+  const saveLinkedInUrl = async (value: string) => {
+    if (!companyId || !contactId) {
+      toast.error('Missing company or contact ID');
+      return;
+    }
+    const linkedin_url = normalizeLinkedInUrl(value);
+    setSavingLinkedIn(true);
+    try {
+      await updateContact.mutateAsync({
+        clientId: companyId,
+        contactId,
+        contactData: { linkedin_url },
+      });
+      setForm((prev) => ({ ...prev, linkedin_url }));
+      contact.linkedin_url = linkedin_url;
+      setEditingLinkedIn(false);
+      setLinkedinDraft('');
+      toast.success(linkedin_url ? 'LinkedIn saved' : 'LinkedIn cleared');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save LinkedIn');
+    } finally {
+      setSavingLinkedIn(false);
+    }
+  };
+
+  const getActivityType = (act: any) =>
+    stripActivityTypePrefix(
+      act.type || act.metadata?.noteType || act.metadata?.noteTypeLabel || 'Note'
+    );
+
+  const getActivityBody = (act: any) => {
+    const text =
+      act.metadata?.noteText ||
+      act.content ||
+      act.description ||
+      '';
+    // If content is empty or only echoes the action type, show a dash
+    const t = String(text || '').trim();
+    const typeLabel = stripActivityTypePrefix(
+      act.type || act.metadata?.noteType || ''
+    );
+    if (
+      !t ||
+      t === String(act.type || '').trim() ||
+      stripActivityTypePrefix(t) === typeLabel
+    ) {
+      return '—';
+    }
+    return t;
+  };
 
   const handleLogNote = async () => {
-    if (!newNote.trim() || !contactId) return;
+    if (!contactId) return;
+    // Detail text optional — activity type alone is enough (e.g. No Answer)
     setAddingNote(true);
     try {
+      const content = newNote.trim();
       const res = await fetch(`/api/data/contacts/${contactId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: noteType,
-          content: newNote.trim(),
+          content,
           companyId: companyId || undefined,
         }),
       });
@@ -261,10 +282,10 @@ export default function ContactDetailClient({
           contactId,
           companyId: companyId || undefined,
           type: noteType,
-          content: newNote.trim(),
+          content: content || noteType,
         });
       }
-      toast.success('Note logged');
+      toast.success('Activity logged');
       setNewNote('');
       await fetchActivities();
     } catch (err: any) {
@@ -286,6 +307,7 @@ export default function ContactDetailClient({
     }
     setSaving(true);
     try {
+      const linkedin_url = normalizeLinkedInUrl(form.linkedin_url || '');
       await updateContact.mutateAsync({
         clientId: companyId,
         contactId,
@@ -296,6 +318,7 @@ export default function ContactDetailClient({
           phone: form.phone || '',
           notes: form.notes || '',
           isPrimary: !!form.isPrimary,
+          linkedin_url,
         },
       });
       setShowEditModal(false);
@@ -306,6 +329,8 @@ export default function ContactDetailClient({
       contact.email = form.email;
       contact.notes = form.notes;
       contact.isPrimary = form.isPrimary;
+      contact.linkedin_url = linkedin_url;
+      setForm((prev) => ({ ...prev, linkedin_url }));
     } catch (err: any) {
       toast.error(err?.message || 'Failed to save');
     } finally {
@@ -406,11 +431,128 @@ export default function ContactDetailClient({
                     ) : null}
                   </a>
                 )}
+                {editingLinkedIn ? (
+                  <form
+                    className="inline-flex items-center gap-1.5 min-w-0 max-w-full"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void saveLinkedInUrl(linkedinDraft);
+                    }}
+                  >
+                    <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] shrink-0" />
+                    <Input
+                      autoFocus
+                      value={linkedinDraft}
+                      onChange={(e) => setLinkedinDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setEditingLinkedIn(false);
+                          setLinkedinDraft('');
+                        }
+                      }}
+                      placeholder="Paste LinkedIn URL…"
+                      disabled={savingLinkedIn}
+                      className="h-7 w-[min(100%,18rem)] sm:w-72 text-xs px-2"
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="ghost"
+                      disabled={savingLinkedIn}
+                      className="h-7 w-7 p-0 text-green-700 hover:bg-green-50"
+                      title="Save LinkedIn"
+                    >
+                      {savingLinkedIn ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Check className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={savingLinkedIn}
+                      onClick={() => {
+                        setEditingLinkedIn(false);
+                        setLinkedinDraft('');
+                      }}
+                      className="h-7 w-7 p-0 text-gray-500"
+                      title="Cancel"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </form>
+                ) : form.linkedin_url ? (
+                  <span className="inline-flex items-center gap-1">
+                    <a
+                      href={
+                        /^https?:\/\//i.test(form.linkedin_url)
+                          ? form.linkedin_url
+                          : `https://${form.linkedin_url}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-[#0A66C2] hover:underline"
+                      title={form.linkedin_url}
+                    >
+                      <Linkedin className="h-3.5 w-3.5" />
+                      LinkedIn
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLinkedinDraft(form.linkedin_url || '');
+                        setEditingLinkedIn(true);
+                      }}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                      title="Edit LinkedIn URL"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLinkedinDraft('');
+                      setEditingLinkedIn(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-gray-400 hover:text-[#0A66C2] hover:underline"
+                    title="Add LinkedIn profile URL"
+                  >
+                    <Linkedin className="h-3.5 w-3.5" />
+                    Add LinkedIn
+                  </button>
+                )}
               </div>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2 shrink-0">
+            {form.linkedin_url ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-[#0A66C2]/30 text-[#0A66C2] hover:bg-[#0A66C2]/5"
+                asChild
+              >
+                <a
+                  href={
+                    /^https?:\/\//i.test(form.linkedin_url)
+                      ? form.linkedin_url
+                      : `https://${form.linkedin_url}`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Linkedin className="h-3.5 w-3.5 mr-1.5" />
+                  LinkedIn
+                </a>
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               size="sm"
@@ -499,56 +641,29 @@ export default function ContactDetailClient({
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
           <div className="xl:col-span-7 space-y-5">
-            {/* Contact information */}
+            {/* Notes & activity — primary content (header already shows contact identity) */}
             <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between gap-3 mb-4">
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-                  Contact Information
+                  Notes & Activity Log
                 </h2>
-                <span className="text-xs text-gray-400">
-                  {contact.createdAt
-                    ? `Added ${formatShortDate(contact.createdAt)}`
-                    : null}
-                </span>
+                {contact.createdAt && (
+                  <span className="text-xs text-gray-400 shrink-0">
+                    Added {formatShortDate(contact.createdAt)}
+                  </span>
+                )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-                <Field label="Full Name" value={form.name || contact.name} />
-                <Field
-                  label="Email"
-                  value={email || '—'}
-                  href={email ? `mailto:${email}` : undefined}
-                />
-                <Field label="Phone" value={phone || '—'} />
-                <Field label="Phone Type" value={displayPhoneType || '—'} />
-                <Field label="Title" value={form.title || contact.title || '—'} />
-                <Field
-                  label="Company"
-                  value={companyName}
-                  href={companyHref || undefined}
-                />
-                <Field
-                  label="Primary"
-                  value={form.isPrimary || contact.isPrimary ? 'Yes' : 'No'}
-                />
-                <Field label="Contact ID" value={contactId || '—'} />
-              </div>
-              {(form.notes || (typeof contact.notes === 'string' && contact.notes)) && (
-                <div className="mt-5 pt-4 border-t border-gray-100">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">
-                    Static notes
+              {(form.notes ||
+                (typeof contact.notes === 'string' && contact.notes.trim())) && (
+                <div className="mb-4 rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-2.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-800/70 mb-0.5">
+                    Profile notes
                   </div>
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                  <p className="text-sm text-amber-950 whitespace-pre-wrap">
                     {form.notes || contact.notes}
                   </p>
                 </div>
               )}
-            </section>
-
-            {/* Notes & activity */}
-            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-4">
-                Notes & Activity Log
-              </h2>
               <div className="flex flex-col sm:flex-row gap-2 mb-5">
                 <select
                   value={noteType}
@@ -564,7 +679,7 @@ export default function ContactDetailClient({
                 <Input
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Add note detail here..."
+                  placeholder="Optional note detail..."
                   className="flex-1 bg-white"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -575,7 +690,7 @@ export default function ContactDetailClient({
                 />
                 <Button
                   onClick={handleLogNote}
-                  disabled={!newNote.trim() || addingNote}
+                  disabled={addingNote}
                   className="bg-blue-600 hover:bg-blue-700 shrink-0"
                 >
                   {addingNote ? (
@@ -630,8 +745,8 @@ export default function ContactDetailClient({
                                 {label}
                               </span>
                             </td>
-                            <td className="px-3 py-3 text-sm text-gray-800 align-top">
-                              {getActivityBody(act)}
+                            <td className="px-3 py-3 align-top">
+                              <ExpandableNoteText text={getActivityBody(act)} />
                             </td>
                           </tr>
                         );
@@ -675,12 +790,20 @@ export default function ContactDetailClient({
                     {companyJobs.length}
                   </span>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <span className="text-gray-500">Contact ID</span>
-                  <span className="font-mono text-xs text-gray-600 truncate max-w-[180px]">
-                    {contactId}
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Primary contact</span>
+                  <span className="font-medium">
+                    {form.isPrimary || contact.isPrimary ? 'Yes' : 'No'}
                   </span>
                 </div>
+                {contact.createdAt && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Added</span>
+                    <span className="font-medium">
+                      {formatShortDate(contact.createdAt)}
+                    </span>
+                  </div>
+                )}
               </div>
             </section>
 
@@ -775,12 +898,12 @@ export default function ContactDetailClient({
             <Input
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
-              placeholder="Add note detail here..."
+              placeholder="Optional note detail..."
               className="flex-1 bg-white"
             />
             <Button
               onClick={handleLogNote}
-              disabled={!newNote.trim() || addingNote}
+              disabled={addingNote}
               className="bg-blue-600 hover:bg-blue-700"
             >
               {addingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Log'}
@@ -814,9 +937,7 @@ export default function ContactDetailClient({
                       >
                         {label}
                       </span>
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                        {getActivityBody(act)}
-                      </p>
+                      <ExpandableNoteText text={getActivityBody(act)} />
                     </div>
                   </div>
                 );
@@ -912,6 +1033,7 @@ export default function ContactDetailClient({
                     ['title', 'Title'],
                     ['email', 'Email'],
                     ['phone', 'Phone'],
+                    ['linkedin_url', 'LinkedIn URL'],
                   ] as const
                 ).map(([key, label]) => (
                   <div key={key}>
@@ -922,6 +1044,11 @@ export default function ContactDetailClient({
                       value={(form as any)[key] || ''}
                       onChange={(e) =>
                         setForm({ ...form, [key]: e.target.value })
+                      }
+                      placeholder={
+                        key === 'linkedin_url'
+                          ? 'https://linkedin.com/in/...'
+                          : undefined
                       }
                     />
                   </div>

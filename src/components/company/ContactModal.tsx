@@ -19,6 +19,7 @@ interface Contact {
   phone?: string;
   isPrimary?: boolean;
   notes?: string;
+  linkedin_url?: string;
 }
 
 interface ContactModalProps {
@@ -59,6 +60,7 @@ export default function ContactModal({
     phone: "",
     isPrimary: false,
     notes: "",
+    linkedin_url: "",
   });
 
   // Mutations
@@ -88,6 +90,7 @@ export default function ContactModal({
           phone: contact.phone || "",
           isPrimary: contact.isPrimary || false,
           notes: contact.notes || "",
+          linkedin_url: contact.linkedin_url || "",
         });
 } else if (open) {
         // New contact - use passed clientId or first company (only if companies are loaded)
@@ -100,6 +103,7 @@ export default function ContactModal({
           phone: "",
           isPrimary: false,
           notes: "",
+          linkedin_url: "",
         });
       }
     }
@@ -131,6 +135,7 @@ export default function ContactModal({
             phone: formData.phone,
             isPrimary: formData.isPrimary,
             notes: formData.notes,
+            linkedin_url: formData.linkedin_url,
           },
         });
         toast.success(`${formData.name} updated successfully!`);
@@ -145,6 +150,7 @@ export default function ContactModal({
             phone: formData.phone,
             isPrimary: formData.isPrimary,
             notes: formData.notes,
+            linkedin_url: formData.linkedin_url,
           },
         });
         toast.success(`${formData.name} added successfully!`);
@@ -170,6 +176,7 @@ export default function ContactModal({
         phone: contact.phone || "",
         isPrimary: contact.isPrimary || false,
         notes: contact.notes || "",
+        linkedin_url: contact.linkedin_url || "",
       });
     } else if (!isOpen) {
       setFormData({
@@ -180,6 +187,7 @@ export default function ContactModal({
         phone: "",
         isPrimary: false,
         notes: "",
+        linkedin_url: "",
       });
     }
     setOpen(isOpen);
@@ -311,6 +319,19 @@ export default function ContactModal({
                 setFormData({ ...formData, phone: e.target.value })
               }
               placeholder="+1 (555) 123-4567"
+            />
+          </div>
+
+          {/* LinkedIn */}
+          <div className="grid gap-2">
+            <Label htmlFor="contact-linkedin">LinkedIn URL</Label>
+            <Input
+              id="contact-linkedin"
+              value={formData.linkedin_url}
+              onChange={(e) =>
+                setFormData({ ...formData, linkedin_url: e.target.value })
+              }
+              placeholder="https://linkedin.com/in/..."
             />
           </div>
 
