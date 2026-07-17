@@ -5,6 +5,8 @@ import { Send, Sparkles, Bot, User, Copy, Check, Cloud, KeyRound } from "lucide-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateCrmCaches } from "@/lib/hooks/invalidate-crm-cache";
 
 interface Message {
   id: string;
@@ -13,7 +15,44 @@ interface Message {
   timestamp: Date;
 }
 
-type AiProvider = "bedrock" | "anthropic" | "grok";
+type AiProvider = "bedrock" | "anthropic" | "openai" | "gemini" | "grok";
+
+/** Platform Bedrock model pick (Claude + Amazon Nova) */
+type PlatformModel =
+  | "auto"
+  | "haiku"
+  | "sonnet"
+  | "nova-lite"
+  | "nova-pro";
+
+/** "Today, 11:04 AM" or "Jul 15, 11:04 AM" */
+function formatMessageTime(ts: Date | string) {
+  try {
+    const d = typeof ts === "string" ? new Date(ts) : ts;
+    if (!(d instanceof Date) || Number.isNaN(d.getTime())) return "";
+    const time = d.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startMsg = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round(
+      (startToday.getTime() - startMsg.getTime()) / 86400000
+    );
+    if (diffDays === 0) return `Today, ${time}`;
+    if (diffDays === 1) return `Yesterday, ${time}`;
+    const sameYear = d.getFullYear() === now.getFullYear();
+    const date = d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      ...(sameYear ? {} : { year: "numeric" }),
+    });
+    return `${date}, ${time}`;
+  } catch {
+    return "";
+  }
+}
 
 const quickActions = [
   "Find construction companies in Boca Raton",
@@ -29,12 +68,16 @@ const sourcingActions = [
 ];
 
 export default function AIAssistantPage() {
+  const queryClient = useQueryClient();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [provider, setProvider] = useState<AiProvider>("bedrock");
+  const [platformModel, setPlatformModel] = useState<PlatformModel>("auto");
   const [hasAnthropicKey, setHasAnthropicKey] = useState(false);
+  const [hasOpenaiKey, setHasOpenaiKey] = useState(false);
+  const [hasGeminiKey, setHasGeminiKey] = useState(false);
   const [hasGrokKey, setHasGrokKey] = useState(false);
   const [lastProviderUsed, setLastProviderUsed] = useState<string | null>(null);
 
@@ -45,7 +88,7 @@ export default function AIAssistantPage() {
         id: "welcome",
         role: "assistant" as const,
         content:
-          "✅ AI Assistant ready. Use Platform Bedrock, your Anthropic key, or Grok (Settings → AI Providers). What would you like to source?",
+          "✅ AI Assistant ready. Use Platform Bedrock or your own Anthropic, OpenAI, Gemini, or Grok key (Settings → AI Providers). What would you like to source?",
         timestamp: new Date(),
       },
     ]);
@@ -56,9 +99,15 @@ export default function AIAssistantPage() {
       .then((data) => {
         if (!data) return;
         setHasAnthropicKey(!!data.hasAnthropicKey);
+        setHasOpenaiKey(!!data.hasOpenaiKey);
+        setHasGeminiKey(!!data.hasGeminiKey);
         setHasGrokKey(!!data.hasGrokKey);
         if (data.preferredProvider === "anthropic" && data.hasAnthropicKey) {
           setProvider("anthropic");
+        } else if (data.preferredProvider === "openai" && data.hasOpenaiKey) {
+          setProvider("openai");
+        } else if (data.preferredProvider === "gemini" && data.hasGeminiKey) {
+          setProvider("gemini");
         } else if (data.preferredProvider === "grok" && data.hasGrokKey) {
           setProvider("grok");
         }
@@ -66,10 +115,24 @@ export default function AIAssistantPage() {
       .catch(() => {});
   }, []);
 
+  const missingKeyMessage = (name: string) =>
+    `No ${name} API key on file. Add one under Settings → AI Providers, or switch to Platform (Bedrock).`;
+
   const sendMessage = async (content: string) => {
     if (!content.trim()) return;
 
-    if (provider === "anthropic" && !hasAnthropicKey) {
+    const keyChecks: Array<{
+      id: AiProvider;
+      has: boolean;
+      label: string;
+    }> = [
+      { id: "anthropic", has: hasAnthropicKey, label: "Anthropic" },
+      { id: "openai", has: hasOpenaiKey, label: "OpenAI" },
+      { id: "gemini", has: hasGeminiKey, label: "Gemini" },
+      { id: "grok", has: hasGrokKey, label: "Grok/xAI" },
+    ];
+    const missing = keyChecks.find((k) => k.id === provider && !k.has);
+    if (missing) {
       setMessages((prev) => [
         ...prev,
         {
@@ -81,29 +144,7 @@ export default function AIAssistantPage() {
         {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content:
-            "No Anthropic API key on file. Add one under Settings → AI Providers, or switch to Platform (Bedrock).",
-          timestamp: new Date(),
-        },
-      ]);
-      setInput("");
-      return;
-    }
-
-    if (provider === "grok" && !hasGrokKey) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          role: "user",
-          content,
-          timestamp: new Date(),
-        },
-        {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content:
-            "No Grok/xAI API key on file. Add one under Settings → AI Providers, or switch to Platform (Bedrock).",
+          content: missingKeyMessage(missing.label),
           timestamp: new Date(),
         },
       ]);
@@ -139,12 +180,26 @@ const res = await fetch("/api/bedrock", {
       body: JSON.stringify({
         messages: chatMessages,
         useSearch: true,
-        useTools: true,
+        // CRM tools need Claude tool_use; Nova uses Converse chat
+        useTools:
+          provider !== "bedrock" ||
+          platformModel === "auto" ||
+          platformModel === "haiku" ||
+          platformModel === "sonnet",
         provider,
+        model: provider === "bedrock" ? platformModel : undefined,
       }),
     });
     const result = await res.json();
-    if (result.provider) setLastProviderUsed(result.provider);
+    if (result.modelLabel) {
+      setLastProviderUsed(
+        result.provider
+          ? `${result.provider}:${result.modelLabel}`
+          : result.modelLabel
+      );
+    } else if (result.provider) {
+      setLastProviderUsed(result.provider);
+    }
 
     let assistantMessage: Message;
     if (result.error) {
@@ -167,6 +222,21 @@ const res = await fetch("/api/bedrock", {
     }
 
     setMessages((prev) => [...prev, assistantMessage]);
+
+    // After CRM write tools (create company/contact/etc.), refresh list caches
+    const toolsUsed: string[] = Array.isArray(result.toolsUsed)
+      ? result.toolsUsed
+      : [];
+    const crmMutated = result.crmMutated === true;
+    if (crmMutated || toolsUsed.some((t) => /^(create_|update_|link_)/.test(t))) {
+      void invalidateCrmCaches(queryClient, toolsUsed, {
+        forceClients:
+          crmMutated ||
+          toolsUsed.some((t) => /company|contact|client/i.test(t)),
+        forceAll: crmMutated,
+      });
+    }
+
     setIsLoading(false);
   };
 
@@ -224,12 +294,12 @@ return (
         <div>
           <h1 className="text-3xl font-bold">AI Assistant (Web)</h1>
           <p className="text-muted-foreground">
-            Claude / Grok + Apollo + Tavily — Platform or your own keys
+            Claude + Amazon Nova on Platform · OpenAI / Gemini / Grok BYOK · Apollo + Tavily
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Provider switch */}
-          <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+          <div className="inline-flex flex-wrap rounded-xl border border-slate-200 bg-white p-1 shadow-sm gap-0.5">
             <button
               type="button"
               onClick={() => setProvider("bedrock")}
@@ -264,6 +334,46 @@ return (
             </button>
             <button
               type="button"
+              onClick={() => setProvider("openai")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                provider === "openai"
+                  ? "bg-emerald-600 text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+              title={
+                hasOpenaiKey
+                  ? "Use your OpenAI API key"
+                  : "Add a key in Settings first"
+              }
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+              OpenAI
+              {!hasOpenaiKey && (
+                <span className="opacity-70 font-normal">(setup)</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setProvider("gemini")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                provider === "gemini"
+                  ? "bg-sky-600 text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+              title={
+                hasGeminiKey
+                  ? "Use your Gemini API key"
+                  : "Add a key in Settings first"
+              }
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Gemini
+              {!hasGeminiKey && (
+                <span className="opacity-70 font-normal">(setup)</span>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => setProvider("grok")}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 provider === "grok"
@@ -283,14 +393,72 @@ return (
               )}
             </button>
           </div>
+
+          {/* Platform model: Claude + Amazon Nova */}
+          {provider === "bedrock" && (
+            <div className="inline-flex flex-wrap rounded-xl border border-orange-200 bg-orange-50/50 p-1 shadow-sm gap-0.5">
+              {(
+                [
+                  { id: "auto" as const, label: "Auto" },
+                  { id: "haiku" as const, label: "Haiku" },
+                  { id: "sonnet" as const, label: "Sonnet" },
+                  { id: "nova-lite" as const, label: "Nova Lite" },
+                  { id: "nova-pro" as const, label: "Nova Pro" },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setPlatformModel(m.id)}
+                  className={`inline-flex items-center px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                    platformModel === m.id
+                      ? m.id.startsWith("nova")
+                        ? "bg-orange-600 text-white"
+                        : "bg-slate-800 text-white"
+                      : "text-slate-600 hover:bg-white"
+                  }`}
+                  title={
+                    m.id === "auto"
+                      ? "Auto-route Haiku / Sonnet"
+                      : m.id === "nova-lite"
+                        ? "Amazon Nova Lite — fast & cheap (chat)"
+                        : m.id === "nova-pro"
+                          ? "Amazon Nova Pro — stronger Amazon model (chat)"
+                          : m.id === "haiku"
+                            ? "Claude Haiku — fast"
+                            : "Claude Sonnet — tools + CRM"
+                  }
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <Link
+            href="/dashboard/ai-reliability"
+            className="text-xs font-medium text-slate-600 hover:text-slate-900 underline-offset-2 hover:underline"
+          >
+            AI reliability
+          </Link>
+          <Link
+            href="/dashboard/settings"
+            className="text-xs font-medium text-slate-600 hover:text-slate-900 underline-offset-2 hover:underline"
+          >
+            AI settings
+          </Link>
           <div className="flex items-center gap-2 text-sm">
             <span
               className={`w-2 h-2 rounded-full ${
                 provider === "anthropic"
                   ? "bg-violet-500"
-                  : provider === "grok"
-                    ? "bg-zinc-800"
-                    : "bg-emerald-500"
+                  : provider === "openai"
+                    ? "bg-emerald-500"
+                    : provider === "gemini"
+                      ? "bg-sky-500"
+                      : provider === "grok"
+                        ? "bg-zinc-800"
+                        : "bg-emerald-500"
               }`}
             />
             <span className="text-muted-foreground text-xs">
@@ -298,11 +466,27 @@ return (
                 ? hasAnthropicKey
                   ? "Anthropic BYOK"
                   : "Key missing"
-                : provider === "grok"
-                  ? hasGrokKey
-                    ? "Grok BYOK"
+                : provider === "openai"
+                  ? hasOpenaiKey
+                    ? "OpenAI BYOK"
                     : "Key missing"
-                  : "Bedrock"}
+                  : provider === "gemini"
+                    ? hasGeminiKey
+                      ? "Gemini BYOK"
+                      : "Key missing"
+                    : provider === "grok"
+                      ? hasGrokKey
+                        ? "Grok BYOK"
+                        : "Key missing"
+                      : platformModel === "nova-lite"
+                        ? "Bedrock · Nova Lite"
+                        : platformModel === "nova-pro"
+                          ? "Bedrock · Nova Pro"
+                          : platformModel === "haiku"
+                            ? "Bedrock · Haiku"
+                            : platformModel === "sonnet"
+                              ? "Bedrock · Sonnet"
+                              : "Bedrock · Auto"}
               {lastProviderUsed ? ` · last: ${lastProviderUsed}` : ""}
             </span>
           </div>
@@ -395,7 +579,7 @@ return (
                   )}
                 </div>
                 <p className="text-xs opacity-50 mt-2">
-                  {typeof message.timestamp === "string" ? message.timestamp : message.timestamp.toLocaleTimeString()}
+                  {formatMessageTime(message.timestamp)}
                 </p>
               </div>
               {message.role === "user" && (

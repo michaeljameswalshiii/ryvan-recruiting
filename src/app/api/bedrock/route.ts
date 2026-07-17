@@ -19,7 +19,11 @@
  * @serverOnly
  */
 
-import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import {
+  BedrockRuntimeClient,
+  InvokeModelCommand,
+  ConverseCommand,
+} from "@aws-sdk/client-bedrock-runtime";
 import { NextRequest, NextResponse } from "next/server";
 
 import { checkRateLimit, addRateLimitHeaders } from "@/lib/rate-limit";
@@ -245,6 +249,13 @@ const MODEL_SONNET = "global.anthropic.claude-sonnet-4-6";
 // Opus 4.7 - For very complex multi-step tasks (not used by General AI auto-route)
 const MODEL_OPUS = "global.anthropic.claude-opus-4-7";
 
+// Amazon Nova (platform Bedrock — Converse API)
+const MODEL_NOVA_LITE = "us.amazon.nova-lite-v1:0";
+const MODEL_NOVA_PRO = "us.amazon.nova-pro-v1:0";
+const MODEL_NOVA_LITE_ON_DEMAND = "amazon.nova-lite-v1:0";
+const MODEL_NOVA_PRO_ON_DEMAND = "amazon.nova-pro-v1:0";
+const MODEL_NOVA_2_LITE = "amazon.nova-2-lite-v1:0";
+
 // Fallbacks if primary inference profile is unavailable in the account/region
 const MODEL_HAIKU_FALLBACK = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 const MODEL_SONNET_FALLBACK = "us.anthropic.claude-sonnet-4-6";
@@ -253,11 +264,24 @@ const MODEL_HAIKU_LEGACY = "us.anthropic.claude-3-haiku-20240307-v1:0";
 // Default model (Sonnet 4.6 for agentic work with native tool calling)
 const DEFAULT_MODEL = MODEL_SONNET;
 
+function isNovaModel(modelId?: string): boolean {
+  return /nova/i.test(modelId || "");
+}
+
 /** Ordered fallbacks when a model id is rejected by Bedrock */
 function modelFallbackChain(primary: string): string[] {
   const chain = [primary];
   const id = primary.toLowerCase();
-  if (id.includes("haiku")) {
+  if (id.includes("nova-lite") || id.includes("nova_lite") || id.includes("nova-2-lite")) {
+    chain.push(
+      MODEL_NOVA_LITE,
+      MODEL_NOVA_LITE_ON_DEMAND,
+      MODEL_NOVA_2_LITE,
+      MODEL_HAIKU
+    );
+  } else if (id.includes("nova")) {
+    chain.push(MODEL_NOVA_PRO, MODEL_NOVA_PRO_ON_DEMAND, MODEL_SONNET);
+  } else if (id.includes("haiku")) {
     chain.push(MODEL_HAIKU, MODEL_HAIKU_FALLBACK, MODEL_HAIKU_LEGACY, MODEL_SONNET);
   } else if (id.includes("opus")) {
     chain.push(MODEL_OPUS, MODEL_SONNET, MODEL_SONNET_FALLBACK);
@@ -358,30 +382,45 @@ function analyzeQueryComplexity(query: string): QueryComplexity {
  * @param requestedModel - Optional user-requested model
  * @returns Selected model ID
  */
-function selectModel(query: string, requestedModel?: string): string {
-  // If user explicitly requested a model, use it (with validation)
-  if (requestedModel) {
-    const validModels = [MODEL_HAIKU, MODEL_SONNET, MODEL_OPUS, DEFAULT_MODEL];
-    if (validModels.includes(requestedModel)) {
-      return requestedModel;
-    }
-    // Fall back to default if invalid model requested
-    console.warn(`Invalid model requested: ${requestedModel}, using default`);
+/** Resolve UI / API aliases to concrete Bedrock model IDs */
+function resolveRequestedModelId(requestedModel?: string): string | undefined {
+  if (!requestedModel) return undefined;
+  const m = requestedModel.trim().toLowerCase();
+  if (m === "auto" || m === "default") return undefined;
+  if (m === "haiku") return MODEL_HAIKU;
+  if (m === "sonnet") return MODEL_SONNET;
+  if (m === "opus") return MODEL_OPUS;
+  if (m === "nova-lite" || m === "nova_lite" || m === "novalite")
+    return MODEL_NOVA_LITE;
+  if (m === "nova-pro" || m === "nova_pro" || m === "novapro" || m === "nova")
+    return MODEL_NOVA_PRO;
+  // Allow full Bedrock model ids
+  if (m.includes("nova") || m.includes("anthropic") || m.includes("claude")) {
+    return requestedModel;
   }
-  
+  return undefined;
+}
+
+function selectModel(query: string, requestedModel?: string): string {
+  const resolved = resolveRequestedModelId(requestedModel);
+  if (resolved) {
+    console.log(`Using explicitly requested model: ${resolved}`);
+    return resolved;
+  }
+
   // Analyze query complexity
   const complexity = analyzeQueryComplexity(query);
-  
+
   // Route to appropriate model
   switch (complexity) {
     case "simple":
       console.log(`Routing to Haiku 4.5 (simple query detected)`);
       return MODEL_HAIKU;
-    
+
     case "complex":
       console.log(`Routing to Opus 4.7 (complex query detected)`);
       return MODEL_OPUS;
-    
+
     case "moderate":
     default:
       console.log(`Routing to Sonnet 4.6 (default for agentic work)`);
@@ -397,12 +436,16 @@ function friendlyModelLabel(modelId: string): string {
   if (id.includes("haiku")) return "Claude Haiku";
   if (id.includes("opus")) return "Claude Opus";
   if (id.includes("sonnet")) return "Claude Sonnet";
+  if (id.includes("nova-lite") || id.includes("nova_lite") || id.includes("nova-2-lite"))
+    return "Amazon Nova Lite";
+  if (id.includes("nova-pro") || id.includes("nova_pro")) return "Amazon Nova Pro";
+  if (id.includes("nova-micro")) return "Amazon Nova Micro";
+  if (id.includes("nova")) return "Amazon Nova";
   if (id.includes("grok")) return "Grok";
   if (id.includes("gpt-4o") || id.includes("gpt-4.1") || id.includes("o3") || id.includes("o4"))
     return "OpenAI GPT";
   if (id.includes("gpt")) return "OpenAI";
   if (id.includes("gemini")) return "Google Gemini";
-  if (id.includes("nova")) return "Amazon Nova";
   // strip provider prefixes like bedrock:us.anthropic...
   const tail = modelId.split(/[/:]/).pop() || modelId;
   return tail.length > 40 ? `${tail.slice(0, 37)}…` : tail;
@@ -702,6 +745,93 @@ function getToolSchemasForBedrock(): BedrockTool[] {
     },
     ...writeTools,
   ];
+}
+
+/**
+ * Invoke Amazon Nova (and other Converse-compatible models) via Bedrock Converse.
+ * Nova does not use the Anthropic messages body format.
+ */
+async function invokeNovaConverse(
+  messages: Array<{ role: "user" | "assistant"; content: string }>,
+  systemPrompt: string = "",
+  modelId: string = MODEL_NOVA_LITE
+): Promise<{ text: string; modelId: string }> {
+  const converseMessages = messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: [{ text: m.content || "" }],
+    }));
+
+  // Converse requires alternating roles and ending with user
+  if (
+    converseMessages.length === 0 ||
+    converseMessages[converseMessages.length - 1].role !== "user"
+  ) {
+    converseMessages.push({
+      role: "user",
+      content: [{ text: "Continue." }],
+    });
+  }
+
+  const candidates = modelFallbackChain(modelId);
+  let lastError: unknown;
+
+  for (const candidate of candidates) {
+    try {
+      console.log(
+        `[Nova] Converse ${candidate} with ${converseMessages.length} messages`
+      );
+      const command = new ConverseCommand({
+        modelId: candidate,
+        messages: converseMessages,
+        system: systemPrompt
+          ? [{ text: systemPrompt }]
+          : undefined,
+        inferenceConfig: {
+          maxTokens: MODEL_CONFIG.maxTokens,
+          temperature: MODEL_CONFIG.temperature,
+        },
+      });
+      const response = await bedrockClient.send(command);
+      const parts = response.output?.message?.content || [];
+      const text = parts
+        .map((p) => ("text" in p && p.text ? p.text : ""))
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+      return {
+        text: text || "No response",
+        modelId: candidate,
+      };
+    } catch (err) {
+      lastError = err;
+      if (
+        isInvalidModelError(err) &&
+        candidate !== candidates[candidates.length - 1]
+      ) {
+        console.warn(
+          `[Nova] Model ${candidate} rejected, trying next:`,
+          err instanceof Error ? err.message : err
+        );
+        continue;
+      }
+      // Access denied / not enabled — try next candidate too
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        /access|not authorized|isn't supported|ValidationException/i.test(msg) &&
+        candidate !== candidates[candidates.length - 1]
+      ) {
+        console.warn(`[Nova] ${candidate} failed (${msg}), trying next`);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("All Nova model candidates failed");
 }
 
 /**
@@ -1550,6 +1680,9 @@ ${pageContext}`
       0
     );
 
+    // Explicit model pick (UI) wins over auto-route for platform Bedrock
+    const explicitBedrockModel = resolveRequestedModelId(requestedModel);
+
     const selectedModel =
       provider === "anthropic"
         ? process.env.ANTHROPIC_BYOK_MODEL || "claude-sonnet-4-20250514"
@@ -1561,22 +1694,14 @@ ${pageContext}`
               ? process.env.GROK_BYOK_MODEL ||
                 process.env.XAI_BYOK_MODEL ||
                 "grok-3"
-              : generalMode
-                ? selectModelForGeneralAI(lastUserQuery, {
-                    historyChars,
-                    messages,
-                  })
-                : selectModel(
-                    lastUserQuery,
-                    // "auto" / "sonnet" aliases from older clients
-                    requestedModel === "auto" || requestedModel === "sonnet"
-                      ? undefined
-                      : requestedModel === "haiku"
-                        ? MODEL_HAIKU
-                        : requestedModel === "opus"
-                          ? MODEL_OPUS
-                          : requestedModel
-                  );
+              : explicitBedrockModel
+                ? explicitBedrockModel
+                : generalMode
+                  ? selectModelForGeneralAI(lastUserQuery, {
+                      historyChars,
+                      messages,
+                    })
+                  : selectModel(lastUserQuery, requestedModel);
 
     const modelLabel = friendlyModelLabel(selectedModel);
 
@@ -1899,8 +2024,31 @@ ${pageContext}`
         }
       }
     }
-    // ---------- Platform Bedrock (existing) ----------
-    else if (assistantMode && !generalMode) {
+    // ---------- Platform Bedrock (Claude + Amazon Nova) ----------
+    else if (isNovaModel(usedModel)) {
+      // Nova uses Converse API (not Anthropic tool_use format)
+      console.log("Running Amazon Nova via Converse...");
+      const conversation = buildConversationMessages(messages);
+      const systemPrompt = generalMode
+        ? generalSystemPrompt
+        : SYSTEM_PROMPTS.base + "\n\n" + SYSTEM_PROMPTS.override;
+      const messagesForModel = conversation
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({
+          role: (m.role === "assistant" ? "assistant" : "user") as
+            | "user"
+            | "assistant",
+          content: typeof m.content === "string" ? m.content : String(m.content),
+        }));
+      const result = await invokeNovaConverse(
+        messagesForModel,
+        systemPrompt,
+        usedModel
+      );
+      completion = result.text;
+      usedModel = result.modelId;
+      toolsUsed = ["nova-converse"];
+    } else if (assistantMode && !generalMode) {
       // Claude-only Assistant mode (no external tools, just conversation)
       console.log("Running Claude Assistant mode (no tools)...");
       const conversation = buildConversationMessages(messages);

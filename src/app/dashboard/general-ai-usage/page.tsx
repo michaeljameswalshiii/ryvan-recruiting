@@ -16,9 +16,12 @@ import {
   Cloud,
   Wrench,
   Trash2,
+  Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidateCrmCaches } from '@/lib/hooks/invalidate-crm-cache';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +33,14 @@ interface ChatAttachment {
   charCount: number;
   text: string;
   warning?: string;
+}
+
+interface GeneratedFile {
+  fileName: string;
+  mimeType: string;
+  contentBase64: string;
+  sizeBytes?: number;
+  format?: string;
 }
 
 interface Message {
@@ -46,6 +57,37 @@ interface Message {
   model?: string;
   /** Friendly name for badge, e.g. "Claude Haiku" */
   modelLabel?: string;
+  /** Files produced by generate_file tool */
+  generatedFiles?: GeneratedFile[];
+}
+
+function downloadGeneratedFile(file: GeneratedFile) {
+  try {
+    const bin = atob(file.contentBase64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], {
+      type: file.mimeType || 'application/octet-stream',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.fileName || 'download';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('[download]', e);
+    toast.error('Could not download file');
+  }
+}
+
+function formatFileSize(n?: number) {
+  if (!n || n < 0) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /** Client-side fallback if API omits modelLabel */
@@ -55,6 +97,9 @@ function labelFromModelId(modelId?: string): string {
   if (id.includes('haiku')) return 'Claude Haiku';
   if (id.includes('opus')) return 'Claude Opus';
   if (id.includes('sonnet')) return 'Claude Sonnet';
+  if (id.includes('nova-lite') || id.includes('nova-2-lite')) return 'Amazon Nova Lite';
+  if (id.includes('nova-pro')) return 'Amazon Nova Pro';
+  if (id.includes('nova')) return 'Amazon Nova';
   return modelId.length > 36 ? `${modelId.slice(0, 33)}…` : modelId;
 }
 
@@ -91,12 +136,30 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+/** "Today, 11:04 AM" or "Jul 15, 11:04 AM" (include year if not this year) */
 function formatTime(iso: string) {
   try {
-    return new Date(iso).toLocaleTimeString([], {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const time = d.toLocaleTimeString([], {
       hour: 'numeric',
       minute: '2-digit',
     });
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startMsg = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round(
+      (startToday.getTime() - startMsg.getTime()) / 86400000
+    );
+    if (diffDays === 0) return `Today, ${time}`;
+    if (diffDays === 1) return `Yesterday, ${time}`;
+    const sameYear = d.getFullYear() === now.getFullYear();
+    const date = d.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      ...(sameYear ? {} : { year: 'numeric' }),
+    });
+    return `${date}, ${time}`;
   } catch {
     return '';
   }
@@ -117,6 +180,7 @@ function buildUserContent(text: string, files: ChatAttachment[]): string {
 // ---------------------------------------------------------------------------
 
 export default function GeneralAiUsagePage() {
+  const queryClient = useQueryClient();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [pendingFiles, setPendingFiles] = useState<ChatAttachment[]>([]);
@@ -148,16 +212,31 @@ export default function GeneralAiUsagePage() {
     }
   }, []);
 
-  // Persist
+  // Persist (drop base64 payloads — too large for sessionStorage)
   useEffect(() => {
     try {
       if (messages.length === 0) {
         sessionStorage.removeItem(STORAGE_KEY);
       } else {
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+        const slim = messages.map((m) => {
+          if (!m.generatedFiles?.length) return m;
+          const { generatedFiles: _g, ...rest } = m;
+          return {
+            ...rest,
+            // Keep names so UI can show "file was generated" without re-download
+            generatedFiles: m.generatedFiles.map((f) => ({
+              fileName: f.fileName,
+              mimeType: f.mimeType,
+              contentBase64: '',
+              sizeBytes: f.sizeBytes,
+              format: f.format,
+            })),
+          };
+        });
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(slim));
       }
     } catch {
-      /* ignore */
+      /* ignore quota */
     }
   }, [messages]);
 
@@ -312,6 +391,13 @@ export default function GeneralAiUsagePage() {
           (typeof result.modelLabel === 'string' && result.modelLabel) ||
           labelFromModelId(result.model);
         setLastMeta({ model: result.model, modelLabel, toolsUsed });
+        const generatedFiles: GeneratedFile[] = Array.isArray(
+          result.generatedFiles
+        )
+          ? result.generatedFiles.filter(
+              (f: any) => f?.fileName && f?.contentBase64
+            )
+          : [];
         setMessages((prev) => [
           ...prev,
           {
@@ -322,8 +408,18 @@ export default function GeneralAiUsagePage() {
             toolsUsed,
             model: result.model,
             modelLabel,
+            generatedFiles:
+              generatedFiles.length > 0 ? generatedFiles : undefined,
           },
         ]);
+        // CRM tools write on the server — refresh lists immediately
+        const crmMutated = result.crmMutated === true;
+        if (crmMutated || toolsUsed.some((t) => /^(create_|update_|link_)/.test(t))) {
+          void invalidateCrmCaches(queryClient, toolsUsed, {
+            forceClients: crmMutated || toolsUsed.some((t) => /company|contact|client/i.test(t)),
+            forceAll: crmMutated,
+          });
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Network error';
@@ -479,6 +575,47 @@ export default function GeneralAiUsagePage() {
                       <p className="whitespace-pre-wrap break-words">
                         {m.displayContent ?? m.content}
                       </p>
+                      {m.role === 'assistant' &&
+                        m.generatedFiles &&
+                        m.generatedFiles.length > 0 && (
+                          <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              Downloads
+                            </p>
+                            {m.generatedFiles.map((f) =>
+                              f.contentBase64 ? (
+                                <button
+                                  key={`${f.fileName}-${f.sizeBytes}`}
+                                  type="button"
+                                  onClick={() => downloadGeneratedFile(f)}
+                                  className="flex w-full items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-left text-sm font-medium text-blue-900 transition hover:bg-blue-100"
+                                >
+                                  <Download className="h-4 w-4 shrink-0 text-blue-600" />
+                                  <span className="min-w-0 flex-1 truncate">
+                                    {f.fileName}
+                                  </span>
+                                  <span className="shrink-0 text-[11px] font-normal text-blue-700/80">
+                                    {(f.format || '').toUpperCase()}
+                                    {f.sizeBytes
+                                      ? ` · ${formatFileSize(f.sizeBytes)}`
+                                      : ''}
+                                  </span>
+                                </button>
+                              ) : (
+                                <div
+                                  key={`${f.fileName}-expired`}
+                                  className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500"
+                                >
+                                  <FileText className="h-4 w-4 shrink-0" />
+                                  <span className="truncate">{f.fileName}</span>
+                                  <span className="ml-auto text-[11px]">
+                                    Re-ask to regenerate download
+                                  </span>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        )}
                       {m.role === 'assistant' &&
                         ((m.modelLabel || m.model) ||
                           (m.toolsUsed &&
