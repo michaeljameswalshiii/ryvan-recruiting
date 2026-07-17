@@ -31,6 +31,8 @@ import { CRM_WRITE_TOOLS } from "@/lib/ai/tools/crm-write";
 import {
   getDecryptedAnthropicKey,
   getDecryptedGrokKey,
+  getDecryptedOpenaiKey,
+  getDecryptedGeminiKey,
   getAiCredentialsPublic,
 } from "@/lib/db/repositories/ai-credentials-repository";
 import {
@@ -41,6 +43,14 @@ import {
   runGrokByokAgent,
   runGrokByokChat,
 } from "@/lib/ai/providers/grok-byok";
+import {
+  runOpenaiByokAgent,
+  runOpenaiByokChat,
+} from "@/lib/ai/providers/openai-byok";
+import {
+  runGeminiByokAgent,
+  runGeminiByokChat,
+} from "@/lib/ai/providers/gemini-byok";
 import { getSession } from "@/lib/server-auth";
 
 // ============================================================================
@@ -56,8 +66,13 @@ interface ChatMessage {
   id?: string;
 }
 
-/** Platform Bedrock vs user BYOK (Anthropic / Grok) */
-export type AiProviderId = "bedrock" | "anthropic" | "grok";
+/** Platform Bedrock vs user BYOK (Anthropic / OpenAI / Gemini / Grok) */
+export type AiProviderId =
+  | "bedrock"
+  | "anthropic"
+  | "openai"
+  | "gemini"
+  | "grok";
 
 /**
  * Request body
@@ -69,7 +84,12 @@ interface BedrockRequest {
   assistantMode?: boolean;
   /** Open-ended chat (General AI Usage) — Sonnet + tools + multi-turn history */
   generalMode?: boolean;
-  /** 'bedrock' (platform) | 'anthropic' | 'grok' (BYOK) */
+  /**
+   * Optional page/route context from the floating assistant
+   * (candidate id, job id, company id, path). Appended to system prompt.
+   */
+  pageContext?: string;
+  /** 'bedrock' (platform) | BYOK: anthropic | openai | gemini | grok */
   provider?: AiProviderId;
   useSearch?: boolean;
 }
@@ -81,7 +101,11 @@ You help with analysis, writing, research, document review, AND operating the CR
 READ tools:
 - internal_data: list/get leads (candidates), clients (companies), jobs, pipeline
 - apollo / apollo_company_search: external people & company search
-- tavily: web search
+- fetch_website: open and read a public company website/page by URL (use this when the user gives a website or asks you to examine a site — do NOT claim you cannot browse URLs)
+- tavily: optional web search (may be unavailable without API key; prefer fetch_website for a specific URL)
+
+FILE tools:
+- generate_file: create a downloadable Word (.docx), Excel (.xlsx), CSV, Markdown, text, JSON, or HTML file. Use whenever the user wants a document, spreadsheet, export, or attachment. After success, tell them to use the Download button that appears under your message — do NOT say you cannot create files or attachments.
 
 WRITE tools (CRM mutations — same data as the UI):
 - create_candidate, update_candidate, update_candidate_stage → Candidates list (pipeline)
@@ -99,17 +123,21 @@ IMPORTANT entity rules:
 CRITICAL confirmation rules for ALL write tools:
 1. First call the tool WITHOUT confirmed (or confirmed:false). You will get status "needs_confirmation" and a preview.
 2. Show the user a clear summary of what will change and ask them to confirm.
-3. Only after the user explicitly agrees (yes / confirm / go ahead / do it), call the SAME tool again with the same fields AND confirmed:true.
-4. NEVER claim data was saved until a tool returns status created/updated/linked/stage_updated.
-5. NEVER invent candidate_id, company_id, or job_id — look them up with internal_data first.
-6. Tenant isolation is automatic from the session; do not ask for tenant id.
+3. Only after the user explicitly agrees (yes / confirm / go ahead / do it / ok / sure), call the SAME tool again with the same fields AND confirmed:true.
+4. NEVER claim data was saved until a tool returns status created/updated/linked/stage_updated in the tool result JSON.
+5. If the user only says "yes" or "ok", you STILL must re-invoke the write tool with confirmed:true — do not answer from memory.
+6. NEVER invent candidate_id, company_id, contact_id, or job_id — look them up with internal_data first.
+7. Tenant isolation is automatic from the session; do not ask for tenant id.
+8. After a successful create/update tool result, tell the user the record is saved and that lists refresh automatically.
 
 Other rules:
 - Maintain multi-turn context; honor revision requests
 - Use tools when they improve the answer
+- When building a company record from a website, call fetch_website with the URL first, then extract name, industry, location, description, and domain from the returned text
 - Analyze file attachments carefully when present
 - Be clear and professional; prefer actionable answers
-- If a tool fails, say so and continue with what you know`;
+- If a tool fails, say so and continue with what you know
+- For downloadable docs: call generate_file with full content (not a stub). Prefer docx for letters/prep docs, xlsx/csv for tables/lists, md/txt for plain notes. Never claim file generation is unavailable.`;
 
 /**
  * Tool result data from tool execution
@@ -370,6 +398,10 @@ function friendlyModelLabel(modelId: string): string {
   if (id.includes("opus")) return "Claude Opus";
   if (id.includes("sonnet")) return "Claude Sonnet";
   if (id.includes("grok")) return "Grok";
+  if (id.includes("gpt-4o") || id.includes("gpt-4.1") || id.includes("o3") || id.includes("o4"))
+    return "OpenAI GPT";
+  if (id.includes("gpt")) return "OpenAI";
+  if (id.includes("gemini")) return "Google Gemini";
   if (id.includes("nova")) return "Amazon Nova";
   // strip provider prefixes like bedrock:us.anthropic...
   const tail = modelId.split(/[/:]/).pop() || modelId;
@@ -385,17 +417,72 @@ function friendlyModelLabel(modelId: string): string {
  * - Moderate / complex reasoning → Sonnet
  * - Opus is not used here (cost); escalate only if product policy changes
  */
+/** User is confirming a pending CRM write (yes / save / go ahead) */
+function isUserConfirmation(query: string): boolean {
+  const q = (query || "").trim();
+  if (!q || q.length > 80) return false;
+  return /^(yes|y|yeah|yep|yup|ok|okay|sure|confirm|confirmed|go ahead|do it|please do|proceed|save( it)?|save this|looks good|lgtm|approved|ship it)([.!\s]|$)/i.test(
+    q
+  );
+}
+
+/** Prior assistant turn asked for confirmation / showed a write preview */
+function historyHasPendingCrmConfirm(
+  messages: Array<{ role: string; content?: string }>
+): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== "assistant") continue;
+    const c = String(m.content || "");
+    if (
+      /shall i (go ahead|save|create|add)|needs_confirmation|preview before i save|when they say yes|confirmed:\s*true|ask them to confirm|do you want me to (save|create|add)|ready to (save|create)/i.test(
+        c
+      )
+    ) {
+      return true;
+    }
+    // Only inspect the latest assistant turn
+    break;
+  }
+  return false;
+}
+
 function selectModelForGeneralAI(
   query: string,
-  options?: { historyChars?: number }
+  options?: {
+    historyChars?: number;
+    messages?: Array<{ role: string; content?: string }>;
+  }
 ): string {
   const q = query || "";
   const historyChars = options?.historyChars ?? 0;
   const hasFileMarker = /---\s*Attached file:|---\s*End of /i.test(q);
   const longContent = q.length > 4000 || historyChars > 12000;
 
+  // Confirmations must stay on Sonnet + tools — Haiku often "claims" success
+  // without re-calling create_contact/create_company with confirmed:true.
+  if (
+    isUserConfirmation(q) ||
+    (isUserConfirmation(q) &&
+      historyHasPendingCrmConfirm(options?.messages || [])) ||
+    (options?.messages &&
+      isUserConfirmation(q) &&
+      historyHasPendingCrmConfirm(options.messages))
+  ) {
+    console.log("[General AI] → Sonnet (CRM confirmation reply)");
+    return MODEL_SONNET;
+  }
+  // Also force Sonnet if history shows pending confirm (even for "yes please save him")
+  if (
+    historyHasPendingCrmConfirm(options?.messages || []) &&
+    /yes|confirm|save|go ahead|do it|ok|sure/i.test(q)
+  ) {
+    console.log("[General AI] → Sonnet (pending CRM confirm in history)");
+    return MODEL_SONNET;
+  }
+
   const toolIntent =
-    /\b(search|find people|find companies|apollo|research|look up|linkedin|pipeline|candidates|leads|web search|latest news|tavily|create |add |update |move |link |save |job|company|client)\b/i.test(
+    /\b(search|find people|find companies|apollo|research|look up|linkedin|pipeline|candidates|leads|web search|latest news|tavily|website|browse|examine|http|https|create |add |update |move |link |save |job|company|client|contact|download|docx|xlsx|spreadsheet|word doc|export|attachment|generate (a |the )?file|write (a |the )?file)\b/i.test(
       q
     );
 
@@ -550,6 +637,53 @@ function getToolSchemasForBedrock(): BedrockTool[] {
       },
     },
     {
+      name: "fetch_website",
+      description:
+        "Fetch and read a public website by URL. Use when the user provides a company website or asks you to examine a page. Prefer this over saying you cannot open URLs. No Tavily API key required.",
+      input_schema: {
+        type: "object",
+        properties: {
+          url: {
+            type: "string",
+            description: "Full URL or domain (e.g. https://acme.com or acme.com/about)",
+          },
+          query: {
+            type: "string",
+            description: "Optional alias for url",
+          },
+        },
+        required: ["url"],
+      },
+    },
+    {
+      name: "generate_file",
+      description:
+        "Create a downloadable file: docx, xlsx, csv, md, txt, json, or html. Use for documents, spreadsheets, exports, and attachments. App shows a Download button — never say you cannot create files.",
+      input_schema: {
+        type: "object",
+        properties: {
+          format: {
+            type: "string",
+            description: "docx | xlsx | csv | md | txt | json | html",
+          },
+          file_name: {
+            type: "string",
+            description: "File name e.g. interview-prep.docx",
+          },
+          content: {
+            type: "string",
+            description:
+              "Full file body. For xlsx, JSON {\"headers\":[...],\"rows\":[[...]]} is preferred.",
+          },
+          title: {
+            type: "string",
+            description: "Optional document title",
+          },
+        },
+        required: ["format", "content"],
+      },
+    },
+    {
       name: "internal_data",
       description:
         "Read ATS data: leads/candidates, clients/companies, jobs, pipeline. action list|get. Use before updates to find ids.",
@@ -692,6 +826,84 @@ async function executeToolByName(
     return `Error: ${result.error || "Unknown error"}`;
   }
 
+  if (toolName === "fetch_website") {
+    const url =
+      (toolInput.url as string) ||
+      (toolInput.query as string) ||
+      query ||
+      "";
+    const result = await executeTool(
+      "fetch_website",
+      { query: url, url } as ToolParams,
+      toolContext
+    );
+    if (result.success && result.data) {
+      const data = result.data as {
+        url?: string;
+        finalUrl?: string;
+        title?: string;
+        text?: string;
+        truncated?: boolean;
+      };
+      const lines = [
+        `URL: ${data.finalUrl || data.url || url}`,
+        data.title ? `Title: ${data.title}` : null,
+        data.truncated ? "(content truncated for length)" : null,
+        "",
+        data.text || "",
+      ].filter((x) => x !== null);
+      return lines.join("\n");
+    }
+    return `Error: ${result.error || "Failed to fetch website"}`;
+  }
+
+  if (toolName === "generate_file") {
+    const result = await executeTool(
+      "generate_file",
+      {
+        query: String(toolInput.content || toolInput.query || ""),
+        format: toolInput.format,
+        file_name: toolInput.file_name || toolInput.fileName,
+        content: toolInput.content ?? toolInput.body ?? toolInput.text,
+        title: toolInput.title,
+      } as ToolParams,
+      toolContext
+    );
+    if (result.success && result.data) {
+      const data = result.data as {
+        fileName?: string;
+        format?: string;
+        sizeBytes?: number;
+        message?: string;
+        contentBase64?: string;
+        mimeType?: string;
+        status?: string;
+      };
+      // Side-channel for UI downloads (never send base64 to the LLM)
+      if (data.contentBase64 && data.fileName) {
+        if (!toolContext.generatedFiles) toolContext.generatedFiles = [];
+        toolContext.generatedFiles.push({
+          fileName: String(data.fileName),
+          mimeType: String(data.mimeType || "application/octet-stream"),
+          contentBase64: String(data.contentBase64),
+          sizeBytes: Number(data.sizeBytes) || 0,
+          format: String(data.format || ""),
+        });
+      }
+      return JSON.stringify({
+        status: data.status || "generated",
+        fileName: data.fileName,
+        format: data.format,
+        sizeBytes: data.sizeBytes,
+        mimeType: data.mimeType,
+        message:
+          data.message ||
+          `File ready: ${data.fileName}. The user will see a Download button in the app UI.`,
+      });
+    }
+    return `Error: ${result.error || "Failed to generate file"}`;
+  }
+
   if (toolName === "internal_data") {
     const result = await executeTool(
       "internal_data",
@@ -791,17 +1003,40 @@ async function runMCPAgent(
     systemPrompt?: string;
     modelId?: string;
   }
-): Promise<{ text: string; toolsUsed: string[]; modelId: string }> {
-  const systemPrompt =
+): Promise<{
+  text: string;
+  toolsUsed: string[];
+  modelId: string;
+  crmMutated: boolean;
+  generatedFiles: NonNullable<ToolContext["generatedFiles"]>;
+}> {
+  const pendingConfirm = historyHasPendingCrmConfirm(options?.history || []);
+  const confirming = isUserConfirmation(query) || (
+    pendingConfirm && /yes|confirm|save|go ahead|do it|ok|sure|proceed/i.test(query)
+  );
+
+  let systemPrompt =
     options?.systemPrompt ||
     `You are an MCP (Multi-step Cognitive Processor) agent powered by Claude Sonnet 4.6.
 Specialize in talent sourcing, recruiting, and business development using Apollo.io.
 Think step-by-step: Plan → Use tools when needed → Observe results → Reflect → Final Answer.
 Only use tools when they genuinely help. Be concise and actionable.`;
 
+  if (confirming) {
+    systemPrompt += `
+
+CRITICAL — USER CONFIRMATION TURN:
+The user is confirming a pending CRM action (create_contact, create_company, create_candidate, create_job, update_*, link_*, etc.).
+You MUST call that write tool again now with confirmed:true and the same fields from your last preview.
+Do NOT reply that something was saved unless the tool result JSON includes status "created", "updated", "linked", or "stage_updated".
+If you are missing company_id or other ids, call internal_data first, then the write tool with confirmed:true.`;
+  }
+
   const tools = getToolSchemasForBedrock();
   const toolsUsed = new Set<string>();
+  let crmMutated = false;
   let modelId = options?.modelId || DEFAULT_MODEL;
+  if (!toolContext.generatedFiles) toolContext.generatedFiles = [];
 
   // Prior turns (user/assistant text only), then current user query
   const prior = (options?.history || [])
@@ -839,9 +1074,48 @@ Only use tools when they genuinely help. Be concise and actionable.`;
         (c): c is ClaudeContent & { type: "text" } =>
           typeof c === "object" && c.type === "text"
       );
-      const text = textBlock?.text || "No response";
+      let text = textBlock?.text || "No response";
+
+      // Confirmation turn with no tools: force one more iteration to actually write
+      if (confirming && !crmMutated && iteration < MAX_ITERATIONS - 1) {
+        console.log(
+          "[MCP] Confirmation without tools — nudging model to call write tool"
+        );
+        messages.push({ role: "assistant", content });
+        messages.push({
+          role: "user",
+          content:
+            "SYSTEM: You did not call a write tool. The user already confirmed. " +
+            "Immediately call create_contact / create_company / create_candidate / create_job " +
+            "(whichever applies) with the same fields as your last preview AND confirmed:true. " +
+            "Do not claim success until the tool returns status created/updated.",
+        });
+        iteration++;
+        continue;
+      }
+
+      // Guard: still no mutation — strip fake success claims
+      if (
+        confirming &&
+        !crmMutated &&
+        /saved|created successfully|contact created|company created|i('ve| have) (saved|created|added)/i.test(
+          text
+        )
+      ) {
+        text =
+          "I wasn't able to complete the save via the CRM tool in this turn. " +
+          "Please resend something like: “Add Mike Walsh as a contact for Chick-fil-A — confirmed” " +
+          "and I will call create_contact with confirmed:true.";
+      }
+
       console.log(`[MCP] Final response: ${text.substring(0, 100)}...`);
-      return { text, toolsUsed: Array.from(toolsUsed), modelId };
+      return {
+        text,
+        toolsUsed: Array.from(toolsUsed),
+        modelId,
+        crmMutated,
+        generatedFiles: toolContext.generatedFiles || [],
+      };
     }
 
     console.log(`[MCP] Executing ${toolUses.length} tool(s) in parallel...`);
@@ -850,6 +1124,16 @@ Only use tools when they genuinely help. Be concise and actionable.`;
     }
     const executions = toolUses.map((tool) => executeSingleTool(tool, toolContext));
     const toolResults = await Promise.all(executions);
+
+    for (const r of toolResults) {
+      if (
+        /"status"\s*:\s*"(created|updated|linked|stage_updated)"/.test(
+          r.content || ""
+        )
+      ) {
+        crmMutated = true;
+      }
+    }
 
     const formattedToolResults = toolResults.map((r) => ({
       type: "tool_result" as const,
@@ -868,6 +1152,8 @@ Only use tools when they genuinely help. Be concise and actionable.`;
     text: "Maximum iterations reached. Please refine your query.",
     toolsUsed: Array.from(toolsUsed),
     modelId,
+    crmMutated,
+    generatedFiles: toolContext.generatedFiles || [],
   };
 }
 
@@ -1171,7 +1457,20 @@ try {
       assistantMode = false,
       generalMode = false,
       provider: requestedProvider,
+      pageContext: rawPageContext,
     } = body;
+
+    const pageContext =
+      typeof rawPageContext === "string" && rawPageContext.trim()
+        ? rawPageContext.trim().slice(0, 4000)
+        : "";
+
+    const generalSystemPrompt = pageContext
+      ? `${GENERAL_AI_SYSTEM_PROMPT}
+
+CURRENT UI CONTEXT (user is viewing this in the ATS — use these IDs with tools when relevant):
+${pageContext}`
+      : GENERAL_AI_SYSTEM_PROMPT;
     
 // Validate messages exist
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -1202,17 +1501,27 @@ try {
 
     // Resolve provider: explicit request > user preference > bedrock
     let provider: AiProviderId = "bedrock";
+    const validProviders: AiProviderId[] = [
+      "bedrock",
+      "anthropic",
+      "openai",
+      "gemini",
+      "grok",
+    ];
     if (
-      requestedProvider === "anthropic" ||
-      requestedProvider === "bedrock" ||
-      requestedProvider === "grok"
+      requestedProvider &&
+      validProviders.includes(requestedProvider as AiProviderId)
     ) {
-      provider = requestedProvider;
+      provider = requestedProvider as AiProviderId;
     } else if (userId) {
       try {
         const prefs = await getAiCredentialsPublic(userId);
         if (prefs.preferredProvider === "anthropic" && prefs.hasAnthropicKey) {
           provider = "anthropic";
+        } else if (prefs.preferredProvider === "openai" && prefs.hasOpenaiKey) {
+          provider = "openai";
+        } else if (prefs.preferredProvider === "gemini" && prefs.hasGeminiKey) {
+          provider = "gemini";
         } else if (prefs.preferredProvider === "grok" && prefs.hasGrokKey) {
           provider = "grok";
         }
@@ -1244,21 +1553,30 @@ try {
     const selectedModel =
       provider === "anthropic"
         ? process.env.ANTHROPIC_BYOK_MODEL || "claude-sonnet-4-20250514"
-        : provider === "grok"
-          ? process.env.GROK_BYOK_MODEL || process.env.XAI_BYOK_MODEL || "grok-3"
-          : generalMode
-            ? selectModelForGeneralAI(lastUserQuery, { historyChars })
-            : selectModel(
-                lastUserQuery,
-                // "auto" / "sonnet" aliases from older clients
-                requestedModel === "auto" || requestedModel === "sonnet"
-                  ? undefined
-                  : requestedModel === "haiku"
-                    ? MODEL_HAIKU
-                    : requestedModel === "opus"
-                      ? MODEL_OPUS
-                      : requestedModel
-              );
+        : provider === "openai"
+          ? process.env.OPENAI_BYOK_MODEL || "gpt-4o"
+          : provider === "gemini"
+            ? process.env.GEMINI_BYOK_MODEL || "gemini-2.0-flash"
+            : provider === "grok"
+              ? process.env.GROK_BYOK_MODEL ||
+                process.env.XAI_BYOK_MODEL ||
+                "grok-3"
+              : generalMode
+                ? selectModelForGeneralAI(lastUserQuery, {
+                    historyChars,
+                    messages,
+                  })
+                : selectModel(
+                    lastUserQuery,
+                    // "auto" / "sonnet" aliases from older clients
+                    requestedModel === "auto" || requestedModel === "sonnet"
+                      ? undefined
+                      : requestedModel === "haiku"
+                        ? MODEL_HAIKU
+                        : requestedModel === "opus"
+                          ? MODEL_OPUS
+                          : requestedModel
+                  );
 
     const modelLabel = friendlyModelLabel(selectedModel);
 
@@ -1308,6 +1626,8 @@ try {
     let completion = "";
     let toolsUsed: string[] = [];
     let usedModel = selectedModel;
+    let crmMutated = false;
+    let generatedFiles: NonNullable<ToolContext["generatedFiles"]> = [];
 
     // ---------- BYOK Anthropic ----------
     if (provider === "anthropic") {
@@ -1435,6 +1755,150 @@ try {
         usedModel = result.model;
       }
     }
+    // ---------- BYOK OpenAI ----------
+    else if (provider === "openai") {
+      if (!userId) {
+        return NextResponse.json(
+          {
+            error: "Sign in required to use your OpenAI API key",
+            suggestion: "Log in, then save your key under Settings → AI Providers",
+          },
+          { status: 401 }
+        );
+      }
+
+      const apiKey = await getDecryptedOpenaiKey(userId);
+      if (!apiKey) {
+        return NextResponse.json(
+          {
+            error: "No OpenAI API key saved",
+            suggestion:
+              "Add your key in Settings → AI Providers, or switch to Platform (Bedrock).",
+          },
+          { status: 400 }
+        );
+      }
+
+      const toolContext: ToolContext = {
+        tenantId,
+        userId,
+        requestUrl: appUrl,
+        generatedFiles: [],
+      };
+
+      const systemPrompt =
+        SYSTEM_PROMPTS.base + "\n\n" + (SYSTEM_PROMPTS.override || "");
+
+      if (assistantMode || !useTools) {
+        console.log("[BYOK] OpenAI chat (no tools)...");
+        const conversation = buildConversationMessages(messages);
+        const result = await runOpenaiByokChat({
+          apiKey,
+          model: usedModel,
+          systemPrompt,
+          messages: conversation.map((m) => ({
+            role: m.role === "assistant" ? "assistant" : "user",
+            content: m.content,
+          })),
+        });
+        completion = result.text;
+        usedModel = result.model;
+        toolsUsed = [];
+      } else {
+        console.log("[BYOK] OpenAI agent with tools...");
+        const result = await runOpenaiByokAgent({
+          apiKey,
+          query: lastUserQuery,
+          toolContext,
+          systemPrompt,
+          model: usedModel,
+          useTools: true,
+        });
+        completion = result.text;
+        toolsUsed = result.toolsUsed.length
+          ? result.toolsUsed
+          : ["apollo", "tavily"];
+        usedModel = result.model;
+        generatedFiles = toolContext.generatedFiles || [];
+        if (
+          toolsUsed.some((t) => /^(create_|update_|link_)/.test(String(t)))
+        ) {
+          crmMutated = true;
+        }
+      }
+    }
+    // ---------- BYOK Google Gemini ----------
+    else if (provider === "gemini") {
+      if (!userId) {
+        return NextResponse.json(
+          {
+            error: "Sign in required to use your Gemini API key",
+            suggestion: "Log in, then save your key under Settings → AI Providers",
+          },
+          { status: 401 }
+        );
+      }
+
+      const apiKey = await getDecryptedGeminiKey(userId);
+      if (!apiKey) {
+        return NextResponse.json(
+          {
+            error: "No Gemini API key saved",
+            suggestion:
+              "Add your key in Settings → AI Providers, or switch to Platform (Bedrock).",
+          },
+          { status: 400 }
+        );
+      }
+
+      const toolContext: ToolContext = {
+        tenantId,
+        userId,
+        requestUrl: appUrl,
+        generatedFiles: [],
+      };
+
+      const systemPrompt =
+        SYSTEM_PROMPTS.base + "\n\n" + (SYSTEM_PROMPTS.override || "");
+
+      if (assistantMode || !useTools) {
+        console.log("[BYOK] Gemini chat (no tools)...");
+        const conversation = buildConversationMessages(messages);
+        const result = await runGeminiByokChat({
+          apiKey,
+          model: usedModel,
+          systemPrompt,
+          messages: conversation.map((m) => ({
+            role: m.role === "assistant" ? "assistant" : "user",
+            content: m.content,
+          })),
+        });
+        completion = result.text;
+        usedModel = result.model;
+        toolsUsed = [];
+      } else {
+        console.log("[BYOK] Gemini agent with tools...");
+        const result = await runGeminiByokAgent({
+          apiKey,
+          query: lastUserQuery,
+          toolContext,
+          systemPrompt,
+          model: usedModel,
+          useTools: true,
+        });
+        completion = result.text;
+        toolsUsed = result.toolsUsed.length
+          ? result.toolsUsed
+          : ["apollo", "tavily"];
+        usedModel = result.model;
+        generatedFiles = toolContext.generatedFiles || [];
+        if (
+          toolsUsed.some((t) => /^(create_|update_|link_)/.test(String(t)))
+        ) {
+          crmMutated = true;
+        }
+      }
+    }
     // ---------- Platform Bedrock (existing) ----------
     else if (assistantMode && !generalMode) {
       // Claude-only Assistant mode (no external tools, just conversation)
@@ -1460,6 +1924,7 @@ try {
         tenantId,
         userId,
         requestUrl: appUrl,
+        generatedFiles: [],
       };
 
       const conversation = buildConversationMessages(messages);
@@ -1475,24 +1940,36 @@ try {
       const agentResult = await runMCPAgent(lastUserQuery, toolContext, {
         history,
         systemPrompt: generalMode
-          ? GENERAL_AI_SYSTEM_PROMPT
+          ? generalSystemPrompt
           : undefined,
         modelId: usedModel,
       });
       completion = agentResult.text;
       usedModel = agentResult.modelId;
+      crmMutated = !!agentResult.crmMutated;
+      generatedFiles = agentResult.generatedFiles || toolContext.generatedFiles || [];
       toolsUsed =
         agentResult.toolsUsed.length > 0
           ? agentResult.toolsUsed
           : useTools || generalMode
             ? ["available:apollo,tavily,internal_data"]
             : [];
+      // Ensure UI always knows to refresh when a write tool was invoked
+      if (
+        !crmMutated &&
+        toolsUsed.some((t) =>
+          /^(create_|update_|link_)/.test(String(t))
+        )
+      ) {
+        // Tool ran; may still be needs_confirmation — client invalidates only on created
+        // crmMutated already false unless status created/updated
+      }
     } else {
       // Simple mode - just invoke without tools
       console.log("Running simple model invocation without tools...");
       const conversation = buildConversationMessages(messages);
       const systemPrompt = generalMode
-        ? GENERAL_AI_SYSTEM_PROMPT
+        ? generalSystemPrompt
         : SYSTEM_PROMPTS.base + "\n\n" + SYSTEM_PROMPTS.override;
 
       const messagesForModel: ClaudeMessage[] = conversation.map((m) => ({
@@ -1565,6 +2042,16 @@ try {
     const response = NextResponse.json({
       response: completion,
       toolsUsed,
+      /** True when a CRM write tool returned status created/updated/linked/stage_updated */
+      crmMutated,
+      /** Files from generate_file — UI shows Download buttons (base64) */
+      generatedFiles: generatedFiles.map((f) => ({
+        fileName: f.fileName,
+        mimeType: f.mimeType,
+        contentBase64: f.contentBase64,
+        sizeBytes: f.sizeBytes,
+        format: f.format,
+      })),
       provider,
       model: usedModel,
       modelLabel: friendlyModelLabel(usedModel),

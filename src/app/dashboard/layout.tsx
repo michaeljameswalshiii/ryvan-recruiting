@@ -5,6 +5,7 @@ import { resolveUserRole } from "@/lib/admin-auth";
 import { normalizeRole } from "@/lib/roles";
 import { redirect } from "next/navigation";
 import { DragDropProvider } from "@/components/providers/dnd-provider";
+import { FloatingAiAssistant } from "@/components/ai/FloatingAiAssistant";
 
 // Force dynamic rendering - this layout uses cookies via getSession()
 export const dynamic = 'force-dynamic';
@@ -49,6 +50,8 @@ export default async function DashboardLayout({
           <DashboardHeader user={tenantInfo} />
           <main className="p-6">{children}</main>
         </div>
+        {/* Global fab + slide-over — same tools as AI Assistant page */}
+        <FloatingAiAssistant />
       </div>
     </DragDropProvider>
   );
