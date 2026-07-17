@@ -73,7 +73,14 @@ export default async function TenantCareersPage({ params }: Props) {
         websiteUrl={ctx.websiteUrl}
       />
 
-      <main className="mx-auto max-w-3xl px-6 py-10">
+      <main className="mx-auto max-w-3xl px-6 py-10 space-y-8">
+        {/* Always on — above search / open roles */}
+        <CareersTalentNetwork
+          tenantSlug={ctx.slug}
+          orgName={ctx.name}
+          defaultOpen={jobs.length === 0 && !loadError}
+        />
+
         {loadError ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             {loadError}
@@ -84,15 +91,9 @@ export default async function TenantCareersPage({ params }: Props) {
               No open positions right now
             </p>
             <p className="mt-2 text-sm text-slate-500">
-              Check back soon — or join our talent network below so we can
-              reach out when a fit opens up.
+              Check back soon — or use Join our talent network above to send
+              your resume for future opportunities.
             </p>
-            <a
-              href="#talent-network"
-              className="mt-4 inline-block text-sm font-medium text-slate-900 underline underline-offset-2 hover:text-slate-700"
-            >
-              Join our talent network →
-            </a>
           </div>
         ) : (
           <CareersJobList
@@ -102,14 +103,7 @@ export default async function TenantCareersPage({ params }: Props) {
           />
         )}
 
-        {/* Always on — general resume bank for future opportunities */}
-        <CareersTalentNetwork
-          tenantSlug={ctx.slug}
-          orgName={ctx.name}
-          defaultOpen={jobs.length === 0 && !loadError}
-        />
-
-        <p className="mt-10 text-center text-xs text-slate-400">
+        <p className="text-center text-xs text-slate-400">
           Applications go to {ctx.name} · Powered by Trio Recruiting
         </p>
       </main>

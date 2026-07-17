@@ -107,7 +107,7 @@ export function CareersTalentNetwork({
   return (
     <section
       id="talent-network"
-      className="mt-10 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+      className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
     >
       <button
         type="button"
