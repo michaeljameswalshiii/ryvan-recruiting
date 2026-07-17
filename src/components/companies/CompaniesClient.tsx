@@ -14,11 +14,23 @@ import {
   Building2,
   MapPin,
   Users,
+  Loader2,
+  ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useClients, useCreateClient, useDeleteClient } from '@/lib/hooks/query-client';
-import { companyStageOptions } from '@/lib/schemas/client';
+import { toast } from 'sonner';
+import {
+  useClients,
+  useCreateClient,
+  useDeleteClient,
+  useUpdateClient,
+} from '@/lib/hooks/query-client';
+import {
+  companyStageLabel,
+  companyStageOptions,
+  normalizeCompanyStage,
+} from '@/lib/schemas/client';
 
 type SortKey = 'last_activity' | 'name' | 'added' | 'stage' | 'contacts';
 
@@ -27,16 +39,16 @@ type StageBucket =
   | 'identification'
   | 'outreach'
   | 'conversation'
-  | 'active' // presented | meeting | proposal
+  | 'active' // meeting | proposal
   | 'closed_won'
   | 'lost';
 
-/** Progress through the company BD pipeline (8 stages → 5 visual steps). */
+/** Progress through the company BD pipeline. */
 const PROGRESS_STEPS = [
   {
     key: 'identification',
     label: 'Identified',
-    match: ['identification', 'identified', 'new', 'lead'],
+    match: ['identification', 'identified', 'new', 'lead', 'known_user'],
   },
   {
     key: 'outreach',
@@ -60,9 +72,11 @@ const PROGRESS_STEPS = [
   },
 ] as const;
 
-const STAGE_LABELS: Record<string, string> = Object.fromEntries(
-  companyStageOptions.map((s) => [s.id, s.label])
-);
+const STAGE_LABELS: Record<string, string> = {
+  ...Object.fromEntries(companyStageOptions.map((s) => [s.id, s.label])),
+  presented: 'Proposal',
+  candidate_presented: 'Proposal',
+};
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -88,19 +102,13 @@ function avatarColor(name: string) {
 }
 
 function normalizeStage(raw?: string): string {
-  if (!raw) return 'identification';
-  const s = String(raw).trim().toLowerCase().replace(/\s+/g, '_');
-  if (STAGE_LABELS[s]) return s;
-  // Common aliases
-  if (['won', 'client', 'active'].includes(s)) return 'closed_won';
-  if (['lost', 'dead', 'inactive'].includes(s)) return 'lost';
-  if (['new', 'lead', 'identified'].includes(s)) return 'identification';
-  return s;
+  return normalizeCompanyStage(raw);
 }
 
 function stageLabel(stage: string) {
   return (
     STAGE_LABELS[stage] ||
+    companyStageLabel(stage) ||
     stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
   );
 }
@@ -126,11 +134,13 @@ function getProgressColor(step: number) {
 
 function stageBadgeClasses(stage: string) {
   const s = stage.toLowerCase();
-  if (s === 'lost') return 'bg-rose-50 text-rose-700 border-rose-200';
-  if (s === 'closed_won') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  if (['proposal', 'meeting'].includes(s)) return 'bg-amber-50 text-amber-800 border-amber-200';
-  if (['presented', 'conversation'].includes(s))
-    return 'bg-violet-50 text-violet-700 border-violet-200';
+  if (s === 'lost' || s === 'dnu') return 'bg-rose-50 text-rose-700 border-rose-200';
+  if (s === 'closed_won' || s === 'client')
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (s === 'known_user') return 'bg-sky-50 text-sky-800 border-sky-200';
+  if (['proposal', 'meeting', 'presented'].includes(s))
+    return 'bg-amber-50 text-amber-800 border-amber-200';
+  if (s === 'conversation') return 'bg-violet-50 text-violet-700 border-violet-200';
   if (s === 'outreach') return 'bg-sky-50 text-sky-700 border-sky-200';
   return 'bg-slate-50 text-slate-700 border-slate-200';
 }
@@ -140,7 +150,7 @@ function matchesBucket(stage: string, bucket: StageBucket): boolean {
   const s = stage.toLowerCase();
   switch (bucket) {
     case 'identification':
-      return ['identification', 'identified', 'new', 'lead'].includes(s);
+      return ['identification', 'identified', 'new', 'lead', 'known_user'].includes(s);
     case 'outreach':
       return ['outreach', 'attempted_outreach', 'contacted'].includes(s);
     case 'conversation':
@@ -150,7 +160,7 @@ function matchesBucket(stage: string, bucket: StageBucket): boolean {
     case 'closed_won':
       return ['closed_won', 'won', 'client', 'active'].includes(s);
     case 'lost':
-      return s === 'lost' || s === 'dead' || s === 'inactive';
+      return s === 'lost' || s === 'dead' || s === 'inactive' || s === 'dnu';
     default:
       return true;
   }
@@ -210,6 +220,7 @@ export function CompaniesClient() {
   const { data, isLoading, error, refetch } = useClients();
   const createClientMutation = useCreateClient();
   const deleteClientMutation = useDeleteClient();
+  const updateClientMutation = useUpdateClient();
 
   const [search, setSearch] = useState('');
   const [bucket, setBucket] = useState<StageBucket>('all');
@@ -218,6 +229,30 @@ export function CompaniesClient() {
   const [showForm, setShowForm] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newCompanyIndustry, setNewCompanyIndustry] = useState('');
+  const [updatingStageId, setUpdatingStageId] = useState<string | null>(null);
+
+  /**
+   * Update company BD pipeline stage from the list.
+   * Scope: company record only — does not change individual contacts.
+   */
+  const handleStageChange = async (companyId: string, companyName: string, nextStage: string) => {
+    const status = normalizeCompanyStage(nextStage);
+    if (!companyId || !status) return;
+    setUpdatingStageId(companyId);
+    setOpenMenuId(null);
+    try {
+      const formData = new FormData();
+      formData.set('status', status);
+      await updateClientMutation.mutateAsync({ clientId: companyId, formData });
+      toast.success(
+        `${companyName || 'Company'}: stage → ${stageLabel(status)}`
+      );
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update stage');
+    } finally {
+      setUpdatingStageId(null);
+    }
+  };
 
   const companies = useMemo(() => {
     if (Array.isArray(data)) return data;
@@ -679,18 +714,51 @@ export function CompaniesClient() {
                     </td>
 
                     <td className="px-4 py-3.5">
-                      <div className="space-y-1.5 min-w-[140px]">
+                      <div className="space-y-1.5 min-w-[160px]">
                         <div className="flex items-center gap-2">
-                          <span
-                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${stageBadgeClasses(c.stage)}`}
-                          >
-                            {stageLabel(c.stage)}
-                          </span>
-                          <span className="text-[11px] text-gray-400 tabular-nums">
-                            {c.stage === 'lost' ? '—' : `${Math.min(c.progress, 5)} of 5`}
+                          <div className="relative inline-flex items-center">
+                            <select
+                              value={
+                                companyStageOptions.some((o) => o.id === c.stage)
+                                  ? c.stage
+                                  : normalizeCompanyStage(c.stage)
+                              }
+                              disabled={updatingStageId === c.id}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                if (e.target.value === c.stage) return;
+                                void handleStageChange(c.id, c.name, e.target.value);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              title="Change company pipeline stage (does not update contacts)"
+                              aria-label={`Pipeline stage for ${c.name}`}
+                              className={`appearance-none cursor-pointer pr-6 pl-2 py-0.5 rounded-full border text-[11px] font-medium max-w-[9.5rem] truncate disabled:opacity-60 disabled:cursor-wait focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${stageBadgeClasses(c.stage)}`}
+                            >
+                              {/* Keep current value selectable even if legacy */}
+                              {!companyStageOptions.some((o) => o.id === c.stage) && (
+                                <option value={c.stage}>{stageLabel(c.stage)}</option>
+                              )}
+                              {companyStageOptions.map((opt) => (
+                                <option key={opt.id} value={opt.id}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-current opacity-60">
+                              {updatingStageId === c.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <ChevronDown className="h-3 w-3" />
+                              )}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-gray-400 tabular-nums shrink-0">
+                            {c.stage === 'lost' || c.stage === 'dnu'
+                              ? '—'
+                              : `${Math.min(c.progress, 5)} of 5`}
                           </span>
                         </div>
-                        {c.stage !== 'lost' && (
+                        {c.stage !== 'lost' && c.stage !== 'dnu' && (
                           <div className="flex gap-0.5">
                             {Array.from({ length: 5 }).map((_, i) => (
                               <div
