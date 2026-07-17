@@ -97,6 +97,11 @@ return useMutation({
       salaryRange?: string;
       employmentType?: string;
       showOnWebsite?: boolean;
+      hiringManagerContactId?: string;
+      hiringManagerName?: string;
+      hiringManagerTitle?: string;
+      hiringManagerEmail?: string;
+      hiringManagerPhone?: string;
     }) => {
       const formData = new FormData();
       formData.set('title', jobData.title);
@@ -112,6 +117,16 @@ return useMutation({
       if (jobData.location) formData.set('location', jobData.location);
       if (jobData.salaryRange) formData.set('salaryRange', jobData.salaryRange);
       if (jobData.employmentType) formData.set('employmentType', jobData.employmentType);
+      if (jobData.hiringManagerContactId)
+        formData.set('hiringManagerContactId', jobData.hiringManagerContactId);
+      if (jobData.hiringManagerName)
+        formData.set('hiringManagerName', jobData.hiringManagerName);
+      if (jobData.hiringManagerTitle)
+        formData.set('hiringManagerTitle', jobData.hiringManagerTitle);
+      if (jobData.hiringManagerEmail)
+        formData.set('hiringManagerEmail', jobData.hiringManagerEmail);
+      if (jobData.hiringManagerPhone)
+        formData.set('hiringManagerPhone', jobData.hiringManagerPhone);
 
       console.log('[useCreateJob] Sending FormData:', {
         title: jobData.title,
@@ -163,6 +178,18 @@ export function useUpdateJob() {
         companyName?: string;
         status?: string;
         showOnWebsite?: boolean;
+        hiringManagerContactId?: string;
+        hiringManagerName?: string;
+        hiringManagerTitle?: string;
+        hiringManagerEmail?: string;
+        hiringManagerPhone?: string;
+        preScreenQuestions?: Array<{
+          id: string;
+          prompt: string;
+          type?: string;
+          options?: string[];
+          required?: boolean;
+        }>;
       };
     }) => {
       const formData = new FormData();
@@ -176,6 +203,23 @@ export function useUpdateJob() {
       if (jobData.status) formData.set('status', jobData.status);
       if (jobData.showOnWebsite !== undefined) {
         formData.set('showOnWebsite', jobData.showOnWebsite ? 'true' : 'false');
+      }
+      // Always send when defined (including empty string to clear)
+      if (jobData.hiringManagerContactId !== undefined)
+        formData.set('hiringManagerContactId', jobData.hiringManagerContactId);
+      if (jobData.hiringManagerName !== undefined)
+        formData.set('hiringManagerName', jobData.hiringManagerName);
+      if (jobData.hiringManagerTitle !== undefined)
+        formData.set('hiringManagerTitle', jobData.hiringManagerTitle);
+      if (jobData.hiringManagerEmail !== undefined)
+        formData.set('hiringManagerEmail', jobData.hiringManagerEmail);
+      if (jobData.hiringManagerPhone !== undefined)
+        formData.set('hiringManagerPhone', jobData.hiringManagerPhone);
+      if (jobData.preScreenQuestions !== undefined) {
+        formData.set(
+          'preScreenQuestions',
+          JSON.stringify(jobData.preScreenQuestions)
+        );
       }
       
       const result = await updateJobAction(jobId, formData);

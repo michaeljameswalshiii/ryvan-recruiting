@@ -164,6 +164,22 @@ export async function createJob(tenantId: string, data: CreateJobInput): Promise
     modified_at: now,
   };
 
+  if (data.hiringManagerContactId) {
+    (job as any).hiringManagerContactId = data.hiringManagerContactId;
+  }
+  if (data.hiringManagerName) {
+    (job as any).hiringManagerName = data.hiringManagerName;
+  }
+  if (data.hiringManagerTitle) {
+    (job as any).hiringManagerTitle = data.hiringManagerTitle;
+  }
+  if (data.hiringManagerEmail) {
+    (job as any).hiringManagerEmail = data.hiringManagerEmail;
+  }
+  if (data.hiringManagerPhone) {
+    (job as any).hiringManagerPhone = data.hiringManagerPhone;
+  }
+
   if (data.preScreenQuestions !== undefined) {
     job.preScreenQuestions = data.preScreenQuestions;
   }
@@ -239,6 +255,31 @@ export async function updateJob(
     updates.push('#preScreenQuestions = :preScreenQuestions');
     values[':preScreenQuestions'] = data.preScreenQuestions;
     names['#preScreenQuestions'] = 'preScreenQuestions';
+  }
+  if (data.hiringManagerContactId !== undefined) {
+    updates.push('#hiringManagerContactId = :hiringManagerContactId');
+    values[':hiringManagerContactId'] = data.hiringManagerContactId || '';
+    names['#hiringManagerContactId'] = 'hiringManagerContactId';
+  }
+  if (data.hiringManagerName !== undefined) {
+    updates.push('#hiringManagerName = :hiringManagerName');
+    values[':hiringManagerName'] = data.hiringManagerName || '';
+    names['#hiringManagerName'] = 'hiringManagerName';
+  }
+  if (data.hiringManagerTitle !== undefined) {
+    updates.push('#hiringManagerTitle = :hiringManagerTitle');
+    values[':hiringManagerTitle'] = data.hiringManagerTitle || '';
+    names['#hiringManagerTitle'] = 'hiringManagerTitle';
+  }
+  if (data.hiringManagerEmail !== undefined) {
+    updates.push('#hiringManagerEmail = :hiringManagerEmail');
+    values[':hiringManagerEmail'] = data.hiringManagerEmail || '';
+    names['#hiringManagerEmail'] = 'hiringManagerEmail';
+  }
+  if (data.hiringManagerPhone !== undefined) {
+    updates.push('#hiringManagerPhone = :hiringManagerPhone');
+    values[':hiringManagerPhone'] = data.hiringManagerPhone || '';
+    names['#hiringManagerPhone'] = 'hiringManagerPhone';
   }
 
   if (updates.length === 0) {

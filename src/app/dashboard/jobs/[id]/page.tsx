@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -26,12 +26,14 @@ import {
   useUpdateJob,
 } from "@/lib/hooks/query-job";
 import { useLeads } from "@/lib/hooks/query-lead";
-import EventTimeline from "@/components/EventTimeline";
 import JobEditModal from "@/components/job/JobEditModal";
-import { Badge } from "@/components/ui/badge";
+import { JobActivityNotes } from "@/components/job/JobActivityNotes";
+import { FitScoreBadge, type FitGrade } from "@/components/job/FitScoreBadge";
+import { FillReqPlaybookButton } from "@/components/job/FillReqPlaybookButton";
+import { NextActionPanel } from "@/components/job/NextActionPanel";
+import { JobHiringManagerCard } from "@/components/job/JobHiringManagerCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { APPLICATION_STAGES } from "@/lib/schemas/lead";
 import {
   JOB_STATUSES,
@@ -41,6 +43,14 @@ import {
   type JobStatus,
 } from "@/lib/jobs/status";
 import { toast } from "sonner";
+
+type FitScoreClient = {
+  score: number;
+  grade: FitGrade | string;
+  reasons?: string[];
+  strengths?: string[];
+  gaps?: string[];
+};
 
 const STAGES = APPLICATION_STAGES.map((s) => s.value);
 
@@ -91,20 +101,6 @@ const PIPELINE_BUCKETS = [
 function getStageLabel(stageValue: string) {
   const stage = APPLICATION_STAGES.find((s) => s.value === stageValue);
   return stage?.label || stageValue;
-}
-
-function getStageBadgeClasses(stageValue: string) {
-  const color = APPLICATION_STAGES.find((s) => s.value === stageValue)?.color || "gray";
-  const map: Record<string, string> = {
-    gray: "bg-gray-100 text-gray-700 border-gray-200",
-    blue: "bg-blue-50 text-blue-700 border-blue-200",
-    violet: "bg-violet-50 text-violet-700 border-violet-200",
-    amber: "bg-amber-50 text-amber-800 border-amber-200",
-    green: "bg-green-50 text-green-700 border-green-200",
-    emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    red: "bg-rose-50 text-rose-700 border-rose-200",
-  };
-  return map[color] || map.gray;
 }
 
 function getInitials(name: string) {
@@ -161,6 +157,10 @@ export default function JobDetailPage() {
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const linkFormRef = useRef<HTMLDivElement>(null);
+  const [fitByCandidate, setFitByCandidate] = useState<
+    Record<string, FitScoreClient>
+  >({});
+  const [fitLoading, setFitLoading] = useState(false);
 
   // Support both field names used across the codebase
   const linkedCandidates = useMemo(() => {
@@ -169,6 +169,76 @@ export default function JobDetailPage() {
     if (Array.isArray(job.candidates)) return job.candidates;
     return [];
   }, [job]);
+
+  // Batch-fetch fit scores for linked candidates (non-blocking)
+  useEffect(() => {
+    if (!jobId || linkedCandidates.length === 0) {
+      setFitByCandidate({});
+      return;
+    }
+
+    // Seed from any fit fields already on the linked candidate records
+    const seeded: Record<string, FitScoreClient> = {};
+    for (const lc of linkedCandidates as any[]) {
+      if (lc?.candidateId && typeof lc.fitScore === "number") {
+        seeded[lc.candidateId] = {
+          score: lc.fitScore,
+          grade: lc.fitGrade || "C",
+          reasons: Array.isArray(lc.fitReasons) ? lc.fitReasons : [],
+        };
+      }
+    }
+    if (Object.keys(seeded).length) {
+      setFitByCandidate((prev) => ({ ...seeded, ...prev }));
+    }
+
+    let cancelled = false;
+    const ids = linkedCandidates
+      .map((c: any) => c?.candidateId)
+      .filter(Boolean) as string[];
+
+    // Skip fetch if we already have scores for everyone from seed
+    const missing = ids.filter((id) => !seeded[id]);
+    if (missing.length === 0 && ids.length > 0) return;
+
+    setFitLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/jobs/${jobId}/fit-score`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            candidateIds: missing.length ? missing : ids,
+            persist: true,
+          }),
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const next: Record<string, FitScoreClient> = { ...seeded };
+        for (const row of data.scores || []) {
+          if (row?.candidateId && row.fit) {
+            next[row.candidateId] = {
+              score: row.fit.score,
+              grade: row.fit.grade,
+              reasons: row.fit.reasons,
+              strengths: row.fit.strengths,
+              gaps: row.fit.gaps,
+            };
+          }
+        }
+        if (!cancelled) setFitByCandidate(next);
+      } catch {
+        /* non-blocking */
+      } finally {
+        if (!cancelled) setFitLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId, linkedCandidates]);
 
   const pipelineCounts = useMemo(() => {
     const total = linkedCandidates.length;
@@ -460,6 +530,7 @@ export default function JobDetailPage() {
             </a>
           )}
 
+          <FillReqPlaybookButton jobId={job.id} jobTitle={job.title} />
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
             <Pencil className="h-4 w-4 mr-2" />
             Edit Job
@@ -472,9 +543,9 @@ export default function JobDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
         {/* ─── Main column ─── */}
-        <div className="xl:col-span-2 space-y-5">
+        <div className="xl:col-span-8 space-y-5">
           {/* Hero / job summary card */}
           <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
             <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
@@ -572,295 +643,13 @@ export default function JobDetailPage() {
             </div>
           </section>
 
-          {/* Candidates list */}
-          <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-              <h2 className="text-sm font-semibold tracking-wide text-gray-800 uppercase flex items-center gap-2">
-                <Users className="h-4 w-4 text-gray-500" />
-                Candidates
-                <span className="text-gray-400 font-normal normal-case tracking-normal">
-                  ({linkedCandidates.length})
-                </span>
-              </h2>
-              <Button variant="outline" size="sm" onClick={openAddCandidate}>
-                <UserPlus className="h-4 w-4 mr-1.5" />
-                Add
-              </Button>
-            </div>
-
-            {linkedCandidates.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-4 py-10 text-center">
-                <p className="text-sm text-gray-500">No candidates linked yet.</p>
-                <Button className="mt-3" size="sm" onClick={openAddCandidate}>
-                  <UserPlus className="h-4 w-4 mr-1.5" />
-                  Link a candidate
-                </Button>
-              </div>
-            ) : (
-              <ul className="divide-y divide-gray-100">
-                {linkedCandidates.map((lc: any) => {
-                  const name = lc.candidateName || "Unknown Candidate";
-                  const stage = lc.stage || "sourced";
-                  return (
-                    <li
-                      key={lc.candidateId}
-                      className="flex flex-wrap items-center gap-3 py-3.5 first:pt-0 last:pb-0"
-                    >
-                      <div
-                        className={`h-10 w-10 shrink-0 rounded-full ${avatarColor(name)} text-white flex items-center justify-center text-sm font-semibold`}
-                      >
-                        {getInitials(name)}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-sm text-gray-900 truncate">{name}</p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {lc.candidateEmail || "No email"}
-                          {lc.dateApplied
-                            ? ` · Applied ${new Date(lc.dateApplied).toLocaleDateString()}`
-                            : null}
-                        </p>
-                        {lc.notes &&
-                          String(lc.notes).trim() &&
-                          String(lc.notes).trim() !==
-                            "Applied via careers site" && (
-                            <p className="mt-1 text-xs text-slate-700 line-clamp-2 whitespace-pre-wrap">
-                              <span className="font-medium text-slate-500">
-                                Message:{" "}
-                              </span>
-                              {String(lc.notes)}
-                            </p>
-                          )}
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getStageBadgeClasses(stage)}`}
-                        >
-                          {getStageLabel(stage)}
-                        </span>
-
-                        <select
-                          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white"
-                          value={stage}
-                          onChange={(e) =>
-                            updateStage.mutate({
-                              jobId,
-                              candidateId: lc.candidateId,
-                              stage: e.target.value,
-                            })
-                          }
-                          disabled={updateStage.isPending}
-                          aria-label={`Stage for ${name}`}
-                        >
-                          {/* Ensure current stage is selectable even if legacy */}
-                          {!STAGES.includes(stage) && (
-                            <option value={stage}>{getStageLabel(stage)}</option>
-                          )}
-                          {STAGES.map((s) => (
-                            <option key={s} value={s}>
-                              {getStageLabel(s)}
-                            </option>
-                          ))}
-                        </select>
-
-                        <Button variant="outline" size="sm" asChild>
-                          <Link href={`/dashboard/candidates/${lc.candidateId}`}>View</Link>
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            unlinkCandidate.mutate({
-                              jobId,
-                              candidateId: lc.candidateId,
-                            })
-                          }
-                          disabled={unlinkCandidate.isPending}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" /> Unlink
-                        </Button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-
-            {/* Link candidate form — search & pick from tenant candidates */}
-            {(showLinkForm || linkedCandidates.length === 0) && (
-              <div
-                ref={linkFormRef}
-                className="mt-6 border-t border-gray-100 pt-6"
-              >
-                <h3 className="font-medium text-sm mb-1 flex items-center gap-2 text-gray-800">
-                  <UserPlus className="h-4 w-4" /> Link Candidate
-                </h3>
-                <p className="text-xs text-gray-500 mb-3">
-                  Search your candidates and click one to select — no ID typing required.
-                </p>
-
-                {/* Selected chip */}
-                {candidateId && (
-                  <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
-                    <span className="font-medium text-blue-900">{candidateName}</span>
-                    {candidateEmail && (
-                      <span className="text-blue-700/80 text-xs">{candidateEmail}</span>
-                    )}
-                    <button
-                      type="button"
-                      className="ml-auto text-xs text-blue-700 hover:underline"
-                      onClick={() => {
-                        setCandidateId("");
-                        setCandidateName("");
-                        setCandidateEmail("");
-                        setCandidateSearch("");
-                      }}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <Input
-                    value={candidateSearch}
-                    onChange={(e) => {
-                      setCandidateSearch(e.target.value);
-                      // Typing a new search clears prior selection
-                      if (candidateId) {
-                        setCandidateId("");
-                        setCandidateName("");
-                        setCandidateEmail("");
-                      }
-                    }}
-                    placeholder="Search by name, email, or title…"
-                    className="h-11"
-                  />
-
-                  <div className="rounded-xl border border-gray-200 max-h-56 overflow-y-auto bg-white">
-                    {loadingCandidates ? (
-                      <div className="flex items-center gap-2 px-4 py-6 text-sm text-gray-500 justify-center">
-                        <Loader2 className="h-4 w-4 animate-spin" /> Loading candidates…
-                      </div>
-                    ) : availableCandidates.length === 0 ? (
-                      <div className="px-4 py-6 text-center text-sm text-gray-500">
-                        {allCandidates.length === 0 ? (
-                          <>
-                            No candidates in this tenant yet.{" "}
-                            <Link
-                              href="/dashboard/candidates/new"
-                              className="text-blue-600 hover:underline"
-                            >
-                              Add a candidate
-                            </Link>
-                          </>
-                        ) : (
-                          "No matching candidates (or all are already linked)."
-                        )}
-                      </div>
-                    ) : (
-                      <ul className="divide-y divide-gray-100">
-                        {availableCandidates.map((c: any) => {
-                          const selected = c.id === candidateId;
-                          return (
-                            <li key={c.id}>
-                              <button
-                                type="button"
-                                onClick={() => selectCandidate(c)}
-                                className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors ${
-                                  selected ? "bg-blue-50" : ""
-                                }`}
-                              >
-                                <div
-                                  className={`h-8 w-8 shrink-0 rounded-full ${avatarColor(
-                                    c.name || "?"
-                                  )} text-white flex items-center justify-center text-xs font-semibold`}
-                                >
-                                  {getInitials(c.name || "?")}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-medium text-gray-900 truncate">
-                                    {c.name || "Unknown"}
-                                  </p>
-                                  <p className="text-xs text-gray-500 truncate">
-                                    {[c.title, c.email].filter(Boolean).join(" · ") ||
-                                      "No title / email"}
-                                  </p>
-                                </div>
-                                {selected && (
-                                  <span className="text-xs font-semibold text-blue-700">
-                                    Selected
-                                  </span>
-                                )}
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-medium text-gray-500 mb-1 block">
-                        Stage
-                      </label>
-                      <select
-                        className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white w-full h-10"
-                        value={newCandidateStage}
-                        onChange={(e) => setNewCandidateStage(e.target.value)}
-                      >
-                        {STAGES.map((stage) => (
-                          <option key={stage} value={stage}>
-                            {getStageLabel(stage)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="text-xs font-medium text-gray-500 mb-1 block">
-                        Notes (optional)
-                      </label>
-                      <Textarea
-                        value={candidateNotes}
-                        onChange={(e) => setCandidateNotes(e.target.value)}
-                        placeholder="Why linking / context for this role…"
-                        rows={2}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 flex justify-end gap-2">
-                  {linkedCandidates.length > 0 && (
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowLinkForm(false)}
-                      type="button"
-                    >
-                      Cancel
-                    </Button>
-                  )}
-                  <Button
-                    onClick={onLinkCandidate}
-                    disabled={isMutating || !candidateId || !candidateName}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    {linkCandidate.isPending ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Linking...
-                      </>
-                    ) : (
-                      "Link Candidate"
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </section>
+          {/* Activity & notes — main column (job + candidates + company) */}
+          <JobActivityNotes
+            jobId={job.id || jobId}
+            linkedCandidates={linkedCandidates}
+            companyId={job.companyId}
+            companyName={job.companyName}
+          />
 
           {/* Job description */}
           <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
@@ -878,56 +667,243 @@ export default function JobDetailPage() {
           </section>
         </div>
 
-        {/* ─── Right sidebar ─── */}
-        <div className="space-y-5">
-          {/* Job details / engagement-style summary from real fields only */}
-          <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-            <h2 className="text-sm font-semibold tracking-wide text-gray-800 uppercase mb-4">
-              Job Snapshot
-            </h2>
-            <dl className="space-y-3 text-sm">
-              <SnapshotRow label="Employment type" value={job.employmentType || "Full-time"} />
-              <SnapshotRow label="Status" value={formatStatusLabel(job.status)} />
-              <SnapshotRow
-                label="Website"
-                value={
-                  isShownOnWebsite && isOpenStatus
-                    ? "Published on careers"
-                    : isShownOnWebsite
-                      ? "Flag on (set status Open to list)"
-                      : "Hidden from careers"
-                }
-              />
-              <SnapshotRow label="Compensation" value={job.salaryRange || "—"} highlight />
-              <SnapshotRow label="Location" value={job.location || "—"} />
-              <SnapshotRow label="Company" value={job.companyName || "—"} />
-              <SnapshotRow
-                label="Candidates attached"
-                value={String(linkedCandidates.length)}
-              />
-            </dl>
-          </section>
-
-          {/* Activity & notes — existing EventTimeline (add note + history) */}
-          <section className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-5 pt-5 pb-3 border-b border-gray-100">
-              <h2 className="text-sm font-semibold tracking-wide text-gray-800 uppercase">
-                Activity &amp; Notes
+        {/* ─── Right sidebar: hiring manager + next actions + candidates ─── */}
+        <div className="xl:col-span-4 space-y-5">
+          <JobHiringManagerCard
+            jobId={job.id || jobId}
+            companyId={job.companyId}
+            companyName={job.companyName}
+            job={job}
+            compact
+          />
+          <NextActionPanel jobId={job.id || jobId} />
+          <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h2 className="text-sm font-semibold tracking-wide text-gray-800 uppercase flex items-center gap-2">
+                <Users className="h-4 w-4 text-gray-500" />
+                Candidates
+                <span className="text-gray-400 font-normal normal-case tracking-normal text-xs">
+                  ({linkedCandidates.length})
+                </span>
               </h2>
+              <Button variant="outline" size="sm" onClick={openAddCandidate} className="h-8">
+                <UserPlus className="h-3.5 w-3.5 mr-1" />
+                Add
+              </Button>
             </div>
-            <div className="p-4 pt-3">
-              <EventTimeline
-                entityType="job"
-                entityId={job.id || jobId}
-                maxHeight="420px"
-                embedded
-              />
-            </div>
+
+            {linkedCandidates.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-3 py-6 text-center">
+                <p className="text-xs text-gray-500">No candidates linked yet.</p>
+                <Button className="mt-2" size="sm" onClick={openAddCandidate}>
+                  <UserPlus className="h-3.5 w-3.5 mr-1" />
+                  Link
+                </Button>
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-100 max-h-[28rem] overflow-y-auto">
+                {linkedCandidates.map((lc: any) => {
+                  const name = lc.candidateName || "Unknown";
+                  const stage = lc.stage || "sourced";
+                  const fit =
+                    fitByCandidate[lc.candidateId] ||
+                    (typeof lc.fitScore === "number"
+                      ? {
+                          score: lc.fitScore,
+                          grade: lc.fitGrade,
+                          reasons: lc.fitReasons,
+                        }
+                      : null);
+                  return (
+                    <li
+                      key={lc.candidateId}
+                      className="flex items-center gap-2.5 py-2.5 first:pt-0 last:pb-0"
+                    >
+                      <div
+                        className={`h-8 w-8 shrink-0 rounded-full ${avatarColor(name)} text-white flex items-center justify-center text-[11px] font-semibold`}
+                      >
+                        {getInitials(name)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Link
+                            href={`/dashboard/candidates/${lc.candidateId}`}
+                            className="text-sm font-medium text-blue-600 hover:underline truncate"
+                          >
+                            {name}
+                          </Link>
+                          <FitScoreBadge
+                            score={fit?.score}
+                            grade={fit?.grade}
+                            reasons={fit?.reasons}
+                            strengths={fit?.strengths}
+                            gaps={fit?.gaps}
+                            loading={fitLoading && !fit}
+                            className="shrink-0"
+                          />
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          <select
+                            className="border-0 bg-transparent p-0 text-[11px] font-medium text-gray-600 cursor-pointer max-w-full focus:ring-0"
+                            value={stage}
+                            onChange={(e) =>
+                              updateStage.mutate({
+                                jobId,
+                                candidateId: lc.candidateId,
+                                stage: e.target.value,
+                              })
+                            }
+                            disabled={updateStage.isPending}
+                            aria-label={`Stage for ${name}`}
+                            title="Change stage"
+                          >
+                            {!STAGES.includes(stage) && (
+                              <option value={stage}>{getStageLabel(stage)}</option>
+                            )}
+                            {STAGES.map((s) => (
+                              <option key={s} value={s}>
+                                {getStageLabel(s)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        title="Unlink"
+                        onClick={() =>
+                          unlinkCandidate.mutate({
+                            jobId,
+                            candidateId: lc.candidateId,
+                          })
+                        }
+                        disabled={unlinkCandidate.isPending}
+                        className="text-gray-300 hover:text-red-500 p-1 shrink-0"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {/* Link candidate form */}
+            {(showLinkForm || linkedCandidates.length === 0) && (
+              <div
+                ref={linkFormRef}
+                className="mt-4 border-t border-gray-100 pt-4"
+              >
+                <h3 className="font-medium text-xs mb-2 flex items-center gap-1.5 text-gray-700 uppercase tracking-wide">
+                  <UserPlus className="h-3.5 w-3.5" /> Link candidate
+                </h3>
+
+                {candidateId && (
+                  <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs">
+                    <span className="font-medium text-blue-900">{candidateName}</span>
+                    <button
+                      type="button"
+                      className="ml-auto text-blue-700 hover:underline"
+                      onClick={() => {
+                        setCandidateId("");
+                        setCandidateName("");
+                        setCandidateEmail("");
+                        setCandidateSearch("");
+                      }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+
+                <Input
+                  value={candidateSearch}
+                  onChange={(e) => {
+                    setCandidateSearch(e.target.value);
+                    if (candidateId) {
+                      setCandidateId("");
+                      setCandidateName("");
+                      setCandidateEmail("");
+                    }
+                  }}
+                  placeholder="Search candidates…"
+                  className="h-9 text-sm mb-2"
+                />
+
+                <div className="rounded-lg border border-gray-200 max-h-40 overflow-y-auto bg-white mb-2">
+                  {loadingCandidates ? (
+                    <div className="flex items-center gap-2 px-3 py-4 text-xs text-gray-500 justify-center">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
+                    </div>
+                  ) : availableCandidates.length === 0 ? (
+                    <div className="px-3 py-4 text-center text-xs text-gray-500">
+                      No matching candidates
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-gray-50">
+                      {availableCandidates.map((c: any) => (
+                        <li key={c.id}>
+                          <button
+                            type="button"
+                            onClick={() => selectCandidate(c)}
+                            className={`w-full text-left px-2.5 py-2 text-xs hover:bg-slate-50 ${
+                              c.id === candidateId ? "bg-blue-50" : ""
+                            }`}
+                          >
+                            <span className="font-medium text-gray-900">
+                              {c.name || "Unknown"}
+                            </span>
+                            {c.email ? (
+                              <span className="text-gray-400 block truncate">
+                                {c.email}
+                              </span>
+                            ) : null}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <select
+                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white w-full mb-2"
+                  value={newCandidateStage}
+                  onChange={(e) => setNewCandidateStage(e.target.value)}
+                >
+                  {STAGES.map((stage) => (
+                    <option key={stage} value={stage}>
+                      {getStageLabel(stage)}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex gap-2">
+                  {linkedCandidates.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 h-8 text-xs"
+                      onClick={() => setShowLinkForm(false)}
+                      type="button"
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    className="flex-1 h-8 text-xs bg-blue-600 hover:bg-blue-700"
+                    onClick={onLinkCandidate}
+                    disabled={isMutating || !candidateId || !candidateName}
+                  >
+                    {linkCandidate.isPending ? "Linking…" : "Link"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </section>
 
-          {/* Quick links */}
-          <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-            <h2 className="text-sm font-semibold tracking-wide text-gray-800 uppercase mb-3">
+          <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
+            <h2 className="text-xs font-semibold tracking-wide text-gray-500 uppercase mb-3">
               Quick Links
             </h2>
             <div className="space-y-2 text-sm">
@@ -939,11 +915,6 @@ export default function JobDetailPage() {
                   <Building2 className="h-4 w-4" />
                   View {job.companyName || "company"}
                 </Link>
-              ) : job.companyName ? (
-                <p className="text-gray-500 flex items-center gap-2">
-                  <Building2 className="h-4 w-4" />
-                  {job.companyName}
-                </p>
               ) : null}
               <Link
                 href="/dashboard/jobs"
@@ -996,29 +967,6 @@ function MetaField({
         {icon ? <span className="text-gray-400 mt-0.5 shrink-0">{icon}</span> : null}
         <span className="truncate">{value}</span>
       </div>
-    </div>
-  );
-}
-
-function SnapshotRow({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <dt className="text-gray-500">{label}</dt>
-      <dd
-        className={`text-right font-medium ${
-          highlight ? "text-emerald-600" : "text-gray-900"
-        }`}
-      >
-        {value}
-      </dd>
     </div>
   );
 }

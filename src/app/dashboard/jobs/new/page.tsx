@@ -17,6 +17,10 @@ import {
 import { useClients } from '@/lib/hooks/query-client';
 import { JobListView } from '@/components/jobs/JobListView';
 import { JobPipelineView } from '@/components/jobs/JobPipelineView';
+import {
+  HiringManagerSelect,
+  type HiringManagerFields,
+} from '@/components/job/JobHiringManagerCard';
 
 interface Job {
   id: string;
@@ -66,6 +70,7 @@ export default function NewJobPage() {
   const [newJobEmploymentType, setNewJobEmploymentType] = useState("Full-time");
   const [newJobCompanyId, setNewJobCompanyId] = useState(prefilledCompanyId || "");
   const [newJobCompanyName, setNewJobCompanyName] = useState(prefilledCompanyName);
+  const [hiringManager, setHiringManager] = useState<HiringManagerFields>({});
 
   // Convert data to Job interface
   const jobsData: { jobs?: any[]; stats?: any } = jobsDataRaw && typeof jobsDataRaw === 'object' ? jobsDataRaw : { jobs: [] };
@@ -108,7 +113,8 @@ export default function NewJobPage() {
         employmentType: newJobEmploymentType,
         companyId: newJobCompanyId,
         companyName: newJobCompanyName,
-        status: "Open"
+        status: "Open",
+        ...hiringManager,
       });
 
       // Reset and go back
@@ -119,6 +125,7 @@ export default function NewJobPage() {
       setNewJobEmploymentType("Full-time");
       setNewJobCompanyId("");
       setNewJobCompanyName("");
+      setHiringManager({});
       
       alert("Job created successfully!");
       router.push('/dashboard/jobs');
@@ -173,6 +180,8 @@ export default function NewJobPage() {
               if (company) {
                 setNewJobCompanyName(company.name || "");
               }
+              // Reset HM when company changes
+              setHiringManager({});
             }}
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
@@ -188,6 +197,19 @@ export default function NewJobPage() {
               ✓ Pre-selected from contact
             </p>
           )}
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="hiringManager">Hiring manager / contact</Label>
+          <HiringManagerSelect
+            companyId={newJobCompanyId}
+            valueContactId={hiringManager.hiringManagerContactId}
+            onChange={setHiringManager}
+          />
+          <p className="text-xs text-muted-foreground">
+            Pick a company contact (hiring manager). Add contacts on the company
+            page if the list is empty.
+          </p>
         </div>
 
         <div className="grid gap-2">

@@ -238,7 +238,7 @@ export async function createJobAction(formData: FormData) {
   }
 
   const showRaw = formData.get('showOnWebsite');
-  const rawData = {
+  const rawData: Record<string, unknown> = {
     title: formData.get('title') as string,
     description: formData.get('description') as string || '',
     location: formData.get('location') as string || '',
@@ -251,6 +251,20 @@ export async function createJobAction(formData: FormData) {
       showRaw !== null &&
       ['true', '1', 'yes'].includes(String(showRaw).toLowerCase()),
   };
+
+  const hmFields = [
+    'hiringManagerContactId',
+    'hiringManagerName',
+    'hiringManagerTitle',
+    'hiringManagerEmail',
+    'hiringManagerPhone',
+  ] as const;
+  for (const f of hmFields) {
+    const v = formData.get(f);
+    if (v !== null && String(v).trim() !== '') {
+      rawData[f] = String(v).trim();
+    }
+  }
 
   console.log('[createJobAction] rawData:', JSON.stringify(rawData));
 
@@ -295,10 +309,53 @@ export async function updateJobAction(jobId: string, formData: FormData) {
     }
   }
 
+  // Hiring manager — allow empty string to clear
+  const hmFields = [
+    'hiringManagerContactId',
+    'hiringManagerName',
+    'hiringManagerTitle',
+    'hiringManagerEmail',
+    'hiringManagerPhone',
+  ] as const;
+  for (const field of hmFields) {
+    if (formData.has(field)) {
+      rawData[field] = String(formData.get(field) ?? '');
+    }
+  }
+
   // Boolean: allow explicit false (FormData is always string)
   if (formData.has('showOnWebsite')) {
     const v = String(formData.get('showOnWebsite')).toLowerCase();
     rawData.showOnWebsite = v === 'true' || v === '1' || v === 'yes';
+  }
+
+  // Pre-screen questions JSON array
+  if (formData.has('preScreenQuestions')) {
+    const raw = String(formData.get('preScreenQuestions') || '').trim();
+    if (raw === '' || raw === '[]') {
+      rawData.preScreenQuestions = [];
+    } else {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          rawData.preScreenQuestions = parsed
+            .filter((q: any) => q && String(q.prompt || '').trim())
+            .map((q: any) => ({
+              id: String(q.id || `psq_${Math.random().toString(36).slice(2, 10)}`),
+              prompt: String(q.prompt).trim().slice(0, 500),
+              type: ['text', 'yes_no', 'number', 'choice'].includes(q.type)
+                ? q.type
+                : 'text',
+              options: Array.isArray(q.options)
+                ? q.options.map((o: unknown) => String(o)).slice(0, 20)
+                : undefined,
+              required: q.required !== false,
+            }));
+        }
+      } catch {
+        return { error: 'Invalid preScreenQuestions JSON' };
+      }
+    }
   }
 
 try {

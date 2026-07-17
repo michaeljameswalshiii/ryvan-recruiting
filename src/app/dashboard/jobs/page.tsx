@@ -18,6 +18,10 @@ import {
 import { useJobs, useCreateJob } from '@/lib/hooks/query-job';
 import { useClients } from '@/lib/hooks/query-client';
 import { JobListView } from '@/components/jobs/JobListView';
+import {
+  HiringManagerSelect,
+  type HiringManagerFields,
+} from '@/components/job/JobHiringManagerCard';
 import { toast } from 'sonner';
 
 export default function JobsPage() {
@@ -67,6 +71,7 @@ export default function JobsPage() {
     status: 'Open',
     showOnWebsite: false,
   });
+  const [hiringManager, setHiringManager] = useState<HiringManagerFields>({});
 
   const handleCompanySelect = (companyId: string) => {
     const company = companies.find((c: any) => String(c.id) === String(companyId));
@@ -75,6 +80,7 @@ export default function JobsPage() {
       companyId,
       companyName: company?.name || company?.companyName || formData.companyName,
     });
+    setHiringManager({});
   };
 
   const handleAddJobSubmit = async (e: React.FormEvent) => {
@@ -93,6 +99,7 @@ export default function JobsPage() {
         salaryRange: formData.salaryRange.trim(),
         status: formData.status,
         showOnWebsite: formData.showOnWebsite,
+        ...hiringManager,
       });
 
       toast.success('Job created successfully!');
@@ -106,6 +113,7 @@ export default function JobsPage() {
         status: 'Open',
         showOnWebsite: false,
       });
+      setHiringManager({});
       refetch();
     } catch (err: any) {
       console.error('Add job error:', err);
@@ -244,6 +252,18 @@ export default function JobsPage() {
                   placeholder="Acme Corp"
                 />
               </div>
+            </div>
+
+            <div>
+              <Label>Hiring manager / contact</Label>
+              <HiringManagerSelect
+                companyId={formData.companyId}
+                valueContactId={hiringManager.hiringManagerContactId}
+                onChange={setHiringManager}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Optional. Choose a contact at the company for this req.
+              </p>
             </div>
 
             <div>

@@ -77,6 +77,16 @@ export const jobSchema = z.object({
   // Company link
   companyId: z.string().uuid().optional(),
   companyName: z.string().max(200).optional(),
+
+  /**
+   * Hiring manager / primary contact for this req (usually a company contact).
+   * Denormalized name/email/title so the job page works even if contact list changes.
+   */
+  hiringManagerContactId: z.string().optional().or(z.literal('')),
+  hiringManagerName: z.string().max(100).optional().or(z.literal('')),
+  hiringManagerTitle: z.string().max(100).optional().or(z.literal('')),
+  hiringManagerEmail: z.string().max(200).optional().or(z.literal('')),
+  hiringManagerPhone: z.string().max(50).optional().or(z.literal('')),
   
   // Job status (legacy values normalized)
   status: jobStatusField.default('Open'),
@@ -87,6 +97,22 @@ export const jobSchema = z.object({
    * Undefined (legacy): treated as true so existing public jobs keep showing.
    */
   showOnWebsite: z.boolean().optional(),
+
+  /**
+   * Optional pre-screen questions shown on the public careers apply form.
+   * Answers are evaluated by the screen-bot on submit.
+   */
+  preScreenQuestions: z
+    .array(
+      z.object({
+        id: z.string(),
+        prompt: z.string().max(500),
+        type: z.enum(['text', 'yes_no', 'number', 'choice']).default('text'),
+        options: z.array(z.string()).optional(),
+        required: z.boolean().optional().default(true),
+      })
+    )
+    .optional(),
   
   // Linked candidates
   candidates: z.array(linkedCandidateSchema).default([]),
