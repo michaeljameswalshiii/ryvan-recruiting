@@ -61,8 +61,8 @@ export function CareersBrandHeader({
         }}
       >
         <div className="mx-auto max-w-3xl px-6 py-6">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="flex items-center gap-4 min-w-0">
+          <div className="flex flex-col items-center justify-center gap-4 text-center">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 min-w-0">
               {(() => {
                 const logoEl =
                   !logoFailed && resolvedLogo ? (
@@ -106,7 +106,7 @@ export function CareersBrandHeader({
                 }
                 return logoEl;
               })()}
-              <div className="min-w-0">
+              <div className="min-w-0 text-center sm:text-left">
                 <p
                   className="text-xs font-semibold uppercase tracking-[0.18em]"
                   style={{ color: accent }}
@@ -118,12 +118,12 @@ export function CareersBrandHeader({
                     href={websiteUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 truncate hover:underline underline-offset-2 block"
+                    className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 hover:underline underline-offset-2 block"
                   >
                     {name}
                   </a>
                 ) : (
-                  <p className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 truncate">
+                  <p className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
                     {name}
                   </p>
                 )}
@@ -131,7 +131,7 @@ export function CareersBrandHeader({
             </div>
           </div>
           {!pageTitle && (
-            <p className="mt-3 text-sm text-slate-500 max-w-xl">
+            <p className="mt-3 text-sm text-slate-500 max-w-xl mx-auto text-center">
               {tagline ||
                 "Search open roles and apply through our recruiting team."}
             </p>
