@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "trio-recruiting": {
+      "command": "npx",
+      "args": ["tsx", "C:/Users/micha/turnkey-optimization/mcp-server/src/index.ts"],
+      "env": {
+        "TRIO_MCP_API_KEY": "replace-with-a-long-random-secret",
+        "TRIO_MCP_EXPECTED_API_KEY": "replace-with-a-long-random-secret",
+        "TRIO_TENANT_ID": "tenant-2024-001",
+        "AWS_REGION": "us-east-1",
+        "AWS_ACCESS_KEY_ID": "AKIA...",
+        "AWS_SECRET_ACCESS_KEY": "...",
+        "DYNAMODB_LEADS_TABLE": "turnkey-leads",
+        "DYNAMODB_JOBS_TABLE": "turnkey-jobs",
+        "DYNAMODB_EVENTS_TABLE": "turnkey-events"
+      }
+    }
+  }
+}

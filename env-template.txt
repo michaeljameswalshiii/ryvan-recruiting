@@ -1,3 +1,13 @@
+# ── Trio MCP (Claude Desktop / Claude Code) ─────────────────────────
+# Used only by mcp-server/ (local stdio process), not the Next.js web app.
+# TRIO_MCP_API_KEY=generate-a-long-random-hex
+# TRIO_MCP_EXPECTED_API_KEY=same-as-above
+# TRIO_TENANT_ID=tenant-2024-001
+# Or multi-key: TRIO_MCP_API_KEYS=key1:tenant-a,key2:tenant-b
+# AWS_REGION=us-east-1
+# AWS_ACCESS_KEY_ID=
+# AWS_SECRET_ACCESS_KEY=
+
 # Resend Email Configuration (optional)
 RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxx
 RESEND_FROM_EMAIL=you@yourdomain.com

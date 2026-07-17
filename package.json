@@ -14,7 +14,9 @@
     "migrate:leads-to-jobs:verbose": "tsx scripts/migrate-leads-to-jobs.ts --verbose",
     "migrate:leads-to-jobs:tsnode": "ts-node scripts/migrate-leads-to-jobs.ts",
     "migrate:stages": "node scripts/migrate-stages.mjs",
-    "migrate:stages:dry": "node scripts/migrate-stages.mjs --dry-run"
+    "migrate:stages:dry": "node scripts/migrate-stages.mjs --dry-run",
+    "mcp": "npm run start --prefix mcp-server",
+    "mcp:install": "npm install --prefix mcp-server"
   },
   "dependencies": {
     "@apollo/client": "^3.11.8",
