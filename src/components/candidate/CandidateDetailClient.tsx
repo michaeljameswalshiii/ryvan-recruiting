@@ -109,6 +109,17 @@ const PIPELINE_STEPS = [
 
 const REJECTED = ['rejected', 'not_interested', 'offer_declined', 'withdrawn'];
 
+/** Header fields that support click-to-edit / paste-and-save */
+type HeaderFieldKey =
+  | 'name'
+  | 'title'
+  | 'company'
+  | 'email'
+  | 'phone'
+  | 'location'
+  | 'linkedin'
+  | 'salaryRequirements';
+
 function normalizeStage(raw?: string): string {
   if (!raw) return 'sourced';
   return String(raw).trim().toLowerCase().replace(/\s+/g, '_');
@@ -284,10 +295,10 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [editForm, setEditForm] = useState({ ...contactInfo });
   const [isSavingContact, setIsSavingContact] = useState(false);
 
-  /** Inline LinkedIn paste/save from header (no full Edit modal) */
-  const [editingLinkedIn, setEditingLinkedIn] = useState(false);
-  const [linkedinDraft, setLinkedinDraft] = useState('');
-  const [savingLinkedIn, setSavingLinkedIn] = useState(false);
+  /** Inline header field edit — click value / "Add …" to paste and save */
+  const [editingField, setEditingField] = useState<HeaderFieldKey | null>(null);
+  const [fieldDraft, setFieldDraft] = useState('');
+  const [savingField, setSavingField] = useState(false);
 
   const currentStep = stageIndex(status);
   const currentStepLabel =
@@ -679,14 +690,40 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     }
   };
 
-  const openLinkedInEditor = () => {
-    setLinkedinDraft(contactInfo.linkedin || '');
-    setEditingLinkedIn(true);
+  /** Map UI contact field → API body key */
+  const headerFieldApiKey = (field: HeaderFieldKey): string => {
+    switch (field) {
+      case 'linkedin':
+        return 'linkedin_url';
+      case 'salaryRequirements':
+        return 'salary_requirements';
+      default:
+        return field;
+    }
   };
 
-  const cancelLinkedInEditor = () => {
-    setEditingLinkedIn(false);
-    setLinkedinDraft('');
+  const headerFieldLabel = (field: HeaderFieldKey): string => {
+    const labels: Record<HeaderFieldKey, string> = {
+      name: 'Name',
+      title: 'Title',
+      company: 'Company',
+      email: 'Email',
+      phone: 'Phone',
+      location: 'Location',
+      linkedin: 'LinkedIn',
+      salaryRequirements: 'Salary',
+    };
+    return labels[field];
+  };
+
+  const openFieldEditor = (field: HeaderFieldKey) => {
+    setFieldDraft(contactInfo[field] || '');
+    setEditingField(field);
+  };
+
+  const cancelFieldEditor = () => {
+    setEditingField(null);
+    setFieldDraft('');
   };
 
   /** Normalize pasted LinkedIn value to a full URL when possible. */
@@ -697,49 +734,136 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     if (/^(www\.)?linkedin\.com\//i.test(s)) {
       return `https://${s.replace(/^www\./i, 'www.')}`;
     }
-    // bare slug → /in/slug
     if (/^[\w-]+$/.test(s)) {
       return `https://www.linkedin.com/in/${s}`;
     }
     return s;
   };
 
-  const handleSaveLinkedIn = async () => {
+  const handleSaveHeaderField = async (field: HeaderFieldKey) => {
     if (!candidateId) return;
-    const linkedin_url = normalizeLinkedInUrl(linkedinDraft);
-    setSavingLinkedIn(true);
+    let value = fieldDraft.trim();
+    if (field === 'linkedin') {
+      value = normalizeLinkedInUrl(value);
+    }
+    if (field === 'name' && !value) {
+      toast.error('Name cannot be empty');
+      return;
+    }
+    setSavingField(true);
     try {
+      const body: Record<string, string> = {
+        [headerFieldApiKey(field)]: value,
+      };
       const res = await fetch(`/api/candidate/${candidateId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ linkedin_url }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to save LinkedIn');
+        throw new Error(data.error || `Failed to save ${headerFieldLabel(field)}`);
       }
-      setContactInfo((prev) => ({ ...prev, linkedin: linkedin_url }));
-      setEditForm((prev) => ({ ...prev, linkedin: linkedin_url }));
-      setEditingLinkedIn(false);
-      setLinkedinDraft('');
-      toast.success(linkedin_url ? 'LinkedIn saved' : 'LinkedIn cleared');
+      setContactInfo((prev) => ({ ...prev, [field]: value }));
+      setEditForm((prev) => ({ ...prev, [field]: value }));
+      setEditingField(null);
+      setFieldDraft('');
+      toast.success(
+        value
+          ? `${headerFieldLabel(field)} saved`
+          : `${headerFieldLabel(field)} cleared`
+      );
       await fetch(`/api/candidate/${candidateId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          noteText: linkedin_url
-            ? `LinkedIn updated: ${linkedin_url}`
-            : 'LinkedIn cleared',
+          noteText: value
+            ? `${headerFieldLabel(field)} updated: ${value}`
+            : `${headerFieldLabel(field)} cleared`,
           noteType: 'profile_updated',
         }),
       }).catch(() => {});
       await fetchNotes();
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to save LinkedIn');
+      toast.error(err?.message || `Failed to save ${headerFieldLabel(field)}`);
     } finally {
-      setSavingLinkedIn(false);
+      setSavingField(false);
     }
   };
+
+  const renderInlineFieldEditor = (
+    field: HeaderFieldKey,
+    opts?: {
+      icon?: React.ReactNode;
+      placeholder?: string;
+      inputClassName?: string;
+      inputType?: string;
+    }
+  ) => (
+    <form
+      className="inline-flex items-center gap-1.5 min-w-0 max-w-full"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void handleSaveHeaderField(field);
+      }}
+    >
+      {opts?.icon}
+      <Input
+        autoFocus
+        type={opts?.inputType || 'text'}
+        value={fieldDraft}
+        onChange={(e) => setFieldDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelFieldEditor();
+          }
+        }}
+        placeholder={opts?.placeholder || `Add ${headerFieldLabel(field).toLowerCase()}…`}
+        disabled={savingField}
+        className={
+          opts?.inputClassName ||
+          'h-7 w-[min(100%,16rem)] sm:w-56 text-xs px-2'
+        }
+      />
+      <Button
+        type="submit"
+        size="sm"
+        variant="ghost"
+        disabled={savingField}
+        className="h-7 w-7 p-0 text-green-700 hover:text-green-800 hover:bg-green-50"
+        title={`Save ${headerFieldLabel(field)}`}
+      >
+        {savingField ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Check className="h-3.5 w-3.5" />
+        )}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={savingField}
+        onClick={cancelFieldEditor}
+        className="h-7 w-7 p-0 text-gray-500"
+        title="Cancel"
+      >
+        <X className="h-3.5 w-3.5" />
+      </Button>
+    </form>
+  );
+
+  const renderFieldEditButton = (field: HeaderFieldKey, title?: string) => (
+    <button
+      type="button"
+      onClick={() => openFieldEditor(field)}
+      className="inline-flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+      title={title || `Edit ${headerFieldLabel(field)}`}
+    >
+      <Pencil className="h-3 w-3" />
+    </button>
+  );
 
   const runAiTool = async (tool: string) => {
     setAiLoading(tool);
@@ -827,93 +951,165 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
               {getInitials(contactInfo.name)}
             </div>
             <div className="min-w-0 space-y-1.5">
-              <h1 className="text-2xl font-semibold tracking-tight text-gray-900 truncate">
-                {contactInfo.name || 'Unknown'}
-              </h1>
+              {/* Name */}
+              {editingField === 'name' ? (
+                renderInlineFieldEditor('name', {
+                  placeholder: 'Full name…',
+                  inputClassName: 'h-8 w-[min(100%,20rem)] sm:w-72 text-base px-2 font-semibold',
+                })
+              ) : (
+                <div className="flex items-center gap-1 min-w-0">
+                  <h1 className="text-2xl font-semibold tracking-tight text-gray-900 truncate">
+                    {contactInfo.name || 'Unknown'}
+                  </h1>
+                  {renderFieldEditButton('name')}
+                </div>
+              )}
+
+              {/* Title + company */}
               <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
-                <span className="font-medium text-gray-800">
-                  {contactInfo.title || 'No title'}
-                </span>
-                {contactInfo.company && (
-                  <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
-                    {contactInfo.company}
+                {editingField === 'title' ? (
+                  renderInlineFieldEditor('title', {
+                    placeholder: 'Current title…',
+                    inputClassName: 'h-7 w-[min(100%,14rem)] sm:w-52 text-xs px-2',
+                  })
+                ) : (
+                  <span className="inline-flex items-center gap-1">
+                    <span className="font-medium text-gray-800">
+                      {contactInfo.title || (
+                        <button
+                          type="button"
+                          onClick={() => openFieldEditor('title')}
+                          className="text-gray-400 hover:text-gray-700 hover:underline font-normal"
+                        >
+                          Add title
+                        </button>
+                      )}
+                    </span>
+                    {contactInfo.title ? renderFieldEditButton('title') : null}
                   </span>
+                )}
+                {editingField === 'company' ? (
+                  renderInlineFieldEditor('company', {
+                    placeholder: 'Company…',
+                    inputClassName: 'h-7 w-[min(100%,12rem)] sm:w-44 text-xs px-2',
+                  })
+                ) : contactInfo.company ? (
+                  <span className="inline-flex items-center gap-0.5">
+                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
+                      {contactInfo.company}
+                    </span>
+                    {renderFieldEditButton('company')}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openFieldEditor('company')}
+                    className="text-xs text-gray-400 hover:text-gray-700 hover:underline"
+                  >
+                    Add company
+                  </button>
                 )}
               </div>
+
+              {/* Contact row: email, phone, location, LinkedIn, salary */}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
-                {contactInfo.email && (
-                  <a
-                    href={`mailto:${contactInfo.email}`}
-                    className="inline-flex items-center gap-1.5 text-blue-600 hover:underline"
+                {/* Email */}
+                {editingField === 'email' ? (
+                  renderInlineFieldEditor('email', {
+                    icon: <Mail className="h-3.5 w-3.5 text-blue-600 shrink-0" />,
+                    placeholder: 'email@example.com',
+                    inputType: 'email',
+                    inputClassName: 'h-7 w-[min(100%,16rem)] sm:w-56 text-xs px-2',
+                  })
+                ) : contactInfo.email ? (
+                  <span className="inline-flex items-center gap-1">
+                    <a
+                      href={`mailto:${contactInfo.email}`}
+                      className="inline-flex items-center gap-1.5 text-blue-600 hover:underline"
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      {contactInfo.email}
+                    </a>
+                    {renderFieldEditButton('email')}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openFieldEditor('email')}
+                    className="inline-flex items-center gap-1.5 text-gray-400 hover:text-blue-600 hover:underline"
                   >
                     <Mail className="h-3.5 w-3.5" />
-                    {contactInfo.email}
-                  </a>
+                    Add email
+                  </button>
                 )}
-                {contactInfo.phone && (
-                  <a
-                    href={`tel:${contactInfo.phone}`}
-                    className="inline-flex items-center gap-1.5"
-                  >
-                    <Phone className="h-3.5 w-3.5 text-gray-400" />
-                    {contactInfo.phone}
-                  </a>
-                )}
-                {contactInfo.location && (
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-gray-400" />
-                    {contactInfo.location}
+
+                {/* Phone */}
+                {editingField === 'phone' ? (
+                  renderInlineFieldEditor('phone', {
+                    icon: <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />,
+                    placeholder: 'Phone number…',
+                    inputType: 'tel',
+                    inputClassName: 'h-7 w-[min(100%,12rem)] sm:w-40 text-xs px-2',
+                  })
+                ) : contactInfo.phone ? (
+                  <span className="inline-flex items-center gap-1">
+                    <a
+                      href={`tel:${contactInfo.phone}`}
+                      className="inline-flex items-center gap-1.5"
+                    >
+                      <Phone className="h-3.5 w-3.5 text-gray-400" />
+                      {contactInfo.phone}
+                    </a>
+                    {renderFieldEditButton('phone')}
                   </span>
-                )}
-                {editingLinkedIn ? (
-                  <form
-                    className="inline-flex items-center gap-1.5 min-w-0 max-w-full"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void handleSaveLinkedIn();
-                    }}
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openFieldEditor('phone')}
+                    className="inline-flex items-center gap-1.5 text-gray-400 hover:text-gray-700 hover:underline"
                   >
-                    <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] shrink-0" />
-                    <Input
-                      autoFocus
-                      value={linkedinDraft}
-                      onChange={(e) => setLinkedinDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                          e.preventDefault();
-                          cancelLinkedInEditor();
-                        }
-                      }}
-                      placeholder="Paste LinkedIn URL…"
-                      disabled={savingLinkedIn}
-                      className="h-7 w-[min(100%,18rem)] sm:w-72 text-xs px-2"
-                    />
-                    <Button
-                      type="submit"
-                      size="sm"
-                      variant="ghost"
-                      disabled={savingLinkedIn}
-                      className="h-7 w-7 p-0 text-green-700 hover:text-green-800 hover:bg-green-50"
-                      title="Save LinkedIn"
-                    >
-                      {savingLinkedIn ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Check className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      disabled={savingLinkedIn}
-                      onClick={cancelLinkedInEditor}
-                      className="h-7 w-7 p-0 text-gray-500"
-                      title="Cancel"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  </form>
+                    <Phone className="h-3.5 w-3.5" />
+                    Add phone
+                  </button>
+                )}
+
+                {/* Location */}
+                {editingField === 'location' ? (
+                  renderInlineFieldEditor('location', {
+                    icon: <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />,
+                    placeholder: 'City, State…',
+                    inputClassName: 'h-7 w-[min(100%,12rem)] sm:w-44 text-xs px-2',
+                  })
+                ) : contactInfo.location ? (
+                  <span className="inline-flex items-center gap-1">
+                    <span className="inline-flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-gray-400" />
+                      {contactInfo.location}
+                    </span>
+                    {renderFieldEditButton('location')}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openFieldEditor('location')}
+                    className="inline-flex items-center gap-1.5 text-gray-400 hover:text-gray-700 hover:underline"
+                  >
+                    <MapPin className="h-3.5 w-3.5" />
+                    Add location
+                  </button>
+                )}
+
+                {/* LinkedIn */}
+                {editingField === 'linkedin' ? (
+                  renderInlineFieldEditor('linkedin', {
+                    icon: (
+                      <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] shrink-0" />
+                    ),
+                    placeholder: 'Paste LinkedIn URL…',
+                    inputClassName:
+                      'h-7 w-[min(100%,18rem)] sm:w-72 text-xs px-2',
+                  })
                 ) : contactInfo.linkedin ? (
                   <span className="inline-flex items-center gap-1">
                     <a
@@ -931,19 +1127,12 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                       LinkedIn
                       <ExternalLink className="h-3 w-3 opacity-60" />
                     </a>
-                    <button
-                      type="button"
-                      onClick={openLinkedInEditor}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                      title="Edit LinkedIn URL"
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </button>
+                    {renderFieldEditButton('linkedin', 'Edit LinkedIn URL')}
                   </span>
                 ) : (
                   <button
                     type="button"
-                    onClick={openLinkedInEditor}
+                    onClick={() => openFieldEditor('linkedin')}
                     className="inline-flex items-center gap-1.5 text-gray-400 hover:text-[#0A66C2] hover:underline"
                     title="Add LinkedIn profile URL"
                   >
@@ -951,15 +1140,38 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                     Add LinkedIn
                   </button>
                 )}
-                <span
-                  className="inline-flex items-center gap-1.5"
-                  title="Salary target / range"
-                >
-                  <DollarSign className="h-3.5 w-3.5 text-gray-400" />
-                  {contactInfo.salaryRequirements?.trim()
-                    ? contactInfo.salaryRequirements
-                    : 'Salary not set'}
-                </span>
+
+                {/* Salary */}
+                {editingField === 'salaryRequirements' ? (
+                  renderInlineFieldEditor('salaryRequirements', {
+                    icon: (
+                      <DollarSign className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                    ),
+                    placeholder: 'e.g. $90k–$110k',
+                    inputClassName: 'h-7 w-[min(100%,10rem)] sm:w-36 text-xs px-2',
+                  })
+                ) : contactInfo.salaryRequirements?.trim() ? (
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      className="inline-flex items-center gap-1.5"
+                      title="Salary target / range"
+                    >
+                      <DollarSign className="h-3.5 w-3.5 text-gray-400" />
+                      {contactInfo.salaryRequirements}
+                    </span>
+                    {renderFieldEditButton('salaryRequirements')}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openFieldEditor('salaryRequirements')}
+                    className="inline-flex items-center gap-1.5 text-gray-400 hover:text-gray-700 hover:underline"
+                    title="Add salary target / range"
+                  >
+                    <DollarSign className="h-3.5 w-3.5" />
+                    Add salary
+                  </button>
+                )}
               </div>
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {primaryJob && (

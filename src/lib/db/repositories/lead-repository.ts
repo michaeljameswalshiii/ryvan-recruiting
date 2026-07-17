@@ -363,6 +363,11 @@ export async function updateLead(
     values[':title'] = data.title;
     names['#title'] = 'title';
   }
+  if (data.company !== undefined) {
+    updates.push('#company = :company');
+    values[':company'] = data.company;
+    names['#company'] = 'company';
+  }
   if (data.status !== undefined) {
     updates.push('#status = :status');
     values[':status'] = data.status;

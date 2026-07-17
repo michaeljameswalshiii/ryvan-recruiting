@@ -20,6 +20,8 @@ export const APPLICATION_STAGES = [
   { value: "email",            label: "Email",             color: "blue" },
   { value: "other",            label: "Other",             color: "gray" },
   { value: "contacted",        label: "Contacted",         color: "blue" },
+  { value: "applied",          label: "Applied",           color: "sky" },
+  { value: "interested",       label: "Interested",        color: "indigo" },
   { value: "pre_screened",    label: "Pre-Screened",      color: "violet" },
   { value: "submitted",        label: "Submitted",         color: "violet" },
   { value: "interviewing",      label: "Interviewing",        color: "amber" },
@@ -63,7 +65,8 @@ export function isValidApplicationStage(stage: string): stage is ApplicationStag
  */
 export function mapLegacyStageToApplicationStage(legacyStage: string): string {
   const mapping: Record<string, string> = {
-    'Applied': 'sourced',
+    'Applied': 'applied',
+    'applied': 'applied',
     'Screening': 'pre_screened',
     'Interviewing': 'interviewing',
     'Offered': 'offer_out',
@@ -72,6 +75,8 @@ export function mapLegacyStageToApplicationStage(legacyStage: string): string {
     'Withdrawn': 'not_interested',
     // Legacy lead statuses
     'identification': 'sourced',
+    'Identified': 'sourced',
+    'identified': 'sourced',
     'outreach': 'contacted',
     'conversation': 'pre_screened',
     'presented': 'submitted',
@@ -80,7 +85,8 @@ export function mapLegacyStageToApplicationStage(legacyStage: string): string {
     'new': 'sourced',
     'converted': 'placed',
     'qualified': 'pre_screened',
-    'interested': 'contacted',
+    'interested': 'interested',
+    'Interested': 'interested',
     'not_interested': 'not_interested',
   };
   
@@ -184,6 +190,7 @@ export const updateLeadSchema = z.object({
   phone: z.string().max(50).optional().nullable(),
   location: z.string().max(200).optional().nullable(),
   title: z.string().max(100).optional().nullable(),
+  company: z.string().max(200).optional().nullable(),
   full_address: z.string().max(500).optional().nullable(),
   salary_requirements: z.string().max(100).optional().nullable(),
   summary: z.string().max(2000).optional().nullable(),
