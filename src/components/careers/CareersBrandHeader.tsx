@@ -61,81 +61,80 @@ export function CareersBrandHeader({
         }}
       >
         <div className="mx-auto max-w-3xl px-6 py-6">
-          <div className="flex flex-col items-center justify-center gap-4 text-center">
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 min-w-0">
-              {(() => {
-                const logoEl =
-                  !logoFailed && resolvedLogo ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={resolvedLogo}
-                      alt={`${name} logo`}
-                      className="h-16 sm:h-20 w-16 sm:w-20 shrink-0 rounded-full object-contain bg-white shadow-sm ring-1 ring-slate-100 transition group-hover:ring-slate-200"
-                      onError={() => {
-                        if (logoIdx < fallbacks.length - 1) {
-                          setLogoIdx((i) => i + 1);
-                        } else {
-                          setLogoFailed(true);
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div
-                      className="flex h-16 w-16 sm:h-20 sm:w-20 rounded-full items-center justify-center text-white text-2xl font-bold shrink-0 shadow-sm"
-                      style={{ backgroundColor: accent }}
-                      aria-hidden
-                    >
-                      {(name || "C").charAt(0).toUpperCase()}
-                    </div>
-                  );
+          {/* Logo ~50% larger; CAREERS + company name start to the right of the logo */}
+          <div className="flex flex-row items-center gap-5 sm:gap-6 min-w-0">
+            {(() => {
+              const logoEl =
+                !logoFailed && resolvedLogo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={resolvedLogo}
+                    alt={`${name} logo`}
+                    className="h-24 sm:h-[7.5rem] w-24 sm:w-[7.5rem] shrink-0 rounded-full object-contain bg-white shadow-sm ring-1 ring-slate-100 transition group-hover:ring-slate-200"
+                    onError={() => {
+                      if (logoIdx < fallbacks.length - 1) {
+                        setLogoIdx((i) => i + 1);
+                      } else {
+                        setLogoFailed(true);
+                      }
+                    }}
+                  />
+                ) : (
+                  <div
+                    className="flex h-24 w-24 sm:h-[7.5rem] sm:w-[7.5rem] rounded-full items-center justify-center text-white text-3xl font-bold shrink-0 shadow-sm"
+                    style={{ backgroundColor: accent }}
+                    aria-hidden
+                  >
+                    {(name || "C").charAt(0).toUpperCase()}
+                  </div>
+                );
 
-                if (websiteUrl) {
-                  return (
-                    <a
-                      href={websiteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                      style={{ ["--tw-ring-color" as string]: accent }}
-                      title={`Visit ${name}`}
-                      aria-label={`${name} website`}
-                    >
-                      {logoEl}
-                    </a>
-                  );
-                }
-                return logoEl;
-              })()}
-              <div className="min-w-0 text-center sm:text-left">
-                <p
-                  className="text-xs font-semibold uppercase tracking-[0.18em]"
-                  style={{ color: accent }}
-                >
-                  Careers
-                </p>
-                {websiteUrl ? (
+              if (websiteUrl) {
+                return (
                   <a
                     href={websiteUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 hover:underline underline-offset-2 block"
+                    className="group shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                    style={{ ["--tw-ring-color" as string]: accent }}
+                    title={`Visit ${name}`}
+                    aria-label={`${name} website`}
                   >
-                    {name}
+                    {logoEl}
                   </a>
-                ) : (
-                  <p className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-                    {name}
-                  </p>
-                )}
-              </div>
+                );
+              }
+              return logoEl;
+            })()}
+            <div className="min-w-0 flex-1 text-left">
+              <p
+                className="text-xs font-semibold uppercase tracking-[0.18em]"
+                style={{ color: accent }}
+              >
+                Careers
+              </p>
+              {websiteUrl ? (
+                <a
+                  href={websiteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 hover:underline underline-offset-2 block"
+                >
+                  {name}
+                </a>
+              ) : (
+                <p className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                  {name}
+                </p>
+              )}
+              {!pageTitle && (
+                <p className="mt-2 text-sm text-slate-500 max-w-xl">
+                  {tagline ||
+                    "Search open roles and apply through our recruiting team."}
+                </p>
+              )}
             </div>
           </div>
-          {!pageTitle && (
-            <p className="mt-3 text-sm text-slate-500 max-w-xl mx-auto text-center">
-              {tagline ||
-                "Search open roles and apply through our recruiting team."}
-            </p>
-          )}
         </div>
       </div>
 
