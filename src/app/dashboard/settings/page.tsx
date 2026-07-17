@@ -48,12 +48,17 @@ interface ActiveConnection {
   emailAddress: string;
 }
 
-type AiProvider = 'bedrock' | 'anthropic' | 'grok';
+type AiProvider = 'bedrock' | 'anthropic' | 'openai' | 'gemini' | 'grok';
+type ByokKeyProvider = 'anthropic' | 'openai' | 'gemini' | 'grok';
 
 interface AiCredStatus {
   preferredProvider: AiProvider;
   hasAnthropicKey: boolean;
   anthropicKeyHint?: string;
+  hasOpenaiKey: boolean;
+  openaiKeyHint?: string;
+  hasGeminiKey: boolean;
+  geminiKeyHint?: string;
   hasGrokKey: boolean;
   grokKeyHint?: string;
 }
@@ -79,9 +84,11 @@ export default function SettingsPage() {
   const [aiStatus, setAiStatus] = useState<AiCredStatus | null>(null);
   const [aiLoading, setAiLoading] = useState(true);
   const [anthropicKeyInput, setAnthropicKeyInput] = useState('');
+  const [openaiKeyInput, setOpenaiKeyInput] = useState('');
+  const [geminiKeyInput, setGeminiKeyInput] = useState('');
   const [grokKeyInput, setGrokKeyInput] = useState('');
-  const [aiSaving, setAiSaving] = useState<'anthropic' | 'grok' | null>(null);
-  const [aiRemoving, setAiRemoving] = useState<'anthropic' | 'grok' | null>(null);
+  const [aiSaving, setAiSaving] = useState<ByokKeyProvider | null>(null);
+  const [aiRemoving, setAiRemoving] = useState<ByokKeyProvider | null>(null);
   
   // Get user ID from session (in real app, get from auth)
   const userId = 'demo-user'; // TODO: Get from session
@@ -101,17 +108,21 @@ export default function SettingsPage() {
     }
   }, [searchParams]);
   
-  // Check if OAuth is configured
+  // Check if OAuth is configured (dedicated status route — no Google redirect / CORS)
   const checkOAuthConfig = async () => {
     try {
-      // Try to initiate OAuth - it will return an error if not configured
-      const gmailResponse = await fetch('/api/email/oauth/gmail?userId=test', { method: 'HEAD' });
-      const outlookResponse = await fetch('/api/email/oauth/outlook?userId=test', { method: 'HEAD' });
-      
-      // If we get 400, it's because userId is required (so it's configured)
-      // If we get 503, it's not configured
-      setGmailConfigured(gmailResponse.status !== 503);
-      setOutlookConfigured(outlookResponse.status !== 503);
+      const res = await fetch('/api/email/oauth/status', {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        setGmailConfigured(false);
+        setOutlookConfigured(false);
+        return;
+      }
+      const data = await res.json();
+      setGmailConfigured(data.gmail === true);
+      setOutlookConfigured(data.outlook === true);
     } catch (error) {
       console.error('Failed to check OAuth config:', error);
       setGmailConfigured(false);
@@ -136,10 +147,22 @@ export default function SettingsPage() {
     }
   };
   
+  const emptyAiStatus = (): AiCredStatus => ({
+    preferredProvider: 'bedrock',
+    hasAnthropicKey: false,
+    hasOpenaiKey: false,
+    hasGeminiKey: false,
+    hasGrokKey: false,
+  });
+
   const mapAiStatus = (data: any, prev?: AiCredStatus | null): AiCredStatus => ({
     preferredProvider: data.preferredProvider || prev?.preferredProvider || 'bedrock',
     hasAnthropicKey: data.hasAnthropicKey ?? prev?.hasAnthropicKey ?? false,
     anthropicKeyHint: data.anthropicKeyHint ?? prev?.anthropicKeyHint,
+    hasOpenaiKey: data.hasOpenaiKey ?? prev?.hasOpenaiKey ?? false,
+    openaiKeyHint: data.openaiKeyHint ?? prev?.openaiKeyHint,
+    hasGeminiKey: data.hasGeminiKey ?? prev?.hasGeminiKey ?? false,
+    geminiKeyHint: data.geminiKeyHint ?? prev?.geminiKeyHint,
     hasGrokKey: data.hasGrokKey ?? prev?.hasGrokKey ?? false,
     grokKeyHint: data.grokKeyHint ?? prev?.grokKeyHint,
   });
@@ -153,22 +176,14 @@ export default function SettingsPage() {
         setAiStatus(mapAiStatus(data));
       } else {
         // Still show UI with empty keys if unauthorized / error
-        setAiStatus({
-          preferredProvider: 'bedrock',
-          hasAnthropicKey: false,
-          hasGrokKey: false,
-        });
+        setAiStatus(emptyAiStatus());
         if (res.status === 401) {
           console.warn('[settings] AI credentials: not signed in');
         }
       }
     } catch (err) {
       console.error('Failed to load AI credentials', err);
-      setAiStatus({
-        preferredProvider: 'bedrock',
-        hasAnthropicKey: false,
-        hasGrokKey: false,
-      });
+      setAiStatus(emptyAiStatus());
     } finally {
       setAiLoading(false);
     }
@@ -191,14 +206,24 @@ export default function SettingsPage() {
     })();
   }, [userId]);
 
-  const saveProviderKey = async (keyProvider: 'anthropic' | 'grok') => {
-    const value = keyProvider === 'anthropic' ? anthropicKeyInput : grokKeyInput;
+  const byokLabels: Record<ByokKeyProvider, string> = {
+    anthropic: 'Anthropic',
+    openai: 'OpenAI',
+    gemini: 'Gemini',
+    grok: 'Grok',
+  };
+
+  const saveProviderKey = async (keyProvider: ByokKeyProvider) => {
+    const value =
+      keyProvider === 'anthropic'
+        ? anthropicKeyInput
+        : keyProvider === 'openai'
+          ? openaiKeyInput
+          : keyProvider === 'gemini'
+            ? geminiKeyInput
+            : grokKeyInput;
     if (!value.trim()) {
-      toast.error(
-        keyProvider === 'anthropic'
-          ? 'Paste your Anthropic API key first'
-          : 'Paste your Grok (xAI) API key first'
-      );
+      toast.error(`Paste your ${byokLabels[keyProvider]} API key first`);
       return;
     }
     setAiSaving(keyProvider);
@@ -218,20 +243,14 @@ export default function SettingsPage() {
         toast.error(data.error || 'Failed to save key');
         return;
       }
-      toast.success(
-        keyProvider === 'anthropic'
-          ? 'Anthropic key saved and validated'
-          : 'Grok key saved and validated'
-      );
+      toast.success(`${byokLabels[keyProvider]} key saved and validated`);
       if (keyProvider === 'anthropic') setAnthropicKeyInput('');
+      else if (keyProvider === 'openai') setOpenaiKeyInput('');
+      else if (keyProvider === 'gemini') setGeminiKeyInput('');
       else setGrokKeyInput('');
       setAiStatus(mapAiStatus(data));
     } catch {
-      toast.error(
-        keyProvider === 'anthropic'
-          ? 'Failed to save Anthropic key'
-          : 'Failed to save Grok key'
-      );
+      toast.error(`Failed to save ${byokLabels[keyProvider]} key`);
     } finally {
       setAiSaving(null);
     }
@@ -250,27 +269,21 @@ export default function SettingsPage() {
         return;
       }
       setAiStatus((prev) => mapAiStatus(data, prev));
-      toast.success(
-        preferredProvider === 'bedrock'
-          ? 'Using Platform Bedrock'
-          : preferredProvider === 'anthropic'
-            ? 'Using your Anthropic key'
-            : 'Using your Grok key'
-      );
+      const labels: Record<AiProvider, string> = {
+        bedrock: 'Using Platform Bedrock',
+        anthropic: 'Using your Anthropic key',
+        openai: 'Using your OpenAI key',
+        gemini: 'Using your Gemini key',
+        grok: 'Using your Grok key',
+      };
+      toast.success(labels[preferredProvider]);
     } catch {
       toast.error('Failed to update provider');
     }
   };
 
-  const removeProviderKey = async (keyProvider: 'anthropic' | 'grok') => {
-    if (
-      !confirm(
-        keyProvider === 'anthropic'
-          ? 'Remove your saved Anthropic API key?'
-          : 'Remove your saved Grok/xAI API key?'
-      )
-    )
-      return;
+  const removeProviderKey = async (keyProvider: ByokKeyProvider) => {
+    if (!confirm(`Remove your saved ${byokLabels[keyProvider]} API key?`)) return;
     setAiRemoving(keyProvider);
     try {
       const res = await fetch(
@@ -282,9 +295,7 @@ export default function SettingsPage() {
         toast.error(data.error || 'Failed to remove key');
         return;
       }
-      toast.success(
-        keyProvider === 'anthropic' ? 'Anthropic key removed' : 'Grok key removed'
-      );
+      toast.success(`${byokLabels[keyProvider]} key removed`);
       setAiStatus(mapAiStatus(data));
     } catch {
       toast.error('Failed to remove key');
@@ -432,8 +443,8 @@ export default function SettingsPage() {
             AI Providers
           </CardTitle>
           <CardDescription>
-            Choose Platform Bedrock (default), or bring your own Anthropic / Grok keys.
-            Keys are encrypted and only used for your chat sessions.
+            Choose Platform Bedrock (default), or bring your own Anthropic, OpenAI,
+            Gemini, or Grok keys. Keys are encrypted and only used for your chat sessions.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -444,7 +455,7 @@ export default function SettingsPage() {
           )}
 
           {/* Provider cards — always visible */}
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <button
               type="button"
               onClick={() => setAiProvider('bedrock')}
@@ -473,6 +484,10 @@ export default function SettingsPage() {
               onClick={() => {
                 if (!aiStatus?.hasAnthropicKey) {
                   toast.message('Paste and save an Anthropic key below first');
+                  document.getElementById('anthropic-key')?.focus();
+                  document
+                    .getElementById('anthropic-key-section')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                   return;
                 }
                 setAiProvider('anthropic');
@@ -480,7 +495,7 @@ export default function SettingsPage() {
               className={`text-left rounded-xl border p-4 transition-all ${
                 aiStatus?.preferredProvider === 'anthropic'
                   ? 'border-violet-500 bg-violet-50/60 ring-2 ring-violet-100'
-                  : 'border-slate-200 hover:border-slate-300'
+                  : 'border-violet-200 hover:border-violet-400 bg-white'
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
@@ -500,7 +515,93 @@ export default function SettingsPage() {
                   {aiStatus.anthropicKeyHint}
                 </p>
               ) : (
-                <p className="text-[11px] text-slate-400 mt-2">No key saved</p>
+                <p className="text-[11px] text-violet-700 mt-2 font-medium">
+                  Add key below ↓
+                </p>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!aiStatus?.hasOpenaiKey) {
+                  toast.message('Paste and save an OpenAI key below first');
+                  document.getElementById('openai-key')?.focus();
+                  document
+                    .getElementById('openai-key-section')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  return;
+                }
+                setAiProvider('openai');
+              }}
+              className={`text-left rounded-xl border p-4 transition-all ${
+                aiStatus?.preferredProvider === 'openai'
+                  ? 'border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-100'
+                  : 'border-emerald-200 hover:border-emerald-400 bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles className="h-4 w-4 text-emerald-600" />
+                <span className="font-semibold text-sm">OpenAI</span>
+                {aiStatus?.preferredProvider === 'openai' && (
+                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                    Active
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Your OpenAI API key (BYOK).
+              </p>
+              {aiStatus?.hasOpenaiKey ? (
+                <p className="text-[11px] text-emerald-700 mt-2 font-mono truncate">
+                  {aiStatus.openaiKeyHint}
+                </p>
+              ) : (
+                <p className="text-[11px] text-emerald-700 mt-2 font-medium">
+                  Add key below ↓
+                </p>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!aiStatus?.hasGeminiKey) {
+                  toast.message('Paste and save a Gemini key below first');
+                  document.getElementById('gemini-key')?.focus();
+                  document
+                    .getElementById('gemini-key-section')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  return;
+                }
+                setAiProvider('gemini');
+              }}
+              className={`text-left rounded-xl border p-4 transition-all ${
+                aiStatus?.preferredProvider === 'gemini'
+                  ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-100'
+                  : 'border-sky-200 hover:border-sky-400 bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles className="h-4 w-4 text-sky-600" />
+                <span className="font-semibold text-sm">Gemini</span>
+                {aiStatus?.preferredProvider === 'gemini' && (
+                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full">
+                    Active
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Your Google AI Studio key (BYOK).
+              </p>
+              {aiStatus?.hasGeminiKey ? (
+                <p className="text-[11px] text-sky-700 mt-2 font-mono truncate">
+                  {aiStatus.geminiKeyHint}
+                </p>
+              ) : (
+                <p className="text-[11px] text-sky-700 mt-2 font-medium">
+                  Add key below ↓
+                </p>
               )}
             </button>
 
@@ -544,11 +645,25 @@ export default function SettingsPage() {
             </button>
           </div>
 
-          {/* Anthropic key entry */}
-          <div className="rounded-xl border border-violet-100 p-4 space-y-3 bg-violet-50/30">
-            <Label htmlFor="anthropic-key" className="text-sm font-medium">
-              Anthropic API key
-            </Label>
+          {/* Anthropic key entry — match Grok BYOK card style */}
+          <div
+            id="anthropic-key-section"
+            className="rounded-xl border-2 border-violet-500/25 p-4 space-y-3 bg-violet-50/50"
+          >
+            <div className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-violet-700" />
+              <Label htmlFor="anthropic-key" className="text-sm font-semibold">
+                Anthropic API key
+              </Label>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-800 bg-violet-200/80 px-2 py-0.5 rounded-full">
+                BYOK
+              </span>
+              {aiStatus?.hasAnthropicKey && (
+                <span className="ml-auto text-[10px] font-mono text-violet-800 truncate max-w-[40%]">
+                  {aiStatus.anthropicKeyHint}
+                </span>
+              )}
+            </div>
             <Input
               id="anthropic-key"
               type="password"
@@ -556,10 +671,10 @@ export default function SettingsPage() {
               placeholder="sk-ant-api03-…"
               value={anthropicKeyInput}
               onChange={(e) => setAnthropicKeyInput(e.target.value)}
-              className="font-mono text-sm bg-white"
+              className="font-mono text-sm bg-white border-violet-200"
             />
             <p className="text-[11px] text-muted-foreground">
-              From{' '}
+              Create a key at{' '}
               <a
                 href="https://console.anthropic.com/"
                 target="_blank"
@@ -568,20 +683,23 @@ export default function SettingsPage() {
               >
                 console.anthropic.com
               </a>
+              . Encrypted at rest; never shown in full again.
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
                 onClick={() => saveProviderKey('anthropic')}
                 disabled={aiSaving !== null || !anthropicKeyInput.trim()}
-                className="rounded-lg"
+                className="rounded-lg bg-violet-700 hover:bg-violet-800"
               >
                 {aiSaving === 'anthropic' ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : (
                   <KeyRound className="h-4 w-4 mr-2" />
                 )}
-                {aiStatus?.hasAnthropicKey ? 'Replace key' : 'Save & validate'}
+                {aiStatus?.hasAnthropicKey
+                  ? 'Replace Anthropic key'
+                  : 'Save Anthropic key'}
               </Button>
               {aiStatus?.hasAnthropicKey && (
                 <Button
@@ -592,6 +710,150 @@ export default function SettingsPage() {
                   className="rounded-lg text-red-600"
                 >
                   {aiRemoving === 'anthropic' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    'Remove'
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* OpenAI key entry */}
+          <div
+            id="openai-key-section"
+            className="rounded-xl border-2 border-emerald-500/25 p-4 space-y-3 bg-emerald-50/50"
+          >
+            <div className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-emerald-700" />
+              <Label htmlFor="openai-key" className="text-sm font-semibold">
+                OpenAI API key
+              </Label>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-full">
+                BYOK
+              </span>
+              {aiStatus?.hasOpenaiKey && (
+                <span className="ml-auto text-[10px] font-mono text-emerald-800 truncate max-w-[40%]">
+                  {aiStatus.openaiKeyHint}
+                </span>
+              )}
+            </div>
+            <Input
+              id="openai-key"
+              type="password"
+              autoComplete="off"
+              placeholder="sk-…"
+              value={openaiKeyInput}
+              onChange={(e) => setOpenaiKeyInput(e.target.value)}
+              className="font-mono text-sm bg-white border-emerald-200"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Create a key at{' '}
+              <a
+                href="https://platform.openai.com/api-keys"
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-600 hover:underline"
+              >
+                platform.openai.com/api-keys
+              </a>
+              . Encrypted at rest; never shown in full again.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => saveProviderKey('openai')}
+                disabled={aiSaving !== null || !openaiKeyInput.trim()}
+                className="rounded-lg bg-emerald-700 hover:bg-emerald-800"
+              >
+                {aiSaving === 'openai' ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <KeyRound className="h-4 w-4 mr-2" />
+                )}
+                {aiStatus?.hasOpenaiKey ? 'Replace OpenAI key' : 'Save OpenAI key'}
+              </Button>
+              {aiStatus?.hasOpenaiKey && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => removeProviderKey('openai')}
+                  disabled={aiRemoving !== null}
+                  className="rounded-lg text-red-600"
+                >
+                  {aiRemoving === 'openai' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    'Remove'
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Gemini key entry */}
+          <div
+            id="gemini-key-section"
+            className="rounded-xl border-2 border-sky-500/25 p-4 space-y-3 bg-sky-50/50"
+          >
+            <div className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-sky-700" />
+              <Label htmlFor="gemini-key" className="text-sm font-semibold">
+                Google Gemini API key
+              </Label>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-sky-800 bg-sky-200/80 px-2 py-0.5 rounded-full">
+                BYOK
+              </span>
+              {aiStatus?.hasGeminiKey && (
+                <span className="ml-auto text-[10px] font-mono text-sky-800 truncate max-w-[40%]">
+                  {aiStatus.geminiKeyHint}
+                </span>
+              )}
+            </div>
+            <Input
+              id="gemini-key"
+              type="password"
+              autoComplete="off"
+              placeholder="AIza…"
+              value={geminiKeyInput}
+              onChange={(e) => setGeminiKeyInput(e.target.value)}
+              className="font-mono text-sm bg-white border-sky-200"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Create a key at{' '}
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-600 hover:underline"
+              >
+                aistudio.google.com/apikey
+              </a>
+              . Encrypted at rest; never shown in full again.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => saveProviderKey('gemini')}
+                disabled={aiSaving !== null || !geminiKeyInput.trim()}
+                className="rounded-lg bg-sky-700 hover:bg-sky-800"
+              >
+                {aiSaving === 'gemini' ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <KeyRound className="h-4 w-4 mr-2" />
+                )}
+                {aiStatus?.hasGeminiKey ? 'Replace Gemini key' : 'Save Gemini key'}
+              </Button>
+              {aiStatus?.hasGeminiKey && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => removeProviderKey('gemini')}
+                  disabled={aiRemoving !== null}
+                  className="rounded-lg text-red-600"
+                >
+                  {aiRemoving === 'gemini' ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     'Remove'
