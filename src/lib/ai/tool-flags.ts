@@ -1,29 +1,48 @@
 /**
  * AI external tool feature flags
  *
- * Apollo + Tavily backends stay in the repo (APIs, execute handlers, registry).
- * The AI Assistant does not offer them unless re-enabled via env.
+ * Apollo + Tavily backends live in the repo (APIs, execute handlers, registry).
  *
- * Re-enable later (Vercel env or local):
- *   AI_TOOLS_APOLLO_ENABLED=true
- *   AI_TOOLS_TAVILY_ENABLED=true
+ * Defaults (2026-07):
+ *   - Apollo: ON (people/company search for AI Assistant)
+ *   - Tavily: OFF (re-enable with AI_TOOLS_TAVILY_ENABLED=true)
+ *
+ * Override via Vercel env:
+ *   AI_TOOLS_APOLLO_ENABLED=false  → force Apollo off
+ *   AI_TOOLS_TAVILY_ENABLED=true   → force Tavily on
+ *   AI_TOOLS_TAVILY_ENABLED=false  → keep Tavily off (default)
  *
  * @serverOnly
  */
 
-function envEnabled(name: string): boolean {
+function envTriState(name: string): "true" | "false" | "unset" {
   const v = (process.env[name] || "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes" || v === "on";
+  if (!v) return "unset";
+  if (v === "1" || v === "true" || v === "yes" || v === "on") return "true";
+  if (v === "0" || v === "false" || v === "no" || v === "off") return "false";
+  return "unset";
 }
 
-/** Apollo people + company search tools for the AI assistant */
+/**
+ * Apollo people + company search tools for the AI assistant.
+ * Default ON; set AI_TOOLS_APOLLO_ENABLED=false to disable.
+ */
 export function isApolloToolEnabled(): boolean {
-  return envEnabled("AI_TOOLS_APOLLO_ENABLED");
+  const t = envTriState("AI_TOOLS_APOLLO_ENABLED");
+  if (t === "false") return false;
+  if (t === "true") return true;
+  return true; // default on
 }
 
-/** Tavily web search tool for the AI assistant */
+/**
+ * Tavily web search tool for the AI assistant.
+ * Default OFF; set AI_TOOLS_TAVILY_ENABLED=true to enable.
+ */
 export function isTavilyToolEnabled(): boolean {
-  return envEnabled("AI_TOOLS_TAVILY_ENABLED");
+  const t = envTriState("AI_TOOLS_TAVILY_ENABLED");
+  if (t === "false") return false;
+  if (t === "true") return true;
+  return false; // default off
 }
 
 const APOLLO_NAMES = new Set([
@@ -46,8 +65,7 @@ export function isExternalToolDisabled(toolName: string): boolean {
 export function disabledExternalToolMessage(toolName: string): string {
   return (
     `The "${toolName}" tool is temporarily disabled in the AI Assistant. ` +
-    `Backend support remains available for later re-enablement ` +
-    `(set AI_TOOLS_APOLLO_ENABLED / AI_TOOLS_TAVILY_ENABLED). ` +
+    `Set AI_TOOLS_APOLLO_ENABLED / AI_TOOLS_TAVILY_ENABLED on the server to change. ` +
     `Use internal_data for ATS records, fetch_website for a specific URL, ` +
     `or CRM write tools when the user wants to save data.`
   );
