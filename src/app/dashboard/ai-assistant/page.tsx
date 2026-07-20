@@ -28,8 +28,7 @@ type PlatformModel =
   | "haiku"
   | "grok-4.3"
   | "sonnet"
-  | "nova-pro"
-  | "opus";
+  | "nova-pro";
 
 /** "Today, 11:04 AM" or "Jul 15, 11:04 AM" */
 function formatMessageTime(ts: Date | string) {
@@ -94,7 +93,7 @@ export default function AIAssistantPage() {
         id: "welcome",
         role: "assistant" as const,
         content:
-          "✅ AI Assistant ready. Platform defaults to Most Efficient (Nova Lite / Haiku / Grok 4.3 preferred for tools). Lock a model anytime, or use your own Anthropic, OpenAI, Gemini, or Grok key (Settings → AI Providers). What would you like to source?",
+          "✅ AI Assistant ready. Platform defaults to Most Efficient (Nova Lite / Haiku / Grok 4.3 on Bedrock for tools). Lock a model anytime, or use BYOK keys in Settings. What would you like to source?",
         timestamp: new Date(),
       },
     ]);
@@ -193,8 +192,7 @@ const res = await fetch("/api/bedrock", {
           platformModel === "auto" ||
           platformModel === "haiku" ||
           platformModel === "grok-4.3" ||
-          platformModel === "sonnet" ||
-          platformModel === "opus",
+          platformModel === "sonnet",
         provider,
         model: provider === "bedrock" ? platformModel : undefined,
       }),
@@ -303,7 +301,7 @@ return (
         <div>
           <h1 className="text-3xl font-bold">AI Assistant (Web)</h1>
           <p className="text-muted-foreground">
-            Most Efficient by default · Grok 4.3 preferred for tools · Claude + Nova · Apollo · BYOK
+            Most Efficient by default · Grok 4.3 on Bedrock · Claude + Nova · Apollo · BYOK
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -414,7 +412,6 @@ return (
                   { id: "grok-4.3" as const, label: "Grok 4.3" },
                   { id: "sonnet" as const, label: "Sonnet" },
                   { id: "nova-pro" as const, label: "Nova Pro" },
-                  { id: "opus" as const, label: "Opus" },
                 ] as const
               ).map((m) => (
                 <button
@@ -429,14 +426,12 @@ return (
                           ? "bg-orange-600 text-white"
                           : m.id === "grok-4.3"
                             ? "bg-zinc-900 text-white"
-                            : m.id === "opus"
-                              ? "bg-violet-700 text-white"
-                              : "bg-slate-800 text-white"
+                            : "bg-slate-800 text-white"
                       : "text-slate-600 hover:bg-white"
                   }`}
                   title={
                     m.id === "auto"
-                      ? "Most Efficient: Nova Lite → Haiku → Grok 4.3 (preferred over Sonnet/Opus for tools)"
+                      ? "Most Efficient: Nova Lite → Haiku → Grok 4.3 (preferred over Sonnet for tools)"
                       : m.id === "nova-lite"
                         ? "Amazon Nova Lite — cheapest chat (no CRM tools)"
                         : m.id === "nova-pro"
@@ -444,10 +439,8 @@ return (
                           : m.id === "haiku"
                             ? "Claude Haiku — fast Claude"
                             : m.id === "grok-4.3"
-                              ? "xAI Grok 4.3 — preferred strong model (platform or BYOK key)"
-                              : m.id === "opus"
-                                ? "Claude Opus — max quality (manual only)"
-                                : "Claude Sonnet — tools + CRM"
+                              ? "Grok 4.3 on Amazon Bedrock (xai.grok-4.3)"
+                              : "Claude Sonnet — tools + CRM"
                   }
                 >
                   {m.label}
@@ -506,12 +499,10 @@ return (
                           : platformModel === "haiku"
                             ? "Bedrock · Haiku"
                             : platformModel === "grok-4.3"
-                              ? "xAI · Grok 4.3"
+                              ? "Bedrock · Grok 4.3"
                               : platformModel === "sonnet"
                                 ? "Bedrock · Sonnet"
-                                : platformModel === "opus"
-                                  ? "Bedrock · Opus"
-                                  : "Platform · Most Efficient"}
+                                : "Platform · Most Efficient"}
               {lastProviderUsed ? ` · last: ${lastProviderUsed}` : ""}
             </span>
           </div>

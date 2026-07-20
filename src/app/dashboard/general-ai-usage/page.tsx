@@ -72,8 +72,7 @@ type PlatformModel =
   | 'haiku'
   | 'grok-4.3'
   | 'sonnet'
-  | 'nova-pro'
-  | 'opus';
+  | 'nova-pro';
 
 const PLATFORM_MODELS: {
   id: PlatformModel;
@@ -84,7 +83,7 @@ const PLATFORM_MODELS: {
     id: 'auto',
     label: 'Most Efficient',
     title:
-      'Most Efficient: Nova Lite (simple) → Haiku (moderate) → Grok 4.3 (tools/CRM; preferred over Sonnet/Opus).',
+      'Most Efficient: Nova Lite (simple) → Haiku (moderate) → Grok 4.3 (tools/CRM; preferred over Sonnet).',
   },
   {
     id: 'nova-lite',
@@ -100,7 +99,7 @@ const PLATFORM_MODELS: {
     id: 'grok-4.3',
     label: 'Grok 4.3',
     title:
-      'xAI Grok 4.3 — preferred strong model for tools/CRM (platform XAI_API_KEY or your Grok BYOK key)',
+      'Grok 4.3 on Amazon Bedrock (xai.grok-4.3) — preferred for tools/CRM',
   },
   {
     id: 'sonnet',
@@ -111,11 +110,6 @@ const PLATFORM_MODELS: {
     id: 'nova-pro',
     label: 'Nova Pro',
     title: 'Amazon Nova Pro — stronger Amazon chat (no CRM tools)',
-  },
-  {
-    id: 'opus',
-    label: 'Opus',
-    title: 'Claude Opus — max quality (manual only)',
   },
 ];
 
@@ -426,8 +420,7 @@ export default function GeneralAiUsagePage() {
         platformModel === 'auto' ||
         platformModel === 'haiku' ||
         platformModel === 'grok-4.3' ||
-        platformModel === 'sonnet' ||
-        platformModel === 'opus';
+        platformModel === 'sonnet';
 
       // Client-side abort so "Failed to fetch" becomes a clear timeout message
       const controller = new AbortController();
@@ -610,9 +603,7 @@ export default function GeneralAiUsagePage() {
                         ? 'bg-orange-600 text-white'
                         : m.id === 'grok-4.3'
                           ? 'bg-zinc-900 text-white'
-                          : m.id === 'opus'
-                            ? 'bg-violet-700 text-white'
-                            : 'bg-slate-800 text-white'
+                          : 'bg-slate-800 text-white'
                     : 'text-slate-600 hover:bg-white'
                 }`}
               >

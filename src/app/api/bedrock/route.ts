@@ -277,9 +277,6 @@ const MODEL_HAIKU = "global.anthropic.claude-haiku-4-5-20251001-v1:0";
 // Sonnet 4.6 - Default for most agentic work (cross-region global profile)
 const MODEL_SONNET = "global.anthropic.claude-sonnet-4-6";
 
-// Opus 4.7 - Manual pick only (excluded from Most Efficient)
-const MODEL_OPUS = "global.anthropic.claude-opus-4-7";
-
 // Amazon Nova (platform Bedrock — Converse API)
 const MODEL_NOVA_LITE = "us.amazon.nova-lite-v1:0";
 const MODEL_NOVA_PRO = "us.amazon.nova-pro-v1:0";
@@ -287,8 +284,12 @@ const MODEL_NOVA_LITE_ON_DEMAND = "amazon.nova-lite-v1:0";
 const MODEL_NOVA_PRO_ON_DEMAND = "amazon.nova-pro-v1:0";
 const MODEL_NOVA_2_LITE = "amazon.nova-2-lite-v1:0";
 
-// xAI Grok 4.3 — preferred strong model (Most Efficient) over Sonnet/Opus when key available
-const MODEL_GROK_43 = GROK_DEFAULT_MODEL || "grok-4.3";
+// xAI Grok 4.3 on Amazon Bedrock (Mantle) — preferred strong model over Sonnet
+// Docs model ID: xai.grok-4.3
+const MODEL_GROK_43 = "xai.grok-4.3";
+const MODEL_GROK_43_US = "us.xai.grok-4.3";
+/** Direct xAI API id (BYOK provider path only) */
+const MODEL_GROK_43_XAI_API = GROK_DEFAULT_MODEL || "grok-4.3";
 
 // Fallbacks if primary inference profile is unavailable in the account/region
 const MODEL_HAIKU_FALLBACK = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
@@ -298,25 +299,13 @@ const MODEL_HAIKU_LEGACY = "us.anthropic.claude-3-haiku-20240307-v1:0";
 // Default model for tool/agent paths when no auto-route applies
 const DEFAULT_MODEL = MODEL_SONNET;
 
+/** Platform Bedrock Grok (xai.grok-*) or UI alias */
 function isGrokModelId(modelId?: string): boolean {
   return /grok/i.test(modelId || "");
 }
 
-/** Platform xAI key (optional). Falls back to user BYOK at execution time. */
-function hasPlatformGrokKey(): boolean {
-  return !!(
-    process.env.XAI_API_KEY?.trim() ||
-    process.env.GROK_API_KEY?.trim() ||
-    process.env.XAI_PLATFORM_API_KEY?.trim()
-  );
-}
-
-/**
- * Strong / agentic tier for Most Efficient: prefer Grok 4.3 over Sonnet & Opus.
- * Runtime falls back to Sonnet if no platform or user Grok key.
- */
+/** Strong / agentic tier for Most Efficient — Grok 4.3 on Bedrock, ahead of Sonnet */
 function preferredStrongModel(): string {
-  // Always pick Grok 4.3 for strong tier when preferred; execution resolves key
   return MODEL_GROK_43;
 }
 
@@ -328,7 +317,9 @@ function isNovaModel(modelId?: string): boolean {
 function modelFallbackChain(primary: string): string[] {
   const chain = [primary];
   const id = primary.toLowerCase();
-  if (id.includes("nova-lite") || id.includes("nova_lite") || id.includes("nova-2-lite")) {
+  if (id.includes("grok")) {
+    chain.push(MODEL_GROK_43, MODEL_GROK_43_US, MODEL_SONNET, MODEL_SONNET_FALLBACK);
+  } else if (id.includes("nova-lite") || id.includes("nova_lite") || id.includes("nova-2-lite")) {
     chain.push(
       MODEL_NOVA_LITE,
       MODEL_NOVA_LITE_ON_DEMAND,
@@ -340,7 +331,8 @@ function modelFallbackChain(primary: string): string[] {
   } else if (id.includes("haiku")) {
     chain.push(MODEL_HAIKU, MODEL_HAIKU_FALLBACK, MODEL_HAIKU_LEGACY, MODEL_SONNET);
   } else if (id.includes("opus")) {
-    chain.push(MODEL_OPUS, MODEL_SONNET, MODEL_SONNET_FALLBACK);
+    // Opus removed — always fall through to Sonnet
+    chain.push(MODEL_SONNET, MODEL_SONNET_FALLBACK, MODEL_HAIKU);
   } else {
     chain.push(MODEL_SONNET, MODEL_SONNET_FALLBACK, MODEL_HAIKU);
   }
@@ -450,7 +442,8 @@ function resolveRequestedModelId(requestedModel?: string): string | undefined {
   }
   if (m === "haiku") return MODEL_HAIKU;
   if (m === "sonnet") return MODEL_SONNET;
-  if (m === "opus") return MODEL_OPUS;
+  // Opus removed from product surface — map legacy picks to Sonnet
+  if (m === "opus") return MODEL_SONNET;
   if (m === "nova-lite" || m === "nova_lite" || m === "novalite")
     return MODEL_NOVA_LITE;
   if (m === "nova-pro" || m === "nova_pro" || m === "novapro" || m === "nova")
@@ -460,15 +453,18 @@ function resolveRequestedModelId(requestedModel?: string): string | undefined {
     m === "grok-4.3" ||
     m === "grok4.3" ||
     m === "grok_4_3" ||
-    m === "grok-4-3"
+    m === "grok-4-3" ||
+    m === "xai.grok-4.3" ||
+    m === "us.xai.grok-4.3"
   ) {
-    return MODEL_GROK_43;
+    return MODEL_GROK_43; // Bedrock foundation model id
   }
-  // Allow full Bedrock model ids + xAI grok-* ids
+  // Allow full Bedrock model ids
   if (
     m.includes("nova") ||
     m.includes("anthropic") ||
     m.includes("claude") ||
+    m.includes("xai") ||
     m.includes("grok")
   ) {
     return requestedModel;
@@ -486,13 +482,12 @@ function hasToolOrAgenticIntent(query: string): boolean {
 /**
  * Most Efficient (default platform policy) — cheapest capable model per turn.
  *
- * Ladder (Opus never auto-selected):
- * - Grok 4.3 (preferred over Sonnet/Opus): tools, CRM confirms, files, long context, complex
+ * Ladder (Opus removed entirely):
+ * - Grok 4.3 on Bedrock (preferred over Sonnet): tools, CRM, files, long context, complex
  * - Haiku: moderate chat without tools
  * - Nova Lite: simple short chat (cheapest)
  *
- * Nova is chat-only (Converse). Grok runs via xAI API (platform key or user BYOK).
- * If Grok has no key at runtime, execution falls back to Claude Sonnet on Bedrock.
+ * Grok 4.3 uses Bedrock model id xai.grok-4.3 (same AWS credentials as Claude/Nova).
  */
 function selectMostEfficientModel(
   query: string,
@@ -575,7 +570,7 @@ function friendlyModelLabel(modelId: string): string {
   if (id.includes("nova-pro") || id.includes("nova_pro")) return "Amazon Nova Pro";
   if (id.includes("nova-micro")) return "Amazon Nova Micro";
   if (id.includes("nova")) return "Amazon Nova";
-  if (id.includes("grok-4.3") || id.includes("grok-4-3") || id === "grok-4.3")
+  if (id.includes("grok-4.3") || id.includes("grok-4-3") || id.includes("xai.grok"))
     return "Grok 4.3";
   if (id.includes("grok")) return "Grok";
   if (id.includes("gpt-4o") || id.includes("gpt-4.1") || id.includes("o3") || id.includes("o4"))
@@ -916,6 +911,217 @@ async function invokeNovaConverse(
   throw lastError instanceof Error
     ? lastError
     : new Error("All Nova model candidates failed");
+}
+
+type ConverseMsg = {
+  role: "user" | "assistant";
+  content: Array<Record<string, unknown>>;
+};
+
+/**
+ * Grok 4.3 on Amazon Bedrock via Converse API (toolConfig when tools provided).
+ * Same AWS credentials as Claude/Nova — no separate xAI API key required.
+ */
+async function invokeGrokBedrockConverse(
+  messages: ConverseMsg[],
+  systemPrompt: string,
+  modelId: string,
+  tools: BedrockTool[] = []
+): Promise<{
+  text: string;
+  modelId: string;
+  stopReason?: string;
+  toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }>;
+  rawAssistantContent: Array<Record<string, unknown>>;
+}> {
+  const candidates = modelFallbackChain(modelId);
+  let lastError: unknown;
+
+  for (const candidate of candidates) {
+    try {
+      console.log(
+        `[Grok Bedrock] Converse ${candidate} msgs=${messages.length} tools=${tools.length}`
+      );
+      const input: Record<string, unknown> = {
+        modelId: candidate,
+        messages,
+        system: systemPrompt ? [{ text: systemPrompt }] : undefined,
+        inferenceConfig: {
+          maxTokens: MODEL_CONFIG.maxTokens,
+          temperature: MODEL_CONFIG.temperature,
+        },
+      };
+      if (tools.length > 0) {
+        input.toolConfig = {
+          tools: tools.map((t) => ({
+            toolSpec: {
+              name: t.name,
+              description: t.description,
+              inputSchema: { json: t.input_schema },
+            },
+          })),
+        };
+      }
+      const command = new ConverseCommand(input as any);
+      const response = await bedrockClient.send(command);
+      const parts = (response.output?.message?.content || []) as Array<
+        Record<string, unknown>
+      >;
+      const text = parts
+        .map((p) => (typeof p.text === "string" ? p.text : ""))
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+      const toolUses: Array<{
+        id: string;
+        name: string;
+        input: Record<string, unknown>;
+      }> = [];
+      for (const p of parts) {
+        const tu = p.toolUse as
+          | { toolUseId?: string; name?: string; input?: Record<string, unknown> }
+          | undefined;
+        if (tu?.name && tu.toolUseId) {
+          toolUses.push({
+            id: tu.toolUseId,
+            name: tu.name,
+            input: (tu.input || {}) as Record<string, unknown>,
+          });
+        }
+      }
+      return {
+        text: text || (toolUses.length ? "" : "No response"),
+        modelId: candidate,
+        stopReason: response.stopReason,
+        toolUses,
+        rawAssistantContent: parts,
+      };
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        candidate !== candidates[candidates.length - 1] &&
+        (isInvalidModelError(err) ||
+          /access|not authorized|isn't supported|ValidationException|ResourceNotFound/i.test(
+            msg
+          ))
+      ) {
+        console.warn(`[Grok Bedrock] ${candidate} failed, trying next:`, msg);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("All Grok Bedrock model candidates failed");
+}
+
+/**
+ * Agent loop for Grok 4.3 on Bedrock Converse (tools via toolConfig).
+ */
+async function runGrokBedrockAgent(
+  query: string,
+  toolContext: ToolContext,
+  options?: {
+    history?: ChatMessage[];
+    systemPrompt?: string;
+    modelId?: string;
+  }
+): Promise<{
+  text: string;
+  toolsUsed: string[];
+  modelId: string;
+  crmMutated: boolean;
+  generatedFiles: NonNullable<ToolContext["generatedFiles"]>;
+}> {
+  const systemPrompt =
+    options?.systemPrompt ||
+    `You are a recruiting AI assistant on Grok 4.3 via Amazon Bedrock.
+Use tools when they improve the answer. Be concise and actionable.`;
+  const tools = getToolSchemasForBedrock();
+  const toolsUsed = new Set<string>();
+  let crmMutated = false;
+  let modelId = options?.modelId || MODEL_GROK_43;
+  if (!toolContext.generatedFiles) toolContext.generatedFiles = [];
+
+  const prior = (options?.history || [])
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .filter((m) => typeof m.content === "string" && m.content.trim().length > 0)
+    .slice(-20);
+
+  let converseMessages: ConverseMsg[] = [
+    ...prior.map((m) => ({
+      role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
+      content: [{ text: m.content }],
+    })),
+    { role: "user", content: [{ text: query }] },
+  ];
+
+  for (let i = 0; i < MODEL_CONFIG.maxIterations; i++) {
+    const result = await invokeGrokBedrockConverse(
+      converseMessages,
+      systemPrompt,
+      modelId,
+      tools
+    );
+    modelId = result.modelId;
+
+    if (!result.toolUses.length) {
+      return {
+        text: result.text || "No response",
+        toolsUsed: Array.from(toolsUsed),
+        modelId,
+        crmMutated,
+        generatedFiles: toolContext.generatedFiles || [],
+      };
+    }
+
+    // Append assistant turn with tool uses
+    converseMessages.push({
+      role: "assistant",
+      content: result.rawAssistantContent.length
+        ? result.rawAssistantContent
+        : result.toolUses.map((tu) => ({
+            toolUse: {
+              toolUseId: tu.id,
+              name: tu.name,
+              input: tu.input,
+            },
+          })),
+    });
+
+    const toolResultBlocks: Array<Record<string, unknown>> = [];
+    for (const tu of result.toolUses) {
+      toolsUsed.add(tu.name);
+      const out = await executeToolByName(tu.name, tu.input, toolContext);
+      if (
+        /status":\s*"(created|updated|linked|stage_updated)"/.test(out) ||
+        /"status":"(created|updated|linked|stage_updated)"/.test(out)
+      ) {
+        crmMutated = true;
+      }
+      toolResultBlocks.push({
+        toolResult: {
+          toolUseId: tu.id,
+          content: [{ text: out }],
+        },
+      });
+    }
+    converseMessages.push({
+      role: "user",
+      content: toolResultBlocks,
+    });
+  }
+
+  return {
+    text: "Maximum tool iterations reached. Please refine your query.",
+    toolsUsed: Array.from(toolsUsed),
+    modelId,
+    crmMutated,
+    generatedFiles: toolContext.generatedFiles || [],
+  };
 }
 
 /**
@@ -1777,59 +1983,20 @@ ${pageContext}`
           : provider === "gemini"
             ? process.env.GEMINI_BYOK_MODEL || "gemini-2.0-flash"
             : provider === "grok"
-              ? process.env.GROK_BYOK_MODEL ||
-                process.env.XAI_BYOK_MODEL ||
-                MODEL_GROK_43
+              ? MODEL_GROK_43_XAI_API // direct xAI API model id for BYOK only
               : explicitBedrockModel
                 ? explicitBedrockModel
                 : generalMode
                   ? selectModelForGeneralAI(lastUserQuery, efficientOpts)
                   : selectModel(lastUserQuery, requestedModel, efficientOpts);
 
-    // Platform path may select Grok 4.3 (Most Efficient strong tier or manual lock)
-    let useGrokPath =
-      provider === "grok" ||
-      isGrokModelId(selectedModel) ||
-      (provider === "bedrock" && isGrokModelId(String(requestedModel || "")));
-
-    // Resolve xAI key early so Most Efficient can fall back to Sonnet cleanly
-    let grokApiKey = "";
-    if (useGrokPath) {
-      grokApiKey =
-        process.env.XAI_API_KEY?.trim() ||
-        process.env.GROK_API_KEY?.trim() ||
-        process.env.XAI_PLATFORM_API_KEY?.trim() ||
-        "";
-      if (!grokApiKey && userId) {
-        grokApiKey = (await getDecryptedGrokKey(userId)) || "";
-      }
-      if (!grokApiKey) {
-        if (provider === "bedrock") {
-          console.warn(
-            "[Grok] No platform/user xAI key — Most Efficient falls back to Claude Sonnet"
-          );
-          selectedModel = MODEL_SONNET;
-          useGrokPath = false;
-        } else if (provider === "grok") {
-          return NextResponse.json(
-            {
-              error: "No Grok/xAI API key available",
-              suggestion:
-                "Add a key in Settings → AI Providers, or set XAI_API_KEY on the server for platform Grok 4.3.",
-            },
-            { status: 400 }
-          );
-        } else {
-          return NextResponse.json(
-            {
-              error: "Grok 4.3 requires an xAI API key",
-              suggestion:
-                "Save a Grok key under Settings → AI Providers, or set XAI_API_KEY for platform use.",
-            },
-            { status: 400 }
-          );
-        }
-      }
+    // Platform Grok uses Bedrock id xai.grok-4.3 (not the xAI API)
+    if (
+      provider === "bedrock" &&
+      isGrokModelId(selectedModel) &&
+      !String(selectedModel).includes("xai.")
+    ) {
+      selectedModel = MODEL_GROK_43;
     }
 
     let modelLabel = friendlyModelLabel(selectedModel);
@@ -1840,11 +2007,14 @@ ${pageContext}`
     console.log("General AI mode:", generalMode);
     console.log("Requested model:", requestedModel || "none (Most Efficient)");
     console.log("Selected model:", selectedModel, `(${modelLabel})`);
-    console.log("Use Grok path:", useGrokPath, hasPlatformGrokKey() ? "(platform key)" : "");
+    console.log(
+      "Platform Grok on Bedrock:",
+      provider === "bedrock" && isGrokModelId(selectedModel)
+    );
     console.log("Query preview:", lastUserQuery.substring(0, 50));
 
-    // Bedrock path needs AWS config (unless we will run entirely on xAI Grok)
-    if (provider === "bedrock" && !useGrokPath) {
+    // Bedrock path needs AWS config (Claude, Nova, Grok 4.3 on Bedrock)
+    if (provider === "bedrock") {
       const awsRegion = process.env.AWS_REGION;
       if (!awsRegion) {
         return NextResponse.json(
@@ -1948,26 +2118,42 @@ ${pageContext}`
         usedModel = result.model;
       }
     }
-    // ---------- Grok 4.3 (platform Most Efficient / manual lock OR user BYOK) ----------
-    else if (useGrokPath && grokApiKey) {
+    // ---------- BYOK Grok via direct xAI API (optional; platform uses Bedrock) ----------
+    else if (provider === "grok") {
+      if (!userId) {
+        return NextResponse.json(
+          {
+            error: "Sign in required to use your Grok API key",
+            suggestion: "Log in, then save your key under Settings → AI Providers",
+          },
+          { status: 401 }
+        );
+      }
+      const apiKey = await getDecryptedGrokKey(userId);
+      if (!apiKey) {
+        return NextResponse.json(
+          {
+            error: "No Grok/xAI API key saved",
+            suggestion:
+              "Add your key in Settings → AI Providers, or use Platform Grok 4.3 on Bedrock.",
+          },
+          { status: 400 }
+        );
+      }
       const toolContext: ToolContext = {
         tenantId,
         userId,
         requestUrl: appUrl,
         generatedFiles: [],
       };
-
       const systemPrompt = generalMode
         ? generalSystemPrompt
         : SYSTEM_PROMPTS.base + "\n\n" + (SYSTEM_PROMPTS.override || "");
-
-      const grokModel = isGrokModelId(usedModel) ? usedModel : MODEL_GROK_43;
-
+      const grokModel = MODEL_GROK_43_XAI_API;
       if (assistantMode || (!useTools && !generalMode)) {
-        console.log("[Grok] chat (no tools)...", grokModel);
         const conversation = buildConversationMessages(messages);
         const result = await runGrokByokChat({
-          apiKey: grokApiKey,
+          apiKey,
           model: grokModel,
           systemPrompt,
           messages: conversation.map((m) => ({
@@ -1978,12 +2164,10 @@ ${pageContext}`
         completion = result.text;
         usedModel = result.model;
         toolsUsed = [];
-        generatedFiles = [];
       } else {
-        console.log("[Grok] agent with tools...", grokModel);
         const history = buildConversationMessages(messages)
           .filter((m) => m.role === "user" || m.role === "assistant")
-          .slice(0, -1) // drop last user — agent adds current query
+          .slice(0, -1)
           .map((m) => ({
             role: (m.role === "assistant" ? "assistant" : "user") as
               | "user"
@@ -1991,7 +2175,7 @@ ${pageContext}`
             content: m.content,
           }));
         const result = await runGrokByokAgent({
-          apiKey: grokApiKey,
+          apiKey,
           query: lastUserQuery,
           toolContext,
           systemPrompt,
@@ -2000,7 +2184,7 @@ ${pageContext}`
           history,
         });
         completion = result.text;
-        toolsUsed = result.toolsUsed.length ? result.toolsUsed : [];
+        toolsUsed = result.toolsUsed;
         usedModel = result.model;
         generatedFiles = toolContext.generatedFiles || [];
         crmMutated = toolsUsed.some((t) => /^(create_|update_|link_)/.test(t));
@@ -2150,7 +2334,65 @@ ${pageContext}`
         }
       }
     }
-    // ---------- Platform Bedrock (Claude + Amazon Nova) ----------
+    // ---------- Platform Bedrock: Grok 4.3 (xai.grok-4.3 via Converse) ----------
+    else if (provider === "bedrock" && isGrokModelId(usedModel)) {
+      const toolContext: ToolContext = {
+        tenantId,
+        userId,
+        requestUrl: appUrl,
+        generatedFiles: [],
+      };
+      const systemPrompt = generalMode
+        ? generalSystemPrompt
+        : SYSTEM_PROMPTS.base + "\n\n" + SYSTEM_PROMPTS.override;
+      const conversation = buildConversationMessages(messages);
+      const history = conversation.slice(0, -1);
+      const grokId = isGrokModelId(usedModel) ? usedModel : MODEL_GROK_43;
+
+      if (assistantMode || (!useTools && !generalMode)) {
+        console.log("[Bedrock Grok] chat (no tools)...", grokId);
+        const messagesForModel = conversation
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            role: (m.role === "assistant" ? "assistant" : "user") as
+              | "user"
+              | "assistant",
+            content: [
+              {
+                text:
+                  typeof m.content === "string" ? m.content : String(m.content),
+              },
+            ],
+          }));
+        const result = await invokeGrokBedrockConverse(
+          messagesForModel,
+          systemPrompt,
+          grokId,
+          []
+        );
+        completion = result.text;
+        usedModel = result.modelId;
+        toolsUsed = ["grok-bedrock-converse"];
+      } else {
+        console.log(
+          generalMode
+            ? `[Bedrock Grok] General AI agent (${modelLabel})...`
+            : "[Bedrock Grok] MCP agent with tools..."
+        );
+        const agentResult = await runGrokBedrockAgent(lastUserQuery, toolContext, {
+          history,
+          systemPrompt,
+          modelId: grokId,
+        });
+        completion = agentResult.text;
+        usedModel = agentResult.modelId;
+        toolsUsed = agentResult.toolsUsed;
+        crmMutated = agentResult.crmMutated;
+        generatedFiles =
+          agentResult.generatedFiles || toolContext.generatedFiles || [];
+      }
+    }
+    // ---------- Platform Bedrock: Amazon Nova ----------
     else if (isNovaModel(usedModel)) {
       // Nova uses Converse API (not Anthropic tool_use format)
       console.log("Running Amazon Nova via Converse...");
