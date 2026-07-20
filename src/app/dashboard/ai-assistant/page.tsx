@@ -301,7 +301,7 @@ return (
         <div>
           <h1 className="text-3xl font-bold">AI Assistant (Web)</h1>
           <p className="text-muted-foreground">
-            Most Efficient by default · Grok 4.3 on Bedrock · Claude + Nova · Apollo · BYOK
+            Most Efficient by default · Grok 4.3 on Mantle · Claude + Nova · Apollo · BYOK
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -439,7 +439,7 @@ return (
                           : m.id === "haiku"
                             ? "Claude Haiku — fast Claude"
                             : m.id === "grok-4.3"
-                              ? "Grok 4.3 on Amazon Bedrock (xai.grok-4.3)"
+                              ? "Grok 4.3 on Bedrock Mantle (xai.grok-4.3)"
                               : "Claude Sonnet — tools + CRM"
                   }
                 >
@@ -499,7 +499,7 @@ return (
                           : platformModel === "haiku"
                             ? "Bedrock · Haiku"
                             : platformModel === "grok-4.3"
-                              ? "Bedrock · Grok 4.3"
+                              ? "Mantle · Grok 4.3"
                               : platformModel === "sonnet"
                                 ? "Bedrock · Sonnet"
                                 : "Platform · Most Efficient"}

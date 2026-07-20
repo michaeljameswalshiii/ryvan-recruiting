@@ -99,7 +99,7 @@ const PLATFORM_MODELS: {
     id: 'grok-4.3',
     label: 'Grok 4.3',
     title:
-      'Grok 4.3 on Amazon Bedrock (xai.grok-4.3) — preferred for tools/CRM',
+      'Grok 4.3 on Bedrock Mantle (xai.grok-4.3) — preferred for tools/CRM',
   },
   {
     id: 'sonnet',

@@ -59,6 +59,11 @@ import {
   runGrokByokChat,
 } from "@/lib/ai/providers/grok-byok";
 import {
+  MANTLE_GROK_43,
+  runMantleGrokAgent,
+  runMantleGrokChat,
+} from "@/lib/ai/providers/bedrock-mantle";
+import {
   runOpenaiByokAgent,
   runOpenaiByokChat,
 } from "@/lib/ai/providers/openai-byok";
@@ -284,11 +289,11 @@ const MODEL_NOVA_LITE_ON_DEMAND = "amazon.nova-lite-v1:0";
 const MODEL_NOVA_PRO_ON_DEMAND = "amazon.nova-pro-v1:0";
 const MODEL_NOVA_2_LITE = "amazon.nova-2-lite-v1:0";
 
-// xAI Grok 4.3 on Amazon Bedrock (Mantle) — preferred strong model over Sonnet
-// Docs model ID: xai.grok-4.3
-const MODEL_GROK_43 = "xai.grok-4.3";
-const MODEL_GROK_43_US = "us.xai.grok-4.3";
-/** Direct xAI API id (BYOK provider path only) */
+// xAI Grok 4.3 on Amazon Bedrock Mantle (NOT Converse / InvokeModel)
+// Endpoint: https://bedrock-mantle.{region}.api.aws/openai/v1
+// Model ID: xai.grok-4.3
+const MODEL_GROK_43 = MANTLE_GROK_43;
+/** Direct xAI API id (BYOK provider path only — not Mantle) */
 const MODEL_GROK_43_XAI_API = GROK_DEFAULT_MODEL || "grok-4.3";
 
 // Fallbacks if primary inference profile is unavailable in the account/region
@@ -318,7 +323,8 @@ function modelFallbackChain(primary: string): string[] {
   const chain = [primary];
   const id = primary.toLowerCase();
   if (id.includes("grok")) {
-    chain.push(MODEL_GROK_43, MODEL_GROK_43_US, MODEL_SONNET, MODEL_SONNET_FALLBACK);
+    // Mantle Grok has no Converse fallback chain of IDs — Sonnet is app-level fallback
+    chain.push(MODEL_GROK_43, MODEL_SONNET, MODEL_SONNET_FALLBACK);
   } else if (id.includes("nova-lite") || id.includes("nova_lite") || id.includes("nova-2-lite")) {
     chain.push(
       MODEL_NOVA_LITE,
@@ -457,7 +463,7 @@ function resolveRequestedModelId(requestedModel?: string): string | undefined {
     m === "xai.grok-4.3" ||
     m === "us.xai.grok-4.3"
   ) {
-    return MODEL_GROK_43; // Bedrock foundation model id
+    return MODEL_GROK_43; // Mantle model id
   }
   // Allow full Bedrock model ids
   if (
@@ -2334,7 +2340,8 @@ ${pageContext}`
         }
       }
     }
-    // ---------- Platform Bedrock: Grok 4.3 (xai.grok-4.3 via Converse) ----------
+    // ---------- Platform: Grok 4.3 on Bedrock Mantle (OpenAI-compatible) ----------
+    // Not Converse/Invoke — https://bedrock-mantle.{region}.api.aws/openai/v1
     else if (provider === "bedrock" && isGrokModelId(usedModel)) {
       const toolContext: ToolContext = {
         tenantId,
@@ -2346,50 +2353,85 @@ ${pageContext}`
         ? generalSystemPrompt
         : SYSTEM_PROMPTS.base + "\n\n" + SYSTEM_PROMPTS.override;
       const conversation = buildConversationMessages(messages);
-      const history = conversation.slice(0, -1);
-      const grokId = isGrokModelId(usedModel) ? usedModel : MODEL_GROK_43;
+      const history = conversation
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .slice(0, -1)
+        .map((m) => ({
+          role: (m.role === "assistant" ? "assistant" : "user") as
+            | "user"
+            | "assistant",
+          content: typeof m.content === "string" ? m.content : String(m.content),
+        }));
+      const grokId = MODEL_GROK_43;
 
-      if (assistantMode || (!useTools && !generalMode)) {
-        console.log("[Bedrock Grok] chat (no tools)...", grokId);
-        const messagesForModel = conversation
-          .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({
-            role: (m.role === "assistant" ? "assistant" : "user") as
-              | "user"
-              | "assistant",
-            content: [
-              {
-                text:
+      try {
+        if (assistantMode || (!useTools && !generalMode)) {
+          console.log("[Mantle Grok] chat...", grokId);
+          const result = await runMantleGrokChat({
+            model: grokId,
+            systemPrompt,
+            messages: conversation
+              .filter((m) => m.role === "user" || m.role === "assistant")
+              .map((m) => ({
+                role: (m.role === "assistant" ? "assistant" : "user") as
+                  | "user"
+                  | "assistant",
+                content:
                   typeof m.content === "string" ? m.content : String(m.content),
-              },
-            ],
-          }));
-        const result = await invokeGrokBedrockConverse(
-          messagesForModel,
-          systemPrompt,
-          grokId,
-          []
+              })),
+          });
+          completion = result.text;
+          usedModel = result.model;
+          toolsUsed = ["mantle-grok-chat"];
+        } else {
+          console.log(
+            generalMode
+              ? `[Mantle Grok] General AI agent (${modelLabel})...`
+              : "[Mantle Grok] agent with tools..."
+          );
+          const result = await runMantleGrokAgent({
+            query: lastUserQuery,
+            toolContext,
+            systemPrompt,
+            model: grokId,
+            useTools: true,
+            history,
+          });
+          completion = result.text;
+          usedModel = result.model;
+          toolsUsed = result.toolsUsed;
+          generatedFiles = toolContext.generatedFiles || [];
+          crmMutated = toolsUsed.some((t) =>
+            /^(create_|update_|link_)/.test(String(t))
+          );
+        }
+      } catch (mantleErr) {
+        // Fall back to Claude Sonnet on classic Bedrock if Mantle fails
+        console.warn(
+          "[Mantle Grok] failed, falling back to Sonnet:",
+          mantleErr instanceof Error ? mantleErr.message : mantleErr
         );
-        completion = result.text;
-        usedModel = result.modelId;
-        toolsUsed = ["grok-bedrock-converse"];
-      } else {
-        console.log(
-          generalMode
-            ? `[Bedrock Grok] General AI agent (${modelLabel})...`
-            : "[Bedrock Grok] MCP agent with tools..."
-        );
-        const agentResult = await runGrokBedrockAgent(lastUserQuery, toolContext, {
-          history,
-          systemPrompt,
-          modelId: grokId,
+        usedModel = MODEL_SONNET;
+        modelLabel = friendlyModelLabel(MODEL_SONNET);
+        const toolContextFb: ToolContext = {
+          tenantId,
+          userId,
+          requestUrl: appUrl,
+          generatedFiles: [],
+        };
+        const agentResult = await runMCPAgent(lastUserQuery, toolContextFb, {
+          history: conversation.slice(0, -1),
+          systemPrompt: generalMode ? generalSystemPrompt : undefined,
+          modelId: MODEL_SONNET,
         });
         completion = agentResult.text;
         usedModel = agentResult.modelId;
-        toolsUsed = agentResult.toolsUsed;
+        toolsUsed = [
+          ...agentResult.toolsUsed,
+          "fallback:sonnet-after-mantle-error",
+        ];
         crmMutated = agentResult.crmMutated;
-        generatedFiles =
-          agentResult.generatedFiles || toolContext.generatedFiles || [];
+        generatedFiles = agentResult.generatedFiles || [];
       }
     }
     // ---------- Platform Bedrock: Amazon Nova ----------
