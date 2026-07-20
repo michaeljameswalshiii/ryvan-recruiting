@@ -6,7 +6,7 @@
  * without an account.
  *
  * Public exceptions (no login):
- *   - Pages:  /careers/*, /login, /signup, /invite/*
+ *   - Pages:  /careers/*, /login, /signup, /invite/*, /privacy, /terms
  *   - APIs:   /api/public/* (careers jobs + apply), /api/auth/*
  *
  * Protected (session required):
@@ -32,6 +32,8 @@ const PUBLIC_PAGE_ROUTES = [
   '/login',
   '/signup',
   '/invite', // invite accept flow
+  '/privacy', // Google OAuth / public legal
+  '/terms',
 ];
 
 /**
