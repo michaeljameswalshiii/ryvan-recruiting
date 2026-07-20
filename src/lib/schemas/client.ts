@@ -120,7 +120,7 @@ export const companyStageOptions = [
   { id: 'proposal', label: 'Proposal', color: 'bg-pink-500' },
   { id: 'closed_won', label: 'Closed Won', color: 'bg-green-500' },
   { id: 'client', label: 'Client', color: 'bg-emerald-600' },
-  { id: 'known_user', label: 'Known User', color: 'bg-sky-500' },
+  { id: 'known_user', label: 'Known User', color: 'bg-purple-500' },
   { id: 'dnu', label: 'DNU', color: 'bg-slate-500' },
   { id: 'lost', label: 'Lost', color: 'bg-red-500' },
 ] as const;

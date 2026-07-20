@@ -124,7 +124,11 @@ function getProgressIndex(stage: string): number {
   return 1;
 }
 
-function getProgressColor(step: number) {
+function getProgressColor(step: number, stage?: string) {
+  // Known User is its own category — always purple (not early-stage gray)
+  if (stage && String(stage).toLowerCase() === 'known_user') {
+    return 'bg-purple-500';
+  }
   if (step >= 5) return 'bg-emerald-500';
   if (step >= 4) return 'bg-amber-500';
   if (step >= 3) return 'bg-violet-500';
@@ -137,7 +141,8 @@ function stageBadgeClasses(stage: string) {
   if (s === 'lost' || s === 'dnu') return 'bg-rose-50 text-rose-700 border-rose-200';
   if (s === 'closed_won' || s === 'client')
     return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  if (s === 'known_user') return 'bg-sky-50 text-sky-800 border-sky-200';
+  if (s === 'known_user')
+    return 'bg-purple-50 text-purple-800 border-purple-200';
   if (['proposal', 'meeting', 'presented'].includes(s))
     return 'bg-amber-50 text-amber-800 border-amber-200';
   if (s === 'conversation') return 'bg-violet-50 text-violet-700 border-violet-200';
@@ -765,7 +770,7 @@ export function CompaniesClient() {
                                 key={i}
                                 className={`h-1.5 flex-1 rounded-full ${
                                   i < c.progress
-                                    ? getProgressColor(c.progress)
+                                    ? getProgressColor(c.progress, c.stage)
                                     : 'bg-gray-200'
                                 }`}
                               />
