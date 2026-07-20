@@ -62,14 +62,15 @@ interface Message {
 }
 
 /**
- * Platform Bedrock pick.
- * "auto" = Most Efficient (Nova Lite → Haiku → Sonnet; never Opus).
- * Nova is chat-only (no CRM tools); Claude locks keep tools on.
+ * Platform model pick.
+ * "auto" = Most Efficient (Nova Lite → Haiku → Grok 4.3 preferred over Sonnet/Opus).
+ * Nova is chat-only; Grok 4.3 / Claude locks keep tools on.
  */
 type PlatformModel =
   | 'auto'
   | 'nova-lite'
   | 'haiku'
+  | 'grok-4.3'
   | 'sonnet'
   | 'nova-pro'
   | 'opus';
@@ -83,7 +84,7 @@ const PLATFORM_MODELS: {
     id: 'auto',
     label: 'Most Efficient',
     title:
-      'Most Efficient: Nova Lite (simple) → Haiku (moderate) → Sonnet (tools/CRM). Never Opus.',
+      'Most Efficient: Nova Lite (simple) → Haiku (moderate) → Grok 4.3 (tools/CRM; preferred over Sonnet/Opus).',
   },
   {
     id: 'nova-lite',
@@ -94,6 +95,12 @@ const PLATFORM_MODELS: {
     id: 'haiku',
     label: 'Haiku',
     title: 'Claude Haiku — fast Claude',
+  },
+  {
+    id: 'grok-4.3',
+    label: 'Grok 4.3',
+    title:
+      'xAI Grok 4.3 — preferred strong model for tools/CRM (platform XAI_API_KEY or your Grok BYOK key)',
   },
   {
     id: 'sonnet',
@@ -151,6 +158,8 @@ function labelFromModelId(modelId?: string): string {
   if (id.includes('nova-lite') || id.includes('nova-2-lite')) return 'Amazon Nova Lite';
   if (id.includes('nova-pro')) return 'Amazon Nova Pro';
   if (id.includes('nova')) return 'Amazon Nova';
+  if (id.includes('grok-4.3') || id.includes('grok-4-3')) return 'Grok 4.3';
+  if (id.includes('grok')) return 'Grok';
   return modelId.length > 36 ? `${modelId.slice(0, 33)}…` : modelId;
 }
 
@@ -158,6 +167,9 @@ function modelBadgeClass(label?: string): string {
   const l = (label || '').toLowerCase();
   if (l.includes('nova')) {
     return 'border-orange-200 bg-orange-50 text-orange-800';
+  }
+  if (l.includes('grok')) {
+    return 'border-zinc-300 bg-zinc-100 text-zinc-900';
   }
   if (l.includes('haiku')) {
     return 'border-sky-200 bg-sky-50 text-sky-800';
@@ -413,6 +425,7 @@ export default function GeneralAiUsagePage() {
       const useTools =
         platformModel === 'auto' ||
         platformModel === 'haiku' ||
+        platformModel === 'grok-4.3' ||
         platformModel === 'sonnet' ||
         platformModel === 'opus';
 
@@ -595,9 +608,11 @@ export default function GeneralAiUsagePage() {
                       ? 'bg-emerald-700 text-white'
                       : m.id.startsWith('nova')
                         ? 'bg-orange-600 text-white'
-                        : m.id === 'opus'
-                          ? 'bg-violet-700 text-white'
-                          : 'bg-slate-800 text-white'
+                        : m.id === 'grok-4.3'
+                          ? 'bg-zinc-900 text-white'
+                          : m.id === 'opus'
+                            ? 'bg-violet-700 text-white'
+                            : 'bg-slate-800 text-white'
                     : 'text-slate-600 hover:bg-white'
                 }`}
               >
@@ -636,9 +651,9 @@ export default function GeneralAiUsagePage() {
               </h2>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-500">
                 Ask anything, attach documents for analysis, or request
-                revisions in the same thread. Defaults to Most Efficient on AWS
-                Bedrock (Nova Lite / Haiku / Sonnet) with Apollo company/people
-                search, CRM tools, internal data, and website fetch when needed.
+                revisions in the same thread. Defaults to Most Efficient (Nova
+                Lite / Haiku / Grok 4.3 preferred for tools). Apollo, CRM, and
+                website fetch when needed.
               </p>
 
               <div className="mt-8 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
@@ -931,7 +946,7 @@ export default function GeneralAiUsagePage() {
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-slate-400">
             <span>
               Multi-turn context · File upload (txt, md, csv, json, docx, pdf) ·
-              Excel as CSV · Most Efficient (Nova Lite / Haiku / Sonnet)
+              Excel as CSV · Most Efficient (Nova Lite / Haiku / Grok 4.3)
             </span>
             {lastMeta?.modelLabel && (
               <span

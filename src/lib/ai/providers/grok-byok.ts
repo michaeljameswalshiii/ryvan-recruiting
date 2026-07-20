@@ -9,8 +9,13 @@ import {
 } from '@/lib/ai/tools';
 
 const XAI_BASE = 'https://api.x.ai/v1';
-const DEFAULT_MODEL =
-  process.env.GROK_BYOK_MODEL || process.env.XAI_BYOK_MODEL || 'grok-3';
+/** Default xAI model — Grok 4.3 preferred for agentic / tool work */
+export const GROK_DEFAULT_MODEL =
+  process.env.GROK_BYOK_MODEL ||
+  process.env.XAI_BYOK_MODEL ||
+  process.env.GROK_PLATFORM_MODEL ||
+  'grok-4.3';
+const DEFAULT_MODEL = GROK_DEFAULT_MODEL;
 const MAX_ITERATIONS = 5;
 
 type ChatMessage =
@@ -154,6 +159,38 @@ async function executeToolByName(
     return `Error: ${result.error || 'Unknown error'}`;
   }
 
+  if (toolName === 'fetch_website') {
+    const url =
+      (toolInput.url as string) ||
+      (toolInput.query as string) ||
+      query ||
+      '';
+    const result = await executeTool(
+      'fetch_website',
+      { query: url, url } as any,
+      toolContext
+    );
+    if (result.success && result.data) {
+      const data = result.data as {
+        finalUrl?: string;
+        url?: string;
+        title?: string;
+        text?: string;
+        truncated?: boolean;
+      };
+      return [
+        `URL: ${data.finalUrl || data.url || url}`,
+        data.title ? `Title: ${data.title}` : null,
+        data.truncated ? '(content truncated)' : null,
+        '',
+        data.text || '',
+      ]
+        .filter((x) => x !== null)
+        .join('\n');
+    }
+    return `Error: ${result.error || 'Failed to fetch website'}`;
+  }
+
   if (toolName === 'internal_data') {
     const result = await executeTool(
       'internal_data',
@@ -188,17 +225,30 @@ export async function runGrokByokAgent(params: {
   systemPrompt?: string;
   model?: string;
   useTools?: boolean;
+  /** Prior turns for multi-turn General AI */
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }): Promise<{ text: string; toolsUsed: string[]; model: string }> {
   const { apiKey, query, toolContext, useTools = true } = params;
   const model = params.model || DEFAULT_MODEL;
   const systemPrompt =
     params.systemPrompt ||
     `You are a recruiting and business development AI assistant inside Trio ATS (powered by Grok).
-Specialize in talent sourcing and company research. Use tools when they help. Be concise and actionable.`;
+Specialize in talent sourcing and company research.
+Use fetch_website when the user gives a company URL or asks you to examine a website — do not claim you cannot open URLs.
+Use tools when they help. Be concise and actionable.`;
 
   const tools = useTools ? toOpenAITools() : undefined;
+  const prior = (params.history || [])
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .filter((m) => typeof m.content === 'string' && m.content.trim().length > 0)
+    .slice(-20)
+    .map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }));
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
+    ...prior,
     { role: 'user', content: query },
   ];
   const toolsUsed = new Set<string>();

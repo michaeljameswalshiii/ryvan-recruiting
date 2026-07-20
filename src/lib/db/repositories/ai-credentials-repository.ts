@@ -1,11 +1,18 @@
 /**
  * Store BYOK AI credentials (encrypted) per user.
- * Supports Anthropic + Grok (xAI). Platform Bedrock needs no key.
+ * Supports Anthropic, Grok (xAI), OpenAI, Gemini. Platform Bedrock needs no key.
  */
 import { getItem, putItem, deleteItem, tableNames } from '../dynamodb';
 import { encryptSecret, decryptSecret, maskSecret } from '../../crypto/secrets';
 
-export type AiProviderPreference = 'bedrock' | 'anthropic' | 'grok';
+export type AiProviderPreference =
+  | 'bedrock'
+  | 'anthropic'
+  | 'grok'
+  | 'openai'
+  | 'gemini';
+
+export type ByokKeyProvider = 'anthropic' | 'grok' | 'openai' | 'gemini';
 
 export interface AiCredentialsRecord {
   id: string; // ai-cred#${userId}
@@ -17,6 +24,10 @@ export interface AiCredentialsRecord {
   anthropicKeyHint?: string;
   grokEncryptedKey?: string;
   grokKeyHint?: string;
+  openaiEncryptedKey?: string;
+  openaiKeyHint?: string;
+  geminiEncryptedKey?: string;
+  geminiKeyHint?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -27,6 +38,10 @@ export interface AiCredentialsPublic {
   anthropicKeyHint?: string;
   hasGrokKey: boolean;
   grokKeyHint?: string;
+  hasOpenaiKey: boolean;
+  openaiKeyHint?: string;
+  hasGeminiKey: boolean;
+  geminiKeyHint?: string;
   updatedAt?: string;
 }
 
@@ -41,21 +56,39 @@ function emptyPublic(
     preferredProvider: preferred,
     hasAnthropicKey: false,
     hasGrokKey: false,
+    hasOpenaiKey: false,
+    hasGeminiKey: false,
   };
+}
+
+function hasKeyFor(
+  rec: AiCredentialsRecord,
+  provider: AiProviderPreference
+): boolean {
+  if (provider === 'bedrock') return true;
+  if (provider === 'anthropic') return !!rec.anthropicEncryptedKey;
+  if (provider === 'grok') return !!rec.grokEncryptedKey;
+  if (provider === 'openai') return !!rec.openaiEncryptedKey;
+  if (provider === 'gemini') return !!rec.geminiEncryptedKey;
+  return false;
 }
 
 function toPublic(rec: AiCredentialsRecord | null): AiCredentialsPublic {
   if (!rec) return emptyPublic();
   let preferred = rec.preferredProvider || 'bedrock';
-  // Fall back if preferred key was removed
-  if (preferred === 'anthropic' && !rec.anthropicEncryptedKey) preferred = 'bedrock';
-  if (preferred === 'grok' && !rec.grokEncryptedKey) preferred = 'bedrock';
+  if (preferred !== 'bedrock' && !hasKeyFor(rec, preferred)) {
+    preferred = 'bedrock';
+  }
   return {
     preferredProvider: preferred,
     hasAnthropicKey: !!rec.anthropicEncryptedKey,
     anthropicKeyHint: rec.anthropicKeyHint,
     hasGrokKey: !!rec.grokEncryptedKey,
     grokKeyHint: rec.grokKeyHint,
+    hasOpenaiKey: !!rec.openaiEncryptedKey,
+    openaiKeyHint: rec.openaiKeyHint,
+    hasGeminiKey: !!rec.geminiEncryptedKey,
+    geminiKeyHint: rec.geminiKeyHint,
     updatedAt: rec.updatedAt,
   };
 }
@@ -72,7 +105,8 @@ function mergeRecord(
     userId,
     tenant_id: tenantId || existing?.tenant_id,
     type: 'ai_credentials',
-    preferredProvider: patch.preferredProvider ?? existing?.preferredProvider ?? 'bedrock',
+    preferredProvider:
+      patch.preferredProvider ?? existing?.preferredProvider ?? 'bedrock',
     anthropicEncryptedKey:
       patch.anthropicEncryptedKey !== undefined
         ? patch.anthropicEncryptedKey
@@ -87,12 +121,27 @@ function mergeRecord(
         : existing?.grokEncryptedKey,
     grokKeyHint:
       patch.grokKeyHint !== undefined ? patch.grokKeyHint : existing?.grokKeyHint,
+    openaiEncryptedKey:
+      patch.openaiEncryptedKey !== undefined
+        ? patch.openaiEncryptedKey
+        : existing?.openaiEncryptedKey,
+    openaiKeyHint:
+      patch.openaiKeyHint !== undefined
+        ? patch.openaiKeyHint
+        : existing?.openaiKeyHint,
+    geminiEncryptedKey:
+      patch.geminiEncryptedKey !== undefined
+        ? patch.geminiEncryptedKey
+        : existing?.geminiEncryptedKey,
+    geminiKeyHint:
+      patch.geminiKeyHint !== undefined
+        ? patch.geminiKeyHint
+        : existing?.geminiKeyHint,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
 }
 
-/** Persist without undefined key fields (Dynamo put) */
 async function putClean(record: AiCredentialsRecord): Promise<void> {
   const item: Record<string, unknown> = {
     id: record.id,
@@ -110,6 +159,14 @@ async function putClean(record: AiCredentialsRecord): Promise<void> {
   if (record.grokEncryptedKey) {
     item.grokEncryptedKey = record.grokEncryptedKey;
     item.grokKeyHint = record.grokKeyHint;
+  }
+  if (record.openaiEncryptedKey) {
+    item.openaiEncryptedKey = record.openaiEncryptedKey;
+    item.openaiKeyHint = record.openaiKeyHint;
+  }
+  if (record.geminiEncryptedKey) {
+    item.geminiEncryptedKey = record.geminiEncryptedKey;
+    item.geminiKeyHint = record.geminiKeyHint;
   }
   await putItem(tableNames.profiles, item);
 }
@@ -134,30 +191,85 @@ export async function getAiCredentialsPublic(
   return toPublic(await getAiCredentialsRecord(userId));
 }
 
-export async function getDecryptedAnthropicKey(
-  userId: string
+async function decryptField(
+  encrypted: string | undefined,
+  label: string
 ): Promise<string | null> {
-  const rec = await getAiCredentialsRecord(userId);
-  if (!rec?.anthropicEncryptedKey) return null;
+  if (!encrypted) return null;
   try {
-    return decryptSecret(rec.anthropicEncryptedKey);
+    return decryptSecret(encrypted);
   } catch (err) {
-    console.error('[ai-credentials] anthropic decrypt failed', err);
+    console.error(`[ai-credentials] ${label} decrypt failed`, err);
     return null;
   }
 }
 
-export async function getDecryptedGrokKey(
-  userId: string
-): Promise<string | null> {
+export async function getDecryptedAnthropicKey(userId: string) {
   const rec = await getAiCredentialsRecord(userId);
-  if (!rec?.grokEncryptedKey) return null;
-  try {
-    return decryptSecret(rec.grokEncryptedKey);
-  } catch (err) {
-    console.error('[ai-credentials] grok decrypt failed', err);
-    return null;
+  return decryptField(rec?.anthropicEncryptedKey, 'anthropic');
+}
+
+export async function getDecryptedGrokKey(userId: string) {
+  const rec = await getAiCredentialsRecord(userId);
+  return decryptField(rec?.grokEncryptedKey, 'grok');
+}
+
+export async function getDecryptedOpenaiKey(userId: string) {
+  const rec = await getAiCredentialsRecord(userId);
+  return decryptField(rec?.openaiEncryptedKey, 'openai');
+}
+
+export async function getDecryptedGeminiKey(userId: string) {
+  const rec = await getAiCredentialsRecord(userId);
+  return decryptField(rec?.geminiEncryptedKey, 'gemini');
+}
+
+async function saveKey(params: {
+  userId: string;
+  tenantId?: string | null;
+  apiKey: string;
+  provider: ByokKeyProvider;
+  setAsPreferred?: boolean;
+  minLength?: number;
+}): Promise<AiCredentialsPublic> {
+  const {
+    userId,
+    tenantId,
+    apiKey,
+    provider,
+    setAsPreferred = true,
+    minLength = 16,
+  } = params;
+  const trimmed = apiKey.trim();
+  if (!trimmed || trimmed.length < minLength) {
+    throw new Error('API key looks invalid');
   }
+
+  const existing = await getAiCredentialsRecord(userId);
+  const hint = maskSecret(trimmed);
+  const enc = encryptSecret(trimmed);
+  const patch: Partial<AiCredentialsRecord> = {
+    preferredProvider: setAsPreferred
+      ? provider
+      : existing?.preferredProvider || 'bedrock',
+  };
+  if (provider === 'anthropic') {
+    patch.anthropicEncryptedKey = enc;
+    patch.anthropicKeyHint = hint;
+  } else if (provider === 'grok') {
+    patch.grokEncryptedKey = enc;
+    patch.grokKeyHint = hint;
+  } else if (provider === 'openai') {
+    patch.openaiEncryptedKey = enc;
+    patch.openaiKeyHint = hint;
+  } else if (provider === 'gemini') {
+    patch.geminiEncryptedKey = enc;
+    patch.geminiKeyHint = hint;
+  }
+
+  const record = mergeRecord(existing, userId, tenantId, patch);
+  await putClean(record);
+  return getAiCredentialsPublic(userId);
 }
 
 export async function saveAnthropicKey(params: {
@@ -165,23 +277,8 @@ export async function saveAnthropicKey(params: {
   tenantId?: string | null;
   apiKey: string;
   setAsPreferred?: boolean;
-}): Promise<AiCredentialsPublic> {
-  const { userId, tenantId, apiKey, setAsPreferred = true } = params;
-  const trimmed = apiKey.trim();
-  if (!trimmed || trimmed.length < 20) {
-    throw new Error('API key looks invalid');
-  }
-
-  const existing = await getAiCredentialsRecord(userId);
-  const record = mergeRecord(existing, userId, tenantId, {
-    preferredProvider: setAsPreferred
-      ? 'anthropic'
-      : existing?.preferredProvider || 'bedrock',
-    anthropicEncryptedKey: encryptSecret(trimmed),
-    anthropicKeyHint: maskSecret(trimmed),
-  });
-  await putClean(record);
-  return getAiCredentialsPublic(userId);
+}) {
+  return saveKey({ ...params, provider: 'anthropic', minLength: 20 });
 }
 
 export async function saveGrokKey(params: {
@@ -189,23 +286,26 @@ export async function saveGrokKey(params: {
   tenantId?: string | null;
   apiKey: string;
   setAsPreferred?: boolean;
-}): Promise<AiCredentialsPublic> {
-  const { userId, tenantId, apiKey, setAsPreferred = true } = params;
-  const trimmed = apiKey.trim();
-  if (!trimmed || trimmed.length < 16) {
-    throw new Error('API key looks invalid');
-  }
+}) {
+  return saveKey({ ...params, provider: 'grok', minLength: 16 });
+}
 
-  const existing = await getAiCredentialsRecord(userId);
-  const record = mergeRecord(existing, userId, tenantId, {
-    preferredProvider: setAsPreferred
-      ? 'grok'
-      : existing?.preferredProvider || 'bedrock',
-    grokEncryptedKey: encryptSecret(trimmed),
-    grokKeyHint: maskSecret(trimmed),
-  });
-  await putClean(record);
-  return getAiCredentialsPublic(userId);
+export async function saveOpenaiKey(params: {
+  userId: string;
+  tenantId?: string | null;
+  apiKey: string;
+  setAsPreferred?: boolean;
+}) {
+  return saveKey({ ...params, provider: 'openai', minLength: 20 });
+}
+
+export async function saveGeminiKey(params: {
+  userId: string;
+  tenantId?: string | null;
+  apiKey: string;
+  setAsPreferred?: boolean;
+}) {
+  return saveKey({ ...params, provider: 'gemini', minLength: 20 });
 }
 
 export async function setPreferredProvider(
@@ -221,6 +321,12 @@ export async function setPreferredProvider(
   if (preferredProvider === 'grok' && !existing?.grokEncryptedKey) {
     throw new Error('Save a Grok (xAI) API key before selecting it as preferred');
   }
+  if (preferredProvider === 'openai' && !existing?.openaiEncryptedKey) {
+    throw new Error('Save an OpenAI API key before selecting it as preferred');
+  }
+  if (preferredProvider === 'gemini' && !existing?.geminiEncryptedKey) {
+    throw new Error('Save a Gemini API key before selecting it as preferred');
+  }
 
   const record = mergeRecord(existing, userId, tenantId, {
     preferredProvider,
@@ -229,61 +335,55 @@ export async function setPreferredProvider(
   return getAiCredentialsPublic(userId);
 }
 
-export async function deleteAnthropicKey(
-  userId: string
+async function deleteProviderKey(
+  userId: string,
+  provider: ByokKeyProvider
 ): Promise<AiCredentialsPublic> {
   const existing = await getAiCredentialsRecord(userId);
   if (!existing) return emptyPublic();
 
   const preferred: AiProviderPreference =
-    existing.preferredProvider === 'anthropic'
+    existing.preferredProvider === provider
       ? 'bedrock'
       : existing.preferredProvider || 'bedrock';
 
+  // Rebuild without the deleted provider key
+  const next: AiCredentialsRecord = {
+    ...existing,
+    preferredProvider: preferred,
+    updatedAt: new Date().toISOString(),
+  };
+  if (provider === 'anthropic') {
+    next.anthropicEncryptedKey = undefined;
+    next.anthropicKeyHint = undefined;
+  } else if (provider === 'grok') {
+    next.grokEncryptedKey = undefined;
+    next.grokKeyHint = undefined;
+  } else if (provider === 'openai') {
+    next.openaiEncryptedKey = undefined;
+    next.openaiKeyHint = undefined;
+  } else if (provider === 'gemini') {
+    next.geminiEncryptedKey = undefined;
+    next.geminiKeyHint = undefined;
+  }
+
+  // Full rewrite so Dynamo doesn't keep stale encrypted fields
   await deleteItem(tableNames.profiles, { id: recordId(userId) });
-  const record = mergeRecord(
-    {
-      ...existing,
-      anthropicEncryptedKey: undefined,
-      anthropicKeyHint: undefined,
-    },
-    userId,
-    existing.tenant_id,
-    {
-      preferredProvider: preferred,
-      anthropicEncryptedKey: undefined,
-      anthropicKeyHint: undefined,
-    }
-  );
-  // Force clear anthropic fields
-  record.anthropicEncryptedKey = undefined;
-  record.anthropicKeyHint = undefined;
-  record.preferredProvider = preferred;
-  await putClean(record);
+  await putClean(next);
   return getAiCredentialsPublic(userId);
 }
 
-export async function deleteGrokKey(
-  userId: string
-): Promise<AiCredentialsPublic> {
-  const existing = await getAiCredentialsRecord(userId);
-  if (!existing) return emptyPublic();
-
-  const preferred: AiProviderPreference =
-    existing.preferredProvider === 'grok'
-      ? 'bedrock'
-      : existing.preferredProvider || 'bedrock';
-
-  await deleteItem(tableNames.profiles, { id: recordId(userId) });
-  const record = mergeRecord(existing, userId, existing.tenant_id, {
-    preferredProvider: preferred,
-  });
-  record.grokEncryptedKey = undefined;
-  record.grokKeyHint = undefined;
-  record.preferredProvider = preferred;
-  // Keep anthropic if present
-  await putClean(record);
-  return getAiCredentialsPublic(userId);
+export async function deleteAnthropicKey(userId: string) {
+  return deleteProviderKey(userId, 'anthropic');
+}
+export async function deleteGrokKey(userId: string) {
+  return deleteProviderKey(userId, 'grok');
+}
+export async function deleteOpenaiKey(userId: string) {
+  return deleteProviderKey(userId, 'openai');
+}
+export async function deleteGeminiKey(userId: string) {
+  return deleteProviderKey(userId, 'gemini');
 }
 
 /** Lightweight validation call to Anthropic */
@@ -309,9 +409,7 @@ export async function validateAnthropicKey(apiKey: string): Promise<{
       }),
     });
 
-    if (res.ok) {
-      return { ok: true, model };
-    }
+    if (res.ok) return { ok: true, model };
 
     const text = await res.text();
     let message = `Anthropic API error (${res.status})`;
@@ -337,7 +435,8 @@ export async function validateGrokKey(apiKey: string): Promise<{
   model?: string;
 }> {
   try {
-    const model = process.env.GROK_BYOK_MODEL || process.env.XAI_BYOK_MODEL || 'grok-3';
+    const model =
+      process.env.GROK_BYOK_MODEL || process.env.XAI_BYOK_MODEL || 'grok-4.3';
     const res = await fetch('https://api.x.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -351,9 +450,7 @@ export async function validateGrokKey(apiKey: string): Promise<{
       }),
     });
 
-    if (res.ok) {
-      return { ok: true, model };
-    }
+    if (res.ok) return { ok: true, model };
 
     const text = await res.text();
     let message = `Grok/xAI API error (${res.status})`;
@@ -363,13 +460,118 @@ export async function validateGrokKey(apiKey: string): Promise<{
     } catch {
       if (text) message = text.slice(0, 200);
     }
-    // Some accounts use different model ids — 404 model often still means key is valid
     if (res.status === 404 && /model/i.test(message)) {
-      return {
-        ok: true,
+      return { ok: true, model };
+    }
+    return { ok: false, error: message };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Validation failed',
+    };
+  }
+}
+
+/** Lightweight validation call to OpenAI */
+export async function validateOpenaiKey(apiKey: string): Promise<{
+  ok: boolean;
+  error?: string;
+  model?: string;
+}> {
+  try {
+    const model = process.env.OPENAI_BYOK_MODEL || 'gpt-4o-mini';
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Authorization: `Bearer ${apiKey.trim()}`,
+      },
+      body: JSON.stringify({
         model,
-        error: undefined,
-      };
+        max_tokens: 16,
+        messages: [{ role: 'user', content: 'Reply with ok' }],
+      }),
+    });
+
+    if (res.ok) return { ok: true, model };
+
+    const text = await res.text();
+    let message = `OpenAI API error (${res.status})`;
+    try {
+      const json = JSON.parse(text);
+      message = json?.error?.message || message;
+    } catch {
+      if (text) message = text.slice(0, 200);
+    }
+    // Key valid but model name differs on some accounts
+    if (res.status === 404 && /model/i.test(message)) {
+      return { ok: true, model };
+    }
+    return { ok: false, error: message };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Validation failed',
+    };
+  }
+}
+
+/** Lightweight validation call to Google Gemini */
+export async function validateGeminiKey(apiKey: string): Promise<{
+  ok: boolean;
+  error?: string;
+  model?: string;
+}> {
+  try {
+    const model =
+      process.env.GEMINI_BYOK_MODEL || 'gemini-2.0-flash';
+    // OpenAI-compatible endpoint for Gemini
+    const res = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: `Bearer ${apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 16,
+          messages: [{ role: 'user', content: 'Reply with ok' }],
+        }),
+      }
+    );
+
+    if (res.ok) return { ok: true, model };
+
+    // Fallback: native generateContent (some keys work better this way)
+    const native = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'Reply with ok' }] }],
+          generationConfig: { maxOutputTokens: 16 },
+        }),
+      }
+    );
+    if (native.ok) return { ok: true, model };
+
+    const text = await res.text();
+    let message = `Gemini API error (${res.status})`;
+    try {
+      const json = JSON.parse(text);
+      message =
+        json?.error?.message || json?.error?.status || message;
+    } catch {
+      if (text) message = text.slice(0, 200);
+    }
+    if (
+      (res.status === 404 || native.status === 404) &&
+      /model/i.test(message)
+    ) {
+      return { ok: true, model };
     }
     return { ok: false, error: message };
   } catch (err) {

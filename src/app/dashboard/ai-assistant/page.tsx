@@ -18,14 +18,15 @@ interface Message {
 type AiProvider = "bedrock" | "anthropic" | "openai" | "gemini" | "grok";
 
 /**
- * Platform Bedrock model pick.
- * "auto" = Most Efficient ladder (Nova Lite → Haiku → Sonnet; never Opus).
+ * Platform model pick.
+ * "auto" = Most Efficient (Nova Lite → Haiku → Grok 4.3 preferred over Sonnet/Opus).
  * Individual picks lock that model for the turn.
  */
 type PlatformModel =
   | "auto"
   | "nova-lite"
   | "haiku"
+  | "grok-4.3"
   | "sonnet"
   | "nova-pro"
   | "opus";
@@ -93,7 +94,7 @@ export default function AIAssistantPage() {
         id: "welcome",
         role: "assistant" as const,
         content:
-          "✅ AI Assistant ready. Platform defaults to Most Efficient (Nova Lite / Haiku / Sonnet). Lock a model anytime, or use your own Anthropic, OpenAI, Gemini, or Grok key (Settings → AI Providers). What would you like to source?",
+          "✅ AI Assistant ready. Platform defaults to Most Efficient (Nova Lite / Haiku / Grok 4.3 preferred for tools). Lock a model anytime, or use your own Anthropic, OpenAI, Gemini, or Grok key (Settings → AI Providers). What would you like to source?",
         timestamp: new Date(),
       },
     ]);
@@ -186,11 +187,12 @@ const res = await fetch("/api/bedrock", {
         messages: chatMessages,
         useSearch: true,
         // CRM tools need Claude tool_use; Nova uses Converse chat only.
-        // Most Efficient (auto) may pick Sonnet when tools are needed.
+        // Most Efficient (auto) may pick Grok 4.3 / Sonnet when tools are needed.
         useTools:
           provider !== "bedrock" ||
           platformModel === "auto" ||
           platformModel === "haiku" ||
+          platformModel === "grok-4.3" ||
           platformModel === "sonnet" ||
           platformModel === "opus",
         provider,
@@ -301,7 +303,7 @@ return (
         <div>
           <h1 className="text-3xl font-bold">AI Assistant (Web)</h1>
           <p className="text-muted-foreground">
-            Most Efficient by default · Claude + Nova on Platform · Apollo · BYOK
+            Most Efficient by default · Grok 4.3 preferred for tools · Claude + Nova · Apollo · BYOK
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -409,6 +411,7 @@ return (
                   { id: "auto" as const, label: "Most Efficient" },
                   { id: "nova-lite" as const, label: "Nova Lite" },
                   { id: "haiku" as const, label: "Haiku" },
+                  { id: "grok-4.3" as const, label: "Grok 4.3" },
                   { id: "sonnet" as const, label: "Sonnet" },
                   { id: "nova-pro" as const, label: "Nova Pro" },
                   { id: "opus" as const, label: "Opus" },
@@ -424,23 +427,27 @@ return (
                         ? "bg-emerald-700 text-white"
                         : m.id.startsWith("nova")
                           ? "bg-orange-600 text-white"
-                          : m.id === "opus"
-                            ? "bg-violet-700 text-white"
-                            : "bg-slate-800 text-white"
+                          : m.id === "grok-4.3"
+                            ? "bg-zinc-900 text-white"
+                            : m.id === "opus"
+                              ? "bg-violet-700 text-white"
+                              : "bg-slate-800 text-white"
                       : "text-slate-600 hover:bg-white"
                   }`}
                   title={
                     m.id === "auto"
-                      ? "Most Efficient: Nova Lite (simple) → Haiku (moderate) → Sonnet (tools/CRM). Never Opus."
+                      ? "Most Efficient: Nova Lite → Haiku → Grok 4.3 (preferred over Sonnet/Opus for tools)"
                       : m.id === "nova-lite"
                         ? "Amazon Nova Lite — cheapest chat (no CRM tools)"
                         : m.id === "nova-pro"
                           ? "Amazon Nova Pro — stronger Amazon chat (no CRM tools)"
                           : m.id === "haiku"
                             ? "Claude Haiku — fast Claude"
-                            : m.id === "opus"
-                              ? "Claude Opus — max quality (manual only)"
-                              : "Claude Sonnet — tools + CRM"
+                            : m.id === "grok-4.3"
+                              ? "xAI Grok 4.3 — preferred strong model (platform or BYOK key)"
+                              : m.id === "opus"
+                                ? "Claude Opus — max quality (manual only)"
+                                : "Claude Sonnet — tools + CRM"
                   }
                 >
                   {m.label}
@@ -498,11 +505,13 @@ return (
                           ? "Bedrock · Nova Pro"
                           : platformModel === "haiku"
                             ? "Bedrock · Haiku"
-                            : platformModel === "sonnet"
-                              ? "Bedrock · Sonnet"
-                              : platformModel === "opus"
-                                ? "Bedrock · Opus"
-                                : "Bedrock · Most Efficient"}
+                            : platformModel === "grok-4.3"
+                              ? "xAI · Grok 4.3"
+                              : platformModel === "sonnet"
+                                ? "Bedrock · Sonnet"
+                                : platformModel === "opus"
+                                  ? "Bedrock · Opus"
+                                  : "Platform · Most Efficient"}
               {lastProviderUsed ? ` · last: ${lastProviderUsed}` : ""}
             </span>
           </div>

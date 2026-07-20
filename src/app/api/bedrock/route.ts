@@ -54,6 +54,7 @@ import {
   runAnthropicByokChat,
 } from "@/lib/ai/providers/anthropic-byok";
 import {
+  GROK_DEFAULT_MODEL,
   runGrokByokAgent,
   runGrokByokChat,
 } from "@/lib/ai/providers/grok-byok";
@@ -286,6 +287,9 @@ const MODEL_NOVA_LITE_ON_DEMAND = "amazon.nova-lite-v1:0";
 const MODEL_NOVA_PRO_ON_DEMAND = "amazon.nova-pro-v1:0";
 const MODEL_NOVA_2_LITE = "amazon.nova-2-lite-v1:0";
 
+// xAI Grok 4.3 — preferred strong model (Most Efficient) over Sonnet/Opus when key available
+const MODEL_GROK_43 = GROK_DEFAULT_MODEL || "grok-4.3";
+
 // Fallbacks if primary inference profile is unavailable in the account/region
 const MODEL_HAIKU_FALLBACK = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 const MODEL_SONNET_FALLBACK = "us.anthropic.claude-sonnet-4-6";
@@ -293,6 +297,28 @@ const MODEL_HAIKU_LEGACY = "us.anthropic.claude-3-haiku-20240307-v1:0";
 
 // Default model for tool/agent paths when no auto-route applies
 const DEFAULT_MODEL = MODEL_SONNET;
+
+function isGrokModelId(modelId?: string): boolean {
+  return /grok/i.test(modelId || "");
+}
+
+/** Platform xAI key (optional). Falls back to user BYOK at execution time. */
+function hasPlatformGrokKey(): boolean {
+  return !!(
+    process.env.XAI_API_KEY?.trim() ||
+    process.env.GROK_API_KEY?.trim() ||
+    process.env.XAI_PLATFORM_API_KEY?.trim()
+  );
+}
+
+/**
+ * Strong / agentic tier for Most Efficient: prefer Grok 4.3 over Sonnet & Opus.
+ * Runtime falls back to Sonnet if no platform or user Grok key.
+ */
+function preferredStrongModel(): string {
+  // Always pick Grok 4.3 for strong tier when preferred; execution resolves key
+  return MODEL_GROK_43;
+}
 
 function isNovaModel(modelId?: string): boolean {
   return /nova/i.test(modelId || "");
@@ -429,8 +455,22 @@ function resolveRequestedModelId(requestedModel?: string): string | undefined {
     return MODEL_NOVA_LITE;
   if (m === "nova-pro" || m === "nova_pro" || m === "novapro" || m === "nova")
     return MODEL_NOVA_PRO;
-  // Allow full Bedrock model ids
-  if (m.includes("nova") || m.includes("anthropic") || m.includes("claude")) {
+  if (
+    m === "grok" ||
+    m === "grok-4.3" ||
+    m === "grok4.3" ||
+    m === "grok_4_3" ||
+    m === "grok-4-3"
+  ) {
+    return MODEL_GROK_43;
+  }
+  // Allow full Bedrock model ids + xAI grok-* ids
+  if (
+    m.includes("nova") ||
+    m.includes("anthropic") ||
+    m.includes("claude") ||
+    m.includes("grok")
+  ) {
     return requestedModel;
   }
   return undefined;
@@ -446,12 +486,13 @@ function hasToolOrAgenticIntent(query: string): boolean {
 /**
  * Most Efficient (default platform policy) — cheapest capable model per turn.
  *
- * Ladder (never Opus):
- * - Sonnet: tools, CRM confirms, files, long context, complex reasoning
+ * Ladder (Opus never auto-selected):
+ * - Grok 4.3 (preferred over Sonnet/Opus): tools, CRM confirms, files, long context, complex
  * - Haiku: moderate chat without tools
  * - Nova Lite: simple short chat (cheapest)
  *
- * Nova is chat-only (Converse); agentic work must stay on Claude Sonnet.
+ * Nova is chat-only (Converse). Grok runs via xAI API (platform key or user BYOK).
+ * If Grok has no key at runtime, execution falls back to Claude Sonnet on Bedrock.
  */
 function selectMostEfficientModel(
   query: string,
@@ -465,23 +506,23 @@ function selectMostEfficientModel(
   const msgs = options?.messages || [];
   const hasFileMarker = /---\s*Attached file:|---\s*End of /i.test(q);
   const longContent = q.length > 4000 || historyChars > 12000;
+  const strong = preferredStrongModel();
 
-  // Confirmations must stay on Sonnet + tools — cheap models often "claim"
-  // success without re-calling create_contact/create_company with confirmed:true.
+  // Confirmations need a strong tool-capable model (Grok 4.3 preferred; not Haiku/Nova)
   if (
     isUserConfirmation(q) ||
     (historyHasPendingCrmConfirm(msgs) &&
       /yes|confirm|save|go ahead|do it|ok|sure/i.test(q))
   ) {
-    console.log("[Most Efficient] → Sonnet (CRM confirmation)");
-    return MODEL_SONNET;
+    console.log(`[Most Efficient] → ${strong} (CRM confirmation; Grok > Sonnet)`);
+    return strong;
   }
 
   if (hasFileMarker || longContent || hasToolOrAgenticIntent(q)) {
     console.log(
-      "[Most Efficient] → Sonnet (tools / files / long context / agentic)"
+      `[Most Efficient] → ${strong} (tools / files / long context; Grok > Sonnet/Opus)`
     );
-    return MODEL_SONNET;
+    return strong;
   }
 
   const complexity = analyzeQueryComplexity(q);
@@ -492,9 +533,9 @@ function selectMostEfficientModel(
 
   if (complexity === "complex") {
     console.log(
-      "[Most Efficient] → Sonnet (complex; Opus excluded for cost)"
+      `[Most Efficient] → ${strong} (complex; Grok preferred over Sonnet/Opus)`
     );
-    return MODEL_SONNET;
+    return strong;
   }
 
   // moderate short reasoning without tools
@@ -534,6 +575,8 @@ function friendlyModelLabel(modelId: string): string {
   if (id.includes("nova-pro") || id.includes("nova_pro")) return "Amazon Nova Pro";
   if (id.includes("nova-micro")) return "Amazon Nova Micro";
   if (id.includes("nova")) return "Amazon Nova";
+  if (id.includes("grok-4.3") || id.includes("grok-4-3") || id === "grok-4.3")
+    return "Grok 4.3";
   if (id.includes("grok")) return "Grok";
   if (id.includes("gpt-4o") || id.includes("gpt-4.1") || id.includes("o3") || id.includes("o4"))
     return "OpenAI GPT";
@@ -1726,7 +1769,7 @@ ${pageContext}`
     const explicitBedrockModel = resolveRequestedModelId(requestedModel);
     const efficientOpts = { historyChars, messages };
 
-    const selectedModel =
+    let selectedModel =
       provider === "anthropic"
         ? process.env.ANTHROPIC_BYOK_MODEL || "claude-sonnet-4-20250514"
         : provider === "openai"
@@ -1736,14 +1779,60 @@ ${pageContext}`
             : provider === "grok"
               ? process.env.GROK_BYOK_MODEL ||
                 process.env.XAI_BYOK_MODEL ||
-                "grok-3"
+                MODEL_GROK_43
               : explicitBedrockModel
                 ? explicitBedrockModel
                 : generalMode
                   ? selectModelForGeneralAI(lastUserQuery, efficientOpts)
                   : selectModel(lastUserQuery, requestedModel, efficientOpts);
 
-    const modelLabel = friendlyModelLabel(selectedModel);
+    // Platform path may select Grok 4.3 (Most Efficient strong tier or manual lock)
+    let useGrokPath =
+      provider === "grok" ||
+      isGrokModelId(selectedModel) ||
+      (provider === "bedrock" && isGrokModelId(String(requestedModel || "")));
+
+    // Resolve xAI key early so Most Efficient can fall back to Sonnet cleanly
+    let grokApiKey = "";
+    if (useGrokPath) {
+      grokApiKey =
+        process.env.XAI_API_KEY?.trim() ||
+        process.env.GROK_API_KEY?.trim() ||
+        process.env.XAI_PLATFORM_API_KEY?.trim() ||
+        "";
+      if (!grokApiKey && userId) {
+        grokApiKey = (await getDecryptedGrokKey(userId)) || "";
+      }
+      if (!grokApiKey) {
+        if (provider === "bedrock") {
+          console.warn(
+            "[Grok] No platform/user xAI key — Most Efficient falls back to Claude Sonnet"
+          );
+          selectedModel = MODEL_SONNET;
+          useGrokPath = false;
+        } else if (provider === "grok") {
+          return NextResponse.json(
+            {
+              error: "No Grok/xAI API key available",
+              suggestion:
+                "Add a key in Settings → AI Providers, or set XAI_API_KEY on the server for platform Grok 4.3.",
+            },
+            { status: 400 }
+          );
+        } else {
+          return NextResponse.json(
+            {
+              error: "Grok 4.3 requires an xAI API key",
+              suggestion:
+                "Save a Grok key under Settings → AI Providers, or set XAI_API_KEY for platform use.",
+            },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    let modelLabel = friendlyModelLabel(selectedModel);
 
     console.log("=== MODEL SELECTION ===");
     console.log("Provider:", provider);
@@ -1751,10 +1840,11 @@ ${pageContext}`
     console.log("General AI mode:", generalMode);
     console.log("Requested model:", requestedModel || "none (Most Efficient)");
     console.log("Selected model:", selectedModel, `(${modelLabel})`);
+    console.log("Use Grok path:", useGrokPath, hasPlatformGrokKey() ? "(platform key)" : "");
     console.log("Query preview:", lastUserQuery.substring(0, 50));
 
-    // Bedrock path needs AWS config
-    if (provider === "bedrock") {
+    // Bedrock path needs AWS config (unless we will run entirely on xAI Grok)
+    if (provider === "bedrock" && !useGrokPath) {
       const awsRegion = process.env.AWS_REGION;
       if (!awsRegion) {
         return NextResponse.json(
@@ -1858,45 +1948,27 @@ ${pageContext}`
         usedModel = result.model;
       }
     }
-    // ---------- BYOK Grok (xAI) ----------
-    else if (provider === "grok") {
-      if (!userId) {
-        return NextResponse.json(
-          {
-            error: "Sign in required to use your Grok API key",
-            suggestion: "Log in, then save your key under Settings → AI Providers",
-          },
-          { status: 401 }
-        );
-      }
-
-      const apiKey = await getDecryptedGrokKey(userId);
-      if (!apiKey) {
-        return NextResponse.json(
-          {
-            error: "No Grok/xAI API key saved",
-            suggestion:
-              "Add your key in Settings → AI Providers, or switch to Platform (Bedrock).",
-          },
-          { status: 400 }
-        );
-      }
-
+    // ---------- Grok 4.3 (platform Most Efficient / manual lock OR user BYOK) ----------
+    else if (useGrokPath && grokApiKey) {
       const toolContext: ToolContext = {
         tenantId,
         userId,
         requestUrl: appUrl,
+        generatedFiles: [],
       };
 
-      const systemPrompt =
-        SYSTEM_PROMPTS.base + "\n\n" + (SYSTEM_PROMPTS.override || "");
+      const systemPrompt = generalMode
+        ? generalSystemPrompt
+        : SYSTEM_PROMPTS.base + "\n\n" + (SYSTEM_PROMPTS.override || "");
 
-      if (assistantMode || !useTools) {
-        console.log("[BYOK] Grok chat (no tools)...");
+      const grokModel = isGrokModelId(usedModel) ? usedModel : MODEL_GROK_43;
+
+      if (assistantMode || (!useTools && !generalMode)) {
+        console.log("[Grok] chat (no tools)...", grokModel);
         const conversation = buildConversationMessages(messages);
         const result = await runGrokByokChat({
-          apiKey,
-          model: usedModel,
+          apiKey: grokApiKey,
+          model: grokModel,
           systemPrompt,
           messages: conversation.map((m) => ({
             role: m.role === "assistant" ? "assistant" : "user",
@@ -1906,19 +1978,32 @@ ${pageContext}`
         completion = result.text;
         usedModel = result.model;
         toolsUsed = [];
+        generatedFiles = [];
       } else {
-        console.log("[BYOK] Grok agent with tools...");
+        console.log("[Grok] agent with tools...", grokModel);
+        const history = buildConversationMessages(messages)
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .slice(0, -1) // drop last user — agent adds current query
+          .map((m) => ({
+            role: (m.role === "assistant" ? "assistant" : "user") as
+              | "user"
+              | "assistant",
+            content: m.content,
+          }));
         const result = await runGrokByokAgent({
-          apiKey,
+          apiKey: grokApiKey,
           query: lastUserQuery,
           toolContext,
           systemPrompt,
-          model: usedModel,
+          model: grokModel,
           useTools: true,
+          history,
         });
         completion = result.text;
-        toolsUsed = result.toolsUsed.length ? result.toolsUsed : ["apollo", "tavily"];
+        toolsUsed = result.toolsUsed.length ? result.toolsUsed : [];
         usedModel = result.model;
+        generatedFiles = toolContext.generatedFiles || [];
+        crmMutated = toolsUsed.some((t) => /^(create_|update_|link_)/.test(t));
       }
     }
     // ---------- BYOK OpenAI ----------
