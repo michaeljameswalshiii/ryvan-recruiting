@@ -200,7 +200,9 @@ function formatRelativeActivity(value?: string) {
   }
 }
 
-function getPrimaryContact(company: any): { name: string; email?: string; title?: string } | null {
+function getPrimaryContact(
+  company: any
+): { id?: string; name: string; email?: string; title?: string } | null {
   const contacts = Array.isArray(company.contacts) ? company.contacts : [];
   if (contacts.length === 0) return null;
   const primary =
@@ -209,6 +211,7 @@ function getPrimaryContact(company: any): { name: string; email?: string; title?
     contacts[0];
   if (!primary?.name) return null;
   return {
+    id: primary.id ? String(primary.id) : undefined,
     name: primary.name,
     email: primary.email,
     title: primary.title,
@@ -702,9 +705,25 @@ export function CompaniesClient() {
                     <td className="px-4 py-3.5">
                       {c.primary ? (
                         <div className="min-w-0">
-                          <span className="text-sm text-gray-800 font-medium block truncate">
-                            {c.primary.name}
-                          </span>
+                          {c.primary.id ? (
+                            <Link
+                              href={`/dashboard/contact-info/${encodeURIComponent(c.primary.id)}?companyId=${encodeURIComponent(c.id)}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline block truncate"
+                              title={`Open contact: ${c.primary.name}`}
+                            >
+                              {c.primary.name}
+                            </Link>
+                          ) : (
+                            <Link
+                              href={`/dashboard/companies/${c.id}?tab=contacts`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline block truncate"
+                              title="Open company contacts"
+                            >
+                              {c.primary.name}
+                            </Link>
+                          )}
                           <span className="text-xs text-gray-500 block truncate">
                             {c.primary.title || c.primary.email || '—'}
                           </span>
