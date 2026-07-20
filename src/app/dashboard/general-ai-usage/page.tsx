@@ -61,6 +61,57 @@ interface Message {
   generatedFiles?: GeneratedFile[];
 }
 
+/**
+ * Platform Bedrock pick.
+ * "auto" = Most Efficient (Nova Lite → Haiku → Sonnet; never Opus).
+ * Nova is chat-only (no CRM tools); Claude locks keep tools on.
+ */
+type PlatformModel =
+  | 'auto'
+  | 'nova-lite'
+  | 'haiku'
+  | 'sonnet'
+  | 'nova-pro'
+  | 'opus';
+
+const PLATFORM_MODELS: {
+  id: PlatformModel;
+  label: string;
+  title: string;
+}[] = [
+  {
+    id: 'auto',
+    label: 'Most Efficient',
+    title:
+      'Most Efficient: Nova Lite (simple) → Haiku (moderate) → Sonnet (tools/CRM). Never Opus.',
+  },
+  {
+    id: 'nova-lite',
+    label: 'Nova Lite',
+    title: 'Amazon Nova Lite — cheapest chat (no CRM tools)',
+  },
+  {
+    id: 'haiku',
+    label: 'Haiku',
+    title: 'Claude Haiku — fast Claude',
+  },
+  {
+    id: 'sonnet',
+    label: 'Sonnet',
+    title: 'Claude Sonnet — tools + CRM',
+  },
+  {
+    id: 'nova-pro',
+    label: 'Nova Pro',
+    title: 'Amazon Nova Pro — stronger Amazon chat (no CRM tools)',
+  },
+  {
+    id: 'opus',
+    label: 'Opus',
+    title: 'Claude Opus — max quality (manual only)',
+  },
+];
+
 function downloadGeneratedFile(file: GeneratedFile) {
   try {
     const bin = atob(file.contentBase64);
@@ -195,6 +246,7 @@ export default function GeneralAiUsagePage() {
     modelLabel?: string;
     toolsUsed?: string[];
   } | null>(null);
+  const [platformModel, setPlatformModel] = useState<PlatformModel>('auto');
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -356,16 +408,23 @@ export default function GeneralAiUsagePage() {
       .map((m) => ({ role: m.role, content: m.content }));
 
     try {
+      // CRM tools need Claude tool_use; Nova uses Converse chat only.
+      // Most Efficient (auto) may escalate to Sonnet when tools are needed.
+      const useTools =
+        platformModel === 'auto' ||
+        platformModel === 'haiku' ||
+        platformModel === 'sonnet' ||
+        platformModel === 'opus';
+
       const res = await fetch('/api/bedrock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: historyForApi,
           provider: 'bedrock',
-          // Most Efficient: Nova Lite → Haiku → Sonnet (never Opus)
-          model: 'auto',
+          model: platformModel,
           generalMode: true,
-          useTools: true,
+          useTools,
           assistantMode: false,
         }),
       });
@@ -458,9 +517,12 @@ export default function GeneralAiUsagePage() {
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">
               AI Assistant
             </h1>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
               <Sparkles className="h-3 w-3" />
-              Auto model routing
+              {platformModel === 'auto'
+                ? 'Most Efficient'
+                : PLATFORM_MODELS.find((m) => m.id === platformModel)?.label ||
+                  'Platform'}
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600">
               <Cloud className="h-3 w-3" />
@@ -476,9 +538,34 @@ export default function GeneralAiUsagePage() {
           </div>
           <p className="mt-1 text-sm text-slate-500">
             Chat, research, and CRM actions (candidates, companies, jobs). Write
-            actions ask you to confirm before saving. Most Efficient routes Nova
-            Lite / Haiku / Sonnet by task.
+            actions ask you to confirm before saving. Default is Most Efficient
+            (Nova Lite / Haiku / Sonnet); lock a model below anytime.
           </p>
+          {/* Model strategy — default Most Efficient, optional lock */}
+          <div className="mt-3 inline-flex flex-wrap rounded-xl border border-orange-200 bg-orange-50/50 p-1 shadow-sm gap-0.5">
+            {PLATFORM_MODELS.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setPlatformModel(m.id)}
+                disabled={isLoading}
+                title={m.title}
+                className={`inline-flex items-center px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-60 ${
+                  platformModel === m.id
+                    ? m.id === 'auto'
+                      ? 'bg-emerald-700 text-white'
+                      : m.id.startsWith('nova')
+                        ? 'bg-orange-600 text-white'
+                        : m.id === 'opus'
+                          ? 'bg-violet-700 text-white'
+                          : 'bg-slate-800 text-white'
+                    : 'text-slate-600 hover:bg-white'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           {messages.length > 0 && (
@@ -510,8 +597,9 @@ export default function GeneralAiUsagePage() {
               </h2>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-500">
                 Ask anything, attach documents for analysis, or request
-                revisions in the same thread. Powered by Claude Sonnet on AWS
-                Bedrock with optional Apollo, Tavily, and internal data tools.
+                revisions in the same thread. Defaults to Most Efficient on AWS
+                Bedrock (Nova Lite / Haiku / Sonnet) with Apollo, Tavily, and CRM
+                tools when needed.
               </p>
 
               <div className="mt-8 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
