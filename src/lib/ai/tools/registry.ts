@@ -10,8 +10,27 @@ import { ToolDefinition, ToolParams, ToolContext, ToolResult } from "./types";
 import { executeApolloSearch, APOLLO_TOOL_NAME, APOLLO_TOOL_DESCRIPTION } from "./apollo";
 import { executeApolloCompanySearch, APOLLO_COMPANY_TOOL_NAME, APOLLO_COMPANY_TOOL_DESCRIPTION } from "./apollo-company";
 import { executeTavilySearch, TAVILY_TOOL_NAME, TAVILY_TOOL_DESCRIPTION } from "./tavily";
+import {
+  executeFetchWebsite,
+  FETCH_WEBSITE_TOOL_NAME,
+  FETCH_WEBSITE_TOOL_DESCRIPTION,
+} from "./fetch-website";
 import { executeInternalData, INTERNAL_TOOL_NAME, INTERNAL_TOOL_DESCRIPTION } from "./internal";
+import {
+  executeGenerateFile,
+  GENERATE_FILE_TOOL_NAME,
+  GENERATE_FILE_TOOL_DESCRIPTION,
+} from "./generate-file";
 import { CRM_WRITE_TOOLS } from "./crm-write";
+import { FIT_GRAPH_TOOLS } from "./fit-and-graph-tools";
+import { SEQUENCE_TOOLS } from "./sequence-tools";
+import { PLAYBOOK_TOOLS } from "./playbook-tools";
+import { SCREEN_TOOLS } from "./screen-tools";
+import { recordToolAudit } from "@/lib/db/repositories/tool-audit-repository";
+import {
+  disabledExternalToolMessage,
+  isExternalToolDisabled,
+} from "@/lib/ai/tool-flags";
 
 // ============================================================================
 // Registry
@@ -46,6 +65,13 @@ function initializeRegistry(): void {
     description: TAVILY_TOOL_DESCRIPTION,
     execute: executeTavilySearch,
   };
+
+  // Direct website fetch (no third-party API key)
+  TOOL_REGISTRY[FETCH_WEBSITE_TOOL_NAME] = {
+    name: FETCH_WEBSITE_TOOL_NAME,
+    description: FETCH_WEBSITE_TOOL_DESCRIPTION,
+    execute: executeFetchWebsite,
+  };
   
   // Internal data tool
   TOOL_REGISTRY[INTERNAL_TOOL_NAME] = {
@@ -54,8 +80,51 @@ function initializeRegistry(): void {
     execute: executeInternalData,
   };
 
+  // Generate downloadable files (docx, xlsx, csv, md, …)
+  TOOL_REGISTRY[GENERATE_FILE_TOOL_NAME] = {
+    name: GENERATE_FILE_TOOL_NAME,
+    description: GENERATE_FILE_TOOL_DESCRIPTION,
+    execute: executeGenerateFile,
+  };
+
   // CRM write tools (create/update candidate, company, job, stages, link)
   for (const t of CRM_WRITE_TOOLS) {
+    TOOL_REGISTRY[t.name] = {
+      name: t.name,
+      description: t.description,
+      execute: t.execute as ToolDefinition["execute"],
+    };
+  }
+
+  // Fit score + tenant skills graph
+  for (const t of FIT_GRAPH_TOOLS) {
+    TOOL_REGISTRY[t.name] = {
+      name: t.name,
+      description: t.description,
+      execute: t.execute,
+    };
+  }
+
+  // Outreach sequences
+  for (const t of SEQUENCE_TOOLS) {
+    TOOL_REGISTRY[t.name] = {
+      name: t.name,
+      description: t.description,
+      execute: t.execute as ToolDefinition["execute"],
+    };
+  }
+
+  // Playbooks (Fill this req)
+  for (const t of PLAYBOOK_TOOLS) {
+    TOOL_REGISTRY[t.name] = {
+      name: t.name,
+      description: t.description,
+      execute: t.execute as ToolDefinition["execute"],
+    };
+  }
+
+  // Careers pre-screen questions
+  for (const t of SCREEN_TOOLS) {
     TOOL_REGISTRY[t.name] = {
       name: t.name,
       description: t.description,
@@ -86,26 +155,91 @@ export function getTool(name: string): ToolDefinition | undefined {
 }
 
 /**
- * Execute tool by name
+ * Fire-and-forget audit — never throws into the tool path
+ */
+function auditSafe(
+  toolName: string,
+  context: ToolContext,
+  params: ToolParams,
+  start: number,
+  result: { success: boolean; error?: string; resultStatus?: string }
+): void {
+  try {
+    void recordToolAudit({
+      tenantId: context.tenantId || "unknown",
+      userId: context.userId,
+      toolName,
+      success: result.success,
+      error: result.error,
+      durationMs: Date.now() - start,
+      params,
+      resultStatus: result.resultStatus,
+    }).catch(() => {});
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Execute tool by name (timed + audited)
  */
 export async function executeTool(
   toolName: string,
   params: ToolParams,
   context: ToolContext
 ): Promise<ToolResult> {
+  const start = Date.now();
   const tool = TOOL_REGISTRY[toolName];
-  
+
   if (!tool) {
-    return {
+    const result: ToolResult = {
       success: false,
       error: `Tool not found: ${toolName}`,
     };
+    auditSafe(toolName, context, params, start, {
+      success: false,
+      error: result.error,
+      resultStatus: "not_found",
+    });
+    return result;
   }
-  
+
+  // Apollo / Tavily: code kept, disabled in assistant until env re-enable
+  if (isExternalToolDisabled(toolName)) {
+    const result: ToolResult = {
+      success: false,
+      error: disabledExternalToolMessage(toolName),
+    };
+    auditSafe(toolName, context, params, start, {
+      success: false,
+      error: result.error,
+      resultStatus: "disabled",
+    });
+    return result;
+  }
+
   try {
-    return await tool.execute(params, context);
+    const result = await tool.execute(params, context);
+    const status =
+      result?.success === false
+        ? "error"
+        : String(
+            (result?.data as { status?: string } | undefined)?.status || "ok"
+          );
+    auditSafe(toolName, context, params, start, {
+      success: !!result?.success,
+      error: result?.error,
+      resultStatus: status,
+    });
+    return result;
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : "Tool execution failed";
+    const errorMessage =
+      err instanceof Error ? err.message : "Tool execution failed";
+    auditSafe(toolName, context, params, start, {
+      success: false,
+      error: errorMessage,
+      resultStatus: "exception",
+    });
     return {
       success: false,
       error: errorMessage,
@@ -120,6 +254,7 @@ export const TOOL_NAMES = {
   apollo: APOLLO_TOOL_NAME,
   apolloCompany: APOLLO_COMPANY_TOOL_NAME,
   tavily: TAVILY_TOOL_NAME,
+  fetchWebsite: FETCH_WEBSITE_TOOL_NAME,
   internal: INTERNAL_TOOL_NAME,
 } as const;
 

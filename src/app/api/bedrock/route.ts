@@ -33,6 +33,11 @@ import { getClaudeAssistantPrompt } from "@/lib/prompts/claude-assistant";
 import { getToolSchemas, executeTool, ToolContext, ToolResult, ToolParams } from "@/lib/ai/tools";
 import { CRM_WRITE_TOOLS } from "@/lib/ai/tools/crm-write";
 import {
+  filterEnabledToolSchemas,
+  isApolloToolEnabled,
+  isTavilyToolEnabled,
+} from "@/lib/ai/tool-flags";
+import {
   getDecryptedAnthropicKey,
   getDecryptedGrokKey,
   getDecryptedOpenaiKey,
@@ -98,15 +103,34 @@ interface BedrockRequest {
   useSearch?: boolean;
 }
 
-const GENERAL_AI_SYSTEM_PROMPT = `You are a professional general-purpose AI assistant on AWS Bedrock with access to this recruiting ATS (Trio Recruiting).
+function buildGeneralAiSystemPrompt(): string {
+  // Apollo/Tavily lines only when re-enabled via AI_TOOLS_*_ENABLED
+  const externalLines: string[] = [];
+  if (isApolloToolEnabled()) {
+    externalLines.push(
+      "- apollo / apollo_company_search: external people & company search"
+    );
+  }
+  externalLines.push(
+    "- fetch_website: open and read a public company website/page by URL (use this when the user gives a website or asks you to examine a site — do NOT claim you cannot browse URLs)"
+  );
+  if (isTavilyToolEnabled()) {
+    externalLines.push(
+      "- tavily: optional web search (prefer fetch_website for a specific URL)"
+    );
+  } else {
+    externalLines.push(
+      "- Do not claim access to Apollo or live web search (Tavily); use internal_data and fetch_website only for external URLs"
+    );
+  }
+
+  return `You are a professional general-purpose AI assistant on AWS Bedrock with access to this recruiting ATS (Trio Recruiting).
 
 You help with analysis, writing, research, document review, AND operating the CRM when the user asks.
 
 READ tools:
 - internal_data: list/get leads (candidates), clients (companies), jobs, pipeline
-- apollo / apollo_company_search: external people & company search
-- fetch_website: open and read a public company website/page by URL (use this when the user gives a website or asks you to examine a site — do NOT claim you cannot browse URLs)
-- tavily: optional web search (may be unavailable without API key; prefer fetch_website for a specific URL)
+${externalLines.join("\n")}
 
 FILE tools:
 - generate_file: create a downloadable Word (.docx), Excel (.xlsx), CSV, Markdown, text, JSON, or HTML file. Use whenever the user wants a document, spreadsheet, export, or attachment. After success, tell them to use the Download button that appears under your message — do NOT say you cannot create files or attachments.
@@ -142,6 +166,7 @@ Other rules:
 - Be clear and professional; prefer actionable answers
 - If a tool fails, say so and continue with what you know
 - For downloadable docs: call generate_file with full content (not a stub). Prefer docx for letters/prep docs, xlsx/csv for tables/lists, md/txt for plain notes. Never claim file generation is unavailable.`;
+}
 
 /**
  * Tool result data from tool execution
@@ -649,7 +674,7 @@ function getToolSchemasForBedrock(): BedrockTool[] {
     input_schema: t.schema,
   }));
 
-  return [
+  const all: BedrockTool[] = [
     {
       name: "apollo",
       description: "Search for people/candidates using Apollo.io (emails, phones, LinkedIn, titles).",
@@ -691,7 +716,7 @@ function getToolSchemasForBedrock(): BedrockTool[] {
     {
       name: "fetch_website",
       description:
-        "Fetch and read a public website by URL. Use when the user provides a company website or asks you to examine a page. Prefer this over saying you cannot open URLs. No Tavily API key required.",
+        "Fetch and read a public website by URL. Use when the user provides a company website or asks you to examine a page. Prefer this over saying you cannot open URLs.",
       input_schema: {
         type: "object",
         properties: {
@@ -754,6 +779,8 @@ function getToolSchemasForBedrock(): BedrockTool[] {
     },
     ...writeTools,
   ];
+  // Apollo/Tavily schemas stay defined above; omitted unless AI_TOOLS_*_ENABLED
+  return filterEnabledToolSchemas(all);
 }
 
 /**
@@ -1156,8 +1183,9 @@ async function runMCPAgent(
 
   let systemPrompt =
     options?.systemPrompt ||
-    `You are an MCP (Multi-step Cognitive Processor) agent powered by Claude Sonnet 4.6.
-Specialize in talent sourcing, recruiting, and business development using Apollo.io.
+    `You are an MCP (Multi-step Cognitive Processor) agent powered by Claude on AWS Bedrock.
+Specialize in talent sourcing, recruiting, and CRM operations for Trio Recruiting.
+Use only the tools provided in this request (internal ATS data, CRM writes, website fetch, files).
 Think step-by-step: Plan → Use tools when needed → Observe results → Reflect → Final Answer.
 Only use tools when they genuinely help. Be concise and actionable.`;
 
@@ -1605,11 +1633,11 @@ try {
         : "";
 
     const generalSystemPrompt = pageContext
-      ? `${GENERAL_AI_SYSTEM_PROMPT}
+      ? `${buildGeneralAiSystemPrompt()}
 
 CURRENT UI CONTEXT (user is viewing this in the ATS — use these IDs with tools when relevant):
 ${pageContext}`
-      : GENERAL_AI_SYSTEM_PROMPT;
+      : buildGeneralAiSystemPrompt();
     
 // Validate messages exist
     if (!messages || !Array.isArray(messages) || messages.length === 0) {

@@ -598,8 +598,8 @@ export default function GeneralAiUsagePage() {
               <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-500">
                 Ask anything, attach documents for analysis, or request
                 revisions in the same thread. Defaults to Most Efficient on AWS
-                Bedrock (Nova Lite / Haiku / Sonnet) with Apollo, Tavily, and CRM
-                tools when needed.
+                Bedrock (Nova Lite / Haiku / Sonnet) with CRM tools, internal
+                data, and website fetch when needed.
               </p>
 
               <div className="mt-8 grid w-full max-w-2xl gap-2 sm:grid-cols-2">

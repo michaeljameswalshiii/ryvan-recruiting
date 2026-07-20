@@ -301,7 +301,7 @@ return (
         <div>
           <h1 className="text-3xl font-bold">AI Assistant (Web)</h1>
           <p className="text-muted-foreground">
-            Most Efficient by default · Claude + Nova on Platform · BYOK unchanged · Apollo + Tavily
+            Most Efficient by default · Claude + Nova on Platform · BYOK unchanged
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

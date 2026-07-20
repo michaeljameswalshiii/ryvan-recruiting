@@ -14,9 +14,26 @@ import { executeApolloCompanySearch, APOLLO_COMPANY_TOOL_NAME, APOLLO_COMPANY_TO
 import { formatApolloCompany } from "./apollo-company";
 import { executeTavilySearch, TAVILY_TOOL_NAME, TAVILY_TOOL_DESCRIPTION } from "./tavily";
 import { formatTavilyResult } from "./tavily";
+import {
+  executeFetchWebsite,
+  FETCH_WEBSITE_TOOL_NAME,
+  FETCH_WEBSITE_TOOL_DESCRIPTION,
+  formatFetchWebsiteResult,
+} from "./fetch-website";
 import { executeInternalData, INTERNAL_TOOL_NAME, INTERNAL_TOOL_DESCRIPTION } from "./internal";
 import { CRM_WRITE_TOOLS } from "./crm-write";
+import {
+  executeGenerateFile,
+  GENERATE_FILE_TOOL_NAME,
+  GENERATE_FILE_TOOL_DESCRIPTION,
+} from "./generate-file";
 import { executeTool, getTools, getTool, hasTool, getToolDescription, TOOL_NAMES } from "./registry";
+import {
+  filterEnabledToolNames,
+  filterEnabledToolSchemas,
+  isApolloToolEnabled,
+  isTavilyToolEnabled,
+} from "@/lib/ai/tool-flags";
 
 // ============================================================================
 // Re-exports for backward compatibility
@@ -37,12 +54,33 @@ export type { ApolloCompanySearchParams, ApolloCompanySearchResultData, ApolloCo
 export { executeTavilySearch, TAVILY_TOOL_NAME, TAVILY_TOOL_DESCRIPTION } from "./tavily";
 export type { TavilySearchParams, TavilySearchResultData, TavilyResult } from "./tavily";
 
+// Fetch website (direct URL read)
+export {
+  executeFetchWebsite,
+  FETCH_WEBSITE_TOOL_NAME,
+  FETCH_WEBSITE_TOOL_DESCRIPTION,
+  formatFetchWebsiteResult,
+} from "./fetch-website";
+export type {
+  FetchWebsiteParams,
+  FetchWebsiteResultData,
+} from "./fetch-website";
+
 // Internal
 export { executeInternalData, INTERNAL_TOOL_NAME, INTERNAL_TOOL_DESCRIPTION } from "./internal";
 export type { InternalDataType, InternalDataAction, InternalDataParams } from "./internal";
 
 // CRM write tools
 export { CRM_WRITE_TOOLS } from "./crm-write";
+
+// File generation / downloads
+export {
+  executeGenerateFile,
+  GENERATE_FILE_TOOL_NAME,
+  GENERATE_FILE_TOOL_DESCRIPTION,
+  extractGeneratedFileFromToolData,
+} from "./generate-file";
+export type { GeneratedFilePayload } from "./generate-file";
 
 // Registry
 export { executeTool, getTools, getTool, hasTool, getToolDescription, TOOL_NAMES };
@@ -84,7 +122,16 @@ export function getToolSchemas(): Array<{
     required: string[];
   };
 }> {
-  return [
+  // Full catalog stays defined; Apollo/Tavily filtered unless AI_TOOLS_*_ENABLED=true
+  const all: Array<{
+    name: string;
+    description: string;
+    input_schema: {
+      type: string;
+      properties: Record<string, { type: string; description: string }>;
+      required: string[];
+    };
+  }> = [
     {
       name: "apollo",
       description: "Search for people, candidates, companies, or contacts. Use to find emails, phone numbers, LinkedIn profiles for recruiting or sales leads.",
@@ -111,6 +158,53 @@ export function getToolSchemas(): Array<{
       },
     },
     {
+      name: "fetch_website",
+      description:
+        "Fetch and read a public website by URL. Use when the user provides a company website or asks you to examine a page.",
+      input_schema: {
+        type: "object",
+        properties: {
+          url: {
+            type: "string",
+            description: "Full URL or domain (e.g. https://acme.com or acme.com/about)",
+          },
+          query: {
+            type: "string",
+            description: "Optional alias for url if you only have one string field",
+          },
+        },
+        required: ["url"],
+      },
+    },
+    {
+      name: "generate_file",
+      description:
+        "Create a downloadable file (docx, xlsx, csv, md, txt, json, html). Use when the user wants a document, spreadsheet, export, or attachment. The app shows a Download button — never say you cannot create files.",
+      input_schema: {
+        type: "object",
+        properties: {
+          format: {
+            type: "string",
+            description: "docx | xlsx | csv | md | txt | json | html",
+          },
+          file_name: {
+            type: "string",
+            description: "File name with or without extension, e.g. interview-prep.docx",
+          },
+          content: {
+            type: "string",
+            description:
+              "Full file body. For xlsx you may pass JSON: {\"headers\":[...],\"rows\":[[...]]} or {\"sheets\":[...]}",
+          },
+          title: {
+            type: "string",
+            description: "Optional document title (docx heading)",
+          },
+        },
+        required: ["format", "content"],
+      },
+    },
+    {
       name: "internal_data",
       description:
         "Read ATS data: leads/candidates, clients, jobs, pipeline. action list|get.",
@@ -132,7 +226,117 @@ export function getToolSchemas(): Array<{
       description: t.description,
       input_schema: t.schema,
     })),
+    {
+      name: "score_candidate_fit",
+      description:
+        "Score how well a candidate fits a job (0-100 + grade + reasons). Params: job_id, candidate_id.",
+      input_schema: {
+        type: "object",
+        properties: {
+          job_id: { type: "string", description: "Job id" },
+          candidate_id: { type: "string", description: "Candidate/lead id" },
+        },
+        required: ["job_id", "candidate_id"],
+      },
+    },
+    {
+      name: "get_talent_graph",
+      description:
+        "Tenant skills graph: top skills, placed skills, by job title. Optional rebuild.",
+      input_schema: {
+        type: "object",
+        properties: {
+          rebuild: {
+            type: "string",
+            description: "true to force rebuild of the skills snapshot",
+          },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "list_sequences",
+      description: "List outreach sequences for this tenant.",
+      input_schema: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+    {
+      name: "enroll_in_sequence",
+      description:
+        "Enroll a candidate in an outreach sequence. Preview first, then confirmed:true.",
+      input_schema: {
+        type: "object",
+        properties: {
+          sequence_id: { type: "string", description: "Sequence id" },
+          candidate_id: { type: "string", description: "Candidate id" },
+          job_id: { type: "string", description: "Optional job id" },
+          confirmed: {
+            type: "string",
+            description: "true after user confirms",
+          },
+        },
+        required: ["sequence_id", "candidate_id"],
+      },
+    },
+    {
+      name: "draft_outreach",
+      description:
+        "Generate personalized outreach subject/body for a candidate. Does not send.",
+      input_schema: {
+        type: "object",
+        properties: {
+          candidate_id: { type: "string", description: "Candidate id" },
+          job_id: { type: "string", description: "Optional job id" },
+          sequence_id: { type: "string", description: "Optional sequence id" },
+        },
+        required: ["candidate_id"],
+      },
+    },
+    {
+      name: "fill_req_playbook",
+      description:
+        "Fill this req playbook: rank candidates by fit, drafts, next actions. Does not auto-mutate CRM.",
+      input_schema: {
+        type: "object",
+        properties: {
+          job_id: { type: "string", description: "Job id" },
+          max_candidates: {
+            type: "number",
+            description: "Max ranked candidates (default 10)",
+          },
+          sequence_id: {
+            type: "string",
+            description: "Optional sequence for draft templates",
+          },
+        },
+        required: ["job_id"],
+      },
+    },
+    {
+      name: "set_job_prescreen_questions",
+      description:
+        "Set careers pre-screen questions on a job. Preview first, then confirmed:true.",
+      input_schema: {
+        type: "object",
+        properties: {
+          job_id: { type: "string", description: "Job id" },
+          questions: {
+            type: "string",
+            description: "Array of prompts or question objects; [] to clear",
+          },
+          confirmed: {
+            type: "string",
+            description: "true after user confirms",
+          },
+        },
+        required: ["job_id", "questions"],
+      },
+    },
   ];
+  return filterEnabledToolSchemas(all);
 }
 
 /**
@@ -176,6 +380,15 @@ export function selectTools(query: string): string[] {
     "what is", "who is", "when did", "how does", 
     "weather", "stock", "price"
   ];
+
+  // Direct website / URL examination
+  const websiteKeywords = [
+    "website", "web site", "homepage", "home page", "about page",
+    "look at the site", "check the site", "browse", "examine the",
+    "visit the", "read the site", "from their site", "company site",
+    "their website", "the website", "http://", "https://", ".com",
+    ".io", ".co", ".org", ".net", "www.",
+  ];
   
   // Internal data keywords
   const internalKeywords = [
@@ -188,17 +401,26 @@ export function selectTools(query: string): string[] {
   const hasCompanyKeywords = companyKeywords.some(kw => q.includes(kw));
   const hasLocationKeywords = ["in ", "located", "based in", "city", "state"].some(kw => q.includes(kw));
   
-  if (hasCompanyKeywords || hasLocationKeywords) {
+  if (isApolloToolEnabled() && (hasCompanyKeywords || hasLocationKeywords)) {
     tools.push(APOLLO_COMPANY_TOOL_NAME);
   }
   
   // Add people search tool (recruiting)
-  if (candidateKeywords.some(kw => q.includes(kw))) {
+  if (isApolloToolEnabled() && candidateKeywords.some(kw => q.includes(kw))) {
     tools.push(APOLLO_TOOL_NAME);
+  }
+
+  // Direct website fetch when a URL or site is mentioned
+  if (
+    websiteKeywords.some((kw) => q.includes(kw)) ||
+    /https?:\/\//i.test(query) ||
+    /\b[a-z0-9-]+\.(com|io|co|org|net|ai|us)\b/i.test(query)
+  ) {
+    tools.push(FETCH_WEBSITE_TOOL_NAME);
   }
   
   // Add web search (general queries)
-  if (searchKeywords.some(kw => q.includes(kw))) {
+  if (isTavilyToolEnabled() && searchKeywords.some(kw => q.includes(kw))) {
     tools.push(TAVILY_TOOL_NAME);
   }
   
@@ -207,7 +429,7 @@ export function selectTools(query: string): string[] {
     tools.push(INTERNAL_TOOL_NAME);
   }
   
-  return tools;
+  return filterEnabledToolNames(tools);
 }
 
 /**
@@ -262,6 +484,27 @@ export function formatToolResultsForAI(results: Record<string, ToolResult>): {
       parts.push(`Search Results:\n${formatted.join("\n\n")}`);
     }
   }
+
+  // Direct website fetch
+  if (results.fetch_website?.success && results.fetch_website.data) {
+    hasData = true;
+    const data = results.fetch_website.data as {
+      url?: string;
+      finalUrl?: string;
+      title?: string;
+      text?: string;
+      truncated?: boolean;
+    };
+    parts.push(
+      formatFetchWebsiteResult({
+        url: data.url || "",
+        finalUrl: data.finalUrl || data.url || "",
+        title: data.title || "",
+        text: data.text || "",
+        truncated: !!data.truncated,
+      })
+    );
+  }
   
   // Internal results
   if (results.internal_data?.success && results.internal_data.data) {
@@ -292,6 +535,11 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
     name: TAVILY_TOOL_NAME,
     description: TAVILY_TOOL_DESCRIPTION,
     execute: executeTavilySearch,
+  },
+  fetch_website: {
+    name: FETCH_WEBSITE_TOOL_NAME,
+    description: FETCH_WEBSITE_TOOL_DESCRIPTION,
+    execute: executeFetchWebsite,
   },
   internal_data: {
     name: INTERNAL_TOOL_NAME,
