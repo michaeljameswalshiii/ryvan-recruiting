@@ -246,7 +246,7 @@ const MODEL_HAIKU = "global.anthropic.claude-haiku-4-5-20251001-v1:0";
 // Sonnet 4.6 - Default for most agentic work (cross-region global profile)
 const MODEL_SONNET = "global.anthropic.claude-sonnet-4-6";
 
-// Opus 4.7 - For very complex multi-step tasks (not used by General AI auto-route)
+// Opus 4.7 - Manual pick only (excluded from Most Efficient)
 const MODEL_OPUS = "global.anthropic.claude-opus-4-7";
 
 // Amazon Nova (platform Bedrock — Converse API)
@@ -261,7 +261,7 @@ const MODEL_HAIKU_FALLBACK = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 const MODEL_SONNET_FALLBACK = "us.anthropic.claude-sonnet-4-6";
 const MODEL_HAIKU_LEGACY = "us.anthropic.claude-3-haiku-20240307-v1:0";
 
-// Default model (Sonnet 4.6 for agentic work with native tool calling)
+// Default model for tool/agent paths when no auto-route applies
 const DEFAULT_MODEL = MODEL_SONNET;
 
 function isNovaModel(modelId?: string): boolean {
@@ -376,17 +376,22 @@ function analyzeQueryComplexity(query: string): QueryComplexity {
 }
 
 /**
- * Select model based on query complexity and context
- * 
- * @param query - User query
- * @param requestedModel - Optional user-requested model
- * @returns Selected model ID
+ * Resolve UI / API aliases to concrete Bedrock model IDs.
+ * "auto" / "efficient" / "most-efficient" → undefined (Most Efficient ladder).
  */
-/** Resolve UI / API aliases to concrete Bedrock model IDs */
 function resolveRequestedModelId(requestedModel?: string): string | undefined {
   if (!requestedModel) return undefined;
   const m = requestedModel.trim().toLowerCase();
-  if (m === "auto" || m === "default") return undefined;
+  if (
+    m === "auto" ||
+    m === "default" ||
+    m === "efficient" ||
+    m === "most-efficient" ||
+    m === "most_efficient" ||
+    m === "value"
+  ) {
+    return undefined;
+  }
   if (m === "haiku") return MODEL_HAIKU;
   if (m === "sonnet") return MODEL_SONNET;
   if (m === "opus") return MODEL_OPUS;
@@ -401,31 +406,89 @@ function resolveRequestedModelId(requestedModel?: string): string | undefined {
   return undefined;
 }
 
-function selectModel(query: string, requestedModel?: string): string {
+/** Recruiting / CRM / research intents that need Claude tool_use (Sonnet). */
+function hasToolOrAgenticIntent(query: string): boolean {
+  return /\b(search|find people|find companies|apollo|research|look up|linkedin|pipeline|candidates|leads|web search|latest news|tavily|website|browse|examine|http|https|create |add |update |move |link |save |job|company|client|contact|download|docx|xlsx|spreadsheet|word doc|export|attachment|generate (a |the )?file|write (a |the )?file)\b/i.test(
+    query || ""
+  );
+}
+
+/**
+ * Most Efficient (default platform policy) — cheapest capable model per turn.
+ *
+ * Ladder (never Opus):
+ * - Sonnet: tools, CRM confirms, files, long context, complex reasoning
+ * - Haiku: moderate chat without tools
+ * - Nova Lite: simple short chat (cheapest)
+ *
+ * Nova is chat-only (Converse); agentic work must stay on Claude Sonnet.
+ */
+function selectMostEfficientModel(
+  query: string,
+  options?: {
+    historyChars?: number;
+    messages?: Array<{ role: string; content?: string }>;
+  }
+): string {
+  const q = query || "";
+  const historyChars = options?.historyChars ?? 0;
+  const msgs = options?.messages || [];
+  const hasFileMarker = /---\s*Attached file:|---\s*End of /i.test(q);
+  const longContent = q.length > 4000 || historyChars > 12000;
+
+  // Confirmations must stay on Sonnet + tools — cheap models often "claim"
+  // success without re-calling create_contact/create_company with confirmed:true.
+  if (
+    isUserConfirmation(q) ||
+    (historyHasPendingCrmConfirm(msgs) &&
+      /yes|confirm|save|go ahead|do it|ok|sure/i.test(q))
+  ) {
+    console.log("[Most Efficient] → Sonnet (CRM confirmation)");
+    return MODEL_SONNET;
+  }
+
+  if (hasFileMarker || longContent || hasToolOrAgenticIntent(q)) {
+    console.log(
+      "[Most Efficient] → Sonnet (tools / files / long context / agentic)"
+    );
+    return MODEL_SONNET;
+  }
+
+  const complexity = analyzeQueryComplexity(q);
+  if (complexity === "simple") {
+    console.log("[Most Efficient] → Nova Lite (simple chat)");
+    return MODEL_NOVA_LITE;
+  }
+
+  if (complexity === "complex") {
+    console.log(
+      "[Most Efficient] → Sonnet (complex; Opus excluded for cost)"
+    );
+    return MODEL_SONNET;
+  }
+
+  // moderate short reasoning without tools
+  console.log("[Most Efficient] → Haiku (moderate chat)");
+  return MODEL_HAIKU;
+}
+
+/**
+ * Select model: explicit UI pick wins; otherwise Most Efficient ladder.
+ */
+function selectModel(
+  query: string,
+  requestedModel?: string,
+  options?: {
+    historyChars?: number;
+    messages?: Array<{ role: string; content?: string }>;
+  }
+): string {
   const resolved = resolveRequestedModelId(requestedModel);
   if (resolved) {
     console.log(`Using explicitly requested model: ${resolved}`);
     return resolved;
   }
-
-  // Analyze query complexity
-  const complexity = analyzeQueryComplexity(query);
-
-  // Route to appropriate model
-  switch (complexity) {
-    case "simple":
-      console.log(`Routing to Haiku 4.5 (simple query detected)`);
-      return MODEL_HAIKU;
-
-    case "complex":
-      console.log(`Routing to Opus 4.7 (complex query detected)`);
-      return MODEL_OPUS;
-
-    case "moderate":
-    default:
-      console.log(`Routing to Sonnet 4.6 (default for agentic work)`);
-      return MODEL_SONNET;
-  }
+  return selectMostEfficientModel(query, options);
 }
 
 /**
@@ -451,15 +514,6 @@ function friendlyModelLabel(modelId: string): string {
   return tail.length > 40 ? `${tail.slice(0, 37)}…` : tail;
 }
 
-/**
- * Auto-route for General AI Usage — user never picks a model.
- *
- * Policy (prefer cheapest capable model):
- * - Files / long context / research-tool intent → Sonnet
- * - Simple short Q&A / rewrite / summarize → Haiku
- * - Moderate / complex reasoning → Sonnet
- * - Opus is not used here (cost); escalate only if product policy changes
- */
 /** User is confirming a pending CRM write (yes / save / go ahead) */
 function isUserConfirmation(query: string): boolean {
   const q = (query || "").trim();
@@ -490,6 +544,10 @@ function historyHasPendingCrmConfirm(
   return false;
 }
 
+/**
+ * General AI + floating assistant: same Most Efficient ladder as platform Auto.
+ * Opus is never selected here.
+ */
 function selectModelForGeneralAI(
   query: string,
   options?: {
@@ -497,56 +555,7 @@ function selectModelForGeneralAI(
     messages?: Array<{ role: string; content?: string }>;
   }
 ): string {
-  const q = query || "";
-  const historyChars = options?.historyChars ?? 0;
-  const hasFileMarker = /---\s*Attached file:|---\s*End of /i.test(q);
-  const longContent = q.length > 4000 || historyChars > 12000;
-
-  // Confirmations must stay on Sonnet + tools — Haiku often "claims" success
-  // without re-calling create_contact/create_company with confirmed:true.
-  if (
-    isUserConfirmation(q) ||
-    (isUserConfirmation(q) &&
-      historyHasPendingCrmConfirm(options?.messages || [])) ||
-    (options?.messages &&
-      isUserConfirmation(q) &&
-      historyHasPendingCrmConfirm(options.messages))
-  ) {
-    console.log("[General AI] → Sonnet (CRM confirmation reply)");
-    return MODEL_SONNET;
-  }
-  // Also force Sonnet if history shows pending confirm (even for "yes please save him")
-  if (
-    historyHasPendingCrmConfirm(options?.messages || []) &&
-    /yes|confirm|save|go ahead|do it|ok|sure/i.test(q)
-  ) {
-    console.log("[General AI] → Sonnet (pending CRM confirm in history)");
-    return MODEL_SONNET;
-  }
-
-  const toolIntent =
-    /\b(search|find people|find companies|apollo|research|look up|linkedin|pipeline|candidates|leads|web search|latest news|tavily|website|browse|examine|http|https|create |add |update |move |link |save |job|company|client|contact|download|docx|xlsx|spreadsheet|word doc|export|attachment|generate (a |the )?file|write (a |the )?file)\b/i.test(
-      q
-    );
-
-  if (hasFileMarker || longContent || toolIntent) {
-    console.log(
-      "[General AI] → Sonnet (files / long context / tool-intent)"
-    );
-    return MODEL_SONNET;
-  }
-
-  const complexity = analyzeQueryComplexity(q);
-  if (complexity === "simple") {
-    console.log("[General AI] → Haiku (simple query)");
-    return MODEL_HAIKU;
-  }
-
-  // moderate + complex → Sonnet (skip Opus on General AI for cost)
-  console.log(
-    `[General AI] → Sonnet (${complexity} query; tools available)`
-  );
-  return MODEL_SONNET;
+  return selectMostEfficientModel(query, options);
 }
 
 /**
@@ -1680,8 +1689,9 @@ ${pageContext}`
       0
     );
 
-    // Explicit model pick (UI) wins over auto-route for platform Bedrock
+    // Explicit model pick (UI) wins over Most Efficient auto-route for platform Bedrock
     const explicitBedrockModel = resolveRequestedModelId(requestedModel);
+    const efficientOpts = { historyChars, messages };
 
     const selectedModel =
       provider === "anthropic"
@@ -1697,18 +1707,16 @@ ${pageContext}`
               : explicitBedrockModel
                 ? explicitBedrockModel
                 : generalMode
-                  ? selectModelForGeneralAI(lastUserQuery, {
-                      historyChars,
-                      messages,
-                    })
-                  : selectModel(lastUserQuery, requestedModel);
+                  ? selectModelForGeneralAI(lastUserQuery, efficientOpts)
+                  : selectModel(lastUserQuery, requestedModel, efficientOpts);
 
     const modelLabel = friendlyModelLabel(selectedModel);
 
     console.log("=== MODEL SELECTION ===");
     console.log("Provider:", provider);
-    console.log("General AI auto-route:", generalMode);
-    console.log("Requested model:", requestedModel || "none");
+    console.log("Most Efficient auto-route:", !explicitBedrockModel && provider === "bedrock");
+    console.log("General AI mode:", generalMode);
+    console.log("Requested model:", requestedModel || "none (Most Efficient)");
     console.log("Selected model:", selectedModel, `(${modelLabel})`);
     console.log("Query preview:", lastUserQuery.substring(0, 50));
 

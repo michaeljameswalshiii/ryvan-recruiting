@@ -349,6 +349,7 @@ export function FloatingAiAssistant() {
         body: JSON.stringify({
           messages: historyForApi,
           provider: 'bedrock',
+          // Most Efficient ladder (Nova Lite → Haiku → Sonnet)
           model: 'auto',
           generalMode: true,
           useTools: true,

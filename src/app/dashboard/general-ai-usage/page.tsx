@@ -105,6 +105,9 @@ function labelFromModelId(modelId?: string): string {
 
 function modelBadgeClass(label?: string): string {
   const l = (label || '').toLowerCase();
+  if (l.includes('nova')) {
+    return 'border-orange-200 bg-orange-50 text-orange-800';
+  }
   if (l.includes('haiku')) {
     return 'border-sky-200 bg-sky-50 text-sky-800';
   }
@@ -359,7 +362,7 @@ export default function GeneralAiUsagePage() {
         body: JSON.stringify({
           messages: historyForApi,
           provider: 'bedrock',
-          // Server auto-routes Haiku vs Sonnet — do not force a model
+          // Most Efficient: Nova Lite → Haiku → Sonnet (never Opus)
           model: 'auto',
           generalMode: true,
           useTools: true,
@@ -473,8 +476,8 @@ export default function GeneralAiUsagePage() {
           </div>
           <p className="mt-1 text-sm text-slate-500">
             Chat, research, and CRM actions (candidates, companies, jobs). Write
-            actions ask you to confirm before saving. Models auto-route (Haiku /
-            Sonnet).
+            actions ask you to confirm before saving. Most Efficient routes Nova
+            Lite / Haiku / Sonnet by task.
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
@@ -801,7 +804,7 @@ export default function GeneralAiUsagePage() {
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-slate-400">
             <span>
               Multi-turn context · File upload (txt, md, csv, json, docx, pdf) ·
-              Excel as CSV · Auto Haiku / Sonnet
+              Excel as CSV · Most Efficient (Nova Lite / Haiku / Sonnet)
             </span>
             {lastMeta?.modelLabel && (
               <span

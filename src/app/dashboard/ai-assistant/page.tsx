@@ -17,13 +17,18 @@ interface Message {
 
 type AiProvider = "bedrock" | "anthropic" | "openai" | "gemini" | "grok";
 
-/** Platform Bedrock model pick (Claude + Amazon Nova) */
+/**
+ * Platform Bedrock model pick.
+ * "auto" = Most Efficient ladder (Nova Lite → Haiku → Sonnet; never Opus).
+ * Individual picks lock that model for the turn.
+ */
 type PlatformModel =
   | "auto"
+  | "nova-lite"
   | "haiku"
   | "sonnet"
-  | "nova-lite"
-  | "nova-pro";
+  | "nova-pro"
+  | "opus";
 
 /** "Today, 11:04 AM" or "Jul 15, 11:04 AM" */
 function formatMessageTime(ts: Date | string) {
@@ -88,7 +93,7 @@ export default function AIAssistantPage() {
         id: "welcome",
         role: "assistant" as const,
         content:
-          "✅ AI Assistant ready. Use Platform Bedrock or your own Anthropic, OpenAI, Gemini, or Grok key (Settings → AI Providers). What would you like to source?",
+          "✅ AI Assistant ready. Platform defaults to Most Efficient (Nova Lite / Haiku / Sonnet). Lock a model anytime, or use your own Anthropic, OpenAI, Gemini, or Grok key (Settings → AI Providers). What would you like to source?",
         timestamp: new Date(),
       },
     ]);
@@ -180,12 +185,14 @@ const res = await fetch("/api/bedrock", {
       body: JSON.stringify({
         messages: chatMessages,
         useSearch: true,
-        // CRM tools need Claude tool_use; Nova uses Converse chat
+        // CRM tools need Claude tool_use; Nova uses Converse chat only.
+        // Most Efficient (auto) may pick Sonnet when tools are needed.
         useTools:
           provider !== "bedrock" ||
           platformModel === "auto" ||
           platformModel === "haiku" ||
-          platformModel === "sonnet",
+          platformModel === "sonnet" ||
+          platformModel === "opus",
         provider,
         model: provider === "bedrock" ? platformModel : undefined,
       }),
@@ -294,7 +301,7 @@ return (
         <div>
           <h1 className="text-3xl font-bold">AI Assistant (Web)</h1>
           <p className="text-muted-foreground">
-            Claude + Amazon Nova on Platform · OpenAI / Gemini / Grok BYOK · Apollo + Tavily
+            Most Efficient by default · Claude + Nova on Platform · BYOK unchanged · Apollo + Tavily
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -394,16 +401,17 @@ return (
             </button>
           </div>
 
-          {/* Platform model: Claude + Amazon Nova */}
+          {/* Platform model: Most Efficient (default) or lock a model */}
           {provider === "bedrock" && (
             <div className="inline-flex flex-wrap rounded-xl border border-orange-200 bg-orange-50/50 p-1 shadow-sm gap-0.5">
               {(
                 [
-                  { id: "auto" as const, label: "Auto" },
+                  { id: "auto" as const, label: "Most Efficient" },
+                  { id: "nova-lite" as const, label: "Nova Lite" },
                   { id: "haiku" as const, label: "Haiku" },
                   { id: "sonnet" as const, label: "Sonnet" },
-                  { id: "nova-lite" as const, label: "Nova Lite" },
                   { id: "nova-pro" as const, label: "Nova Pro" },
+                  { id: "opus" as const, label: "Opus" },
                 ] as const
               ).map((m) => (
                 <button
@@ -412,21 +420,27 @@ return (
                   onClick={() => setPlatformModel(m.id)}
                   className={`inline-flex items-center px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
                     platformModel === m.id
-                      ? m.id.startsWith("nova")
-                        ? "bg-orange-600 text-white"
-                        : "bg-slate-800 text-white"
+                      ? m.id === "auto"
+                        ? "bg-emerald-700 text-white"
+                        : m.id.startsWith("nova")
+                          ? "bg-orange-600 text-white"
+                          : m.id === "opus"
+                            ? "bg-violet-700 text-white"
+                            : "bg-slate-800 text-white"
                       : "text-slate-600 hover:bg-white"
                   }`}
                   title={
                     m.id === "auto"
-                      ? "Auto-route Haiku / Sonnet"
+                      ? "Most Efficient: Nova Lite (simple) → Haiku (moderate) → Sonnet (tools/CRM). Never Opus."
                       : m.id === "nova-lite"
-                        ? "Amazon Nova Lite — fast & cheap (chat)"
+                        ? "Amazon Nova Lite — cheapest chat (no CRM tools)"
                         : m.id === "nova-pro"
-                          ? "Amazon Nova Pro — stronger Amazon model (chat)"
+                          ? "Amazon Nova Pro — stronger Amazon chat (no CRM tools)"
                           : m.id === "haiku"
-                            ? "Claude Haiku — fast"
-                            : "Claude Sonnet — tools + CRM"
+                            ? "Claude Haiku — fast Claude"
+                            : m.id === "opus"
+                              ? "Claude Opus — max quality (manual only)"
+                              : "Claude Sonnet — tools + CRM"
                   }
                 >
                   {m.label}
@@ -486,7 +500,9 @@ return (
                             ? "Bedrock · Haiku"
                             : platformModel === "sonnet"
                               ? "Bedrock · Sonnet"
-                              : "Bedrock · Auto"}
+                              : platformModel === "opus"
+                                ? "Bedrock · Opus"
+                                : "Bedrock · Most Efficient"}
               {lastProviderUsed ? ` · last: ${lastProviderUsed}` : ""}
             </span>
           </div>
