@@ -416,26 +416,52 @@ export default function GeneralAiUsagePage() {
         platformModel === 'sonnet' ||
         platformModel === 'opus';
 
-      const res = await fetch('/api/bedrock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: historyForApi,
-          provider: 'bedrock',
-          model: platformModel,
-          generalMode: true,
-          useTools,
-          assistantMode: false,
-        }),
-      });
+      // Client-side abort so "Failed to fetch" becomes a clear timeout message
+      const controller = new AbortController();
+      const abortMs = 90_000;
+      const abortTimer = setTimeout(() => controller.abort(), abortMs);
 
-      const result = await res.json();
+      let res: Response;
+      try {
+        res = await fetch('/api/bedrock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          signal: controller.signal,
+          body: JSON.stringify({
+            messages: historyForApi,
+            provider: 'bedrock',
+            model: platformModel,
+            generalMode: true,
+            useTools,
+            assistantMode: false,
+          }),
+        });
+      } finally {
+        clearTimeout(abortTimer);
+      }
+
+      let result: Record<string, unknown> = {};
+      const rawText = await res.text();
+      try {
+        result = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : {};
+      } catch {
+        result = {
+          error:
+            rawText?.slice(0, 280) ||
+            `Empty or non-JSON response (${res.status})`,
+        };
+      }
 
       if (!res.ok || result.error) {
         const errText =
-          result.suggestion
-            ? `${result.message || result.error}\n\n${result.suggestion}`
-            : result.message || result.error || 'Request failed';
+          typeof result.suggestion === 'string'
+            ? `${String(result.message || result.error)}\n\n${result.suggestion}`
+            : String(
+                result.message ||
+                  result.error ||
+                  `Request failed (${res.status})`
+              );
         setMessages((prev) => [
           ...prev,
           {
@@ -447,17 +473,19 @@ export default function GeneralAiUsagePage() {
         ]);
       } else {
         const toolsUsed: string[] = Array.isArray(result.toolsUsed)
-          ? result.toolsUsed
+          ? (result.toolsUsed as string[])
           : [];
+        const modelId =
+          typeof result.model === 'string' ? result.model : undefined;
         const modelLabel =
           (typeof result.modelLabel === 'string' && result.modelLabel) ||
-          labelFromModelId(result.model);
-        setLastMeta({ model: result.model, modelLabel, toolsUsed });
+          labelFromModelId(modelId);
+        setLastMeta({ model: modelId, modelLabel, toolsUsed });
         const generatedFiles: GeneratedFile[] = Array.isArray(
           result.generatedFiles
         )
-          ? result.generatedFiles.filter(
-              (f: any) => f?.fileName && f?.contentBase64
+          ? (result.generatedFiles as GeneratedFile[]).filter(
+              (f) => f?.fileName && f?.contentBase64
             )
           : [];
         setMessages((prev) => [
@@ -465,10 +493,12 @@ export default function GeneralAiUsagePage() {
           {
             id: `a-${Date.now()}`,
             role: 'assistant',
-            content: result.response || 'No response generated.',
+            content:
+              (typeof result.response === 'string' && result.response) ||
+              'No response generated.',
             timestamp: nowIso(),
             toolsUsed,
-            model: result.model,
+            model: modelId,
             modelLabel,
             generatedFiles:
               generatedFiles.length > 0 ? generatedFiles : undefined,
@@ -484,13 +514,22 @@ export default function GeneralAiUsagePage() {
         }
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Network error';
+      const name = err instanceof Error ? err.name : '';
+      const raw = err instanceof Error ? err.message : 'Network error';
+      const isAbort = name === 'AbortError' || /aborted/i.test(raw);
+      const isNetwork =
+        isAbort || /failed to fetch|networkerror|load failed|fetch/i.test(raw);
+      const msg = isAbort
+        ? 'The request timed out after 90 seconds. Try a shorter question, or lock Haiku for simple chat. Complex Sonnet + tools runs can be slow.'
+        : isNetwork
+          ? `Could not reach the AI service (${raw}). This is usually a network blip or server timeout — try again in a moment. If it keeps failing, hard-refresh the page.`
+          : raw;
       setMessages((prev) => [
         ...prev,
         {
           id: `a-${Date.now()}`,
           role: 'assistant',
-          content: `Could not reach the AI service: ${msg}`,
+          content: msg,
           timestamp: nowIso(),
         },
       ]);

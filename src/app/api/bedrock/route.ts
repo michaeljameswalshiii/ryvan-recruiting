@@ -1,7 +1,7 @@
 /**
  * Bedrock AI API Route
  * Upgraded with Claude Sonnet 4.6 + Native MCP Tool Calling
- * 
+ *
  * Features:
  * - Native MCP Tool Calling:
  *   - Model decides when and which tools to call
@@ -15,9 +15,14 @@
  * - Better error handling with retries
  * - Tenant context from middleware headers
  * - Per-tenant rate limiting
- * 
+ *
  * @serverOnly
  */
+
+// Allow long agent loops (Sonnet + tools). Vercel Pro up to 300s; set 60 for safety.
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 import {
   BedrockRuntimeClient,
