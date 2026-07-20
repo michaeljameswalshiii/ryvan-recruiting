@@ -6,6 +6,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import type { ReportingStats, PeriodKey, AttentionItem } from '@/lib/aws/reporting';
 import {
@@ -33,7 +34,45 @@ import {
   ArrowDownRight,
   Minus,
   UserRound,
+  X,
 } from 'lucide-react';
+import { DeskNextActions } from '@/components/desk/DeskNextActions';
+
+/** Persist dismissed "Needs attention" rows (browser-local, 30-day expiry). */
+const DISMISS_STORAGE_KEY = 'trio-needs-attention-dismissed-v1';
+const DISMISS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+type DismissMap = Record<string, number>; // key → dismissedAt ms
+
+function attentionDismissKey(item: AttentionItem): string {
+  return `${item.type}:${item.id}`;
+}
+
+function loadDismissed(): DismissMap {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(DISMISS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as DismissMap;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const now = Date.now();
+    const fresh: DismissMap = {};
+    for (const [k, ts] of Object.entries(parsed)) {
+      if (typeof ts === 'number' && now - ts < DISMISS_TTL_MS) fresh[k] = ts;
+    }
+    return fresh;
+  } catch {
+    return {};
+  }
+}
+
+function saveDismissed(map: DismissMap) {
+  try {
+    localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore quota */
+  }
+}
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
 
@@ -95,6 +134,45 @@ export function DashboardHome({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [dismissed, setDismissed] = useState<DismissMap>({});
+  const [dismissHydrated, setDismissHydrated] = useState(false);
+
+  useEffect(() => {
+    setDismissed(loadDismissed());
+    setDismissHydrated(true);
+  }, []);
+
+  const dismissItem = useCallback((item: AttentionItem) => {
+    const key = attentionDismissKey(item);
+    setDismissed((prev) => {
+      const next = { ...prev, [key]: Date.now() };
+      saveDismissed(next);
+      return next;
+    });
+  }, []);
+
+  const clearDismissed = useCallback(() => {
+    setDismissed({});
+    try {
+      localStorage.removeItem(DISMISS_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const visibleAttention = useMemo(() => {
+    if (!dismissHydrated) return stats.needsAttention.slice(0, 8);
+    return stats.needsAttention
+      .filter((item) => !dismissed[attentionDismissKey(item)])
+      .slice(0, 8);
+  }, [stats.needsAttention, dismissed, dismissHydrated]);
+
+  const dismissedCount = useMemo(() => {
+    if (!dismissHydrated) return 0;
+    return stats.needsAttention.filter(
+      (item) => !!dismissed[attentionDismissKey(item)]
+    ).length;
+  }, [stats.needsAttention, dismissed, dismissHydrated]);
 
   const setPeriod = (key: PeriodKey) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -224,6 +302,8 @@ export function DashboardHome({
         </div>
       </div>
 
+      <DeskNextActions limit={10} />
+
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {kpis.map((c) => (
@@ -322,10 +402,10 @@ export function DashboardHome({
 
         {/* Needs attention */}
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
-              <div>
+          <div className="flex items-center justify-between mb-4 gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+              <div className="min-w-0">
                 <h2 className="text-base font-semibold text-gray-900">
                   Needs attention
                 </h2>
@@ -334,47 +414,91 @@ export function DashboardHome({
                 </p>
               </div>
             </div>
-            <Link
-              href="/dashboard/candidates"
-              className="text-xs font-medium text-blue-600 hover:underline"
-            >
-              Candidates
-            </Link>
+            <div className="flex items-center gap-3 shrink-0">
+              {dismissedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={clearDismissed}
+                  className="text-xs font-medium text-slate-500 hover:text-slate-800 hover:underline"
+                  title="Show all items you dismissed (expires after 30 days)"
+                >
+                  Restore {dismissedCount}
+                </button>
+              )}
+              <Link
+                href="/dashboard/candidates"
+                className="text-xs font-medium text-blue-600 hover:underline"
+              >
+                Candidates
+              </Link>
+            </div>
           </div>
           <div className="space-y-2 max-h-[320px] overflow-y-auto">
             {stats.needsAttention.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-10">
                 Nothing urgent — pipeline looks healthy.
               </p>
+            ) : visibleAttention.length === 0 ? (
+              <div className="text-center py-10 space-y-2">
+                <p className="text-sm text-gray-500">
+                  All attention items are dismissed for now.
+                </p>
+                {dismissedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearDismissed}
+                    className="text-xs font-medium text-blue-600 hover:underline"
+                  >
+                    Restore dismissed ({dismissedCount})
+                  </button>
+                )}
+              </div>
             ) : (
-              stats.needsAttention.slice(0, 8).map((item) => {
+              visibleAttention.map((item) => {
                 const Icon = typeIcon(item.type);
                 return (
-                  <Link
+                  <div
                     key={`${item.type}-${item.id}-${item.reason}`}
-                    href={item.href}
-                    className="flex items-start gap-3 rounded-xl border border-gray-100 px-3 py-2.5 hover:bg-gray-50 transition-colors"
+                    className="group flex items-start gap-2 rounded-xl border border-gray-100 px-2 py-2 hover:bg-gray-50 transition-colors"
                   >
-                    <div className="h-8 w-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
-                      <Icon className="h-4 w-4 text-gray-500" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900 truncate">
-                          {item.title}
-                        </span>
-                        <span
-                          className={`text-[10px] uppercase font-semibold rounded-full border px-1.5 py-0.5 ${severityClass(item.severity)}`}
-                        >
-                          {item.severity}
-                        </span>
+                    <Link
+                      href={item.href}
+                      className="flex min-w-0 flex-1 items-start gap-3 px-1 py-0.5"
+                    >
+                      <div className="h-8 w-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
+                        <Icon className="h-4 w-4 text-gray-500" />
                       </div>
-                      <div className="text-xs text-gray-500 truncate">
-                        {item.reason}
-                        {item.subtitle ? ` · ${item.subtitle}` : ''}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-900 truncate">
+                            {item.title}
+                          </span>
+                          <span
+                            className={`text-[10px] uppercase font-semibold rounded-full border px-1.5 py-0.5 ${severityClass(item.severity)}`}
+                          >
+                            {item.severity}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500 truncate">
+                          {item.reason}
+                          {item.subtitle ? ` · ${item.subtitle}` : ''}
+                        </div>
                       </div>
-                    </div>
-                  </Link>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dismissItem(item);
+                      }}
+                      className="mt-1 shrink-0 rounded-lg p-1.5 text-gray-400 opacity-70 hover:bg-gray-200/80 hover:text-gray-700 hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
+                      title="Dismiss — hide for 30 days (no next step needed)"
+                      aria-label={`Dismiss ${item.title}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 );
               })
             )}
