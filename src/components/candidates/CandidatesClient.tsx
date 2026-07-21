@@ -24,6 +24,7 @@ import {
   useDeleteLead,
   useUpdateLeadStatus,
 } from '@/lib/hooks/query-lead';
+import { updateLeadStatus } from '@/lib/actions/lead-actions';
 import { ResumeCreateCard } from '@/components/candidates/ResumeCreateCard';
 import { MergeCandidatesModal } from '@/components/candidate/MergeCandidatesModal';
 import { StageChangeNoteModal } from '@/components/candidate/StageChangeNoteModal';
@@ -332,6 +333,10 @@ export function CandidatesClient() {
     jobTitle: string;
   } | null>(null);
   const [stageApplying, setStageApplying] = useState(false);
+  /** Multi-select for bulk stage changes (same pattern as companies) */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkStage, setBulkStage] = useState('');
+  const [bulkUpdating, setBulkUpdating] = useState(false);
 
   const candidates = useMemo(() => (Array.isArray(leads) ? leads : []), [leads]);
 
@@ -357,6 +362,64 @@ export function CandidatesClient() {
       };
     });
   }, [candidates]);
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setBulkStage('');
+  };
+
+  /**
+   * Apply the same pipeline stage to every selected candidate.
+   * Uses the server action directly so we get one summary toast (not N mutation toasts).
+   */
+  const handleBulkStageChange = async () => {
+    const newStatus = (bulkStage || '').trim();
+    if (!newStatus || selectedIds.size === 0) {
+      toast.error('Select candidates and a stage first');
+      return;
+    }
+    setBulkUpdating(true);
+    let ok = 0;
+    let failed = 0;
+    try {
+      for (const id of Array.from(selectedIds)) {
+        const row = enriched.find((c) => String(c.id) === String(id));
+        const oldStatus = row?.stage || 'sourced';
+        if (oldStatus === newStatus) {
+          ok++;
+          continue;
+        }
+        try {
+          const result = await updateLeadStatus(id, newStatus, oldStatus);
+          if (result?.error) failed++;
+          else ok++;
+        } catch {
+          failed++;
+        }
+      }
+      if (ok > 0) {
+        toast.success(
+          `Updated ${ok} candidate${ok === 1 ? '' : 's'} → ${getStageLabel(newStatus) || stageLabel(newStatus)}`
+        );
+      }
+      if (failed > 0) {
+        toast.error(`${failed} update${failed === 1 ? '' : 's'} failed`);
+      }
+      clearSelection();
+      void refetch();
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
 
   /**
    * User picked a new stage in the list — open note modal first (can skip).
@@ -703,6 +766,53 @@ export function CandidatesClient() {
         </div>
       </div>
 
+      {/* Bulk selection toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-3 shadow-sm">
+          <div className="text-sm font-medium text-blue-900">
+            {selectedIds.size} selected
+          </div>
+          <div className="flex flex-wrap items-center gap-2 flex-1">
+            <select
+              value={bulkStage}
+              onChange={(e) => setBulkStage(e.target.value)}
+              className="border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm min-w-[10rem]"
+              aria-label="Bulk pipeline stage"
+            >
+              <option value="">Set stage…</option>
+              {LIST_STAGE_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <Button
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={!bulkStage || bulkUpdating}
+              onClick={() => void handleBulkStageChange()}
+            >
+              {bulkUpdating ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Updating…
+                </>
+              ) : (
+                'Apply stage'
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={clearSelection}
+              disabled={bulkUpdating}
+            >
+              Clear selection
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       {filtered.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center shadow-sm">
@@ -730,18 +840,55 @@ export function CandidatesClient() {
         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm">
           {/* Horizontal scroll so Last Activity / Actions are not clipped */}
           <div className="overflow-x-auto pb-1">
-            <table className="w-full min-w-[1100px] table-fixed">
+            <table className="w-full min-w-[1140px] table-fixed">
               <colgroup>
-                <col className="w-[22%]" />
-                <col className="w-[18%]" />
-                <col className="w-[10%]" />
+                <col className="w-[40px]" />
                 <col className="w-[20%]" />
-                <col className="w-[10%]" />
-                <col className="w-[10%]" />
-                <col className="w-[10%]" />
+                <col className="w-[16%]" />
+                <col className="w-[9%]" />
+                <col className="w-[19%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
+                  <th className="text-left px-3 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      aria-label="Select all visible candidates"
+                      checked={
+                        filtered.length > 0 &&
+                        filtered.every((c: { id: string }) =>
+                          selectedIds.has(c.id)
+                        )
+                      }
+                      ref={(el) => {
+                        if (!el) return;
+                        const some = filtered.some((c: { id: string }) =>
+                          selectedIds.has(c.id)
+                        );
+                        const all =
+                          filtered.length > 0 &&
+                          filtered.every((c: { id: string }) =>
+                            selectedIds.has(c.id)
+                          );
+                        el.indeterminate = some && !all;
+                      }}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedIds(
+                            new Set(
+                              filtered.map((c: { id: string }) => String(c.id))
+                            )
+                          );
+                        } else {
+                          clearSelection();
+                        }
+                      }}
+                    />
+                  </th>
                   <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                     Candidate
                   </th>
@@ -773,7 +920,22 @@ export function CandidatesClient() {
                   const isUpdating =
                     stageApplying && pendingStageChange?.id === c.id;
                   return (
-                    <tr key={c.id} className="hover:bg-gray-50/80 transition-colors">
+                    <tr
+                      key={c.id}
+                      className={`hover:bg-gray-50/80 transition-colors ${
+                        selectedIds.has(c.id) ? 'bg-blue-50/40' : ''
+                      }`}
+                    >
+                      <td className="px-3 py-3.5 align-middle">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          aria-label={`Select ${c.name}`}
+                          checked={selectedIds.has(c.id)}
+                          onChange={() => toggleSelected(String(c.id))}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-3 min-w-0">
                           <div
