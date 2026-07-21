@@ -446,6 +446,9 @@ const candidateNoteTypes = [
   // Legacy UI note types from older candidate detail
   { value: 'Conversation', label: 'Conversation' },
   { value: 'Interview Scheduled', label: 'Interview Scheduled' },
+  { value: 'Sourced', label: 'Sourced' },
+  { value: 'Applied', label: 'Applied' },
+  { value: 'Interested', label: 'Interested' },
   { value: 'Submitted', label: 'Submitted' },
   { value: 'Offer Out', label: 'Offer Out' },
   { value: 'Accepted', label: 'Accepted' },
@@ -478,20 +481,17 @@ export async function addNoteToCandidate(
     [key: string]: unknown;
   }
 ): Promise<RecordEventResponse> {
-  if (!noteText || noteText.trim() === '') {
-    return {
-      success: false,
-      error: 'Note text is required',
-    };
-  }
-
-  // Get the note type label for display
+  // Note detail text is optional — action type alone is enough (e.g. "No Answer")
+  const text = (noteText || '').trim();
   const noteTypeValue = options?.noteType || 'general';
-  const noteTypeLabel = candidateNoteTypes.find(t => t.value === noteTypeValue)?.label || 'General Note';
+  const noteTypeLabel =
+    candidateNoteTypes.find((t) => t.value === noteTypeValue)?.label ||
+    String(noteTypeValue).replace(/_/g, ' ') ||
+    'Note';
 
   // Build metadata, including optional stage and noteType if provided
   const metadata: Record<string, unknown> = {
-    noteText,
+    noteText: text,
     noteType: noteTypeValue,
     noteTypeLabel,
     changedBy: createdBy,
@@ -501,12 +501,17 @@ export async function addNoteToCandidate(
     metadata.stage = options.stage;
   }
 
+  // Prefer free-text when present; otherwise show the action type as the description
+  const description = text
+    ? text.substring(0, 100) + (text.length > 100 ? '...' : '')
+    : noteTypeLabel;
+
   return recordEvent(
     candidateId,
     'NOTE',
     {
       title: `Note - ${noteTypeLabel}`,
-      description: noteText.substring(0, 100) + (noteText.length > 100 ? '...' : ''),
+      description,
       metadata,
     },
     createdBy

@@ -9,20 +9,29 @@ export async function POST(
     const { id: contactId } = await params;
     const body = await request.json();
 
-    if (!body.type || !body.content) {
+    if (!body.type) {
       return NextResponse.json(
-        { error: 'Type and content are required' },
+        { error: 'Activity type is required' },
         { status: 400 }
       );
     }
+
+    // Content/detail text is optional (e.g. "08 No Answer" with no extra note)
+    const content =
+      typeof body.content === 'string' ? body.content.trim() : '';
 
     const result = await createEvent({
       contactId,
       companyId: body.companyId,
       type: body.type,
-      content: body.content,
+      // Allow empty detail — activity type carries the meaning
+      content: content || '',
       createdBy: body.createdBy || 'current-user',
-      metadata: body.metadata,
+      metadata: {
+        ...(body.metadata || {}),
+        noteText: content,
+        emptyDetail: !content,
+      },
     });
 
     if (!result?.success && result?.error) {

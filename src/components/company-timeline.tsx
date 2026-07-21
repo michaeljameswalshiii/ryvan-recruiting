@@ -30,7 +30,6 @@ export default function CompanyTimeline({ companyId }: CompanyTimelineProps) {
   }, [companyId]);
 
   const handleAddNote = async () => {
-    if (!noteText.trim()) return;
 
     setSubmitting(true);
     try {
@@ -56,7 +55,7 @@ export default function CompanyTimeline({ companyId }: CompanyTimelineProps) {
         />
         <button
           onClick={handleAddNote}
-          disabled={submitting || !noteText.trim()}
+          disabled={submitting}
           className="mt-3 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
         >
           {submitting ? 'Adding...' : 'Add Note'}

@@ -42,6 +42,9 @@ export async function createClient(client: {
   employee_count?: number;
   revenue?: string;
   description?: string;
+  linkedin_url?: string;
+  status?: string;
+  notes?: string;
 }): Promise<any> {
   const response = await fetch(`${API_BASE}/clients`, {
     method: 'POST',

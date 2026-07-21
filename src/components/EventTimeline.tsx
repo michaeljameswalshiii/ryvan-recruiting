@@ -86,8 +86,7 @@ export default function EventTimeline({
   }, [fetchEvents]);
 
   const handleAddNote = async () => {
-    if (!newNote.trim()) return;
-
+    // Detail text optional
     const noteText = newNote.trim();
     const tempId = `temp-${Date.now()}`;
 
@@ -177,7 +176,7 @@ export default function EventTimeline({
         <button
           type="button"
           onClick={handleAddNote}
-          disabled={addingNote || !newNote.trim()}
+          disabled={addingNote}
           className="mt-2 w-full py-2 bg-blue-600 text-white text-sm font-medium rounded-lg disabled:opacity-50 hover:bg-blue-700 transition-colors"
         >
           {addingNote ? "Adding..." : "Add Note"}

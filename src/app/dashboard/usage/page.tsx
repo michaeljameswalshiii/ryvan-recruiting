@@ -80,7 +80,7 @@ export default async function UsageDashboardPage() {
         <div>
           <h1 className="text-3xl font-bold">AI Usage Dashboard</h1>
           <p className="text-muted-foreground">
-            Track Bedrock / Claude / Grok usage, tokens, and estimated costs
+            Track Bedrock / Claude / OpenAI / Gemini / Grok usage, tokens, and estimated costs
           </p>
         </div>
         <div className="flex items-center gap-2">

@@ -33,6 +33,9 @@ interface StageChangeNoteModalProps {
 function getStageDisplayLabel(stage: string): string {
   const stageLabels: Record<string, string> = {
     sourced: "Sourced",
+    applied: "Applied",
+    interested: "Interested",
+    identification: "Sourced",
     left_message: "Left Message",
     text: "Text",
     email: "Email",
@@ -55,11 +58,14 @@ function getStageDisplayLabel(stage: string): string {
 function getStageColor(stage: string): string {
   const stageColors: Record<string, string> = {
     sourced: "bg-gray-100 text-gray-800",
+    identification: "bg-gray-100 text-gray-800",
     left_message: "bg-blue-100 text-blue-800",
     text: "bg-blue-100 text-blue-800",
     email: "bg-blue-100 text-blue-800",
     other: "bg-gray-100 text-gray-800",
     contacted: "bg-blue-100 text-blue-800",
+    applied: "bg-sky-100 text-sky-800",
+    interested: "bg-indigo-100 text-indigo-800",
     pre_screened: "bg-violet-100 text-violet-800",
     submitted: "bg-violet-100 text-violet-800",
     interviewing: "bg-amber-100 text-amber-800",

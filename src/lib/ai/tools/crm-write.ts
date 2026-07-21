@@ -18,7 +18,9 @@ import {
   getClientById,
   getAllClients,
   addContactToClient,
+  updateClientContact,
 } from "../../db/repositories/client-repository";
+import { phonesFromWorkAndMobile } from "../../contacts/phone";
 import {
   createJob,
   updateJob,
@@ -45,6 +47,25 @@ function needTenant(context: ToolContext): ToolResult | null {
 function isConfirmed(params: Record<string, unknown>): boolean {
   const c = params.confirmed;
   return c === true || c === "true" || c === 1 || c === "1" || c === "yes";
+}
+
+/** Bust Next.js path caches so server components see AI writes immediately */
+async function revalidateCrmPaths(paths: string[] = []) {
+  try {
+    const { revalidatePath } = await import("next/cache");
+    const defaults = [
+      "/dashboard/companies",
+      "/dashboard/contact-info",
+      "/dashboard/candidates",
+      "/dashboard/jobs",
+      "/dashboard",
+    ];
+    for (const p of new Set([...defaults, ...paths])) {
+      revalidatePath(p);
+    }
+  } catch {
+    /* non-Next runtime */
+  }
 }
 
 /** If not confirmed, return a preview payload the model must show the user */
@@ -167,6 +188,11 @@ export async function executeCreateCandidate(
       notes: notesParts.filter(Boolean).join("\n"),
       linkedin_url: preview.linkedin_url,
     });
+
+    await revalidateCrmPaths([
+      "/dashboard/candidates",
+      lead.id ? `/dashboard/candidates/${lead.id}` : "",
+    ].filter(Boolean));
 
     return {
       success: true,
@@ -374,6 +400,7 @@ export async function executeCreateCompany(
     city: str(p.city) || "",
     state: str(p.state) || "",
     domain: str(p.domain) || str(p.website) || "",
+    phone: str(p.phone) || "",
     description: str(p.description) || "",
     status: str(p.status) || "identification",
   };
@@ -388,9 +415,14 @@ export async function executeCreateCompany(
       city: preview.city,
       state: preview.state,
       domain: preview.domain,
+      phone: preview.phone,
       description: preview.description,
       status: preview.status,
     });
+    await revalidateCrmPaths([
+      "/dashboard/companies",
+      client.id ? `/dashboard/companies/${client.id}` : "",
+    ].filter(Boolean));
     return {
       success: true,
       data: {
@@ -439,6 +471,7 @@ export async function executeUpdateCompany(
     "city",
     "state",
     "domain",
+    "phone",
     "description",
     "status",
     "revenue",
@@ -465,6 +498,11 @@ export async function executeUpdateCompany(
 
   try {
     const updated = await updateClient(context.tenantId!, companyId, updates);
+    await revalidateCrmPaths([
+      "/dashboard/companies",
+      `/dashboard/companies/${companyId}`,
+      "/dashboard/contact-info",
+    ]);
     return {
       success: true,
       data: {
@@ -541,11 +579,27 @@ export async function executeCreateContact(
     return { success: false, error: resolved.error };
   }
 
+  const workPhone = str(p.work_phone) || str(p.workPhone) || "";
+  const mobilePhone =
+    str(p.mobile_phone) ||
+    str(p.mobilePhone) ||
+    str(p.cell_phone) ||
+    str(p.cellPhone) ||
+    "";
+  const legacyPhone = str(p.phone) || "";
+  const phones = phonesFromWorkAndMobile({
+    workPhone,
+    mobilePhone,
+    phone: legacyPhone,
+  });
+
   const preview = {
     name,
     title: str(p.title) || "",
     email: str(p.email) || "",
-    phone: str(p.phone) || "",
+    phone: phones[0]?.number || legacyPhone,
+    work_phone: workPhone || undefined,
+    mobile_phone: mobilePhone || undefined,
     company_id: resolved.id,
     company_name: resolved.name,
     isPrimary: p.is_primary === true || p.isPrimary === true || p.is_primary === "true",
@@ -561,6 +615,7 @@ export async function executeCreateContact(
       name: preview.name,
       title: preview.title,
       email: preview.email,
+      phones,
       phone: preview.phone,
       isPrimary: preview.isPrimary,
       notes: preview.notes,
@@ -570,6 +625,12 @@ export async function executeCreateContact(
         c.name?.toLowerCase() === preview.name.toLowerCase() &&
         (!preview.email || c.email === preview.email.toLowerCase())
     );
+    await revalidateCrmPaths([
+      "/dashboard/contact-info",
+      "/dashboard/companies",
+      `/dashboard/companies/${resolved.id}`,
+      created?.id ? `/dashboard/contact-info/${created.id}` : "",
+    ].filter(Boolean));
     return {
       success: true,
       data: {
@@ -589,6 +650,229 @@ export async function executeCreateContact(
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to create contact",
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// update_contact (company contact on Contact Info)
+// ---------------------------------------------------------------------------
+
+export const UPDATE_CONTACT_TOOL = "update_contact";
+export const UPDATE_CONTACT_DESCRIPTION =
+  "Update an existing company contact (hiring manager / Contact Info person). " +
+  "Requires contact_id. Prefer company_id when known; otherwise the contact is located by id across companies. " +
+  "Supports work_phone and mobile_phone (or phone). Preview first, then confirmed:true. " +
+  "After success, the CRM lists refresh — there is no intentional delay.";
+
+async function findContactAcrossCompanies(
+  tenantId: string,
+  contactId: string,
+  companyIdHint?: string
+): Promise<
+  | { companyId: string; companyName: string; contact: any }
+  | { error: string }
+> {
+  if (companyIdHint) {
+    const company = await getClientById(tenantId, companyIdHint);
+    if (!company?.id) {
+      return { error: `Company not found: ${companyIdHint}` };
+    }
+    const contact = (company.contacts || []).find(
+      (c: any) => String(c.id) === String(contactId)
+    );
+    if (!contact) {
+      return {
+        error: `Contact ${contactId} not found on company ${companyIdHint}`,
+      };
+    }
+    return {
+      companyId: company.id,
+      companyName: company.name || company.companyName || company.id,
+      contact,
+    };
+  }
+
+  const all = await getAllClients(tenantId);
+  for (const company of all) {
+    const contact = (company.contacts || []).find(
+      (c: any) => String(c.id) === String(contactId)
+    );
+    if (contact && company.id) {
+      return {
+        companyId: company.id,
+        companyName: company.name || company.companyName || company.id,
+        contact,
+      };
+    }
+  }
+  return { error: `Contact not found: ${contactId}` };
+}
+
+export async function executeUpdateContact(
+  params: unknown,
+  context: ToolContext
+): Promise<ToolResult> {
+  const deny = needTenant(context);
+  if (deny) return deny;
+
+  const p = (params || {}) as Record<string, unknown>;
+  const contactId = str(p.contact_id) || str(p.contactId) || str(p.id);
+  if (!contactId) {
+    return {
+      success: false,
+      error: "contact_id is required to update a contact",
+    };
+  }
+
+  const companyIdHint = str(p.company_id) || str(p.client_id);
+  const located = await findContactAcrossCompanies(
+    context.tenantId!,
+    contactId,
+    companyIdHint
+  );
+  if ("error" in located) {
+    return { success: false, error: located.error };
+  }
+
+  const workPhone = str(p.work_phone) || str(p.workPhone);
+  const mobilePhone =
+    str(p.mobile_phone) ||
+    str(p.mobilePhone) ||
+    str(p.cell_phone) ||
+    str(p.cellPhone);
+  const legacyPhone = str(p.phone);
+
+  const hasPhoneUpdate =
+    workPhone !== undefined ||
+    mobilePhone !== undefined ||
+    legacyPhone !== undefined;
+
+  let phones: ReturnType<typeof phonesFromWorkAndMobile> | undefined;
+  if (hasPhoneUpdate) {
+    // Merge with existing so partial phone updates do not wipe the other number
+    const existingPhones = Array.isArray(located.contact.phones)
+      ? located.contact.phones
+      : [];
+    const existingWork =
+      existingPhones.find((x: any) =>
+        ["work", "office"].includes(String(x?.type || "").toLowerCase())
+      )?.number ||
+      (String(located.contact.preferredPhoneType || "").toLowerCase() === "work"
+        ? located.contact.preferredPhone || located.contact.phone
+        : "") ||
+      "";
+    const existingMobile =
+      existingPhones.find((x: any) =>
+        ["mobile", "cell"].includes(String(x?.type || "").toLowerCase())
+      )?.number || "";
+
+    phones = phonesFromWorkAndMobile({
+      workPhone: workPhone !== undefined ? workPhone : existingWork,
+      mobilePhone: mobilePhone !== undefined ? mobilePhone : existingMobile,
+      phone: legacyPhone,
+    });
+  }
+
+  const preview: Record<string, unknown> = {
+    contact_id: contactId,
+    company_id: located.companyId,
+    company_name: located.companyName,
+    current_name: located.contact.name,
+  };
+  if (str(p.name)) preview.name = str(p.name);
+  if (str(p.title)) preview.title = str(p.title);
+  if (str(p.email)) preview.email = str(p.email);
+  if (workPhone !== undefined) preview.work_phone = workPhone;
+  if (mobilePhone !== undefined) preview.mobile_phone = mobilePhone;
+  if (legacyPhone !== undefined && workPhone === undefined && mobilePhone === undefined) {
+    preview.phone = legacyPhone;
+  }
+  if (str(p.notes) !== undefined) preview.notes = str(p.notes) || "";
+  if (str(p.linkedin_url) || str(p.linkedin)) {
+    preview.linkedin_url = str(p.linkedin_url) || str(p.linkedin);
+  }
+  if (
+    p.is_primary === true ||
+    p.isPrimary === true ||
+    p.is_primary === "true" ||
+    p.is_primary === false ||
+    p.isPrimary === false
+  ) {
+    preview.is_primary =
+      p.is_primary === true || p.isPrimary === true || p.is_primary === "true";
+  }
+
+  const gate = confirmGate(p, UPDATE_CONTACT_TOOL, preview);
+  if (gate) return gate;
+
+  try {
+    const patch: Record<string, unknown> = {};
+    if (str(p.name)) patch.name = str(p.name);
+    if (str(p.title) !== undefined) patch.title = str(p.title) || "";
+    if (str(p.email) !== undefined) patch.email = str(p.email) || "";
+    if (str(p.notes) !== undefined) patch.notes = str(p.notes) || "";
+    if (str(p.linkedin_url) || str(p.linkedin)) {
+      patch.linkedin_url = str(p.linkedin_url) || str(p.linkedin) || "";
+    }
+    if (preview.is_primary !== undefined) {
+      patch.isPrimary = !!preview.is_primary;
+    }
+    if (phones) {
+      patch.phones = phones;
+      patch.phone = phones[0]?.number || "";
+    } else if (legacyPhone !== undefined) {
+      patch.phone = legacyPhone;
+    }
+
+    const updated = await updateClientContact(
+      context.tenantId!,
+      located.companyId,
+      contactId,
+      patch as any
+    );
+    if (!updated) {
+      return { success: false, error: "Failed to update contact — not found" };
+    }
+
+    const refreshed = (updated.contacts || []).find(
+      (c: any) => String(c.id) === String(contactId)
+    );
+
+    await revalidateCrmPaths([
+      "/dashboard/contact-info",
+      `/dashboard/contact-info/${contactId}`,
+      "/dashboard/companies",
+      `/dashboard/companies/${located.companyId}`,
+    ]);
+
+    return {
+      success: true,
+      data: {
+        status: "updated",
+        contact: {
+          id: contactId,
+          name: refreshed?.name || str(p.name) || located.contact.name,
+          company_id: located.companyId,
+          company_name: located.companyName,
+          title: refreshed?.title,
+          email: refreshed?.email,
+          phone: refreshed?.phone || refreshed?.preferredPhone,
+          phones: refreshed?.phones,
+        },
+        message: `Updated contact ${refreshed?.name || contactId}. Changes appear immediately on Contact Info (refresh if a tab was already open).`,
+        url_hint: `/dashboard/contact-info/${contactId}`,
+      },
+      metadata: {
+        action: UPDATE_CONTACT_TOOL,
+        id: contactId,
+        company_id: located.companyId,
+      },
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to update contact",
     };
   }
 }
@@ -650,6 +934,11 @@ export async function executeCreateJob(
       employmentType: preview.employment_type as any,
       status: (preview.status as any) || "Open",
     });
+    await revalidateCrmPaths([
+      "/dashboard/jobs",
+      job.id ? `/dashboard/jobs/${job.id}` : "",
+      companyId ? `/dashboard/companies/${companyId}` : "",
+    ].filter(Boolean));
     return {
       success: true,
       data: {
@@ -972,6 +1261,7 @@ export const CRM_WRITE_TOOLS: Array<{
         city: { type: "string", description: "City" },
         state: { type: "string", description: "State" },
         domain: { type: "string", description: "Website domain" },
+        phone: { type: "string", description: "Main company phone number" },
         description: { type: "string", description: "Description" },
         confirmed: { type: "boolean", description: "true to apply after user confirms" },
       },
@@ -1000,7 +1290,19 @@ export const CRM_WRITE_TOOLS: Array<{
         },
         title: { type: "string", description: "Job title at the company" },
         email: { type: "string", description: "Work email" },
-        phone: { type: "string", description: "Phone" },
+        phone: {
+          type: "string",
+          description:
+            "Phone (legacy single field). Prefer work_phone / mobile_phone when both known.",
+        },
+        work_phone: {
+          type: "string",
+          description: "Direct / office work phone number",
+        },
+        mobile_phone: {
+          type: "string",
+          description: "Cell / mobile phone (often used by hiring managers)",
+        },
         notes: { type: "string", description: "Notes" },
         is_primary: {
           type: "boolean",
@@ -1012,6 +1314,51 @@ export const CRM_WRITE_TOOLS: Array<{
         },
       },
       required: ["name"],
+    },
+  },
+  {
+    name: UPDATE_CONTACT_TOOL,
+    description: UPDATE_CONTACT_DESCRIPTION,
+    execute: executeUpdateContact,
+    schema: {
+      type: "object",
+      properties: {
+        contact_id: {
+          type: "string",
+          description: "Contact id (required)",
+        },
+        company_id: {
+          type: "string",
+          description: "Company id (recommended for faster lookup)",
+        },
+        name: { type: "string", description: "Full name" },
+        title: { type: "string", description: "Job title" },
+        email: { type: "string", description: "Email" },
+        phone: {
+          type: "string",
+          description:
+            "Single phone (legacy). Prefer work_phone and mobile_phone.",
+        },
+        work_phone: {
+          type: "string",
+          description: "Direct / office work phone",
+        },
+        mobile_phone: {
+          type: "string",
+          description: "Cell / mobile phone",
+        },
+        notes: { type: "string", description: "Notes" },
+        linkedin_url: { type: "string", description: "LinkedIn profile URL" },
+        is_primary: {
+          type: "boolean",
+          description: "Mark as primary contact for the company",
+        },
+        confirmed: {
+          type: "boolean",
+          description: "true to apply after user confirms",
+        },
+      },
+      required: ["contact_id"],
     },
   },
   {
@@ -1027,6 +1374,7 @@ export const CRM_WRITE_TOOLS: Array<{
         city: { type: "string", description: "City" },
         state: { type: "string", description: "State" },
         domain: { type: "string", description: "Domain" },
+        phone: { type: "string", description: "Main company phone number" },
         description: { type: "string", description: "Description" },
         status: { type: "string", description: "Status" },
         confirmed: { type: "boolean", description: "true to apply after user confirms" },

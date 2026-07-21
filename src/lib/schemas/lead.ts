@@ -25,12 +25,15 @@ export const APPLICATION_STAGES = [
   { value: "pre_screened",    label: "Pre-Screened",      color: "violet" },
   { value: "submitted",        label: "Submitted",         color: "violet" },
   { value: "interviewing",      label: "Interviewing",        color: "amber" },
+  { value: "second_interview", label: "2nd Interview",     color: "amber" },
+  { value: "third_interview",  label: "3rd Interview",     color: "amber" },
   { value: "offer_out",        label: "Offer Out",         color: "amber" },
   { value: "offer_accepted",  label: "Offer Accepted",   color: "green" },
   { value: "offer_declined",  label: "Offer Declined",    color: "red" },
   { value: "placed",          label: "Placed",           color: "emerald" },
   { value: "rejected",        label: "Rejected",        color: "red" },
   { value: "not_interested",  label: "Not Interested",   color: "gray" },
+  { value: "dnu",             label: "DNU",              color: "slate" },
 ] as const;
 
 // Extract just the values for validation

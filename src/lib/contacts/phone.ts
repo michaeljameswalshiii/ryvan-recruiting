@@ -51,16 +51,120 @@ export function getDisplayPhoneType(contact?: ContactPhoneFields | null): string
   return '';
 }
 
+export type NormalizedContactPhone = {
+  id: string;
+  type: string;
+  number: string;
+  isPreferred: boolean;
+};
+
+/** Build a phones[] array from work / mobile fields (UI convenience). */
+export function phonesFromWorkAndMobile(input: {
+  workPhone?: string | null;
+  mobilePhone?: string | null;
+  cellPhone?: string | null;
+  /** Legacy single phone when work/mobile not split */
+  phone?: string | null;
+  preferred?: 'work' | 'mobile' | null;
+}): NormalizedContactPhone[] {
+  const work = (input.workPhone || '').trim();
+  const mobile = (input.mobilePhone || input.cellPhone || '').trim();
+  const legacy = (input.phone || '').trim();
+  const phones: NormalizedContactPhone[] = [];
+
+  if (work) {
+    phones.push({
+      id: crypto.randomUUID(),
+      type: 'work',
+      number: work,
+      isPreferred: input.preferred === 'work' || (!input.preferred && !mobile),
+    });
+  }
+  if (mobile) {
+    phones.push({
+      id: crypto.randomUUID(),
+      type: 'mobile',
+      number: mobile,
+      isPreferred: input.preferred === 'mobile' || (!work && !input.preferred),
+    });
+  }
+  if (phones.length === 0 && legacy) {
+    // Support "work / mobile" style strings from AI or paste
+    const parts = legacy.split(/\s*[/|;]\s*/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      phones.push({
+        id: crypto.randomUUID(),
+        type: 'work',
+        number: parts[0],
+        isPreferred: true,
+      });
+      phones.push({
+        id: crypto.randomUUID(),
+        type: 'mobile',
+        number: parts[1],
+        isPreferred: false,
+      });
+    } else {
+      phones.push({
+        id: crypto.randomUUID(),
+        type: 'work',
+        number: legacy,
+        isPreferred: true,
+      });
+    }
+  }
+
+  if (phones.length > 0 && !phones.some((p) => p.isPreferred)) {
+    phones[0].isPreferred = true;
+  }
+  return phones;
+}
+
+export function getPhoneByType(
+  contact?: ContactPhoneFields | null,
+  type: string = 'work'
+): string {
+  if (!contact) return '';
+  const t = type.toLowerCase();
+  const phones = contact.phones;
+  if (Array.isArray(phones)) {
+    const match = phones.find(
+      (p) => (p?.type || '').toLowerCase() === t && (p.number || '').trim()
+    );
+    if (match?.number?.trim()) return match.number.trim();
+  }
+  // Fallbacks for legacy single-phone contacts
+  if (t === 'work' || t === 'office') {
+    const preferredType = (contact.preferredPhoneType || '').toLowerCase();
+    if (preferredType === 'work' || preferredType === 'office') {
+      return (contact.preferredPhone || contact.phone || '').trim();
+    }
+    if (!preferredType && (!Array.isArray(phones) || phones.length === 0)) {
+      return (contact.phone || contact.preferredPhone || '').trim();
+    }
+  }
+  if (t === 'mobile' || t === 'cell') {
+    const preferredType = (contact.preferredPhoneType || '').toLowerCase();
+    if (preferredType === 'mobile' || preferredType === 'cell') {
+      return (contact.preferredPhone || '').trim();
+    }
+  }
+  return '';
+}
+
 export function normalizeContactPhones(input: {
   phone?: string | null;
   phones?: ContactPhoneLike[] | null;
+  workPhone?: string | null;
+  mobilePhone?: string | null;
+  cellPhone?: string | null;
 }): {
-  phones?: ContactPhoneLike[];
+  phones?: NormalizedContactPhone[];
   phone?: string;
   preferredPhone?: string;
   preferredPhoneType?: string;
 } {
-  let phones = Array.isArray(input.phones)
+  let phones: NormalizedContactPhone[] | undefined = Array.isArray(input.phones)
     ? input.phones
         .filter((p) => p && typeof p.number === 'string' && p.number.trim() !== '')
         .map((p) => ({
@@ -71,15 +175,17 @@ export function normalizeContactPhones(input: {
         }))
     : undefined;
 
+  if ((!phones || phones.length === 0) && (input.workPhone || input.mobilePhone || input.cellPhone)) {
+    phones = phonesFromWorkAndMobile({
+      workPhone: input.workPhone,
+      mobilePhone: input.mobilePhone,
+      cellPhone: input.cellPhone,
+      phone: input.phone,
+    });
+  }
+
   if ((!phones || phones.length === 0) && input.phone && input.phone.trim()) {
-    phones = [
-      {
-        id: crypto.randomUUID(),
-        type: 'work',
-        number: input.phone.trim(),
-        isPreferred: true,
-      },
-    ];
+    phones = phonesFromWorkAndMobile({ phone: input.phone });
   }
 
   if (!phones || phones.length === 0) {

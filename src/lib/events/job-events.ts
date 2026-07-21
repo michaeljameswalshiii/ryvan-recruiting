@@ -151,11 +151,29 @@ export async function getJobEvents(
   }
 }
 
-// Helper for UI
-export async function addNoteToJob(jobId: string, noteText: string, createdBy: string) {
-  return recordJobEvent(jobId, 'NOTE', {
-    title: 'Note Added',
-    description: noteText,
-    metadata: { source: 'ui' }
-  }, createdBy);
+// Helper for UI — note detail text optional
+export async function addNoteToJob(
+  jobId: string,
+  noteText: string,
+  createdBy: string,
+  noteType?: string
+) {
+  const text = (noteText || '').trim();
+  const typeLabel = noteType
+    ? String(noteType).replace(/_/g, ' ')
+    : 'Note';
+  return recordJobEvent(
+    jobId,
+    'NOTE',
+    {
+      title: text ? 'Note Added' : typeLabel,
+      description: text || typeLabel,
+      metadata: {
+        source: 'ui',
+        noteText: text,
+        noteType: noteType || 'general',
+      },
+    },
+    createdBy
+  );
 }

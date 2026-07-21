@@ -1,8 +1,8 @@
 /**
  * AI BYOK credentials API
  * GET    — status (never returns raw keys)
- * POST   — save Anthropic/Grok key or set preferred provider
- * DELETE — remove a key (?provider=anthropic|grok)
+ * POST   — save Anthropic/Grok/OpenAI/Gemini key or set preferred provider
+ * DELETE — remove a key (?provider=anthropic|grok|openai|gemini)
  */
 import { NextRequest, NextResponse } from 'next/server';
 import {
@@ -14,12 +14,19 @@ import {
   getAiCredentialsPublic,
   saveAnthropicKey,
   saveGrokKey,
+  saveOpenaiKey,
+  saveGeminiKey,
   setPreferredProvider,
   deleteAnthropicKey,
   deleteGrokKey,
+  deleteOpenaiKey,
+  deleteGeminiKey,
   validateAnthropicKey,
   validateGrokKey,
+  validateOpenaiKey,
+  validateGeminiKey,
   type AiProviderPreference,
+  type ByokKeyProvider,
 } from '@/lib/db/repositories/ai-credentials-repository';
 
 async function resolveUserId(request: NextRequest): Promise<string | null> {
@@ -27,6 +34,17 @@ async function resolveUserId(request: NextRequest): Promise<string | null> {
   if (fromHeader) return fromHeader;
   const session = await getSession();
   return session?.userId || (await getSessionUserId());
+}
+
+const BYOK_PROVIDERS: ByokKeyProvider[] = [
+  'anthropic',
+  'grok',
+  'openai',
+  'gemini',
+];
+
+function isByok(p: string): p is ByokKeyProvider {
+  return (BYOK_PROVIDERS as string[]).includes(p);
 }
 
 export async function GET(request: NextRequest) {
@@ -51,6 +69,18 @@ export async function GET(request: NextRequest) {
           label: 'My Anthropic key (BYOK)',
           description: 'Your Claude API key — billed to your Anthropic account',
           available: status.hasAnthropicKey,
+        },
+        openai: {
+          id: 'openai',
+          label: 'My OpenAI key (BYOK)',
+          description: 'Your OpenAI API key — billed to your OpenAI account',
+          available: status.hasOpenaiKey,
+        },
+        gemini: {
+          id: 'gemini',
+          label: 'My Gemini key (BYOK)',
+          description: 'Your Google AI Studio key — billed to your Google account',
+          available: status.hasGeminiKey,
         },
         grok: {
           id: 'grok',
@@ -82,17 +112,35 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const action = body.action as string | undefined;
 
+    const hasAnyKeyBody = !!(
+      body.apiKey ||
+      body.anthropicApiKey ||
+      body.grokApiKey ||
+      body.xaiApiKey ||
+      body.openaiApiKey ||
+      body.geminiApiKey
+    );
+
     // Set preferred provider only
-    if (action === 'setPreferred' || (body.preferredProvider && !body.apiKey && !body.anthropicApiKey && !body.grokApiKey && !body.xaiApiKey)) {
+    if (
+      action === 'setPreferred' ||
+      (body.preferredProvider && !hasAnyKeyBody)
+    ) {
       const preferred = (body.preferredProvider ||
         body.provider) as AiProviderPreference;
-      if (
-        preferred !== 'bedrock' &&
-        preferred !== 'anthropic' &&
-        preferred !== 'grok'
-      ) {
+      const allowed: AiProviderPreference[] = [
+        'bedrock',
+        'anthropic',
+        'grok',
+        'openai',
+        'gemini',
+      ];
+      if (!allowed.includes(preferred)) {
         return NextResponse.json(
-          { error: 'preferredProvider must be bedrock, anthropic, or grok' },
+          {
+            error:
+              'preferredProvider must be bedrock, anthropic, openai, gemini, or grok',
+          },
           { status: 400 }
         );
       }
@@ -100,16 +148,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, ...status });
     }
 
-    // Determine which provider key is being saved
     const keyProvider = (body.keyProvider ||
       body.provider ||
-      (body.grokApiKey || body.xaiApiKey ? 'grok' : 'anthropic')) as
-      | 'anthropic'
-      | 'grok';
+      (body.openaiApiKey
+        ? 'openai'
+        : body.geminiApiKey
+          ? 'gemini'
+          : body.grokApiKey || body.xaiApiKey
+            ? 'grok'
+            : 'anthropic')) as string;
+
+    if (!isByok(keyProvider)) {
+      return NextResponse.json(
+        { error: 'keyProvider must be anthropic, openai, gemini, or grok' },
+        { status: 400 }
+      );
+    }
 
     const apiKey = (
       body.apiKey ||
       body.anthropicApiKey ||
+      body.openaiApiKey ||
+      body.geminiApiKey ||
       body.grokApiKey ||
       body.xaiApiKey ||
       ''
@@ -121,56 +181,40 @@ export async function POST(request: NextRequest) {
 
     const validateOnly = body.validateOnly === true;
 
-    if (keyProvider === 'grok') {
-      const validation = await validateGrokKey(apiKey);
-      if (!validation.ok) {
-        return NextResponse.json(
-          { error: validation.error || 'Invalid Grok/xAI API key', valid: false },
-          { status: 400 }
-        );
-      }
-      if (validateOnly) {
-        return NextResponse.json({
-          success: true,
-          valid: true,
-          model: validation.model,
-          provider: 'grok',
-        });
-      }
-      const status = await saveGrokKey({
-        userId,
-        tenantId,
-        apiKey,
-        setAsPreferred: body.setAsPreferred !== false,
-      });
-      return NextResponse.json({
-        success: true,
-        valid: true,
-        model: validation.model,
-        provider: 'grok',
-        ...status,
-      });
-    }
+    const validators = {
+      anthropic: validateAnthropicKey,
+      grok: validateGrokKey,
+      openai: validateOpenaiKey,
+      gemini: validateGeminiKey,
+    } as const;
 
-    // Default: Anthropic
-    const validation = await validateAnthropicKey(apiKey);
+    const savers = {
+      anthropic: saveAnthropicKey,
+      grok: saveGrokKey,
+      openai: saveOpenaiKey,
+      gemini: saveGeminiKey,
+    } as const;
+
+    const validation = await validators[keyProvider](apiKey);
     if (!validation.ok) {
       return NextResponse.json(
-        { error: validation.error || 'Invalid Anthropic API key', valid: false },
+        {
+          error: validation.error || `Invalid ${keyProvider} API key`,
+          valid: false,
+        },
         { status: 400 }
       );
     }
-
     if (validateOnly) {
       return NextResponse.json({
         success: true,
         valid: true,
         model: validation.model,
-        provider: 'anthropic',
+        provider: keyProvider,
       });
     }
 
-    const status = await saveAnthropicKey({
+    const status = await savers[keyProvider]({
       userId,
       tenantId,
       apiKey,
@@ -181,7 +225,7 @@ export async function POST(request: NextRequest) {
       success: true,
       valid: true,
       model: validation.model,
-      provider: 'anthropic',
+      provider: keyProvider,
       ...status,
     });
   } catch (err: any) {
@@ -201,15 +245,22 @@ export async function DELETE(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const provider = (searchParams.get('provider') || 'anthropic') as
-      | 'anthropic'
-      | 'grok';
+    const provider = (searchParams.get('provider') || 'anthropic') as string;
+    if (!isByok(provider)) {
+      return NextResponse.json(
+        { error: 'provider must be anthropic, openai, gemini, or grok' },
+        { status: 400 }
+      );
+    }
 
-    const status =
-      provider === 'grok'
-        ? await deleteGrokKey(userId)
-        : await deleteAnthropicKey(userId);
+    const deleters = {
+      anthropic: deleteAnthropicKey,
+      grok: deleteGrokKey,
+      openai: deleteOpenaiKey,
+      gemini: deleteGeminiKey,
+    } as const;
 
+    const status = await deleters[provider](userId);
     return NextResponse.json({ success: true, ...status });
   } catch (err: any) {
     console.error('[ai/credentials DELETE]', err);

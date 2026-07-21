@@ -1,26 +1,46 @@
-# Trio Recruiting MCP Server
+# Trio Recruiting MCP
 
-Connect **Claude Desktop** or **Claude Code** to Trio via [MCP](https://modelcontextprotocol.io).
+Connect **Claude Desktop**, **Claude Code**, or other MCP clients to Trio.
 
-## Recommended: keys from the web app (no AWS on the laptop)
+## Recommended: fully remote (no local install)
 
 1. Sign in to Trio as a **customer admin**
 2. **Settings → Integrations**
-3. **Create API key** — copy the key + ready-made Claude config
-4. Install this folder once: `cd mcp-server && npm install`
-5. Paste config into Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`)
-6. Set the local path to `mcp-server/src/index.ts` and restart Claude
+3. **Create API key** — copy the key + ready-made config
+4. Connect with the **remote MCP URL** only (no `npm install`, no repo path)
 
-### Env (HTTP mode)
+### Claude Code (CLI)
 
-| Variable | Source |
-|----------|--------|
-| `TRIO_MCP_MODE` | `http` |
-| `TRIO_APP_URL` | Shown in Settings (e.g. production URL) |
-| `TRIO_MCP_API_KEY` | Created in Settings (shown once) |
-| `TRIO_TENANT_ID` | Shown in Settings |
+```bash
+claude mcp add --transport http trio-recruiting https://YOUR_APP/api/mcp \
+  --header "Authorization: Bearer trio_mcp_..." \
+  --header "X-Trio-Tenant-Id: your-tenant-id"
+```
 
-No `AWS_*` credentials needed on the Claude machine.
+### Config JSON (Claude Code / compatible clients)
+
+```json
+{
+  "mcpServers": {
+    "trio-recruiting": {
+      "type": "http",
+      "url": "https://YOUR_APP/api/mcp",
+      "headers": {
+        "Authorization": "Bearer trio_mcp_...",
+        "X-Trio-Tenant-Id": "your-tenant-id"
+      }
+    }
+  }
+}
+```
+
+### Claude.ai / Desktop Connectors
+
+1. **Settings → Connectors → Add custom connector**
+2. URL: `https://YOUR_APP/api/mcp`
+3. Auth: static request headers (beta) — `Authorization: Bearer …` and `X-Trio-Tenant-Id`
+
+Settings → Integrations shows the exact values for your org after you create a key.
 
 ## Tools
 
@@ -31,26 +51,47 @@ No `AWS_*` credentials needed on the Claude machine.
 | `add_note` | Activity note |
 | `list_jobs` | List jobs |
 
-## App HTTP API (what the MCP process calls)
+## Server endpoints
 
-All require `Authorization: Bearer <key>` and `X-Trio-Tenant-Id: <tenantId>`:
+| Endpoint | Purpose |
+|----------|---------|
+| `POST/GET/DELETE /api/mcp` | **Remote MCP** (Streamable HTTP, protocol) |
+| `GET /api/mcp/v1/candidates` | REST helper (used by legacy local bridge) |
+| `GET /api/mcp/v1/candidates/:id` | REST helper |
+| `POST /api/mcp/v1/candidates/:id/notes` | REST helper |
+| `GET /api/mcp/v1/jobs` | REST helper |
 
-- `GET /api/mcp/v1/candidates?q=&limit=`
-- `GET /api/mcp/v1/candidates/:id`
-- `POST /api/mcp/v1/candidates/:id/notes` `{ "noteText", "noteType?" }`
-- `GET /api/mcp/v1/jobs?status=&limit=`
+All require `Authorization: Bearer <key>` and `X-Trio-Tenant-Id: <tenantId>`.
 
-## Legacy: direct DynamoDB mode
+## Optional: local stdio bridge
 
-If `TRIO_APP_URL` is unset and `TRIO_MCP_MODE` is not `http`, the server uses AWS credentials + `TRIO_TENANT_ID` (original first slice). Prefer HTTP mode for people you only give an API key.
-
-## Install
+Only needed for older clients that cannot speak remote Streamable HTTP.
 
 ```bash
 cd mcp-server
 npm install
-npm start   # requires env; Claude sets env when launching
 ```
+
+Claude Desktop `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "trio-recruiting": {
+      "command": "npx",
+      "args": ["tsx", "C:/path/to/mcp-server/src/index.ts"],
+      "env": {
+        "TRIO_MCP_MODE": "http",
+        "TRIO_APP_URL": "https://YOUR_APP",
+        "TRIO_MCP_API_KEY": "trio_mcp_...",
+        "TRIO_TENANT_ID": "your-tenant-id"
+      }
+    }
+  }
+}
+```
+
+Prefer the remote URL above whenever possible.
 
 ## Security
 

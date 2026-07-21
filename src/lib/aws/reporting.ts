@@ -140,11 +140,11 @@ export interface ReportingStats {
   lastUpdated: string;
 }
 
-// 5-step funnel aligned with Candidates summary UI
+// Funnel aligned with candidate pipeline UI
 const FUNNEL_STEPS = [
   {
-    key: 'identified',
-    label: 'Identified',
+    key: 'sourced',
+    label: 'Sourced',
     match: [
       'sourced',
       'left_message',
@@ -157,6 +157,16 @@ const FUNNEL_STEPS = [
       'new',
       'identified',
     ],
+  },
+  {
+    key: 'applied',
+    label: 'Applied',
+    match: ['applied', 'application'],
+  },
+  {
+    key: 'interested',
+    label: 'Interested',
+    match: ['interested'],
   },
   {
     key: 'submitted',
@@ -181,13 +191,15 @@ const FUNNEL_STEPS = [
 ] as const;
 
 const COMPANY_STAGE_ORDER = [
-  { key: 'identification', label: 'Identified' },
+  { key: 'identification', label: 'Identification' },
   { key: 'outreach', label: 'Outreach' },
   { key: 'conversation', label: 'Conversation' },
-  { key: 'presented', label: 'Presented' },
   { key: 'meeting', label: 'Meeting' },
   { key: 'proposal', label: 'Proposal' },
   { key: 'closed_won', label: 'Closed Won' },
+  { key: 'client', label: 'Client' },
+  { key: 'known_user', label: 'Known User' },
+  { key: 'dnu', label: 'DNU' },
   { key: 'lost', label: 'Lost' },
 ];
 

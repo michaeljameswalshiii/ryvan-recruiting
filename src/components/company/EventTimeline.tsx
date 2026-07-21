@@ -1,22 +1,29 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
 
-// Event types
-type CompanyEventType = 'NOTE' | 'STATUS_CHANGE' | 'COMPANY_ADDED' | 'CONTACT_ADDED';
+type CompanyEventType =
+  | 'NOTE'
+  | 'STATUS_CHANGE'
+  | 'COMPANY_ADDED'
+  | 'CONTACT_ADDED'
+  | string;
 
 interface CompanyEvent {
   id: string;
-  companyId: string;
+  companyId?: string;
   eventType: CompanyEventType;
   title: string;
   description?: string;
-  metadata: Record<string, any>;
+  metadata?: Record<string, any>;
   createdAt: string;
   createdBy: string;
-  timestamp: string;
+  timestamp?: string;
 }
 
 interface CompanyEventTimelineProps {
@@ -24,7 +31,6 @@ interface CompanyEventTimelineProps {
   initialEvents?: CompanyEvent[];
 }
 
-// Note Types (exactly from user's screenshot)
 const noteTypes = [
   { value: 'general', label: 'General Note' },
   { value: 'phone_call', label: 'Phone call' },
@@ -38,7 +44,79 @@ const noteTypes = [
   { value: 'other', label: 'Other' },
 ];
 
-export function CompanyEventTimeline({ companyId, initialEvents = [] }: CompanyEventTimelineProps) {
+function formatDateTime(value?: string) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  } catch {
+    return '—';
+  }
+}
+
+function noteTypeBadgeClass(label: string) {
+  const l = String(label || '').toLowerCase();
+  if (l.includes('email')) return 'bg-blue-100 text-blue-800 border-blue-200';
+  if (l.includes('meeting') || l.includes('demo'))
+    return 'bg-violet-100 text-violet-800 border-violet-200';
+  if (l.includes('proposal') || l.includes('contract'))
+    return 'bg-amber-100 text-amber-900 border-amber-200';
+  if (l.includes('phone') || l.includes('call') || l.includes('conversation'))
+    return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+  if (l.includes('follow')) return 'bg-sky-100 text-sky-800 border-sky-200';
+  if (l.includes('placement') || l.includes('check'))
+    return 'bg-teal-100 text-teal-800 border-teal-200';
+  if (l.includes('status') || l.includes('stage'))
+    return 'bg-purple-100 text-purple-800 border-purple-200';
+  if (l.includes('contact')) return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+  if (l.includes('added') || l.includes('created'))
+    return 'bg-green-100 text-green-800 border-green-200';
+  return 'bg-indigo-50 text-indigo-800 border-indigo-100';
+}
+
+function getActivityLabel(event: CompanyEvent): string {
+  const meta = event.metadata || {};
+  if (meta.noteTypeLabel) return String(meta.noteTypeLabel);
+  if (meta.noteType) {
+    const found = noteTypes.find((t) => t.value === meta.noteType);
+    if (found) return found.label;
+    return String(meta.noteType)
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  if (event.eventType === 'NOTE') {
+    // title often "Note - Email sent"
+    const m = String(event.title || '').match(/^Note\s*[-–]\s*(.+)$/i);
+    if (m) return m[1].trim();
+    return 'Note';
+  }
+  if (event.eventType === 'STATUS_CHANGE') return 'Status change';
+  if (event.eventType === 'COMPANY_ADDED') return 'Company added';
+  if (event.eventType === 'CONTACT_ADDED') return 'Contact added';
+  return (
+    event.title ||
+    String(event.eventType || 'Activity')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
+
+function getActivityBody(event: CompanyEvent): string {
+  if (event.metadata?.noteText) return String(event.metadata.noteText);
+  if (event.description) return String(event.description);
+  if (event.title && !event.title.startsWith('Note')) return event.title;
+  return '—';
+}
+
+export function CompanyEventTimeline({
+  companyId,
+  initialEvents = [],
+}: CompanyEventTimelineProps) {
   const [events, setEvents] = useState<CompanyEvent[]>(initialEvents);
   const [loading, setLoading] = useState(!initialEvents.length);
   const [error, setError] = useState<string | null>(null);
@@ -46,17 +124,20 @@ export function CompanyEventTimeline({ companyId, initialEvents = [] }: CompanyE
   const [noteType, setNoteType] = useState('general');
   const [addingNote, setAddingNote] = useState(false);
 
-  // Fetch events on mount if not provided
   useEffect(() => {
     if (!initialEvents.length) {
-      fetchEvents();
+      void fetchEvents();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
 
   async function fetchEvents() {
     try {
       setLoading(true);
-      const response = await fetch(`/api/companies/${companyId}/events?limit=20`);
+      setError(null);
+      const response = await fetch(
+        `/api/companies/${companyId}/events?limit=50`
+      );
       if (!response.ok) throw new Error('Failed to fetch events');
       const data = await response.json();
       setEvents(data.events || []);
@@ -68,30 +149,27 @@ export function CompanyEventTimeline({ companyId, initialEvents = [] }: CompanyE
     }
   }
 
-async function handleAddNote() {
-    if (!newNote.trim()) return;
-    
+  async function handleAddNote() {
+    // Detail text optional — type alone is enough
     try {
       setAddingNote(true);
       const response = await fetch(`/api/companies/${companyId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          noteText: newNote,
-          noteType: noteType,
-          createdBy: 'user@turnkey.com' // TODO: Get from auth session
+        body: JSON.stringify({
+          noteText: newNote.trim(),
+          noteType,
         }),
       });
-      
+
       if (!response.ok) throw new Error('Failed to add note');
-      
+
       const data = await response.json();
-      if (data.success) {
+      if (data.success !== false) {
         setNewNote('');
         setNoteType('general');
-        // Refresh events
         await fetchEvents();
-        toast.success('Note saved successfully');
+        toast.success('Note saved');
       }
     } catch (err) {
       console.error('Failed to add note:', err);
@@ -102,226 +180,119 @@ async function handleAddNote() {
     }
   }
 
-  // Get icon and color for event type
-  function getEventConfig(eventType: CompanyEventType) {
-    switch (eventType) {
-      case 'NOTE':
-        return { icon: '📝', color: 'bg-yellow-100 text-yellow-800', label: 'Note' };
-      case 'STATUS_CHANGE':
-        return { icon: '🔄', color: 'bg-purple-100 text-purple-800', label: 'Status' };
-      case 'COMPANY_ADDED':
-        return { icon: '🏢', color: 'bg-green-100 text-green-800', label: 'Added' };
-      case 'CONTACT_ADDED':
-        return { icon: '👤', color: 'bg-blue-100 text-blue-800', label: 'Contact' };
-      default:
-        return { icon: '📋', color: 'bg-gray-100 text-gray-800', label: 'Event' };
-    }
-  }
-
-  // Format date
-  function formatDate(dateString: string) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  }
-
-  if (loading) {
-    return (
-      <div style={{
-        border: '1px solid #e5e7eb',
-        borderRadius: '0.5rem',
-        padding: '1.5rem',
-        backgroundColor: 'white'
-      }}>
-        <h3 style={{ fontSize: '1.125rem', fontWeight: '600', marginBottom: '1rem' }}>
-          Activity Timeline
-        </h3>
-        <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
-          Loading events...
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div style={{
-      border: '1px solid #e5e7eb',
-      borderRadius: '0.5rem',
-      padding: '1.5rem',
-      backgroundColor: 'white'
-    }}>
-      <h3 style={{ fontSize: '1.125rem', fontWeight: '600', marginBottom: '1rem' }}>
-        Activity Timeline
-      </h3>
-
-{/* Add Note Form */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <div style={{ marginBottom: '0.75rem' }}>
-          <label style={{ fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.375rem', display: 'block' }}>Note Type</label>
-          <select
-            value={noteType}
-            onChange={(e) => setNoteType(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '0.5rem',
-              border: '1px solid #d1d5db',
-              borderRadius: '0.375rem',
-              fontSize: '0.875rem',
-              backgroundColor: 'white',
-            }}
-          >
-            {noteTypes.map((type) => (
-              <option key={type.value} value={type.value}>
-                {type.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div style={{ marginBottom: '0.75rem' }}>
-          <label style={{ fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.375rem', display: 'block' }}>Notes</label>
-          <textarea
-            placeholder="Enter notes, paste emails, paste job descriptions, or any relevant info about this account..."
-            value={newNote}
-            onChange={(e) => setNewNote(e.target.value)}
-            rows={4}
-            style={{
-              width: '100%',
-              resize: 'vertical',
-              minHeight: '100px',
-              padding: '0.75rem',
-              border: '1px solid #d1d5db',
-              borderRadius: '0.375rem',
-              fontSize: '0.875rem',
-              fontFamily: 'inherit',
-            }}
-          ></textarea>
-        </div>
-        
-        <button 
-          onClick={handleAddNote} 
-          disabled={addingNote || !newNote.trim()}
-          style={{
-            width: '100%',
-            padding: '0.5rem 1rem',
-            backgroundColor: newNote.trim() && !addingNote ? '#2563eb' : '#93c5fd',
-            color: 'white',
-            border: 'none',
-            borderRadius: '0.375rem',
-            cursor: newNote.trim() && !addingNote ? 'pointer' : 'not-allowed',
-            fontSize: '0.875rem',
-            fontWeight: '500'
-          }}
-        >
-          {addingNote ? 'Saving...' : 'Save Note'}
-        </button>
+    <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+      <div className="mb-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Notes &amp; Activity Log
+        </h2>
+        <p className="text-xs text-gray-400 mt-1">
+          Account activity — emails, meetings, proposals, and follow-ups
+        </p>
       </div>
 
-      {/* Error Message */}
+      <div className="flex flex-col sm:flex-row gap-2 mb-5">
+        <select
+          value={noteType}
+          onChange={(e) => setNoteType(e.target.value)}
+          className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm sm:w-48"
+        >
+          {noteTypes.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <Input
+          value={newNote}
+          onChange={(e) => setNewNote(e.target.value)}
+          placeholder="Optional note detail..."
+          className="flex-1 bg-white"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              void handleAddNote();
+            }
+          }}
+        />
+        <Button
+          onClick={() => void handleAddNote()}
+          disabled={addingNote}
+          className="bg-blue-600 hover:bg-blue-700 shrink-0"
+        >
+          {addingNote ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            'Log'
+          )}
+        </Button>
+      </div>
+
       {error && (
-        <div style={{
-          marginBottom: '1rem',
-          padding: '0.75rem',
-          backgroundColor: '#fef2f2',
-          color: '#991b1b',
-          borderRadius: '0.375rem',
-          fontSize: '0.875rem'
-        }}>
+        <div className="mb-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      {/* Events List */}
-      {events.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
-          No activity yet
+      {loading ? (
+        <div className="flex justify-center py-10">
+          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
         </div>
+      ) : events.length === 0 ? (
+        <p className="text-sm text-gray-500 text-center py-8">
+          No activity yet. Log the first note above.
+        </p>
       ) : (
-        <div style={{ position: 'relative' }}>
-          {/* Timeline Line */}
-          <div style={{
-            position: 'absolute',
-            left: '1rem',
-            top: 0,
-            bottom: 0,
-            width: '2px',
-            backgroundColor: '#e5e7eb'
-          }} />
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {events.map((event) => {
-              const config = getEventConfig(event.eventType);
-              return (
-                <div key={event.id} style={{ display: 'flex', gap: '1rem', position: 'relative' }}>
-                  {/* Timeline Dot */}
-                  <div style={{
-                    position: 'relative',
-                    width: '2rem',
-                    height: '2rem',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.875rem',
-                    backgroundColor: config.color.split(' ')[0],
-                    color: config.color.split(' ')[1],
-                    flexShrink: 0
-                  }}>
-                    {config.icon}
-                  </div>
-                  
-                  {/* Event Content */}
-                  <div style={{ flex: 1, paddingBottom: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                      <span style={{
-                        fontSize: '0.75rem',
-                        padding: '0.125rem 0.375rem',
-                        borderRadius: '0.25rem',
-                        backgroundColor: config.color.split(' ')[0],
-                        color: config.color.split(' ')[1],
-                        border: '1px solid #d1d5db'
-                      }}>
-                        {config.label}
+        <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <table className="w-full text-sm min-w-[520px]">
+            <thead>
+              <tr className="bg-gray-50/80 border-b border-gray-100 text-left">
+                <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-36">
+                  Date
+                </th>
+                <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-44">
+                  Action Type
+                </th>
+                <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                  Note
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {events.map((event, index) => {
+                const label = getActivityLabel(event);
+                return (
+                  <tr
+                    key={event.id || event.timestamp || index}
+                    className="hover:bg-gray-50/60"
+                  >
+                    <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap align-top">
+                      {formatDateTime(event.createdAt || event.timestamp)}
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${noteTypeBadgeClass(label)}`}
+                      >
+                        {label}
                       </span>
-                      <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                        {formatDate(event.createdAt)}
-                      </span>
-                    </div>
-                    <div style={{ fontWeight: '500', fontSize: '0.875rem' }}>
-                      {event.title}
-                    </div>
-                    {event.description && (
-                      <p style={{ fontSize: '0.875rem', color: '#4b5563', marginTop: '0.25rem' }}>
-                        {event.description}
-                      </p>
-                    )}
-                    {event.eventType === 'NOTE' && event.metadata?.noteText && (
-                      <p style={{
-                        fontSize: '0.875rem',
-                        color: '#374151',
-                        marginTop: '0.5rem',
-                        padding: '0.75rem',
-                        backgroundColor: '#f9fafb',
-                        borderRadius: '0.375rem'
-                      }}>
-                        {event.metadata.noteText}
-                      </p>
-                    )}
-                    <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
-                      by {event.createdBy}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <ExpandableNoteText text={getActivityBody(event)} />
+                      {event.createdBy &&
+                        event.createdBy !== 'system' &&
+                        event.createdBy !== 'user@turnkey.com' && (
+                          <span className="block text-[11px] text-gray-400 mt-1">
+                            by {event.createdBy}
+                          </span>
+                        )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
-    </div>
+    </section>
   );
 }

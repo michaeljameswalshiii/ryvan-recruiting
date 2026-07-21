@@ -113,3 +113,12 @@ export {
   updateEvent,
   deleteEvent,
 } from './event-repository';
+
+// Skills / talent graph repository
+export {
+  getSkillsGraph,
+  saveSkillsGraph,
+  rebuildSkillsGraph,
+  getSkillsGraphFresh,
+  isSkillsGraphStale,
+} from './skills-graph-repository';

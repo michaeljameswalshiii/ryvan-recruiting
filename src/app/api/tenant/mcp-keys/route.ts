@@ -27,14 +27,16 @@ export async function GET() {
     }
 
     const keys = await listMcpApiKeys(tenantId);
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "https://turnkey-optimization.vercel.app");
     return NextResponse.json({
       keys,
       tenantId,
-      appUrl:
-        process.env.NEXT_PUBLIC_APP_URL ||
-        (process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : "https://turnkey-optimization.vercel.app"),
+      appUrl,
+      mcpUrl: `${appUrl.replace(/\/$/, "")}/api/mcp`,
     });
   } catch (e: any) {
     console.error("[GET /api/tenant/mcp-keys]", e);
@@ -75,14 +77,37 @@ export async function POST(request: NextRequest) {
         ? `https://${process.env.VERCEL_URL}`
         : "https://turnkey-optimization.vercel.app");
 
-    // Ready-to-paste Claude Desktop snippet
-    const claudeDesktopConfig = {
+    const mcpUrl = `${appUrl.replace(/\/$/, "")}/api/mcp`;
+
+    // Preferred: fully remote Streamable HTTP (no local install)
+    const claudeRemoteConfig = {
+      mcpServers: {
+        "trio-recruiting": {
+          type: "http",
+          url: mcpUrl,
+          headers: {
+            Authorization: `Bearer ${plaintext}`,
+            "X-Trio-Tenant-Id": tenantId,
+          },
+        },
+      },
+    };
+
+    // Claude Code CLI one-liner
+    const claudeCodeCli = [
+      "claude mcp add --transport http trio-recruiting",
+      mcpUrl,
+      `--header "Authorization: Bearer ${plaintext}"`,
+      `--header "X-Trio-Tenant-Id: ${tenantId}"`,
+    ].join(" ");
+
+    // Legacy: local stdio bridge (only if you need older Desktop without remote MCP)
+    const claudeDesktopLocalConfig = {
       mcpServers: {
         "trio-recruiting": {
           command: "npx",
           args: [
             "tsx",
-            // User replaces with local path after git clone
             "<PATH_TO_REPO>/mcp-server/src/index.ts",
           ],
           env: {
@@ -102,9 +127,14 @@ export async function POST(request: NextRequest) {
       plaintext,
       tenantId,
       appUrl,
-      claudeDesktopConfig,
+      mcpUrl,
+      claudeRemoteConfig,
+      claudeCodeCli,
+      /** @deprecated prefer claudeRemoteConfig */
+      claudeDesktopConfig: claudeRemoteConfig,
+      claudeDesktopLocalConfig,
       message:
-        "Copy the API key now. It will not be shown again. Use it with TRIO_APP_URL and TRIO_TENANT_ID in Claude.",
+        "Copy the API key now. Connect Claude with the remote URL — no local install required.",
     });
   } catch (e: any) {
     console.error("[POST /api/tenant/mcp-keys]", e);

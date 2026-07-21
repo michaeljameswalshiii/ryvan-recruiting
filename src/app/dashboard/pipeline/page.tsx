@@ -21,6 +21,7 @@ import { usePipeline, useCreatePipeline, useUpdatePipeline, pipelineKeys } from 
 import { leadKeys } from "@/lib/hooks/query-lead";
 import { clientKeys, useClients } from "@/lib/hooks/query-client";
 import { BackToDashboard } from "@/components/ui/BackToDashboard";
+import { DeskNextActions } from "@/components/desk/DeskNextActions";
 
 interface Lead {
   id: string;
@@ -255,6 +256,8 @@ return (
           </Button>
         </div>
       </div>
+
+      <DeskNextActions compact limit={8} />
 
 {/* Add Lead Dialog */}
       <SimpleDialog

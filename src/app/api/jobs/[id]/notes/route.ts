@@ -8,13 +8,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   try {
     const body = await request.json();
-    const { noteText, createdBy = 'system' } = body;
+    const { noteText, noteType, createdBy = 'system' } = body;
 
-    if (!noteText) {
-      return NextResponse.json({ error: 'noteText is required' }, { status: 400 });
-    }
-
-    const result = await addNoteToJob(jobId, noteText, createdBy);
+    // Detail text optional
+    const text = typeof noteText === 'string' ? noteText.trim() : '';
+    const result = await addNoteToJob(jobId, text, createdBy, noteType);
 
     console.log(`[Job Notes API] Note added successfully:`, result);
 

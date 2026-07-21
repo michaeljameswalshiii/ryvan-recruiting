@@ -21,6 +21,14 @@ export interface ToolContext {
   tenantId: string | null;
   userId: string | null;
   requestUrl?: string;
+  /** Populated by generate_file tool; returned on the HTTP response for UI downloads */
+  generatedFiles?: Array<{
+    fileName: string;
+    mimeType: string;
+    contentBase64: string;
+    sizeBytes: number;
+    format: string;
+  }>;
 }
 
 /**

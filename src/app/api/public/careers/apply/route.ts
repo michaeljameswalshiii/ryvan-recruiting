@@ -19,6 +19,7 @@ import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import {
   getJobById,
   linkCandidateToJob,
+  updateCandidateStageInJob,
 } from "@/lib/db/repositories/job-repository";
 import { createLead } from "@/lib/db/repositories/lead-repository";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -32,6 +33,16 @@ import {
 } from "@/lib/careers/public";
 import { addNoteToCandidate } from "@/lib/events/candidate-events";
 import { parseResumeBuffer } from "@/lib/candidates/resume-extract-server";
+import {
+  evaluateScreenAnswers,
+  formatAnswersForNote,
+} from "@/lib/careers/screen-bot";
+import {
+  scoreCandidateJobFit,
+  formatFitSummary,
+  type FitScoreResult,
+} from "@/lib/ai/fit-score";
+import { getItem, updateItem, jobsTable } from "@/lib/db/dynamodb";
 
 const MAX_RESUME_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_EXT = [".pdf", ".docx", ".doc"];
@@ -416,7 +427,8 @@ export async function POST(request: NextRequest) {
         professionalTitle ||
         (!isTalentNetwork ? job?.title || "" : "") ||
         "",
-      status: "identification",
+      // Job applications → Applied; talent network joins stay Sourced
+      status: isTalentNetwork ? "sourced" : "applied",
       source,
       notes,
       resume_url: resumeUrl || "",
@@ -432,6 +444,57 @@ export async function POST(request: NextRequest) {
       certifications: finalCerts,
       salary_requirements: p?.salaryRequirements || undefined,
     } as any);
+
+    // Pre-screen evaluation (never fail the apply solely due to screen bugs)
+    let screenResult: {
+      pass: boolean;
+      score: number;
+      summary: string;
+      answersFormatted: string;
+    } | null = null;
+    let parsedScreenAnswers: Record<string, string> = {};
+
+    if (!isTalentNetwork && job) {
+      try {
+        const rawScreen = String(
+          fields.screenAnswers || fields.screen_answers || ""
+        ).trim();
+        if (rawScreen) {
+          try {
+            const parsed = JSON.parse(rawScreen);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+              parsedScreenAnswers = Object.fromEntries(
+                Object.entries(parsed).map(([k, v]) => [k, String(v ?? "")])
+              );
+            }
+          } catch {
+            /* ignore bad JSON */
+          }
+        }
+
+        const questions = (job as { preScreenQuestions?: unknown })
+          .preScreenQuestions;
+        if (
+          Array.isArray(questions) &&
+          questions.length > 0 &&
+          Object.keys(parsedScreenAnswers).length > 0
+        ) {
+          screenResult = evaluateScreenAnswers(
+            questions as any,
+            parsedScreenAnswers
+          );
+        } else if (Array.isArray(questions) && questions.length > 0) {
+          // Questions configured but no answers posted
+          screenResult = evaluateScreenAnswers(
+            questions as any,
+            parsedScreenAnswers
+          );
+        }
+      } catch (screenErr) {
+        console.warn("[careers/apply] screen eval warning:", screenErr);
+        screenResult = null;
+      }
+    }
 
     if (lead.id) {
       try {
@@ -456,8 +519,8 @@ export async function POST(request: NextRequest) {
               .join("\n");
 
         await addNoteToCandidate(lead.id, activityText, source, {
-          noteType: isTalentNetwork ? "Talent network" : "Application",
-          stage: "sourced",
+          noteType: isTalentNetwork ? "Talent network" : "Applied",
+          stage: isTalentNetwork ? "sourced" : "applied",
           ...(isTalentNetwork
             ? { talentNetwork: true, interests: interests || undefined }
             : { jobId, jobTitle: job!.title }),
@@ -465,21 +528,158 @@ export async function POST(request: NextRequest) {
       } catch (noteErr) {
         console.warn("[careers/apply] activity note warning:", noteErr);
       }
+
+      // Pre-screen Q&A note
+      if (screenResult && lead.id) {
+        try {
+          const qaBody =
+            screenResult.answersFormatted ||
+            formatAnswersForNote(
+              ((job as any)?.preScreenQuestions || []) as any,
+              parsedScreenAnswers
+            );
+          const noteBody = [
+            screenResult.pass
+              ? `Pre-screen: PASS (score ${screenResult.score}/100)`
+              : `Pre-screen: FLAGS (score ${screenResult.score}/100)`,
+            screenResult.summary,
+            qaBody,
+          ]
+            .filter(Boolean)
+            .join("\n\n")
+            .slice(0, 4000);
+
+          await addNoteToCandidate(lead.id, noteBody, source, {
+            noteType: screenResult.pass
+              ? "Pre-screen pass"
+              : "Pre-screen flags",
+            stage: screenResult.pass ? "pre_screened" : "applied",
+            jobId,
+            jobTitle: job?.title,
+            screenPass: screenResult.pass,
+            screenScore: screenResult.score,
+          });
+        } catch (screenNoteErr) {
+          console.warn("[careers/apply] screen note warning:", screenNoteErr);
+        }
+      }
     }
 
     if (!isTalentNetwork && job) {
+      const hasAnswers = Object.keys(parsedScreenAnswers).length > 0;
+      const linkStage =
+        screenResult?.pass && hasAnswers ? "pre_screened" : "applied";
       try {
         await linkCandidateToJob(tenantId, jobId, {
           candidateId: lead.id!,
           candidateName: lead.name,
           candidateEmail: lead.email || email,
-          stage: "sourced",
+          stage: linkStage,
           notes: message
             ? message.slice(0, 1000)
-            : "Applied via careers site",
+            : screenResult && !screenResult.pass
+              ? "Applied via careers site (screen flags)"
+              : "Applied via careers site",
         });
       } catch (linkErr) {
         console.warn("[careers/apply] link warning:", linkErr);
+        // If already linked, still try stage update on pass
+        if (screenResult?.pass && hasAnswers && lead.id) {
+          try {
+            await updateCandidateStageInJob(tenantId, jobId, {
+              candidateId: lead.id,
+              stage: "pre_screened" as any,
+              notes: "Pre-screen passed via careers apply",
+            });
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    }
+
+    // Fit score enrichment (never fail apply)
+    let fitScore: FitScoreResult | null = null;
+    if (!isTalentNetwork && job && lead?.id) {
+      try {
+        fitScore = scoreCandidateJobFit(
+          {
+            skills: finalSkills,
+            title: professionalTitle || lead.title || "",
+            summary: finalSummary || message || "",
+            experience: finalExperience as any,
+            location: finalLocation,
+          },
+          {
+            title: job.title,
+            description: job.description || "",
+            location: (job as any).location || "",
+            salaryRange: (job as any).salaryRange || "",
+          }
+        );
+
+        try {
+          await addNoteToCandidate(
+            lead.id,
+            formatFitSummary(fitScore),
+            source,
+            {
+              noteType: "Fit score",
+              stage: "applied",
+              jobId,
+              jobTitle: job.title,
+              fitScore: fitScore.score,
+              fitGrade: fitScore.grade,
+            }
+          );
+        } catch (fitNoteErr) {
+          console.warn("[careers/apply] fit note warning:", fitNoteErr);
+        }
+
+        // Best-effort: stamp fit fields on job.candidates[] link
+        try {
+          const fresh = await getItem<{ candidates?: any[] }>(jobsTable, {
+            tenant_id: tenantId,
+            id: jobId,
+          });
+          const existing = Array.isArray(fresh?.candidates)
+            ? fresh!.candidates!
+            : [];
+          const idx = existing.findIndex(
+            (c: any) => c.candidateId === lead.id
+          );
+          if (idx >= 0) {
+            const next = existing.map((c: any, i: number) =>
+              i === idx
+                ? {
+                    ...c,
+                    fitScore: fitScore!.score,
+                    fitGrade: fitScore!.grade,
+                    fitReasons: fitScore!.reasons.slice(0, 6),
+                    fitScoredAt: new Date().toISOString(),
+                  }
+                : c
+            );
+            await updateItem(
+              jobsTable,
+              { tenant_id: tenantId, id: jobId },
+              "SET #candidates = :candidates, #modified_at = :modified_at",
+              {
+                ":candidates": next,
+                ":modified_at": new Date().toISOString(),
+              },
+              {
+                "#candidates": "candidates",
+                "#modified_at": "modified_at",
+              }
+            );
+          }
+        } catch (fitLinkErr) {
+          console.warn("[careers/apply] fit link stamp warning:", fitLinkErr);
+        }
+      } catch (fitErr) {
+        console.warn("[careers/apply] fit score warning:", fitErr);
+        fitScore = null;
       }
     }
 
@@ -492,6 +692,30 @@ export async function POST(request: NextRequest) {
       talentNetwork: isTalentNetwork,
       job: job ? { id: job.id, title: job.title } : null,
       resumeUploaded: !!resumeFileName,
+      ...(screenResult
+        ? {
+            screenResult: {
+              pass: screenResult.pass,
+              score: screenResult.score,
+              summary: screenResult.summary,
+            },
+          }
+        : {}),
+      ...(fitScore
+        ? {
+            fitScore: fitScore.score,
+            fitGrade: fitScore.grade,
+            fit: {
+              score: fitScore.score,
+              grade: fitScore.grade,
+              reasons: fitScore.reasons,
+              strengths: fitScore.strengths,
+              gaps: fitScore.gaps,
+              skillsMatched: fitScore.skillsMatched,
+              skillsMissing: fitScore.skillsMissing,
+            },
+          }
+        : {}),
     });
   } catch (err) {
     console.error("[public/careers/apply]", err);

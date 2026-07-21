@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import {
+  CONTACT_ACTIVITY_TYPES,
+  stripActivityTypePrefix,
+} from '@/lib/contacts/activity-types';
 
 type Activity = {
   id?: string;
@@ -11,34 +15,7 @@ type Activity = {
   date: string;
 };
 
-const activityTypes = [
-  // OUTREACH & COMMUNICATION
-  '01 Left Voicemail',
-  '02 Email Sent',
-  '03 Email Received',
-  '04 Text Sent',
-  '05 Text Received',
-  '06 LinkedIn Message Sent',
-  '07 Conversation Engaged',
-  '08 No Answer',
-  // BUSINESS DEVELOPMENT
-  '09 Initial Outreach',
-  '10 Qualification Call',
-  '11 Discovery Call',
-  '12 Demo / Presentation',
-  '13 Proposal Sent',
-  '14 Proposal Review',
-  '15 Contract Sent',
-  '16 Contract Signed',
-  // MEETINGS & FOLLOW-UP
-  '17 Meeting Scheduled',
-  '18 Meeting Completed',
-  '19 Follow-up Needed',
-  '20 Follow-up Completed',
-  // OTHER
-  '21 Note',
-  '22 Other',
-];
+const activityTypes = [...CONTACT_ACTIVITY_TYPES];
 
 interface ActivityModalProps {
   isOpen: boolean;
@@ -73,7 +50,7 @@ export default function ActivityModal({
     if (activity) {
       setForm({
         id: activity.id,
-        type: activity.type || '',
+        type: stripActivityTypePrefix(activity.type || ''),
         title: activity.title || '',
         description: activity.description || '',
         date: formatDateSafe(activity.date),

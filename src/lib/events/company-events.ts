@@ -109,20 +109,28 @@ export async function addNoteToCompany(
   createdBy: string,
   noteType?: string
 ): Promise<RecordCompanyEventResponse> {
-  if (!noteText?.trim()) return { success: false, error: 'Note text is required' };
-
-  // Get the note type label for display
-  const noteTypeLabel = noteType 
-    ? noteTypes.find(t => t.value === noteType)?.label || 'General Note'
+  // Detail text optional — type alone is enough (e.g. "No Answer")
+  const text = (noteText || '').trim();
+  const noteTypeLabel = noteType
+    ? noteTypes.find((t) => t.value === noteType)?.label ||
+      String(noteType).replace(/_/g, ' ')
     : 'General Note';
+  const description = text
+    ? text.substring(0, 150) + (text.length > 150 ? '...' : '')
+    : noteTypeLabel;
 
   return recordCompanyEvent(
     companyId,
     'NOTE',
-    { 
-      title: `Note - ${noteTypeLabel}`, 
-      description: noteText.substring(0, 150) + (noteText.length > 150 ? '...' : ''), 
-      metadata: { noteText, noteType, noteTypeLabel, changedBy: createdBy } 
+    {
+      title: `Note - ${noteTypeLabel}`,
+      description,
+      metadata: {
+        noteText: text,
+        noteType,
+        noteTypeLabel,
+        changedBy: createdBy,
+      },
     },
     createdBy
   );

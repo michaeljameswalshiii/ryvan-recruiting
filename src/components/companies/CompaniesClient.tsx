@@ -238,6 +238,10 @@ export function CompaniesClient() {
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newCompanyIndustry, setNewCompanyIndustry] = useState('');
   const [updatingStageId, setUpdatingStageId] = useState<string | null>(null);
+  /** Multi-select for bulk stage changes */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkStage, setBulkStage] = useState('');
+  const [bulkUpdating, setBulkUpdating] = useState(false);
 
   /**
    * Update company BD pipeline stage from the list.
@@ -259,6 +263,58 @@ export function CompaniesClient() {
       toast.error(err?.message || 'Failed to update stage');
     } finally {
       setUpdatingStageId(null);
+    }
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setBulkStage('');
+  };
+
+  /**
+   * Apply the same BD pipeline stage to every selected company.
+   */
+  const handleBulkStageChange = async () => {
+    const status = normalizeCompanyStage(bulkStage);
+    if (!status || selectedIds.size === 0) {
+      toast.error('Select companies and a stage first');
+      return;
+    }
+    setBulkUpdating(true);
+    let ok = 0;
+    let failed = 0;
+    try {
+      for (const companyId of Array.from(selectedIds)) {
+        try {
+          const formData = new FormData();
+          formData.set('status', status);
+          await updateClientMutation.mutateAsync({ clientId: companyId, formData });
+          ok++;
+        } catch {
+          failed++;
+        }
+      }
+      if (ok > 0) {
+        toast.success(
+          `Updated ${ok} compan${ok === 1 ? 'y' : 'ies'} → ${stageLabel(status)}`
+        );
+      }
+      if (failed > 0) {
+        toast.error(`${failed} update${failed === 1 ? '' : 's'} failed`);
+      }
+      clearSelection();
+      refetch();
+    } finally {
+      setBulkUpdating(false);
     }
   };
 
@@ -609,6 +665,53 @@ export function CompaniesClient() {
         </div>
       </div>
 
+      {/* Bulk selection toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-3 shadow-sm">
+          <div className="text-sm font-medium text-blue-900">
+            {selectedIds.size} selected
+          </div>
+          <div className="flex flex-wrap items-center gap-2 flex-1">
+            <select
+              value={bulkStage}
+              onChange={(e) => setBulkStage(e.target.value)}
+              className="border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm min-w-[10rem]"
+              aria-label="Bulk pipeline stage"
+            >
+              <option value="">Set stage…</option>
+              {companyStageOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <Button
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={!bulkStage || bulkUpdating}
+              onClick={() => void handleBulkStageChange()}
+            >
+              {bulkUpdating ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Updating…
+                </>
+              ) : (
+                'Apply stage'
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={clearSelection}
+              disabled={bulkUpdating}
+            >
+              Clear selection
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       {filtered.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center shadow-sm">
@@ -643,6 +746,40 @@ export function CompaniesClient() {
             <table className="w-full min-w-[960px]">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
+                  <th className="text-left px-3 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      aria-label="Select all visible companies"
+                      checked={
+                        filtered.length > 0 &&
+                        filtered.every((c: { id: string }) => selectedIds.has(c.id))
+                      }
+                      ref={(el) => {
+                        if (!el) return;
+                        const some = filtered.some((c: { id: string }) =>
+                          selectedIds.has(c.id)
+                        );
+                        const all =
+                          filtered.length > 0 &&
+                          filtered.every((c: { id: string }) =>
+                            selectedIds.has(c.id)
+                          );
+                        el.indeterminate = some && !all;
+                      }}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedIds(
+                            new Set(
+                              filtered.map((c: { id: string }) => String(c.id))
+                            )
+                          );
+                        } else {
+                          clearSelection();
+                        }
+                      }}
+                    />
+                  </th>
                   <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                     Company
                   </th>
@@ -671,7 +808,22 @@ export function CompaniesClient() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((c) => (
-                  <tr key={c.id} className="hover:bg-gray-50/80 transition-colors">
+                  <tr
+                    key={c.id}
+                    className={`hover:bg-gray-50/80 transition-colors ${
+                      selectedIds.has(c.id) ? 'bg-blue-50/40' : ''
+                    }`}
+                  >
+                    <td className="px-3 py-3.5 align-middle">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        aria-label={`Select ${c.name}`}
+                        checked={selectedIds.has(c.id)}
+                        onChange={() => toggleSelected(String(c.id))}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-3 min-w-0">
                         <div

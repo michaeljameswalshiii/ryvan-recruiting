@@ -8,6 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
 import { Switch } from "@/components/ui/switch";
 import { useAddContact, useUpdateContact, useClients } from "@/lib/hooks/query-client";
+import {
+  getPhoneByType,
+  getDisplayPhone,
+  getDisplayPhoneType,
+  phonesFromWorkAndMobile,
+} from "@/lib/contacts/phone";
 import { toast } from "sonner";
 import { Loader2, Star, Building2 } from "lucide-react";
 
@@ -17,9 +23,32 @@ interface Contact {
   title?: string;
   email?: string;
   phone?: string;
+  phones?: Array<{ id?: string; type?: string; number?: string; isPreferred?: boolean }>;
+  preferredPhone?: string;
+  preferredPhoneType?: string;
   isPrimary?: boolean;
   notes?: string;
   linkedin_url?: string;
+}
+
+function splitContactPhones(contact?: Contact | null) {
+  if (!contact) return { workPhone: "", mobilePhone: "" };
+  const work =
+    getPhoneByType(contact, "work") ||
+    (() => {
+      const t = getDisplayPhoneType(contact);
+      const p = getDisplayPhone(contact);
+      return t === "work" || t === "office" || !t ? p : "";
+    })();
+  const mobile =
+    getPhoneByType(contact, "mobile") ||
+    getPhoneByType(contact, "cell") ||
+    (() => {
+      const t = getDisplayPhoneType(contact);
+      const p = getDisplayPhone(contact);
+      return t === "mobile" || t === "cell" ? p : "";
+    })();
+  return { workPhone: work || "", mobilePhone: mobile || "" };
 }
 
 interface ContactModalProps {
@@ -51,13 +80,14 @@ export default function ContactModal({
   const { data: companiesData = [], isLoading: isLoadingCompanies } = useClients();
   const companies = Array.isArray(companiesData) ? companiesData : [];
 
-  // Form state - include companyId
+  // Form state - include companyId; separate work vs cell for hiring managers
   const [formData, setFormData] = useState({
     clientId: "",
     name: "",
     title: "",
     email: "",
-    phone: "",
+    workPhone: "",
+    mobilePhone: "",
     isPrimary: false,
     notes: "",
     linkedin_url: "",
@@ -82,12 +112,14 @@ export default function ContactModal({
       
       if (contact) {
         // Editing existing contact
+        const { workPhone, mobilePhone } = splitContactPhones(contact);
         setFormData({
           clientId: initialClientId,
           name: contact.name || "",
           title: contact.title || "",
           email: contact.email || "",
-          phone: contact.phone || "",
+          workPhone,
+          mobilePhone,
           isPrimary: contact.isPrimary || false,
           notes: contact.notes || "",
           linkedin_url: contact.linkedin_url || "",
@@ -100,7 +132,8 @@ export default function ContactModal({
           name: "",
           title: "",
           email: "",
-          phone: "",
+          workPhone: "",
+          mobilePhone: "",
           isPrimary: false,
           notes: "",
           linkedin_url: "",
@@ -123,35 +156,38 @@ export default function ContactModal({
     setIsSaving(true);
 
     try {
+      const phones = phonesFromWorkAndMobile({
+        workPhone: formData.workPhone,
+        mobilePhone: formData.mobilePhone,
+        preferred:
+          formData.mobilePhone?.trim() && !formData.workPhone?.trim()
+            ? "mobile"
+            : "work",
+      });
+      const contactPayload = {
+        name: formData.name,
+        title: formData.title,
+        email: formData.email,
+        phones,
+        phone: phones[0]?.number || "",
+        isPrimary: formData.isPrimary,
+        notes: formData.notes,
+        linkedin_url: formData.linkedin_url,
+      };
+
       if (contact?.id) {
         // Update existing contact
         await updateContactMutation.mutateAsync({
           clientId: formData.clientId,
           contactId: contact.id,
-          contactData: {
-            name: formData.name,
-            title: formData.title,
-            email: formData.email,
-            phone: formData.phone,
-            isPrimary: formData.isPrimary,
-            notes: formData.notes,
-            linkedin_url: formData.linkedin_url,
-          },
+          contactData: contactPayload,
         });
         toast.success(`${formData.name} updated successfully!`);
       } else {
         // Add new contact
         await addContactMutation.mutateAsync({
           clientId: formData.clientId,
-          contactData: {
-            name: formData.name,
-            title: formData.title,
-            email: formData.email,
-            phone: formData.phone,
-            isPrimary: formData.isPrimary,
-            notes: formData.notes,
-            linkedin_url: formData.linkedin_url,
-          },
+          contactData: contactPayload,
         });
         toast.success(`${formData.name} added successfully!`);
       }
@@ -168,12 +204,14 @@ export default function ContactModal({
 
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen && contact) {
+      const { workPhone, mobilePhone } = splitContactPhones(contact);
       setFormData({
         clientId: initialClientId,
         name: contact.name || "",
         title: contact.title || "",
         email: contact.email || "",
-        phone: contact.phone || "",
+        workPhone,
+        mobilePhone,
         isPrimary: contact.isPrimary || false,
         notes: contact.notes || "",
         linkedin_url: contact.linkedin_url || "",
@@ -184,7 +222,8 @@ export default function ContactModal({
         name: "",
         title: "",
         email: "",
-        phone: "",
+        workPhone: "",
+        mobilePhone: "",
         isPrimary: false,
         notes: "",
         linkedin_url: "",
@@ -308,19 +347,36 @@ export default function ContactModal({
             />
           </div>
 
-          {/* Phone */}
-          <div className="grid gap-2">
-            <Label htmlFor="contact-phone">Phone</Label>
-            <Input
-              id="contact-phone"
-              type="tel"
-              value={formData.phone}
-              onChange={(e) =>
-                setFormData({ ...formData, phone: e.target.value })
-              }
-              placeholder="+1 (555) 123-4567"
-            />
+          {/* Work + Cell phones (hiring managers often share cell, not direct) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="contact-work-phone">Work Phone</Label>
+              <Input
+                id="contact-work-phone"
+                type="tel"
+                value={formData.workPhone}
+                onChange={(e) =>
+                  setFormData({ ...formData, workPhone: e.target.value })
+                }
+                placeholder="Direct / office line"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="contact-mobile-phone">Cell / Mobile</Label>
+              <Input
+                id="contact-mobile-phone"
+                type="tel"
+                value={formData.mobilePhone}
+                onChange={(e) =>
+                  setFormData({ ...formData, mobilePhone: e.target.value })
+                }
+                placeholder="Personal cell"
+              />
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground -mt-1">
+            Store both when managers use cell instead of their work line.
+          </p>
 
           {/* LinkedIn */}
           <div className="grid gap-2">

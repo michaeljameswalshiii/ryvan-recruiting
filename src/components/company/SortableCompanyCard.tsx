@@ -11,6 +11,7 @@ import { CSS } from "@dnd-kit/utilities";
 import Link from "next/link";
 import { Building2, MapPin, Users, Globe, Linkedin, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { companyStageLabel } from "@/lib/schemas/client";
 
 interface Company {
   id: string;
@@ -33,17 +34,6 @@ interface SortableCompanyCardProps {
   onDelete: (companyId: string) => void;
 }
 
-// Pipeline stages for label lookup
-const pipelineStages = [
-  { id: "identification", label: "Identification" },
-  { id: "outreach", label: "Attempted Outreach" },
-  { id: "conversation", label: "Conversation" },
-  { id: "presented", label: "Candidate Presented" },
-  { id: "interview", label: "Interview" },
-  { id: "accept", label: "Accept" },
-  { id: "rejected", label: "Rejected" },
-];
-
 export default function SortableCompanyCard({
   company,
   onEdit,
@@ -63,9 +53,7 @@ export default function SortableCompanyCard({
     transition,
   };
 
-  // Get stage label from status
-  const stageLabel =
-    pipelineStages.find((s) => s.id === company.status)?.label || company.status || "New";
+  const stageLabel = companyStageLabel(company.status) || "New";
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();

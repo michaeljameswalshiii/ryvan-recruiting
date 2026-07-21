@@ -16,10 +16,12 @@ import {
   Info,
   Database,
   MessageSquare,
+  Network,
+  ListOrdered,
+  Activity,
 } from 'lucide-react';
 import {
   hasPermission,
-  roleLabel,
   type Permission,
 } from '@/lib/roles';
 
@@ -36,12 +38,15 @@ const menuItems: MenuItem[] = [
   { name: 'Companies', href: '/dashboard/companies', icon: Building2, permission: 'core_ats' },
   { name: 'Contact Info', href: '/dashboard/contact-info', icon: Info, permission: 'core_ats' },
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase, permission: 'core_ats' },
+  { name: 'Talent Graph', href: '/dashboard/talent-graph', icon: Network, permission: 'core_ats' },
+  { name: 'Sequences', href: '/dashboard/sequences', icon: ListOrdered, permission: 'core_ats' },
   { name: 'AI Assistant', href: '/dashboard/general-ai-usage', icon: MessageSquare, permission: 'core_ats' },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings, permission: 'settings' },
 ];
 
 const adminItems: MenuItem[] = [
   { name: 'AI Apollo', href: '/dashboard/ai-apollo', icon: Bug, permission: 'ai_apollo' },
+  { name: 'AI Reliability', href: '/dashboard/ai-reliability', icon: Activity, permission: 'usage' },
   { name: 'Issues', href: '/dashboard/issues', icon: Bug, permission: 'issues' },
   { name: 'Usage', href: '/dashboard/usage', icon: BarChart3, permission: 'usage' },
 ];
@@ -109,18 +114,18 @@ export default function Sidebar({ role }: SidebarProps) {
 
   return (
     <div className="w-72 min-w-[280px] bg-white border-r border-gray-200 h-screen flex flex-col fixed left-0 top-0 shadow-sm z-50">
-      <div className="p-6 border-b">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
-            R
-          </div>
-          <div>
-            <div className="font-semibold text-xl tracking-tight">Trio Recruiting</div>
-            <div className="text-xs text-gray-500">
-              {role ? roleLabel(role) : 'Trio ATS'}
-            </div>
-          </div>
-        </div>
+      <div className="px-3 pt-3 pb-2 border-b">
+        <Link
+          href="/dashboard"
+          className="block rounded-lg hover:bg-gray-50/80 transition-colors -mx-0.5 px-0.5"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/branding/trio-sourcing-logo.png"
+            alt="Trio Sourcing — Powered by Ryvan Recruiting"
+            className="w-full h-auto max-h-[5.5rem] object-contain object-left object-top"
+          />
+        </Link>
       </div>
 
       {canScrollUp && (

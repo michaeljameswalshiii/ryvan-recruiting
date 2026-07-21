@@ -3,5 +3,15 @@
   "framework": "nextjs",
   "installCommand": "npm install",
   "buildCommand": "npm run build",
-  "outputDirectory": ".next"
+  "outputDirectory": ".next",
+  "crons": [
+    {
+      "path": "/api/cron/sequences-run",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/sequences-poll-replies",
+      "schedule": "30 * * * *"
+    }
+  ]
 }

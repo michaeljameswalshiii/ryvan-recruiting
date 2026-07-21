@@ -9,6 +9,9 @@ const PIPELINE_ORDER = [
   "left_message",
   "contacted",
   "outreach",
+  "applied",
+  "application",
+  "interested",
   "pre_screened",
   "submitted",
   "presented",
@@ -16,6 +19,8 @@ const PIPELINE_ORDER = [
   "qualified",
   "interviewing",
   "interview",
+  "second_interview",
+  "third_interview",
   "offer_out",
   "offer",
   "offer_accepted",
@@ -30,6 +35,8 @@ const REJECTED = new Set([
   "not_interested",
   "offer_declined",
   "withdrawn",
+  "dnu",
+  "do_not_use",
 ]);
 
 export function stageIndex(status?: string | null): number {

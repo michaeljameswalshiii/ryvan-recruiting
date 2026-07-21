@@ -35,6 +35,10 @@ export function useClients() {
       const allData = await getClients();
       return normalizeClientsList(allData);
     },
+    staleTime: 0,
+    // Always re-check after AI / other tabs mutate Dynamo
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -53,6 +57,9 @@ export function useClient(clientId: string) {
       return found || null;
     },
     enabled: !!clientId,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -82,6 +89,7 @@ export function useCreateClient() {
       return createClientApi({
         name: String(payload.name),
         email: payload.email ? String(payload.email) : undefined,
+        phone: payload.phone ? String(payload.phone) : undefined,
         domain: payload.domain ? String(payload.domain) : undefined,
         industry: payload.industry ? String(payload.industry) : undefined,
         city: payload.city ? String(payload.city) : undefined,
@@ -93,6 +101,10 @@ export function useCreateClient() {
             : undefined,
         revenue: payload.revenue ? String(payload.revenue) : undefined,
         description: payload.description ? String(payload.description) : undefined,
+        linkedin_url: payload.linkedin_url
+          ? String(payload.linkedin_url)
+          : undefined,
+        status: payload.status ? String(payload.status) : undefined,
       });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: clientKeys.all }),

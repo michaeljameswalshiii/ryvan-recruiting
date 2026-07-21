@@ -53,6 +53,12 @@ export async function addContactAction(clientId: string, contactData: any) {
     const phoneFields = normalizeContactPhones({
       phone: contactData?.phone,
       phones: contactData?.phones,
+      workPhone: contactData?.workPhone || contactData?.work_phone,
+      mobilePhone:
+        contactData?.mobilePhone ||
+        contactData?.mobile_phone ||
+        contactData?.cellPhone ||
+        contactData?.cell_phone,
     });
 
     const payload = {
@@ -93,6 +99,12 @@ export async function updateContactAction(
     const phoneFields = normalizeContactPhones({
       phone: contactData?.phone,
       phones: contactData?.phones,
+      workPhone: contactData?.workPhone || contactData?.work_phone,
+      mobilePhone:
+        contactData?.mobilePhone ||
+        contactData?.mobile_phone ||
+        contactData?.cellPhone ||
+        contactData?.cell_phone,
     });
 
     const result = await updateClientContact(tenantId, clientId, contactId, {

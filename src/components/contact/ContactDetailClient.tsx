@@ -28,7 +28,12 @@ import {
   logContactActivity,
   getContactActivities,
 } from '@/lib/actions/contact-actions';
-import { getDisplayPhone, getDisplayPhoneType } from '@/lib/contacts/phone';
+import {
+  getDisplayPhone,
+  getDisplayPhoneType,
+  getPhoneByType,
+  phonesFromWorkAndMobile,
+} from '@/lib/contacts/phone';
 import { SendEmailModal } from '@/components/email/send-email-modal';
 import {
   CONTACT_ACTIVITY_TYPES,
@@ -114,6 +119,15 @@ export default function ContactDetailClient({
 
   const displayPhone = getDisplayPhone(contact);
   const displayPhoneType = getDisplayPhoneType(contact);
+  const initialWorkPhone =
+    getPhoneByType(contact, 'work') ||
+    (displayPhoneType === 'work' || displayPhoneType === 'office' || !displayPhoneType
+      ? displayPhone
+      : '');
+  const initialMobilePhone =
+    getPhoneByType(contact, 'mobile') ||
+    getPhoneByType(contact, 'cell') ||
+    (displayPhoneType === 'mobile' || displayPhoneType === 'cell' ? displayPhone : '');
 
   const [activeTab, setActiveTab] = useState<
     'overview' | 'timeline' | 'jobs' | 'company'
@@ -130,7 +144,8 @@ export default function ContactDetailClient({
     name: contact.name || '',
     title: contact.title || '',
     email: contact.email || '',
-    phone: displayPhone || '',
+    workPhone: initialWorkPhone || '',
+    mobilePhone: initialMobilePhone || '',
     notes: typeof contact.notes === 'string' ? contact.notes : '',
     isPrimary: !!contact.isPrimary,
     linkedin_url:
@@ -186,11 +201,27 @@ export default function ContactDetailClient({
 
   // Sync form when contact prop changes
   useEffect(() => {
+    const work =
+      getPhoneByType(contact, 'work') ||
+      (() => {
+        const t = getDisplayPhoneType(contact);
+        const p = getDisplayPhone(contact);
+        return t === 'work' || t === 'office' || !t ? p : '';
+      })();
+    const mobile =
+      getPhoneByType(contact, 'mobile') ||
+      getPhoneByType(contact, 'cell') ||
+      (() => {
+        const t = getDisplayPhoneType(contact);
+        const p = getDisplayPhone(contact);
+        return t === 'mobile' || t === 'cell' ? p : '';
+      })();
     setForm({
       name: contact.name || '',
       title: contact.title || '',
       email: contact.email || '',
-      phone: getDisplayPhone(contact) || '',
+      workPhone: work || '',
+      mobilePhone: mobile || '',
       notes: typeof contact.notes === 'string' ? contact.notes : '',
       isPrimary: !!contact.isPrimary,
       linkedin_url:
@@ -308,6 +339,11 @@ export default function ContactDetailClient({
     setSaving(true);
     try {
       const linkedin_url = normalizeLinkedInUrl(form.linkedin_url || '');
+      const phones = phonesFromWorkAndMobile({
+        workPhone: form.workPhone,
+        mobilePhone: form.mobilePhone,
+        preferred: form.mobilePhone?.trim() && !form.workPhone?.trim() ? 'mobile' : 'work',
+      });
       await updateContact.mutateAsync({
         clientId: companyId,
         contactId,
@@ -315,7 +351,8 @@ export default function ContactDetailClient({
           name: form.name.trim(),
           title: form.title || '',
           email: form.email || '',
-          phone: form.phone || '',
+          phones,
+          phone: phones[0]?.number || '',
           notes: form.notes || '',
           isPrimary: !!form.isPrimary,
           linkedin_url,
@@ -330,6 +367,11 @@ export default function ContactDetailClient({
       contact.notes = form.notes;
       contact.isPrimary = form.isPrimary;
       contact.linkedin_url = linkedin_url;
+      contact.phones = phones;
+      contact.phone = phones[0]?.number || '';
+      contact.preferredPhone = phones.find((p) => p.isPreferred)?.number || phones[0]?.number;
+      contact.preferredPhoneType =
+        phones.find((p) => p.isPreferred)?.type || phones[0]?.type || 'work';
       setForm((prev) => ({ ...prev, linkedin_url }));
     } catch (err: any) {
       toast.error(err?.message || 'Failed to save');
@@ -365,7 +407,12 @@ export default function ContactDetailClient({
     { id: 'company' as const, label: 'Company' },
   ];
 
-  const phone = form.phone || displayPhone;
+  const workPhone = form.workPhone || getPhoneByType(contact, 'work');
+  const mobilePhone =
+    form.mobilePhone ||
+    getPhoneByType(contact, 'mobile') ||
+    getPhoneByType(contact, 'cell');
+  const phone = workPhone || mobilePhone || displayPhone;
   const email = form.email || contact.email || '';
 
   return (
@@ -417,7 +464,27 @@ export default function ContactDetailClient({
                     {email}
                   </a>
                 )}
-                {phone && (
+                {workPhone && (
+                  <a
+                    href={`tel:${workPhone}`}
+                    className="inline-flex items-center gap-1.5"
+                  >
+                    <Phone className="h-3.5 w-3.5 text-gray-400" />
+                    {workPhone}
+                    <span className="text-xs text-gray-400">Work</span>
+                  </a>
+                )}
+                {mobilePhone && (
+                  <a
+                    href={`tel:${mobilePhone}`}
+                    className="inline-flex items-center gap-1.5"
+                  >
+                    <Phone className="h-3.5 w-3.5 text-gray-400" />
+                    {mobilePhone}
+                    <span className="text-xs text-gray-400">Cell</span>
+                  </a>
+                )}
+                {!workPhone && !mobilePhone && phone && (
                   <a
                     href={`tel:${phone}`}
                     className="inline-flex items-center gap-1.5"
@@ -1032,7 +1099,6 @@ export default function ContactDetailClient({
                     ['name', 'Full Name'],
                     ['title', 'Title'],
                     ['email', 'Email'],
-                    ['phone', 'Phone'],
                     ['linkedin_url', 'LinkedIn URL'],
                   ] as const
                 ).map(([key, label]) => (
@@ -1053,6 +1119,38 @@ export default function ContactDetailClient({
                     />
                   </div>
                 ))}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium block mb-1">
+                      Work Phone
+                    </label>
+                    <Input
+                      type="tel"
+                      value={form.workPhone || ''}
+                      onChange={(e) =>
+                        setForm({ ...form, workPhone: e.target.value })
+                      }
+                      placeholder="Direct / office line"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium block mb-1">
+                      Cell / Mobile
+                    </label>
+                    <Input
+                      type="tel"
+                      value={form.mobilePhone || ''}
+                      onChange={(e) =>
+                        setForm({ ...form, mobilePhone: e.target.value })
+                      }
+                      placeholder="Personal cell"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground -mt-1">
+                  Many hiring managers use cell instead of their direct work
+                  line — store both when available.
+                </p>
                 <div>
                   <label className="text-sm font-medium block mb-1">Notes</label>
                   <textarea

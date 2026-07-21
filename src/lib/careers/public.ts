@@ -10,6 +10,15 @@ import {
   getTenantBySubdomain,
 } from "@/lib/db/repositories/tenant-repository";
 
+/** Public pre-screen question (safe fields only) */
+export type PublicPreScreenQuestion = {
+  id: string;
+  prompt: string;
+  type: "text" | "yes_no" | "number" | "choice";
+  options?: string[];
+  required?: boolean;
+};
+
 /** Public job card shown on external sites /careers */
 export type PublicJob = {
   id: string;
@@ -26,6 +35,7 @@ export type PublicJob = {
   applyUrl: string;
   detailUrl: string;
   tenantSlug: string;
+  preScreenQuestions?: PublicPreScreenQuestion[];
 };
 
 export type CareersTenantContext = {
@@ -246,6 +256,24 @@ export function toPublicJob(
   const hideCompany = shouldHideCompanyOnCareers();
   const slug = (tenantSlug || "careers").toLowerCase();
 
+  const preScreenQuestions = Array.isArray(job.preScreenQuestions)
+    ? job.preScreenQuestions
+        .filter((q) => q && typeof q === "object" && q.id && q.prompt)
+        .map((q) => ({
+          id: String(q.id),
+          prompt: String(q.prompt).slice(0, 500),
+          type: (["text", "yes_no", "number", "choice"].includes(
+            String(q.type || "text")
+          )
+            ? String(q.type || "text")
+            : "text") as PublicPreScreenQuestion["type"],
+          options: Array.isArray(q.options)
+            ? q.options.map((o) => String(o)).slice(0, 20)
+            : undefined,
+          required: q.required !== false,
+        }))
+    : undefined;
+
   return {
     id,
     title: job.title || "Untitled role",
@@ -261,6 +289,9 @@ export function toPublicJob(
     applyUrl: `${baseUrl}/careers/${slug}/${id}#apply`,
     detailUrl: `${baseUrl}/careers/${slug}/${id}`,
     tenantSlug: slug,
+    ...(preScreenQuestions && preScreenQuestions.length > 0
+      ? { preScreenQuestions }
+      : {}),
   };
 }
 

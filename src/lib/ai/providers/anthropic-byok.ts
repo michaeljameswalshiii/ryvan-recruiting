@@ -139,6 +139,38 @@ async function executeToolByName(
     return `Error: ${result.error || 'Unknown error'}`;
   }
 
+  if (toolName === 'fetch_website') {
+    const url =
+      (toolInput.url as string) ||
+      (toolInput.query as string) ||
+      query ||
+      '';
+    const result = await executeTool(
+      'fetch_website',
+      { query: url, url } as any,
+      toolContext
+    );
+    if (result.success && result.data) {
+      const data = result.data as {
+        finalUrl?: string;
+        url?: string;
+        title?: string;
+        text?: string;
+        truncated?: boolean;
+      };
+      return [
+        `URL: ${data.finalUrl || data.url || url}`,
+        data.title ? `Title: ${data.title}` : null,
+        data.truncated ? '(content truncated)' : null,
+        '',
+        data.text || '',
+      ]
+        .filter((x) => x !== null)
+        .join('\n');
+    }
+    return `Error: ${result.error || 'Failed to fetch website'}`;
+  }
+
   if (toolName === 'internal_data') {
     const result = await executeTool(
       'internal_data',
@@ -190,6 +222,7 @@ export async function runAnthropicByokAgent(params: {
     params.systemPrompt ||
     `You are a recruiting and business development AI assistant inside Trio ATS.
 Specialize in talent sourcing and company research.
+Use fetch_website when the user gives a company URL or asks you to examine a website — do not claim you cannot open URLs.
 Use tools when they help. Be concise and actionable.`;
 
   const tools = useTools ? getToolSchemas() : [];

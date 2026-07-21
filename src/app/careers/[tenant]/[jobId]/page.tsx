@@ -91,6 +91,7 @@ export default async function TenantCareersJobPage({ params }: Props) {
               jobId={pub.id}
               jobTitle={pub.title}
               tenantSlug={ctx.slug}
+              preScreenQuestions={pub.preScreenQuestions}
             />
           </div>
         </section>

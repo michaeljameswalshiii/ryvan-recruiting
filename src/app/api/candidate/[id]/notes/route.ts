@@ -32,12 +32,9 @@ export async function POST(
     const body = await request.json();
     const { noteText, noteType = 'general', createdBy, stage } = body;
 
-    if (!noteText || noteText.trim() === '') {
-      return NextResponse.json(
-        { error: 'Note text is required' },
-        { status: 400 }
-      );
-    }
+    // Detail text is optional — action type alone can be logged
+    const finalNoteText =
+      typeof noteText === 'string' ? noteText.trim() : '';
 
     const session = await getSession();
     const user =
@@ -51,7 +48,6 @@ export async function POST(
     }
 
     const { stageUpdated, previousStage, newStage } = stageResult;
-    const finalNoteText = noteText.trim();
 
     const result = await addNoteToCandidate(id, finalNoteText, user, {
       stage: stageToStore || null,

@@ -366,15 +366,56 @@ function normalizeIncomingPhones(contact: any): {
         }))
     : undefined;
 
-  if ((!phones || phones.length === 0) && typeof contact?.phone === 'string' && contact.phone.trim()) {
-    phones = [
-      {
+  const workPhone = String(
+    contact?.workPhone || contact?.work_phone || ''
+  ).trim();
+  const mobilePhone = String(
+    contact?.mobilePhone ||
+      contact?.mobile_phone ||
+      contact?.cellPhone ||
+      contact?.cell_phone ||
+      ''
+  ).trim();
+
+  if ((!phones || phones.length === 0) && (workPhone || mobilePhone)) {
+    phones = [];
+    if (workPhone) {
+      phones.push({
         id: generateId(),
         type: 'work',
-        number: contact.phone.trim(),
-        isPreferred: true,
-      },
-    ];
+        number: workPhone,
+        isPreferred: !mobilePhone,
+      });
+    }
+    if (mobilePhone) {
+      phones.push({
+        id: generateId(),
+        type: 'mobile',
+        number: mobilePhone,
+        isPreferred: !workPhone,
+      });
+    }
+  }
+
+  if ((!phones || phones.length === 0) && typeof contact?.phone === 'string' && contact.phone.trim()) {
+    const raw = contact.phone.trim();
+    // Support AI/paste style "work / mobile"
+    const parts = raw.split(/\s*[/|;]\s*/).map((p: string) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      phones = [
+        { id: generateId(), type: 'work', number: parts[0], isPreferred: true },
+        { id: generateId(), type: 'mobile', number: parts[1], isPreferred: false },
+      ];
+    } else {
+      phones = [
+        {
+          id: generateId(),
+          type: 'work',
+          number: raw,
+          isPreferred: true,
+        },
+      ];
+    }
   }
 
   if (phones && phones.length > 0 && !phones.some((p) => p.isPreferred)) {

@@ -1,16 +1,11 @@
 {
   "mcpServers": {
     "trio-recruiting": {
-      "command": "npx",
-      "args": [
-        "tsx",
-        "C:/Users/micha/turnkey-optimization/mcp-server/src/index.ts"
-      ],
-      "env": {
-        "TRIO_MCP_MODE": "http",
-        "TRIO_APP_URL": "https://turnkey-optimization.vercel.app",
-        "TRIO_MCP_API_KEY": "trio_mcp_PASTE_KEY_FROM_SETTINGS",
-        "TRIO_TENANT_ID": "PASTE_TENANT_ID_FROM_SETTINGS"
+      "type": "http",
+      "url": "https://YOUR_APP.vercel.app/api/mcp",
+      "headers": {
+        "Authorization": "Bearer trio_mcp_PASTE_KEY_FROM_SETTINGS",
+        "X-Trio-Tenant-Id": "PASTE_TENANT_ID_FROM_SETTINGS"
       }
     }
   }

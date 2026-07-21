@@ -3,16 +3,31 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 
+export type CareersPreScreenQuestion = {
+  id: string;
+  prompt: string;
+  type?: "text" | "yes_no" | "number" | "choice";
+  options?: string[];
+  required?: boolean;
+};
+
 type Props = {
   jobId: string;
   jobTitle: string;
   tenantSlug: string;
+  preScreenQuestions?: CareersPreScreenQuestion[];
 };
 
 const MAX_MB = 10;
-const ACCEPT = ".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const ACCEPT =
+  ".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
+export function CareersApplyForm({
+  jobId,
+  jobTitle,
+  tenantSlug,
+  preScreenQuestions,
+}: Props) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -20,9 +35,18 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
   const [message, setMessage] = useState("");
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [website, setWebsite] = useState(""); // honeypot
-  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
+  const [screenAnswers, setScreenAnswers] = useState<Record<string, string>>(
+    {}
+  );
+  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">(
+    "idle"
+  );
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const questions = Array.isArray(preScreenQuestions)
+    ? preScreenQuestions.filter((q) => q?.id && q?.prompt)
+    : [];
 
   function onPickFile(file: File | null) {
     setError("");
@@ -37,13 +61,21 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
       return;
     }
     const lower = file.name.toLowerCase();
-    if (!lower.endsWith(".pdf") && !lower.endsWith(".docx") && !lower.endsWith(".doc")) {
+    if (
+      !lower.endsWith(".pdf") &&
+      !lower.endsWith(".docx") &&
+      !lower.endsWith(".doc")
+    ) {
       setError("Please upload a PDF or Word (.docx) resume");
       setResumeFile(null);
       if (fileRef.current) fileRef.current.value = "";
       return;
     }
     setResumeFile(file);
+  }
+
+  function setAnswer(id: string, value: string) {
+    setScreenAnswers((prev) => ({ ...prev, [id]: value }));
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -53,6 +85,14 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
       setStatus("err");
       setError("Please attach your resume (PDF or Word) to apply");
       return;
+    }
+    for (const q of questions) {
+      if (q.required === false) continue;
+      if (!String(screenAnswers[q.id] || "").trim()) {
+        setStatus("err");
+        setError(`Please answer: ${q.prompt}`);
+        return;
+      }
     }
     setStatus("loading");
     try {
@@ -66,6 +106,9 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
       form.set("linkedinUrl", linkedinUrl);
       form.set("website", website);
       form.set("resume", resumeFile);
+      if (questions.length > 0) {
+        form.set("screenAnswers", JSON.stringify(screenAnswers));
+      }
 
       const res = await fetch("/api/public/careers/apply", {
         method: "POST",
@@ -96,6 +139,9 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
     );
   }
 
+  const inputClass =
+    "mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/5";
+
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       {/* Honeypot — leave empty */}
@@ -118,7 +164,7 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/5"
+          className={inputClass}
         />
       </div>
       <div>
@@ -130,7 +176,7 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/5"
+          className={inputClass}
         />
       </div>
       <div>
@@ -139,7 +185,7 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
           type="tel"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/5"
+          className={inputClass}
         />
       </div>
 
@@ -154,7 +200,7 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
           placeholder="https://www.linkedin.com/in/yourname"
           value={linkedinUrl}
           onChange={(e) => setLinkedinUrl(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/5"
+          className={inputClass}
         />
       </div>
 
@@ -199,6 +245,92 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
         )}
       </div>
 
+      {questions.length > 0 && (
+        <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">
+              Screening questions
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Please answer the questions below before submitting.
+            </p>
+          </div>
+          {questions.map((q) => {
+            const required = q.required !== false;
+            const type = q.type || "text";
+            const label = (
+              <label className="block text-sm font-medium text-slate-700">
+                {q.prompt}
+                {required ? " *" : ""}
+              </label>
+            );
+            if (type === "yes_no") {
+              return (
+                <div key={q.id}>
+                  {label}
+                  <select
+                    required={required}
+                    value={screenAnswers[q.id] || ""}
+                    onChange={(e) => setAnswer(q.id, e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Select…</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </div>
+              );
+            }
+            if (type === "choice" && q.options && q.options.length > 0) {
+              return (
+                <div key={q.id}>
+                  {label}
+                  <select
+                    required={required}
+                    value={screenAnswers[q.id] || ""}
+                    onChange={(e) => setAnswer(q.id, e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Select…</option>
+                    {q.options.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            }
+            if (type === "number") {
+              return (
+                <div key={q.id}>
+                  {label}
+                  <input
+                    type="number"
+                    required={required}
+                    value={screenAnswers[q.id] || ""}
+                    onChange={(e) => setAnswer(q.id, e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+              );
+            }
+            return (
+              <div key={q.id}>
+                {label}
+                <input
+                  type="text"
+                  required={required}
+                  value={screenAnswers[q.id] || ""}
+                  onChange={(e) => setAnswer(q.id, e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div>
         <label className="block text-sm font-medium text-slate-700">
           Message{" "}
@@ -209,7 +341,7 @@ export function CareersApplyForm({ jobId, jobTitle, tenantSlug }: Props) {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder="Anything you'd like us to know…"
-          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/5"
+          className={inputClass}
         />
       </div>
 

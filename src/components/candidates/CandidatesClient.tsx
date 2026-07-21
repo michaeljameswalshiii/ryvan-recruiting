@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { useLeads, useDeleteLead } from '@/lib/hooks/query-lead';
 import { ResumeCreateCard } from '@/components/candidates/ResumeCreateCard';
 import { MergeCandidatesModal } from '@/components/candidate/MergeCandidatesModal';
+import { DeskNextActions } from '@/components/desk/DeskNextActions';
 import { APPLICATION_STAGES, mapLegacyStageToApplicationStage } from '@/lib/schemas/lead';
 
 type SortKey = 'last_activity' | 'name' | 'added' | 'stage';
@@ -31,11 +32,43 @@ type StageBucket =
   | 'placed'
   | 'rejected';
 
-/** Canonical 5-step progress bar used in the list (matches mockup). */
+/** Canonical progress bar used in the list (matches candidate detail pipeline). */
 const PROGRESS_STEPS = [
-  { key: 'identified', label: 'Identified', match: ['sourced', 'left_message', 'text', 'email', 'other', 'contacted', 'identification', 'outreach', 'new'] },
-  { key: 'submitted', label: 'Submitted', match: ['pre_screened', 'submitted', 'presented', 'conversation', 'qualified'] },
-  { key: 'interviewing', label: 'Interviewing', match: ['interviewing', 'interview'] },
+  {
+    key: 'sourced',
+    label: 'Sourced',
+    match: [
+      'sourced',
+      'left_message',
+      'text',
+      'email',
+      'other',
+      'contacted',
+      'identification',
+      'outreach',
+      'new',
+      'identified',
+    ],
+  },
+  { key: 'applied', label: 'Applied', match: ['applied', 'application'] },
+  { key: 'interested', label: 'Interested', match: ['interested'] },
+  {
+    key: 'submitted',
+    label: 'Submitted',
+    match: ['pre_screened', 'submitted', 'presented', 'conversation', 'qualified'],
+  },
+  {
+    key: 'interviewing',
+    label: 'Interviewing',
+    match: [
+      'interviewing',
+      'interview',
+      'second_interview',
+      'third_interview',
+      '2nd_interview',
+      '3rd_interview',
+    ],
+  },
   { key: 'offer_out', label: 'Offer Out', match: ['offer_out', 'offer_accepted', 'offer'] },
   { key: 'placed', label: 'Placed', match: ['placed', 'accept', 'converted', 'hired'] },
 ] as const;
@@ -85,7 +118,8 @@ function stageLabel(stage: string) {
 
 function getProgressIndex(stage: string): number {
   const s = stage.toLowerCase();
-  if (['rejected', 'not_interested', 'offer_declined'].includes(s)) return 0;
+  if (['rejected', 'not_interested', 'offer_declined', 'dnu', 'do_not_use'].includes(s))
+    return 0;
   for (let i = PROGRESS_STEPS.length - 1; i >= 0; i--) {
     if (PROGRESS_STEPS[i].match.includes(s) || PROGRESS_STEPS[i].key === s) {
       return i + 1; // 1-based step completed
@@ -487,6 +521,8 @@ export function CandidatesClient() {
 
       {showResumeCard && <ResumeCreateCard />}
 
+      <DeskNextActions compact limit={8} />
+
       {/* Pipeline stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {statCards.map((card) => {
@@ -596,8 +632,11 @@ export function CandidatesClient() {
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((c) => {
                   const displayStage =
-                    c.stage === 'sourced' || c.stage === 'identification' || c.stage === 'new'
-                      ? 'Identified'
+                    c.stage === 'sourced' ||
+                    c.stage === 'identification' ||
+                    c.stage === 'new' ||
+                    c.stage === 'identified'
+                      ? 'Sourced'
                       : stageLabel(c.stage);
                   return (
                     <tr key={c.id} className="hover:bg-gray-50/80 transition-colors">

@@ -22,6 +22,8 @@ import {
   ChevronDown,
   Info,
   MessageSquare,
+  ListOrdered,
+  Network,
 } from "lucide-react";
 import { logout } from "@/lib/api/auth-client";
 import { useTheme } from "@/components/ThemeProvider";
@@ -38,7 +40,10 @@ const navItems = [
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
   { href: "/dashboard/contact-info", label: "Contact Info", icon: Info },
   { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
+  { href: "/dashboard/talent-graph", label: "Talent Graph", icon: Network },
+  { href: "/dashboard/sequences", label: "Sequences", icon: ListOrdered },
   { href: "/dashboard/general-ai-usage", label: "AI Assistant", icon: MessageSquare },
+  { href: "/dashboard/ai-reliability", label: "AI Reliability", icon: Activity },
   { href: "/dashboard/issues", label: "Issues", icon: AlertCircle },
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
@@ -96,10 +101,17 @@ export function DashboardNav({ session }: DashboardNavProps) {
 
   return (
     <nav className="w-64 h-screen bg-sidebar border-r border-border fixed left-0 top-0 flex flex-col">
-      <div className="p-6 border-b border-border flex items-center justify-between">
-        <h1 className="text-xl font-bold">Trio Recruiting</h1>
+      <div className="px-3 pt-3 pb-2 border-b border-border flex items-start justify-between gap-2">
+        <Link href="/dashboard" className="min-w-0 flex-1">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/branding/trio-sourcing-logo.png"
+            alt="Trio Sourcing — Powered by Ryvan Recruiting"
+            className="w-full h-auto max-h-[5.5rem] object-contain object-left object-top"
+          />
+        </Link>
         {/* Theme Toggle */}
-        <div className="flex gap-1">
+        <div className="flex gap-1 shrink-0">
           {themeOptions.map((option) => (
             <button
               key={option.value}

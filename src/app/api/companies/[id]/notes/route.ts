@@ -26,17 +26,13 @@ export async function POST(
     const body = await request.json();
     const { noteText, noteType = 'general', createdBy } = body;
 
-    if (!noteText || noteText.trim() === '') {
-      return NextResponse.json(
-        { error: 'Note text is required' },
-        { status: 400 }
-      );
-    }
+    // Detail text optional — type alone is enough
+    const text = typeof noteText === 'string' ? noteText.trim() : '';
 
     // Use provided createdBy or default to 'system'
     const user = createdBy || 'system';
 
-    const result = await addNoteToCompany(id, noteText, user, noteType);
+    const result = await addNoteToCompany(id, text, user, noteType);
 
     if (!result.success) {
       return NextResponse.json(

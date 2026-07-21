@@ -94,7 +94,18 @@ const PIPELINE_STEPS = [
     label: 'Submitted',
     match: ['submitted', 'pre_screened', 'presented', 'conversation', 'qualified'],
   },
-  { key: 'interviewing', label: 'Interviewing', match: ['interviewing', 'interview'] },
+  {
+    key: 'interviewing',
+    label: 'Interviewing',
+    match: [
+      'interviewing',
+      'interview',
+      'second_interview',
+      'third_interview',
+      '2nd_interview',
+      '3rd_interview',
+    ],
+  },
   {
     key: 'offer_out',
     label: 'Offer Out',
@@ -107,7 +118,7 @@ const PIPELINE_STEPS = [
   },
 ] as const;
 
-const REJECTED = ['rejected', 'not_interested', 'offer_declined', 'withdrawn'];
+const REJECTED = ['rejected', 'not_interested', 'offer_declined', 'withdrawn', 'dnu', 'do_not_use'];
 
 /** Header fields that support click-to-edit / paste-and-save */
 type HeaderFieldKey =
@@ -1402,7 +1413,6 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   {NOTE_TYPES.map((t) => (
                     <option key={t.value} value={t.value}>
                       {t.label}
-                      {'drivesStage' in t && t.drivesStage ? ' · stage' : ''}
                     </option>
                   ))}
                 </select>
