@@ -13,14 +13,27 @@ import {
   Pencil,
   Eye,
   Combine,
+  ChevronDown,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useLeads, useDeleteLead } from '@/lib/hooks/query-lead';
+import { toast } from 'sonner';
+import {
+  useLeads,
+  useDeleteLead,
+  useUpdateLeadStatus,
+} from '@/lib/hooks/query-lead';
 import { ResumeCreateCard } from '@/components/candidates/ResumeCreateCard';
 import { MergeCandidatesModal } from '@/components/candidate/MergeCandidatesModal';
+import { StageChangeNoteModal } from '@/components/candidate/StageChangeNoteModal';
 import { DeskNextActions } from '@/components/desk/DeskNextActions';
-import { APPLICATION_STAGES, mapLegacyStageToApplicationStage } from '@/lib/schemas/lead';
+import {
+  APPLICATION_STAGES,
+  mapLegacyStageToApplicationStage,
+  getStageLabel,
+} from '@/lib/schemas/lead';
+import { noteTypeFromStage } from '@/lib/candidates/note-type-stage';
 
 type SortKey = 'last_activity' | 'name' | 'added' | 'stage';
 
@@ -178,7 +191,7 @@ function getProgressColor(step: number) {
 
 function stageBadgeClasses(stage: string) {
   const s = stage.toLowerCase();
-  if (['rejected', 'not_interested', 'offer_declined'].includes(s)) {
+  if (['rejected', 'not_interested', 'offer_declined', 'dnu', 'do_not_use'].includes(s)) {
     return 'bg-rose-50 text-rose-700 border-rose-200';
   }
   if (['placed', 'accept', 'converted', 'hired'].includes(s)) {
@@ -187,7 +200,14 @@ function stageBadgeClasses(stage: string) {
   if (['offer_out', 'offer_accepted', 'offer'].includes(s)) {
     return 'bg-amber-50 text-amber-800 border-amber-200';
   }
-  if (['interviewing', 'interview'].includes(s)) {
+  if (
+    [
+      'interviewing',
+      'interview',
+      'second_interview',
+      'third_interview',
+    ].includes(s)
+  ) {
     return 'bg-violet-50 text-violet-700 border-violet-200';
   }
   if (['submitted', 'pre_screened', 'presented'].includes(s)) {
@@ -195,6 +215,30 @@ function stageBadgeClasses(stage: string) {
   }
   return 'bg-slate-50 text-slate-700 border-slate-200';
 }
+
+function formatSourceLabel(source?: string): string {
+  if (!source) return 'Manual';
+  const map: Record<string, string> = {
+    manual: 'Manual',
+    linkedin: 'LinkedIn',
+    referral: 'Referral',
+    website: 'Website',
+    indeed: 'Indeed',
+    zip: 'Zip',
+    ziprecruiter: 'Zip',
+    job_board: 'Job Board',
+    resume: 'Resume Upload',
+    other: 'Other',
+  };
+  const key = String(source).trim().toLowerCase().replace(/\s+/g, '_');
+  return map[key] || source;
+}
+
+/** Stages shown in the list dropdown (application pipeline). */
+const LIST_STAGE_OPTIONS = APPLICATION_STAGES.map((s) => ({
+  id: s.value,
+  label: s.label,
+}));
 
 function matchesBucket(stage: string, bucket: StageBucket): boolean {
   if (bucket === 'all') return true;
@@ -266,6 +310,7 @@ export function CandidatesClient() {
   const router = useRouter();
   const { data: leads = [], isLoading, error, refetch, isFetching } = useLeads();
   const deleteLeadMutation = useDeleteLead();
+  const updateLeadStatusMutation = useUpdateLeadStatus();
 
   const [search, setSearch] = useState('');
   const [bucket, setBucket] = useState<StageBucket>('all');
@@ -278,6 +323,15 @@ export function CandidatesClient() {
     email?: string;
     createdAt?: string;
   } | null>(null);
+  /** Pending stage change from list dropdown — confirm with optional note */
+  const [pendingStageChange, setPendingStageChange] = useState<{
+    id: string;
+    name: string;
+    oldStage: string;
+    newStage: string;
+    jobTitle: string;
+  } | null>(null);
+  const [stageApplying, setStageApplying] = useState(false);
 
   const candidates = useMemo(() => (Array.isArray(leads) ? leads : []), [leads]);
 
@@ -294,7 +348,7 @@ export function CandidatesClient() {
         name: c.name || 'Unknown',
         title: c.title || c.jobTitle || '',
         email: c.email || '',
-        source: c.source || 'Manual',
+        source: formatSourceLabel(c.source),
         stage,
         progress,
         linked,
@@ -303,6 +357,78 @@ export function CandidatesClient() {
       };
     });
   }, [candidates]);
+
+  /**
+   * User picked a new stage in the list — open note modal first (can skip).
+   */
+  const onStageSelect = (
+    candidate: {
+      id: string;
+      name: string;
+      stage: string;
+      linked: { title: string } | null;
+    },
+    nextStage: string
+  ) => {
+    if (!candidate.id || !nextStage || nextStage === candidate.stage) return;
+    setOpenMenuId(null);
+    setPendingStageChange({
+      id: candidate.id,
+      name: candidate.name || 'Candidate',
+      oldStage: candidate.stage,
+      newStage: nextStage,
+      jobTitle: candidate.linked?.title || 'Candidate pipeline',
+    });
+  };
+
+  /**
+   * Apply stage update (+ optional activity note) after modal Save / Skip.
+   */
+  const applyPendingStageChange = async (noteText: string) => {
+    if (!pendingStageChange) return;
+    const { id, name, oldStage, newStage } = pendingStageChange;
+    setStageApplying(true);
+    try {
+      await updateLeadStatusMutation.mutateAsync({
+        leadId: id,
+        newStatus: newStage,
+        oldStatus: oldStage,
+      });
+
+      const trimmed = (noteText || '').trim();
+      if (trimmed) {
+        const noteType = noteTypeFromStage(newStage) || 'general';
+        const res = await fetch(`/api/candidate/${encodeURIComponent(id)}/notes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            noteText: trimmed,
+            // Use general so we don't double-apply stage (status already updated)
+            noteType: 'general',
+            stage: newStage,
+            metadata: { stageChangeNote: true, from: oldStage, to: newStage, noteType },
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          console.warn('[Candidates] stage note failed', data);
+          toast.error('Stage updated, but note failed to save');
+        }
+      }
+
+      // useUpdateLeadStatus already toasts on success
+      setPendingStageChange(null);
+      void refetch();
+    } catch (err: any) {
+      // mutation also toasts; keep fallback if thrown outside
+      if (!err?.message?.includes('Failed to move')) {
+        toast.error(err?.message || 'Failed to update stage');
+      }
+    } finally {
+      setStageApplying(false);
+    }
+  };
 
   const stats = useMemo(() => {
     const counts = {
@@ -483,7 +609,7 @@ export function CandidatesClient() {
   }
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="space-y-5 w-full max-w-none pb-10">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -601,9 +727,19 @@ export function CandidatesClient() {
           </div>
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm">
+          {/* Horizontal scroll so Last Activity / Actions are not clipped */}
+          <div className="overflow-x-auto pb-1">
+            <table className="w-full min-w-[1100px] table-fixed">
+              <colgroup>
+                <col className="w-[22%]" />
+                <col className="w-[18%]" />
+                <col className="w-[10%]" />
+                <col className="w-[20%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
                   <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
@@ -631,13 +767,11 @@ export function CandidatesClient() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((c) => {
-                  const displayStage =
-                    c.stage === 'sourced' ||
-                    c.stage === 'identification' ||
-                    c.stage === 'new' ||
-                    c.stage === 'identified'
-                      ? 'Sourced'
-                      : stageLabel(c.stage);
+                  const stageValue = LIST_STAGE_OPTIONS.some((o) => o.id === c.stage)
+                    ? c.stage
+                    : normalizeStage(c.stage);
+                  const isUpdating =
+                    stageApplying && pendingStageChange?.id === c.id;
                   return (
                     <tr key={c.id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="px-4 py-3.5">
@@ -687,19 +821,50 @@ export function CandidatesClient() {
                         )}
                       </td>
 
-                      <td className="px-4 py-3.5 text-sm text-gray-700">
+                      <td className="px-4 py-3.5 text-sm text-gray-700 truncate">
                         {c.source || 'Manual'}
                       </td>
 
                       <td className="px-4 py-3.5">
-                        <div className="space-y-1.5 min-w-[140px]">
+                        <div className="space-y-1.5 min-w-[160px]">
                           <div className="flex items-center gap-2">
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${stageBadgeClasses(c.stage)}`}
-                            >
-                              {displayStage}
-                            </span>
-                            <span className="text-[11px] text-gray-400 tabular-nums">
+                            <div className="relative inline-flex items-center min-w-0">
+                              <select
+                                value={
+                                  LIST_STAGE_OPTIONS.some((o) => o.id === c.stage)
+                                    ? c.stage
+                                    : stageValue
+                                }
+                                disabled={isUpdating || stageApplying}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  const next = e.target.value;
+                                  if (!next || next === c.stage) return;
+                                  onStageSelect(c, next);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                title="Change candidate pipeline stage (optional note after)"
+                                aria-label={`Pipeline stage for ${c.name}`}
+                                className={`appearance-none cursor-pointer pr-6 pl-2 py-0.5 rounded-full border text-[11px] font-medium max-w-[10.5rem] truncate disabled:opacity-60 disabled:cursor-wait focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${stageBadgeClasses(c.stage)}`}
+                              >
+                                {!LIST_STAGE_OPTIONS.some((o) => o.id === c.stage) && (
+                                  <option value={c.stage}>{stageLabel(c.stage)}</option>
+                                )}
+                                {LIST_STAGE_OPTIONS.map((opt) => (
+                                  <option key={opt.id} value={opt.id}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-current opacity-60">
+                                {isUpdating ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <ChevronDown className="h-3 w-3" />
+                                )}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-gray-400 tabular-nums shrink-0">
                               {Math.min(c.progress, 5)} of 5
                             </span>
                           </div>
@@ -710,7 +875,7 @@ export function CandidatesClient() {
                                 className={`h-1.5 flex-1 rounded-full ${
                                   i < c.progress
                                     ? getProgressColor(c.progress)
-                                    : 'bg-gray-150 bg-gray-200'
+                                    : 'bg-gray-200'
                                 }`}
                               />
                             ))}
@@ -749,7 +914,7 @@ export function CandidatesClient() {
                             <MoreHorizontal className="h-4 w-4 text-gray-500" />
                           </Button>
                           {openMenuId === c.id && (
-                            <div className="absolute right-0 top-9 z-20 w-44 rounded-lg border border-gray-200 bg-white shadow-lg py-1 text-left">
+                            <div className="absolute right-0 top-9 z-30 w-44 rounded-lg border border-gray-200 bg-white shadow-lg py-1 text-left">
                               <button
                                 type="button"
                                 className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
@@ -779,7 +944,7 @@ export function CandidatesClient() {
                                     id: c.id,
                                     name: c.name || 'Candidate',
                                     email: c.email,
-                                    createdAt: c.added || c.createdAt || c.created_at,
+                                    createdAt: c.added,
                                   });
                                 }}
                               >
@@ -812,6 +977,26 @@ export function CandidatesClient() {
           currentCandidate={mergeCandidate}
         />
       )}
+
+      <StageChangeNoteModal
+        isOpen={!!pendingStageChange}
+        newStage={pendingStageChange?.newStage || ''}
+        newStageLabel={
+          pendingStageChange
+            ? getStageLabel(pendingStageChange.newStage) ||
+              stageLabel(pendingStageChange.newStage)
+            : undefined
+        }
+        jobTitle={pendingStageChange?.jobTitle || 'Candidate pipeline'}
+        candidateName={pendingStageChange?.name || 'Candidate'}
+        isApplying={stageApplying}
+        onSaveNote={async (note) => {
+          await applyPendingStageChange(note);
+        }}
+        onSkip={() => {
+          void applyPendingStageChange('');
+        }}
+      />
     </div>
   );
 }

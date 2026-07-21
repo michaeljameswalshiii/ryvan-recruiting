@@ -11,13 +11,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { APPLICATION_STAGES } from "@/lib/schemas/lead";
 
-// Source options
+// Source options — Indeed / Zip are primary boards; Job Board kept for others
 const sourceOptions = [
   { value: "manual", label: "Manual Entry" },
   { value: "linkedin", label: "LinkedIn" },
   { value: "referral", label: "Referral" },
   { value: "website", label: "Website" },
+  { value: "indeed", label: "Indeed" },
+  { value: "zip", label: "Zip" },
   { value: "job_board", label: "Job Board" },
+  { value: "resume", label: "Resume Upload" },
   { value: "other", label: "Other" },
 ];
 

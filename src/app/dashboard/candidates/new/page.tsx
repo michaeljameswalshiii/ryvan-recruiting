@@ -32,6 +32,8 @@ const sourceOptions = [
   { value: 'linkedin', label: 'LinkedIn' },
   { value: 'referral', label: 'Referral' },
   { value: 'website', label: 'Website' },
+  { value: 'indeed', label: 'Indeed' },
+  { value: 'zip', label: 'Zip' },
   { value: 'job_board', label: 'Job Board' },
   { value: 'resume', label: 'Resume Upload' },
   { value: 'other', label: 'Other' },

@@ -23,10 +23,13 @@ interface StageChangeNoteModalProps {
   isOpen: boolean;
   newStage: string;
   newStageLabel?: string;
-  jobTitle: string;
+  /** Job title or a short context label (e.g. "Pipeline") */
+  jobTitle?: string;
   candidateName: string;
   onSaveNote: (note: string) => Promise<void>;
   onSkip: () => void;
+  /** Optional: show while stage is being written before note save */
+  isApplying?: boolean;
 }
 
 // Get display label for stage
@@ -44,12 +47,15 @@ function getStageDisplayLabel(stage: string): string {
     pre_screened: "Pre-Screened",
     submitted: "Submitted",
     interviewing: "Interviewing",
+    second_interview: "2nd Interview",
+    third_interview: "3rd Interview",
     offer_out: "Offer Out",
     offer_accepted: "Offer Accepted",
     offer_declined: "Offer Declined",
     placed: "Placed",
     rejected: "Rejected",
     not_interested: "Not Interested",
+    dnu: "DNU",
   };
   return stageLabels[stage] || stage;
 }
@@ -83,13 +89,15 @@ export function StageChangeNoteModal({
   isOpen,
   newStage,
   newStageLabel,
-  jobTitle,
+  jobTitle = "Pipeline",
   candidateName,
   onSaveNote,
   onSkip,
+  isApplying = false,
 }: StageChangeNoteModalProps) {
   const [note, setNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const busy = isSaving || isApplying;
   
   // Reset note when modal opens with new stage
   useEffect(() => {
@@ -100,7 +108,7 @@ export function StageChangeNoteModal({
 
   const handleSave = async () => {
     if (!note.trim()) {
-      // Don't save empty notes, just skip
+      // Don't save empty notes, just apply stage without a note
       onSkip();
       return;
     }
@@ -108,7 +116,7 @@ export function StageChangeNoteModal({
     setIsSaving(true);
     try {
       await onSaveNote(note);
-      toast.success("Note added successfully");
+      // Parent closes modal after apply; avoid double toasts when parent already notified
     } catch (err: any) {
       console.error("[StageChangeNoteModal] Error saving note:", err);
       toast.error(err.message || "Failed to save note");
@@ -183,7 +191,7 @@ export function StageChangeNoteModal({
             placeholder="Add a note about this stage change..."
             rows={3}
             className="resize-none"
-            disabled={isSaving}
+            disabled={busy}
           />
         </div>
 
@@ -192,18 +200,18 @@ export function StageChangeNoteModal({
           <Button
             variant="outline"
             onClick={handleSkip}
-            disabled={isSaving}
+            disabled={busy}
             className="flex items-center gap-2"
           >
             <X className="w-4 h-4" />
-            Skip
+            Skip note
           </Button>
           <Button
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={busy}
             className="flex items-center gap-2"
           >
-            {isSaving ? (
+            {busy ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Saving...
