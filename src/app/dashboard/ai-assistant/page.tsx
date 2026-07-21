@@ -7,6 +7,10 @@ import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateCrmCaches } from "@/lib/hooks/invalidate-crm-cache";
+import {
+  explainAiFetchError,
+  parseAiFetchResponse,
+} from "@/lib/ai/parse-response";
 
 interface Message {
   id: string;
@@ -179,72 +183,110 @@ content: "You are a helpful AI assistant. You can help with a wide range of task
     ];
 
 // Call our API route — platform Bedrock or Anthropic BYOK
-const res = await fetch("/api/bedrock", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: chatMessages,
-        useSearch: true,
-        // CRM tools need Claude tool_use; Nova uses Converse chat only.
-        // Most Efficient (auto) may pick Grok 4.3 / Sonnet when tools are needed.
-        useTools:
-          provider !== "bedrock" ||
-          platformModel === "auto" ||
-          platformModel === "haiku" ||
-          platformModel === "grok-4.3" ||
-          platformModel === "sonnet",
-        provider,
-        model: provider === "bedrock" ? platformModel : undefined,
-      }),
-    });
-    const result = await res.json();
-    if (result.modelLabel) {
-      setLastProviderUsed(
-        result.provider
-          ? `${result.provider}:${result.modelLabel}`
-          : result.modelLabel
-      );
-    } else if (result.provider) {
-      setLastProviderUsed(result.provider);
+    try {
+      const controller = new AbortController();
+      const abortTimer = setTimeout(() => controller.abort(), 90_000);
+      let res: Response;
+      try {
+        res = await fetch("/api/bedrock", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          signal: controller.signal,
+          body: JSON.stringify({
+            messages: chatMessages,
+            useSearch: true,
+            // CRM tools need Claude tool_use; Nova uses Converse chat only.
+            // Most Efficient (auto) may pick Grok 4.3 / Sonnet when tools are needed.
+            useTools:
+              provider !== "bedrock" ||
+              platformModel === "auto" ||
+              platformModel === "haiku" ||
+              platformModel === "grok-4.3" ||
+              platformModel === "sonnet",
+            provider,
+            model: provider === "bedrock" ? platformModel : undefined,
+          }),
+        });
+      } finally {
+        clearTimeout(abortTimer);
+      }
+
+      const { data: result, errorMessage, nonJson } =
+        await parseAiFetchResponse(res);
+      if (nonJson) {
+        console.warn("[AI Assistant] non-JSON AI response", {
+          status: res.status,
+          snippet: result.rawSnippet,
+        });
+      }
+
+      if (typeof result.modelLabel === "string" && result.modelLabel) {
+        setLastProviderUsed(
+          typeof result.provider === "string"
+            ? `${result.provider}:${result.modelLabel}`
+            : result.modelLabel
+        );
+      } else if (typeof result.provider === "string" && result.provider) {
+        setLastProviderUsed(result.provider);
+      }
+
+      let assistantMessage: Message;
+      if (errorMessage || result.error) {
+        assistantMessage = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content:
+            errorMessage ||
+            String(
+              result.message ||
+                result.error ||
+                "I'm having trouble connecting to my AI brain right now. Try again in a moment or ask me something simpler."
+            ),
+          timestamp: new Date(),
+        };
+      } else {
+        assistantMessage = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content:
+            (typeof result.response === "string" && result.response) ||
+            "I couldn't generate a response. Please try again.",
+          timestamp: new Date(),
+        };
+      }
+
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      // After CRM write tools (create company/contact/etc.), refresh list caches
+      const toolsUsed: string[] = Array.isArray(result.toolsUsed)
+        ? (result.toolsUsed as string[])
+        : [];
+      const crmMutated = result.crmMutated === true;
+      if (
+        crmMutated ||
+        toolsUsed.some((t) => /^(create_|update_|link_)/.test(t))
+      ) {
+        void invalidateCrmCaches(queryClient, toolsUsed, {
+          forceClients:
+            crmMutated ||
+            toolsUsed.some((t) => /company|contact|client/i.test(t)),
+          forceAll: crmMutated,
+        });
+      }
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: explainAiFetchError(err),
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
     }
-
-    let assistantMessage: Message;
-    if (result.error) {
-      // Fallback response when Bedrock fails
-      assistantMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: result.suggestion 
-          ? `${result.message || result.error}\n\nTip: ${result.suggestion}`
-          : result.message || result.error || "I'm having trouble connecting to my AI brain right now. Try again in a moment or ask me something simpler.",
-        timestamp: new Date(),
-      };
-    } else {
-      assistantMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: result.response || "I couldn't generate a response. Please try again.",
-        timestamp: new Date(),
-      };
-    }
-
-    setMessages((prev) => [...prev, assistantMessage]);
-
-    // After CRM write tools (create company/contact/etc.), refresh list caches
-    const toolsUsed: string[] = Array.isArray(result.toolsUsed)
-      ? result.toolsUsed
-      : [];
-    const crmMutated = result.crmMutated === true;
-    if (crmMutated || toolsUsed.some((t) => /^(create_|update_|link_)/.test(t))) {
-      void invalidateCrmCaches(queryClient, toolsUsed, {
-        forceClients:
-          crmMutated ||
-          toolsUsed.some((t) => /company|contact|client/i.test(t)),
-        forceAll: crmMutated,
-      });
-    }
-
-    setIsLoading(false);
   };
 
 const copyToClipboard = (content: string, id: string) => {

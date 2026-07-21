@@ -22,6 +22,10 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateCrmCaches } from '@/lib/hooks/invalidate-crm-cache';
+import {
+  explainAiFetchError,
+  parseAiFetchResponse,
+} from '@/lib/ai/parse-response';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -447,33 +451,24 @@ export default function GeneralAiUsagePage() {
         clearTimeout(abortTimer);
       }
 
-      let result: Record<string, unknown> = {};
-      const rawText = await res.text();
-      try {
-        result = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : {};
-      } catch {
-        result = {
-          error:
-            rawText?.slice(0, 280) ||
-            `Empty or non-JSON response (${res.status})`,
-        };
+      const { data: result, errorMessage, nonJson } =
+        await parseAiFetchResponse(res);
+      if (nonJson) {
+        console.warn('[General AI] non-JSON AI response', {
+          status: res.status,
+          snippet: result.rawSnippet,
+        });
       }
 
-      if (!res.ok || result.error) {
-        const errText =
-          typeof result.suggestion === 'string'
-            ? `${String(result.message || result.error)}\n\n${result.suggestion}`
-            : String(
-                result.message ||
-                  result.error ||
-                  `Request failed (${res.status})`
-              );
+      if (errorMessage || result.error) {
         setMessages((prev) => [
           ...prev,
           {
             id: `a-${Date.now()}`,
             role: 'assistant',
-            content: errText,
+            content:
+              errorMessage ||
+              String(result.message || result.error || `Request failed (${res.status})`),
             timestamp: nowIso(),
           },
         ]);
@@ -520,22 +515,12 @@ export default function GeneralAiUsagePage() {
         }
       }
     } catch (err) {
-      const name = err instanceof Error ? err.name : '';
-      const raw = err instanceof Error ? err.message : 'Network error';
-      const isAbort = name === 'AbortError' || /aborted/i.test(raw);
-      const isNetwork =
-        isAbort || /failed to fetch|networkerror|load failed|fetch/i.test(raw);
-      const msg = isAbort
-        ? 'The request timed out after 90 seconds. Try a shorter question, or lock Haiku for simple chat. Complex Sonnet + tools runs can be slow.'
-        : isNetwork
-          ? `Could not reach the AI service (${raw}). This is usually a network blip or server timeout — try again in a moment. If it keeps failing, hard-refresh the page.`
-          : raw;
       setMessages((prev) => [
         ...prev,
         {
           id: `a-${Date.now()}`,
           role: 'assistant',
-          content: msg,
+          content: explainAiFetchError(err),
           timestamp: nowIso(),
         },
       ]);

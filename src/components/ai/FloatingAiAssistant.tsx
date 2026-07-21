@@ -31,6 +31,10 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateCrmCaches } from '@/lib/hooks/invalidate-crm-cache';
+import {
+  explainAiFetchError,
+  parseAiFetchResponse,
+} from '@/lib/ai/parse-response';
 
 // ---------------------------------------------------------------------------
 // Types / storage
@@ -341,11 +345,20 @@ export function FloatingAiAssistant() {
       .slice(-MAX_HISTORY)
       .map((m) => ({ role: m.role, content: m.content }));
 
+    // Abort long-hanging requests so the UI recovers with a clear message
+    const controller = new AbortController();
+    const timeoutMs = 90_000;
+    const timeoutId =
+      typeof window !== 'undefined'
+        ? window.setTimeout(() => controller.abort(), timeoutMs)
+        : undefined;
+
     try {
       const res = await fetch('/api/bedrock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal: controller.signal,
         body: JSON.stringify({
           messages: historyForApi,
           provider: 'bedrock',
@@ -357,31 +370,41 @@ export function FloatingAiAssistant() {
           pageContext: pageCtx.forModel,
         }),
       });
-      const result = await res.json();
 
-      if (!res.ok || result.error) {
-        const errText = result.suggestion
-          ? `${result.message || result.error}\n\n${result.suggestion}`
-          : result.message || result.error || 'Request failed';
+      // Never call res.json() directly — platform errors often return plain text
+      const { data: result, errorMessage, nonJson } =
+        await parseAiFetchResponse(res);
+
+      if (errorMessage || result.error) {
         setMessages((prev) => [
           ...prev,
           {
             id: `a-${Date.now()}`,
             role: 'assistant',
-            content: errText,
+            content:
+              errorMessage ||
+              String(result.message || result.error || 'Request failed'),
             timestamp: nowIso(),
           },
         ]);
+        if (nonJson) {
+          console.warn('[FloatingAi] non-JSON AI response', {
+            status: res.status,
+            snippet: result.rawSnippet,
+          });
+        }
       } else {
         const toolsUsed: string[] = Array.isArray(result.toolsUsed)
-          ? result.toolsUsed
+          ? (result.toolsUsed as string[])
           : [];
         setMessages((prev) => [
           ...prev,
           {
             id: `a-${Date.now()}`,
             role: 'assistant',
-            content: result.response || 'No response generated.',
+            content:
+              (typeof result.response === 'string' && result.response) ||
+              'No response generated.',
             timestamp: nowIso(),
             toolsUsed,
             modelLabel:
@@ -403,17 +426,18 @@ export function FloatingAiAssistant() {
         }
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Network error';
+      const msg = explainAiFetchError(err);
       setMessages((prev) => [
         ...prev,
         {
           id: `a-${Date.now()}`,
           role: 'assistant',
-          content: `Could not reach the AI service: ${msg}`,
+          content: msg,
           timestamp: nowIso(),
         },
       ]);
     } finally {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       setIsLoading(false);
     }
   };

@@ -2628,25 +2628,48 @@ ${pageContext}`
     
 } catch (err: unknown) {
     const latencyMs = Date.now() - startTime;
-    const { error: errMsg, status, suggestion } = handleBedrockError(err);
-    
-    // Log error
-    logRequest({
-      query: lastUserQuery,
-      tenantId,
-      toolsUsed: [],
-      latencyMs,
-      error: err instanceof Error ? err.message : "Unknown",
-    });
-    
-    return NextResponse.json(
-      { 
-        error: errMsg,
-        message: errMsg,
-        ...(suggestion && { suggestion })
-      },
-      { status }
-    );
+    try {
+      const { error: errMsg, status, suggestion } = handleBedrockError(err);
+
+      // Log error
+      logRequest({
+        query: lastUserQuery,
+        tenantId,
+        toolsUsed: [],
+        latencyMs,
+        error: err instanceof Error ? err.message : "Unknown",
+      });
+
+      // Always JSON — clients must never see plain-text platform bodies from our handler
+      return NextResponse.json(
+        {
+          error: errMsg,
+          message: errMsg,
+          ...(suggestion && { suggestion }),
+        },
+        {
+          status: status || 500,
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+        }
+      );
+    } catch (secondary: unknown) {
+      // Last resort: never throw out of the route with a non-JSON body
+      console.error("[bedrock] error handler failed:", secondary);
+      const fallback =
+        err instanceof Error ? err.message : "Unknown AI service error";
+      return NextResponse.json(
+        {
+          error: `Bedrock error: ${fallback}`,
+          message: `Bedrock error: ${fallback}`,
+          suggestion:
+            "Try again in a moment. If this persists, hard-refresh or start a new chat.",
+        },
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+        }
+      );
+    }
   }
 }
 
