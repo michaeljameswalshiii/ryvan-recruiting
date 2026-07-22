@@ -5,7 +5,7 @@
  * Results open on a dedicated page — this pane stays focused and calm.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Loader2,
@@ -104,6 +104,10 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
   const [seedCsv, setSeedCsv] = useState('');
   const [showCsv, setShowCsv] = useState(false);
 
+  const jobsRef = useRef(jobs);
+  jobsRef.current = jobs;
+  const tickingRef = useRef(false);
+
   const load = useCallback(async () => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 12_000);
@@ -126,29 +130,53 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
     void load();
   }, [load]);
 
+  // Stable poll/tick loop — must NOT restart when `jobs` changes (that
+  // previously reset the counter and prevented ticks after the first batch).
   useEffect(() => {
-    const hasActive = jobs.some((j) => ACTIVE.has(j.status));
-    if (!hasActive) return;
-    let n = 0;
-    const t = setInterval(() => {
-      void load();
-      n += 1;
-      if (n % 2 === 0) {
-        const runnable = jobs.find(
-          (x) => x.status === 'running' || x.status === 'queued'
-        );
-        if (runnable) {
-          void fetch(`/api/list-builder/${runnable.id}`, {
-            method: 'PATCH',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'tick' }),
-          }).then(() => load());
-        }
+    let cancelled = false;
+
+    const tickActive = async () => {
+      if (tickingRef.current || cancelled) return;
+      const runnable = jobsRef.current.find(
+        (x) => x.status === 'running' || x.status === 'queued'
+      );
+      if (!runnable) return;
+      tickingRef.current = true;
+      try {
+        await fetch(`/api/list-builder/${runnable.id}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'tick' }),
+        });
+        if (!cancelled) await load();
+      } catch {
+        /* quiet */
+      } finally {
+        tickingRef.current = false;
       }
-    }, 12_000);
-    return () => clearInterval(t);
-  }, [jobs, load]);
+    };
+
+    const t = setInterval(() => {
+      const hasActive = jobsRef.current.some((j) => ACTIVE.has(j.status));
+      if (!hasActive) return;
+      void load();
+      void tickActive();
+    }, 15_000);
+
+    // Kick soon after mount if something is already running
+    const kick = setTimeout(() => {
+      if (jobsRef.current.some((j) => j.status === 'running' || j.status === 'queued')) {
+        void tickActive();
+      }
+    }, 3_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+      clearTimeout(kick);
+    };
+  }, [load]);
 
   const action = async (jobId: string, act: string) => {
     setBusyId(jobId);

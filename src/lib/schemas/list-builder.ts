@@ -108,14 +108,16 @@ export const LIST_BUILDER_DEFAULTS = {
   targetSize: 50,
   maxConcurrentPerUser: 10,
   timeoutMs: 2 * 60 * 60 * 1000, // 2 hours
-  batchSize: 5,
+  batchSize: 4,
   maxResultsCap: 200,
   /** Stop after this many consecutive batches with 0 kept rows */
-  maxEmptyBatches: 6,
+  maxEmptyBatches: 8,
   /** Mark failed after this many consecutive hard errors */
   maxConsecutiveErrors: 3,
   /** Soft wall-clock budget per batch (leave headroom under Vercel maxDuration) */
-  batchBudgetMs: 45_000,
+  batchBudgetMs: 48_000,
   /** Bedrock invoke timeout */
-  llmTimeoutMs: 25_000,
+  llmTimeoutMs: 22_000,
+  /** Soft lock TTL after batch starts (shorter = less “stuck” if process dies) */
+  lockMs: 55_000,
 } as const;

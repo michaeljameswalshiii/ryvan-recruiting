@@ -17,7 +17,10 @@ import type {
   ListBuilderSeedRow,
 } from '@/lib/schemas/list-builder';
 import { completeJson } from './llm-json';
-import { fetchPageText } from './fetch-page';
+import {
+  extractContactSignals,
+  fetchCompanyContactPages,
+} from './fetch-page';
 
 function rowId(): string {
   return `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -157,34 +160,52 @@ Page title: ${page.title}
 Page text (truncated):
 ${page.text.slice(0, 8000)}`;
 
-  const { data } = await completeJson<Record<string, string>>(
-    system,
-    user,
-    {
-      tenantId: job?.tenant_id,
-      userId: job?.userId,
-      jobId: job?.id,
-      purpose: 'extract',
-      queryPreview: `${companyName} ${website}`,
-    },
-    { timeoutMs: LIST_BUILDER_DEFAULTS.llmTimeoutMs }
-  );
-  if (!data || typeof data !== 'object') return { sourceUrl: page.url };
+  // Deterministic scrape first (fast, no inventing)
+  const signals = extractContactSignals(page.text);
   const out: Partial<ListBuilderResultRow> = { sourceUrl: page.url };
-  for (const k of [
-    'contactName',
-    'contactTitle',
-    'email',
-    'phone',
-    'city',
-    'state',
-    'industry',
-    'notes',
-  ] as const) {
-    if (typeof data[k] === 'string' && data[k].trim()) {
-      out[k] = data[k].trim();
+  if (signals.emails[0]) out.email = signals.emails[0];
+  if (signals.phones[0]) out.phone = signals.phones[0];
+
+  // LLM for name/title/city when useful — skip if we already have email+phone
+  // and page is short (saves time budget for more companies)
+  const needLlm = !out.email || !out.phone || page.text.length > 400;
+  if (needLlm) {
+    const { data } = await completeJson<Record<string, string>>(
+      system,
+      user,
+      {
+        tenantId: job?.tenant_id,
+        userId: job?.userId,
+        jobId: job?.id,
+        purpose: 'extract',
+        queryPreview: `${companyName} ${website}`,
+      },
+      { timeoutMs: Math.min(LIST_BUILDER_DEFAULTS.llmTimeoutMs, 18_000) }
+    );
+    if (data && typeof data === 'object') {
+      for (const k of [
+        'contactName',
+        'contactTitle',
+        'email',
+        'phone',
+        'city',
+        'state',
+        'industry',
+        'notes',
+      ] as const) {
+        if (typeof data[k] === 'string' && data[k].trim()) {
+          // Prefer regex-found email/phone over model (less hallucination risk)
+          if ((k === 'email' || k === 'phone') && out[k]) continue;
+          out[k] = data[k].trim();
+        }
+      }
     }
   }
+
+  // Prefer regex signals if model left gaps
+  if (!out.email && signals.emails[0]) out.email = signals.emails[0];
+  if (!out.phone && signals.phones[0]) out.phone = signals.phones[0];
+
   // Sanity: reject obviously fake emails
   if (out.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(out.email)) {
     delete out.email;
@@ -304,7 +325,7 @@ async function processListBuilderBatchInner(
 ): Promise<{ job?: ListBuilderJob; error?: string; done?: boolean }> {
   const batchStarted = Date.now();
   const lockUntil = new Date(
-    batchStarted + LIST_BUILDER_DEFAULTS.batchBudgetMs + 10_000
+    batchStarted + LIST_BUILDER_DEFAULTS.lockMs
   ).toISOString();
 
   await setJobStatus(tenantId, jobId, 'running', {
@@ -411,7 +432,8 @@ async function processListBuilderBatchInner(
 
     let extracted: Partial<ListBuilderResultRow> = {};
     if (website && website.includes('.')) {
-      const page = await fetchPageText(website);
+      // Homepage + /contact + /about — far more likely to have email+phone
+      const page = await fetchCompanyContactPages(website);
       if (!('error' in page)) {
         extracted = await extractFromSite(c.companyName, website, page, job);
       } else {

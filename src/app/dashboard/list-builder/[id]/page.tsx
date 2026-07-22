@@ -5,7 +5,7 @@
  * Select rows → import to Trio Companies (Identification) + Contacts.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -98,37 +98,54 @@ export default function ListBuilderResultsPage() {
     void load();
   }, [load]);
 
-  // Poll status and advance the agent (tick) while runnable — do not rely on workbench alone
+  const jobStatusRef = useRef<string | undefined>(undefined);
+  jobStatusRef.current = job?.status;
+  const tickingRef = useRef(false);
+
+  // Stable poll/tick — do not rebind interval when job object updates (that blocked ticks)
   useEffect(() => {
-    if (!job) return;
-    if (!['running', 'queued'].includes(job.status)) {
-      // Still refresh while paused so user sees external cron/resume updates
-      if (job.status === 'paused') {
-        const t = setInterval(() => void load(), 15_000);
-        return () => clearInterval(t);
-      }
-      return;
-    }
-    let n = 0;
-    const t = setInterval(() => {
-      n += 1;
-      void load();
-      // Every other interval (~20s) run a batch tick
-      if (n % 2 === 0) {
-        void fetch(`/api/list-builder/${id}`, {
+    if (!id) return;
+    let cancelled = false;
+
+    const tick = async () => {
+      const status = jobStatusRef.current;
+      if (!status || !['running', 'queued'].includes(status)) return;
+      if (tickingRef.current || cancelled) return;
+      tickingRef.current = true;
+      try {
+        await fetch(`/api/list-builder/${id}`, {
           method: 'PATCH',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'tick' }),
-        })
-          .then(() => load())
-          .catch(() => {
-            /* quiet */
-          });
+        });
+        if (!cancelled) await load();
+      } catch {
+        /* quiet */
+      } finally {
+        tickingRef.current = false;
       }
-    }, 10_000);
-    return () => clearInterval(t);
-  }, [job?.status, id, load]);
+    };
+
+    const t = setInterval(() => {
+      const status = jobStatusRef.current;
+      if (!status) return;
+      if (['running', 'queued', 'paused'].includes(status)) {
+        void load();
+      }
+      if (status === 'running' || status === 'queued') {
+        void tick();
+      }
+    }, 15_000);
+
+    const kick = setTimeout(() => void tick(), 2_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+      clearTimeout(kick);
+    };
+  }, [id, load]);
 
   const rows = job?.results || [];
   const selectable = rows.filter((r) => !r.imported);
