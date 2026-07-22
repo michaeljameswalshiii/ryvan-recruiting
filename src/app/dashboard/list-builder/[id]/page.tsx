@@ -3,6 +3,7 @@
 /**
  * Dedicated results page for a Company List Builder agent run.
  * Select rows → import to Trio Companies (Identification) + Contacts.
+ * Shows complete (email+phone) and partial (email or phone) leads.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -38,6 +39,8 @@ type Row = {
   imported?: boolean;
   notes?: string;
   sourceUrl?: string;
+  contactCompleteness?: 'complete' | 'partial';
+  selected?: boolean;
 };
 
 type Job = {
@@ -46,19 +49,42 @@ type Job = {
   brief: string;
   geography: string;
   targetSize: number;
-  progress: { found: number; target: number; lastMessage?: string };
+  progress: {
+    found: number;
+    target: number;
+    lastMessage?: string;
+    researched?: number;
+    completeFound?: number;
+    partialFound?: number;
+  };
   results: Row[];
 };
 
+function isValidEmail(email?: string): boolean {
+  const e = (email || '').trim();
+  return !!e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+}
+
+function isValidPhone(phone?: string): boolean {
+  const p = (phone || '').trim();
+  return !!p && (p.match(/\d/g) || []).length >= 7;
+}
+
 function hasEmailAndPhone(r: Row): boolean {
-  const email = (r.email || '').trim();
-  const phone = (r.phone || '').trim();
-  return (
-    !!email &&
-    !!phone &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
-    (phone.match(/\d/g) || []).length >= 7
-  );
+  return isValidEmail(r.email) && isValidPhone(r.phone);
+}
+
+function isKeepable(r: Row): boolean {
+  return isValidEmail(r.email) || isValidPhone(r.phone);
+}
+
+function rowCompleteness(r: Row): 'complete' | 'partial' | null {
+  if (r.contactCompleteness === 'complete' || r.contactCompleteness === 'partial') {
+    return r.contactCompleteness;
+  }
+  if (hasEmailAndPhone(r)) return 'complete';
+  if (isKeepable(r)) return 'partial';
+  return null;
 }
 
 export default function ListBuilderResultsPage() {
@@ -84,10 +110,21 @@ export default function ListBuilderResultsPage() {
         return;
       }
       const j = data.job as Job;
-      const complete = (j.results || []).filter(hasEmailAndPhone);
-      setJob({ ...j, results: complete });
+      const keepable = (j.results || []).filter(isKeepable);
+      setJob({ ...j, results: keepable });
+      // Prefer complete for default selection; include partials only if selected flag true
       setSelected(
-        new Set(complete.filter((r) => !r.imported).map((r) => r.id))
+        new Set(
+          keepable
+            .filter((r) => {
+              if (r.imported) return false;
+              if (r.selected === false) return false;
+              if (r.selected === true) return true;
+              // Default: select complete only
+              return rowCompleteness(r) === 'complete';
+            })
+            .map((r) => r.id)
+        )
       );
     } finally {
       setLoading(false);
@@ -153,6 +190,17 @@ export default function ListBuilderResultsPage() {
     () => selectable.filter((r) => selected.has(r.id)).length,
     [selectable, selected]
   );
+  const completeCount = useMemo(
+    () => rows.filter((r) => rowCompleteness(r) === 'complete').length,
+    [rows]
+  );
+  const partialCount = useMemo(
+    () => rows.filter((r) => rowCompleteness(r) === 'partial').length,
+    [rows]
+  );
+  const researched = job?.progress?.researched || 0;
+  const target = job?.targetSize || 50;
+  const keepPct = Math.min(100, Math.round((rows.length / Math.max(target, 1)) * 100));
 
   const toggle = (rowId: string) => {
     setSelected((prev) => {
@@ -165,6 +213,16 @@ export default function ListBuilderResultsPage() {
 
   const toggleAll = (on: boolean) => {
     setSelected(on ? new Set(selectable.map((r) => r.id)) : new Set());
+  };
+
+  const selectCompleteOnly = () => {
+    setSelected(
+      new Set(
+        selectable
+          .filter((r) => rowCompleteness(r) === 'complete')
+          .map((r) => r.id)
+      )
+    );
   };
 
   const importSelected = async () => {
@@ -257,7 +315,7 @@ export default function ListBuilderResultsPage() {
               <span className="font-semibold text-slate-900">{selectedCount}</span>{' '}
               selected ·{' '}
               <span className="font-semibold text-slate-900">{rows.length}</span>{' '}
-              with email & phone
+              leads
             </span>
             <Button
               type="button"
@@ -277,18 +335,44 @@ export default function ListBuilderResultsPage() {
       </div>
 
       <div className="mx-auto max-w-6xl px-6 py-8">
+        {/* Progress strip */}
+        <div className="mb-6 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className="font-medium text-slate-800">
+              {rows.length} kept · {researched} researched · target {target}
+            </span>
+            <span className="text-xs text-slate-500">
+              {completeCount} complete · {partialCount} partial
+            </span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-violet-500 to-sky-400 transition-all"
+              style={{ width: `${Math.max(keepPct, rows.length > 0 ? 4 : 0)}%` }}
+            />
+          </div>
+          {job.progress?.lastMessage && (
+            <p className="mt-2 text-xs text-slate-500">{job.progress.lastMessage}</p>
+          )}
+        </div>
+
         {/* Insight strip */}
-        <div className="mb-6 grid gap-3 sm:grid-cols-3">
+        <div className="mb-6 grid gap-3 sm:grid-cols-4">
           {[
             {
-              label: 'Qualified leads',
+              label: 'Kept leads',
               value: String(rows.length),
-              sub: 'Email + phone required',
+              sub: 'Email or phone found',
             },
             {
-              label: 'Target',
-              value: String(job.targetSize),
-              sub: job.progress?.lastMessage || 'Agent progress',
+              label: 'Complete',
+              value: String(completeCount),
+              sub: 'Email + phone',
+            },
+            {
+              label: 'Partial',
+              value: String(partialCount),
+              sub: 'Email or phone only',
             },
             {
               label: 'Ready to import',
@@ -315,12 +399,12 @@ export default function ListBuilderResultsPage() {
           <div className="rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
             <Building2 className="mx-auto h-10 w-10 text-slate-300" />
             <h2 className="mt-4 text-lg font-semibold text-slate-900">
-              No complete contacts yet
+              No contacts yet
             </h2>
             <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
-              We only show companies where we found both an email and a phone
-              number — never invented. Try again or expand geography if the
-              agent is still running.
+              We keep companies when we find a public email or phone — never
+              invented. Partial leads (one field only) appear with a badge once
+              found. If the agent is still running, check back shortly.
             </p>
             <Link href="/dashboard/general-ai-usage" className="mt-6 inline-block">
               <Button variant="outline">Back to AI Assistant</Button>
@@ -328,7 +412,7 @@ export default function ListBuilderResultsPage() {
           </div>
         ) : (
           <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
               <label className="flex items-center gap-2 text-sm text-slate-600">
                 <input
                   type="checkbox"
@@ -341,91 +425,132 @@ export default function ListBuilderResultsPage() {
                 />
                 Select all
               </label>
-              <p className="text-xs text-slate-400">
-                Contacts need email + phone · name optional
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={selectCompleteOnly}
+                  className="text-xs font-medium text-violet-700 hover:underline"
+                >
+                  Select complete only
+                </button>
+                <p className="text-xs text-slate-400">
+                  Complete selected by default · partials optional
+                </p>
+              </div>
             </div>
             <ul className="divide-y divide-slate-100">
-              {rows.map((r) => (
-                <li
-                  key={r.id}
-                  className={`flex flex-col gap-3 px-4 py-4 transition sm:flex-row sm:items-center sm:justify-between ${
-                    selected.has(r.id) ? 'bg-violet-50/40' : 'hover:bg-slate-50/80'
-                  } ${r.imported ? 'opacity-60' : ''}`}
-                >
-                  <div className="flex min-w-0 items-start gap-3">
-                    <input
-                      type="checkbox"
-                      className="mt-1 h-4 w-4 rounded border-slate-300 text-violet-600"
-                      disabled={!!r.imported}
-                      checked={!r.imported && selected.has(r.id)}
-                      onChange={() => toggle(r.id)}
-                    />
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-slate-900">
-                          {r.companyName}
-                        </span>
-                        {r.companyExists && (
-                          <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-800 ring-1 ring-sky-100">
-                            Already in Trio
+              {rows.map((r) => {
+                const completeness = rowCompleteness(r);
+                return (
+                  <li
+                    key={r.id}
+                    className={`flex flex-col gap-3 px-4 py-4 transition sm:flex-row sm:items-center sm:justify-between ${
+                      selected.has(r.id) ? 'bg-violet-50/40' : 'hover:bg-slate-50/80'
+                    } ${r.imported ? 'opacity-60' : ''}`}
+                  >
+                    <div className="flex min-w-0 items-start gap-3">
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 rounded border-slate-300 text-violet-600"
+                        disabled={!!r.imported}
+                        checked={!r.imported && selected.has(r.id)}
+                        onChange={() => toggle(r.id)}
+                      />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-slate-900">
+                            {r.companyName}
                           </span>
-                        )}
-                        {r.imported && (
-                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-800 ring-1 ring-emerald-100">
-                            Imported
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
-                        {(r.city || r.state) && (
-                          <span className="inline-flex items-center gap-1">
-                            <MapPin className="h-3.5 w-3.5 text-slate-400" />
-                            {[r.city, r.state].filter(Boolean).join(', ')}
-                          </span>
-                        )}
-                        {r.contactName && (
-                          <span className="font-medium text-slate-800">
-                            {r.contactName}
-                            {r.contactTitle ? ` · ${r.contactTitle}` : ''}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                        <a
-                          href={`mailto:${r.email}`}
-                          className="inline-flex items-center gap-1.5 text-violet-700 hover:underline"
-                        >
-                          <Mail className="h-3.5 w-3.5" />
-                          {r.email}
-                        </a>
-                        <a
-                          href={`tel:${r.phone}`}
-                          className="inline-flex items-center gap-1.5 text-slate-700 hover:underline"
-                        >
-                          <Phone className="h-3.5 w-3.5 text-slate-400" />
-                          {r.phone}
-                        </a>
-                        {(r.website || r.sourceUrl) && (
-                          <a
-                            href={
-                              (r.sourceUrl || r.website || '').startsWith('http')
-                                ? r.sourceUrl || r.website
-                                : `https://${r.website}`
-                            }
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-800"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            Site
-                          </a>
-                        )}
+                          {completeness === 'complete' && (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-800 ring-1 ring-emerald-100">
+                              Complete
+                            </span>
+                          )}
+                          {completeness === 'partial' && (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-900 ring-1 ring-amber-100">
+                              Partial
+                              {!isValidEmail(r.email)
+                                ? ' · no email'
+                                : !isValidPhone(r.phone)
+                                  ? ' · no phone'
+                                  : ''}
+                            </span>
+                          )}
+                          {r.companyExists && (
+                            <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-800 ring-1 ring-sky-100">
+                              Already in Trio
+                            </span>
+                          )}
+                          {r.imported && (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-800 ring-1 ring-emerald-100">
+                              Imported
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+                          {(r.city || r.state) && (
+                            <span className="inline-flex items-center gap-1">
+                              <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                              {[r.city, r.state].filter(Boolean).join(', ')}
+                            </span>
+                          )}
+                          {r.contactName && (
+                            <span className="font-medium text-slate-800">
+                              {r.contactName}
+                              {r.contactTitle ? ` · ${r.contactTitle}` : ''}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                          {isValidEmail(r.email) ? (
+                            <a
+                              href={`mailto:${r.email}`}
+                              className="inline-flex items-center gap-1.5 text-violet-700 hover:underline"
+                            >
+                              <Mail className="h-3.5 w-3.5" />
+                              {r.email}
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 text-slate-400">
+                              <Mail className="h-3.5 w-3.5" />
+                              No email
+                            </span>
+                          )}
+                          {isValidPhone(r.phone) ? (
+                            <a
+                              href={`tel:${r.phone}`}
+                              className="inline-flex items-center gap-1.5 text-slate-700 hover:underline"
+                            >
+                              <Phone className="h-3.5 w-3.5 text-slate-400" />
+                              {r.phone}
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 text-slate-400">
+                              <Phone className="h-3.5 w-3.5" />
+                              No phone
+                            </span>
+                          )}
+                          {(r.website || r.sourceUrl) && (
+                            <a
+                              href={
+                                (r.sourceUrl || r.website || '').startsWith('http')
+                                  ? r.sourceUrl || r.website
+                                  : `https://${r.website}`
+                              }
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-800"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Site
+                            </a>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}

@@ -124,6 +124,8 @@ export async function createListBuilderJob(
       target: targetSize,
       batchesCompleted: 0,
       researched: 0,
+      completeFound: 0,
+      partialFound: 0,
       emptyBatchStreak: 0,
       errorStreak: 0,
       lastMessage: 'Queued — starting shortly…',
@@ -192,18 +194,32 @@ export async function listJobsForUser(
   for (const jid of idx.ids.slice(0, 30)) {
     const j = await getListBuilderJob(tenantId, jid);
     if (!j) continue;
+    const all = j.results || [];
+    let completeFound = 0;
+    let partialFound = 0;
+    for (const r of all) {
+      const email = (r.email || '').trim();
+      const phone = (r.phone || '').trim();
+      const hasEmail = !!email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      const hasPhone = !!phone && (phone.match(/\d/g) || []).length >= 7;
+      if (hasEmail && hasPhone) completeFound++;
+      else if (hasEmail || hasPhone) partialFound++;
+    }
+    const progress = {
+      ...j.progress,
+      found: all.length || j.progress?.found || 0,
+      completeFound: j.progress?.completeFound ?? completeFound,
+      partialFound: j.progress?.partialFound ?? partialFound,
+    };
     if (includeResults) {
-      jobs.push(j);
+      jobs.push({ ...j, progress });
     } else {
       // Lightweight list payload — full results loaded on expand
       jobs.push({
         ...j,
-        results: (j.results || []).slice(0, 3),
+        results: all.slice(0, 3),
         seedRows: [],
-        progress: {
-          ...j.progress,
-          found: j.results?.length ?? j.progress?.found ?? 0,
-        },
+        progress,
       });
     }
   }

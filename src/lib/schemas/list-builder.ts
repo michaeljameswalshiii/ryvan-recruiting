@@ -26,6 +26,9 @@ export interface ListBuilderSeedRow {
   phone?: string;
 }
 
+/** complete = email + phone; partial = email or phone only (still importable) */
+export type ListBuilderContactCompleteness = 'complete' | 'partial';
+
 export interface ListBuilderResultRow {
   id: string;
   companyName: string;
@@ -43,6 +46,8 @@ export interface ListBuilderResultRow {
   /** True if company already in Trio */
   companyExists?: boolean;
   notes?: string;
+  /** email+phone vs email-or-phone only */
+  contactCompleteness?: ListBuilderContactCompleteness;
   selected?: boolean;
   imported?: boolean;
   importedCompanyId?: string;
@@ -65,13 +70,18 @@ export interface ListBuilderJob {
   seedRows: ListBuilderSeedRow[];
   results: ListBuilderResultRow[];
   progress: {
+    /** Kept rows (complete + partial with email or phone) */
     found: number;
     target: number;
     batchesCompleted: number;
     lastMessage?: string;
-    /** Companies looked at (including ones that lacked email+phone) */
+    /** Companies looked at (including ones dropped with no contact) */
     researched?: number;
-    /** Consecutive batches that kept zero complete contacts */
+    /** Kept rows that have both email and phone */
+    completeFound?: number;
+    /** Kept rows that have only email or only phone */
+    partialFound?: number;
+    /** Consecutive batches that kept zero usable contacts */
     emptyBatchStreak?: number;
     /** Consecutive batch failures (LLM/infra) */
     errorStreak?: number;

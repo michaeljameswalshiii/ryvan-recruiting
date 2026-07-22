@@ -82,15 +82,52 @@ function hasContactSignal(r: {
   );
 }
 
-/** Product rule: only keep rows with both email and phone (name optional). */
+function isValidEmail(email?: string): boolean {
+  const e = (email || '').trim();
+  return !!e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+}
+
+function isValidPhone(phone?: string): boolean {
+  const p = (phone || '').trim();
+  return !!p && (p.match(/\d/g) || []).length >= 7;
+}
+
+/** Both email and phone present and well-formed. */
 function hasEmailAndPhone(r: { email?: string; phone?: string }): boolean {
-  const email = (r.email || '').trim();
-  const phone = (r.phone || '').trim();
-  if (!email || !phone) return false;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
-  // At least a few digits in phone
-  if ((phone.match(/\d/g) || []).length < 7) return false;
-  return true;
+  return isValidEmail(r.email) && isValidPhone(r.phone);
+}
+
+/**
+ * Keepable lead: at least one of email or phone (never invent).
+ * complete = both; partial = only one.
+ */
+function contactCompleteness(r: {
+  email?: string;
+  phone?: string;
+}): 'complete' | 'partial' | null {
+  const em = isValidEmail(r.email);
+  const ph = isValidPhone(r.phone);
+  if (em && ph) return 'complete';
+  if (em || ph) return 'partial';
+  return null;
+}
+
+function isKeepableContact(r: { email?: string; phone?: string }): boolean {
+  return contactCompleteness(r) !== null;
+}
+
+function countCompleteness(rows: Array<{ contactCompleteness?: string; email?: string; phone?: string }>) {
+  let completeFound = 0;
+  let partialFound = 0;
+  for (const r of rows) {
+    const c =
+      r.contactCompleteness ||
+      contactCompleteness(r) ||
+      null;
+    if (c === 'complete') completeFound++;
+    else if (c === 'partial') partialFound++;
+  }
+  return { completeFound, partialFound, found: completeFound + partialFound };
 }
 
 async function discoverCompanies(
@@ -375,8 +412,8 @@ async function processListBuilderBatchInner(
           batchesCompleted: job.progress.batchesCompleted + 1,
           lastMessage:
             job.results.length > 0
-              ? `Could not find more complete contacts (email + phone). Review ${job.results.length} result(s) and import.`
-              : 'Could not find companies with both email and phone on public pages. Try a CSV seed with contact info, or a narrower brief.',
+              ? `Could not find more public contacts. Review ${job.results.length} result(s) and import.`
+              : 'Could not find companies with a public email or phone. Try a CSV seed with contact info, or a narrower brief.',
         },
       });
       return { job: updated || job, done: true };
@@ -402,8 +439,10 @@ async function processListBuilderBatchInner(
   const newRows: ListBuilderResultRow[] = [];
   const now = new Date().toISOString();
   let researchedThisBatch = 0;
-  let skippedIncomplete = 0;
+  let skippedNoContact = 0;
   let skippedDuplicate = 0;
+  let keptComplete = 0;
+  let keptPartial = 0;
 
   for (const c of candidates) {
     if (Date.now() - batchStarted > LIST_BUILDER_DEFAULTS.batchBudgetMs) {
@@ -432,7 +471,7 @@ async function processListBuilderBatchInner(
 
     let extracted: Partial<ListBuilderResultRow> = {};
     if (website && website.includes('.')) {
-      // Homepage + /contact + /about — far more likely to have email+phone
+      // Homepage + /contact + /about — more likely to expose email/phone
       const page = await fetchCompanyContactPages(website);
       if (!('error' in page)) {
         extracted = await extractFromSite(c.companyName, website, page, job);
@@ -453,6 +492,19 @@ async function processListBuilderBatchInner(
       continue;
     }
 
+    const completeness = contactCompleteness({
+      email: extracted.email,
+      phone: extracted.phone,
+    });
+    // Drop only when neither email nor phone found — never invent
+    if (!completeness) {
+      skippedNoContact++;
+      continue;
+    }
+
+    if (completeness === 'complete') keptComplete++;
+    else keptPartial++;
+
     const row: ListBuilderResultRow = {
       id: rowId(),
       companyName: c.companyName,
@@ -468,14 +520,11 @@ async function processListBuilderBatchInner(
       existingCompanyId: match?.id ? String(match.id) : undefined,
       companyExists: !!match,
       notes: extracted.notes,
-      selected: true,
+      contactCompleteness: completeness,
+      // Prefer complete for import defaults; user can still select partials
+      selected: completeness === 'complete',
       createdAt: now,
     };
-    // Only surface leads that have both email and phone — never invent; skip incomplete
-    if (!hasEmailAndPhone(row)) {
-      skippedIncomplete++;
-      continue;
-    }
     newRows.push(row);
   }
 
@@ -492,12 +541,16 @@ async function processListBuilderBatchInner(
       : 0;
   const researched =
     (job.progress?.researched || 0) + researchedThisBatch;
+  const totals = countCompleteness(refreshed.results || []);
 
   const lastMessage =
     newRows.length > 0
-      ? `Kept ${refreshed.results.length}/${job.targetSize} with email+phone (+${newRows.length} this batch; researched ${researchedThisBatch}).`
-      : `Researched ${researchedThisBatch}, kept 0 with email+phone` +
-        (skippedIncomplete ? ` (${skippedIncomplete} incomplete)` : '') +
+      ? `Kept ${totals.found}/${job.targetSize} (` +
+        `${totals.completeFound} complete, ${totals.partialFound} partial)` +
+        ` · +${newRows.length} this batch (${keptComplete} complete / ${keptPartial} partial)` +
+        ` · researched ${researchedThisBatch}.`
+      : `Researched ${researchedThisBatch}, kept 0` +
+        (skippedNoContact ? ` (${skippedNoContact} no public email/phone)` : '') +
         (skippedDuplicate ? `, ${skippedDuplicate} skipped` : '') +
         `. Empty streak ${emptyBatchStreak}/${LIST_BUILDER_DEFAULTS.maxEmptyBatches}.`;
 
@@ -511,16 +564,18 @@ async function processListBuilderBatchInner(
       discoveryBatch: job.discoveryBatch + (candidates[0]?.fromSeed ? 0 : 1),
       lockedUntil: undefined,
       progress: {
-        found: refreshed.results.length,
+        found: totals.found,
         target: job.targetSize,
         batchesCompleted: job.progress.batchesCompleted + 1,
         researched,
+        completeFound: totals.completeFound,
+        partialFound: totals.partialFound,
         emptyBatchStreak,
         errorStreak: 0,
         lastMessage:
           refreshed.results.length > 0
-            ? `Stopped: ${emptyBatchStreak} batches without new complete contacts. Review ${refreshed.results.length} result(s).`
-            : `Stopped: researched ${researched} companies but none had both email and phone on public pages. Try a seed CSV or different brief.`,
+            ? `Stopped: ${emptyBatchStreak} batches without new contacts. Review ${totals.found} result(s) (${totals.completeFound} complete, ${totals.partialFound} partial).`
+            : `Stopped: researched ${researched} companies but none had a public email or phone. Try a seed CSV or different brief.`,
       },
     });
     return { job: done || refreshed, done: true };
@@ -531,10 +586,12 @@ async function processListBuilderBatchInner(
     discoveryBatch: job.discoveryBatch + (candidates[0]?.fromSeed ? 0 : 1),
     lockedUntil: undefined,
     progress: {
-      found: refreshed.results.length,
+      found: totals.found,
       target: job.targetSize,
       batchesCompleted: job.progress.batchesCompleted + 1,
       researched,
+      completeFound: totals.completeFound,
+      partialFound: totals.partialFound,
       emptyBatchStreak,
       errorStreak: 0,
       lastMessage,
@@ -545,14 +602,17 @@ async function processListBuilderBatchInner(
   if (!latest) return { error: 'Job lost' };
 
   if (latest.results.length >= latest.targetSize) {
+    const endTotals = countCompleteness(latest.results || []);
     const done = await setJobStatus(tenantId, jobId, 'awaiting_import', {
       lockedUntil: undefined,
       progress: {
         ...latest.progress,
-        found: latest.results.length,
+        found: endTotals.found,
+        completeFound: endTotals.completeFound,
+        partialFound: endTotals.partialFound,
         emptyBatchStreak: 0,
         errorStreak: 0,
-        lastMessage: `Done — ${latest.results.length} companies ready to review and import.`,
+        lastMessage: `Done — ${endTotals.found} companies ready (${endTotals.completeFound} complete, ${endTotals.partialFound} partial).`,
       },
     });
     return { job: done || latest, done: true };
@@ -573,4 +633,12 @@ async function processListBuilderBatchInner(
   return { job: latest, done: false };
 }
 
-export { hasContactSignal, hasEmailAndPhone };
+export {
+  hasContactSignal,
+  hasEmailAndPhone,
+  isKeepableContact,
+  contactCompleteness,
+  isValidEmail,
+  isValidPhone,
+  countCompleteness,
+};

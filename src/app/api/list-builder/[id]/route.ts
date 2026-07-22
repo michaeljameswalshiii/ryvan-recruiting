@@ -28,8 +28,15 @@ export async function GET(
   if (!job || job.userId !== session.userId) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  // Only surface complete contacts (email + phone)
+  // Surface keepable contacts: complete (email+phone) and partial (email or phone)
   const results = (job.results || []).filter((r) => {
+    const email = (r.email || '').trim();
+    const phone = (r.phone || '').trim();
+    const hasEmail = !!email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const hasPhone = !!phone && (phone.match(/\d/g) || []).length >= 7;
+    return hasEmail || hasPhone;
+  });
+  const completeFound = results.filter((r) => {
     const email = (r.email || '').trim();
     const phone = (r.phone || '').trim();
     return (
@@ -38,7 +45,7 @@ export async function GET(
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
       (phone.match(/\d/g) || []).length >= 7
     );
-  });
+  }).length;
   return NextResponse.json({
     job: {
       ...job,
@@ -46,6 +53,8 @@ export async function GET(
       progress: {
         ...job.progress,
         found: results.length,
+        completeFound,
+        partialFound: results.length - completeFound,
       },
     },
   });

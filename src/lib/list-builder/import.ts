@@ -13,7 +13,7 @@ import {
   getAllClients,
   getClientById,
 } from '@/lib/db/repositories/client-repository';
-import { hasContactSignal, hasEmailAndPhone } from './runner';
+import { hasContactSignal, isKeepableContact } from './runner';
 
 export async function importListBuilderRows(
   tenantId: string,
@@ -31,8 +31,9 @@ export async function importListBuilderRows(
   if (!job) return { success: false, importedCompanies: 0, importedContacts: 0, skipped: 0, error: 'Job not found' };
 
   const idSet = new Set(rowIds);
+  // Allow complete (email+phone) and partial (email or phone) rows
   const rows = (job.results || []).filter(
-    (r) => idSet.has(r.id) && !r.imported && hasEmailAndPhone(r)
+    (r) => idSet.has(r.id) && !r.imported && isKeepableContact(r)
   );
   if (rows.length === 0) {
     return {
@@ -40,7 +41,7 @@ export async function importListBuilderRows(
       importedCompanies: 0,
       importedContacts: 0,
       skipped: 0,
-      error: 'No selected rows with both email and phone to import',
+      error: 'No selected rows with an email or phone to import',
     };
   }
 

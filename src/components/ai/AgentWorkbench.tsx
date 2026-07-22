@@ -36,6 +36,8 @@ export type ListBuilderJobDto = {
     batchesCompleted: number;
     lastMessage?: string;
     researched?: number;
+    completeFound?: number;
+    partialFound?: number;
     emptyBatchStreak?: number;
     errorStreak?: number;
   };
@@ -255,9 +257,9 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
             </h2>
             {!isCompact && (
               <p className="mt-1 text-sm leading-relaxed text-slate-400">
-                Describe a market. We find companies with{' '}
-                <span className="text-slate-200">email and phone</span>, while you
-                keep chatting on the left.
+                Describe a market. We keep companies with a public{' '}
+                <span className="text-slate-200">email or phone</span>
+                {' '}(both preferred), while you keep chatting on the left.
               </p>
             )}
           </div>
@@ -338,7 +340,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
             )}
           </Button>
           <p className="text-center text-[10px] text-slate-500">
-            Only keeps rows with both email & phone · up to 2 hours · pause anytime
+            Keeps email or phone (both preferred) · up to 2 hours · pause anytime
           </p>
         </div>
       </div>
@@ -378,7 +380,19 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
               const Icon = meta.Icon;
               const found = j.progress?.found ?? 0;
               const target = j.targetSize || j.progress?.target || 1;
-              const pct = Math.min(100, Math.round((found / target) * 100));
+              const researched = j.progress?.researched || 0;
+              const completeFound = j.progress?.completeFound ?? 0;
+              const partialFound =
+                j.progress?.partialFound ??
+                Math.max(0, found - completeFound);
+              // Progress bar: prefer kept/target; if still 0 kept, show research activity
+              const keepPct = Math.min(100, Math.round((found / target) * 100));
+              const researchHintPct =
+                found === 0 && researched > 0
+                  ? Math.min(35, Math.round((researched / Math.max(target * 2, 1)) * 100) + 4)
+                  : 0;
+              const pct = Math.max(keepPct, researchHintPct);
+              const emptyStreak = j.progress?.emptyBatchStreak || 0;
               const isActive = ACTIVE.has(j.status);
               const isDone = DONE.has(j.status);
 
@@ -398,24 +412,29 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${meta.className}`}
                         >
                           {meta.label}
                         </span>
-                        <span className="text-[10px] text-slate-500">
-                          {found}/{target}
+                        <span className="text-[10px] font-medium text-slate-300">
+                          {found} kept · {researched} researched · target {target}
                         </span>
                       </div>
+                      {(completeFound > 0 || partialFound > 0) && (
+                        <p className="mt-0.5 text-[10px] text-slate-500">
+                          {completeFound} complete
+                          {partialFound > 0 ? ` · ${partialFound} partial` : ''}
+                        </p>
+                      )}
                       <p className="mt-1 line-clamp-2 text-sm font-medium leading-snug text-slate-100">
                         {j.brief || 'List job'}
                       </p>
                       <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">
                         {j.geography}
-                        {typeof j.progress?.researched === 'number' &&
-                        j.progress.researched > 0
-                          ? ` · researched ${j.progress.researched}`
+                        {emptyStreak > 0 && isActive
+                          ? ` · empty streak ${emptyStreak}/8`
                           : ''}
                         {j.progress?.lastMessage
                           ? ` · ${j.progress.lastMessage}`
