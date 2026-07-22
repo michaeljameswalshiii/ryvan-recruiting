@@ -285,7 +285,9 @@ export async function deleteItem(table: string, key: Record<string, any>): Promi
 }
 
 /**
- * Scan all items in a table (use sparingly)
+ * Scan all items in a table (use sparingly).
+ * Paginates until exhausted so FilterExpression matches are not lost
+ * after the first 1MB page.
  */
 export async function scanItems<T>(
   table: string,
@@ -294,21 +296,30 @@ export async function scanItems<T>(
   expressionNames?: Record<string, string>
 ): Promise<T[]> {
   const client = getClient();
-  
-  const command = new ScanCommand({
-    TableName: table,
-    FilterExpression: filterExpression,
-    ExpressionAttributeValues: expressionValues ? marshall(expressionValues) : undefined,
-    ExpressionAttributeNames: expressionNames,
-  });
-  
-  const response = await client.send(command);
-  
-  if (!response.Items || response.Items.length === 0) {
-    return [];
-  }
-  
-  return response.Items.map(item => unmarshall(item) as T);
+  const items: T[] = [];
+  let exclusiveStartKey: Record<string, any> | undefined;
+
+  do {
+    const command = new ScanCommand({
+      TableName: table,
+      FilterExpression: filterExpression,
+      ExpressionAttributeValues: expressionValues
+        ? marshall(expressionValues)
+        : undefined,
+      ExpressionAttributeNames: expressionNames,
+      ExclusiveStartKey: exclusiveStartKey,
+    });
+
+    const response = await client.send(command);
+    if (response.Items?.length) {
+      for (const item of response.Items) {
+        items.push(unmarshall(item) as T);
+      }
+    }
+    exclusiveStartKey = response.LastEvaluatedKey;
+  } while (exclusiveStartKey);
+
+  return items;
 }
 
 /**

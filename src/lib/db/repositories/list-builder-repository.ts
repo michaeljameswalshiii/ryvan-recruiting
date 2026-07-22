@@ -123,6 +123,9 @@ export async function createListBuilderJob(
       found: 0,
       target: targetSize,
       batchesCompleted: 0,
+      researched: 0,
+      emptyBatchStreak: 0,
+      errorStreak: 0,
       lastMessage: 'Queued — starting shortly…',
     },
     notifyChannels: input.notifyChannels?.length
@@ -235,7 +238,7 @@ export async function updateListBuilderJob(
     existing.jobId ||
     (existing.id.includes('#') ? existing.id.split('#').pop()! : existing.id);
 
-  const next = {
+  const next: ListBuilderJob & { jobId: string } = {
     ...existing,
     ...patch,
     id: key,
@@ -244,6 +247,11 @@ export async function updateListBuilderJob(
     type: 'list_builder' as const,
     updatedAt: new Date().toISOString(),
   };
+
+  // Allow clearing soft lock explicitly
+  if (Object.prototype.hasOwnProperty.call(patch, 'lockedUntil') && !patch.lockedUntil) {
+    delete (next as { lockedUntil?: string }).lockedUntil;
+  }
 
   await putItem(tableNames.profiles, next);
   return publicJob(next);

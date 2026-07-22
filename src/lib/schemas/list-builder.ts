@@ -69,6 +69,12 @@ export interface ListBuilderJob {
     target: number;
     batchesCompleted: number;
     lastMessage?: string;
+    /** Companies looked at (including ones that lacked email+phone) */
+    researched?: number;
+    /** Consecutive batches that kept zero complete contacts */
+    emptyBatchStreak?: number;
+    /** Consecutive batch failures (LLM/infra) */
+    errorStreak?: number;
   };
   /** In-app now; email reserved */
   notifyChannels: ListBuilderNotifyChannel[];
@@ -83,6 +89,8 @@ export interface ListBuilderJob {
   seedCursor: number;
   /** LLM suggestion offset / batch index */
   discoveryBatch: number;
+  /** Soft lock so concurrent tick/cron don't double-run a batch */
+  lockedUntil?: string;
 }
 
 export interface CreateListBuilderInput {
@@ -102,4 +110,12 @@ export const LIST_BUILDER_DEFAULTS = {
   timeoutMs: 2 * 60 * 60 * 1000, // 2 hours
   batchSize: 5,
   maxResultsCap: 200,
+  /** Stop after this many consecutive batches with 0 kept rows */
+  maxEmptyBatches: 6,
+  /** Mark failed after this many consecutive hard errors */
+  maxConsecutiveErrors: 3,
+  /** Soft wall-clock budget per batch (leave headroom under Vercel maxDuration) */
+  batchBudgetMs: 45_000,
+  /** Bedrock invoke timeout */
+  llmTimeoutMs: 25_000,
 } as const;

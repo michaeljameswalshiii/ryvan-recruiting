@@ -98,13 +98,37 @@ export default function ListBuilderResultsPage() {
     void load();
   }, [load]);
 
-  // Poll if still running
+  // Poll status and advance the agent (tick) while runnable — do not rely on workbench alone
   useEffect(() => {
     if (!job) return;
-    if (!['running', 'queued', 'paused'].includes(job.status)) return;
-    const t = setInterval(() => void load(), 10_000);
+    if (!['running', 'queued'].includes(job.status)) {
+      // Still refresh while paused so user sees external cron/resume updates
+      if (job.status === 'paused') {
+        const t = setInterval(() => void load(), 15_000);
+        return () => clearInterval(t);
+      }
+      return;
+    }
+    let n = 0;
+    const t = setInterval(() => {
+      n += 1;
+      void load();
+      // Every other interval (~20s) run a batch tick
+      if (n % 2 === 0) {
+        void fetch(`/api/list-builder/${id}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'tick' }),
+        })
+          .then(() => load())
+          .catch(() => {
+            /* quiet */
+          });
+      }
+    }, 10_000);
     return () => clearInterval(t);
-  }, [job?.status, load]);
+  }, [job?.status, id, load]);
 
   const rows = job?.results || [];
   const selectable = rows.filter((r) => !r.imported);

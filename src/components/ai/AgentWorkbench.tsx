@@ -35,6 +35,9 @@ export type ListBuilderJobDto = {
     target: number;
     batchesCompleted: number;
     lastMessage?: string;
+    researched?: number;
+    emptyBatchStreak?: number;
+    errorStreak?: number;
   };
   results?: unknown[];
   expiresAt?: string;
@@ -380,8 +383,12 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                       <p className="mt-1 line-clamp-2 text-sm font-medium leading-snug text-slate-100">
                         {j.brief || 'List job'}
                       </p>
-                      <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                      <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">
                         {j.geography}
+                        {typeof j.progress?.researched === 'number' &&
+                        j.progress.researched > 0
+                          ? ` · researched ${j.progress.researched}`
+                          : ''}
                         {j.progress?.lastMessage
                           ? ` · ${j.progress.lastMessage}`
                           : ''}

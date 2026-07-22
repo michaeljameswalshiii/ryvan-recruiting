@@ -99,11 +99,34 @@ async function logListBuilderUsage(params: {
   }
 }
 
+const DEFAULT_LLM_TIMEOUT_MS = 25_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms
+    );
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      }
+    );
+  });
+}
+
 export async function completeJson<T = unknown>(
   system: string,
   user: string,
-  usageCtx?: ListBuilderLlmUsageContext
+  usageCtx?: ListBuilderLlmUsageContext,
+  options?: { timeoutMs?: number }
 ): Promise<{ data?: T; text?: string; error?: string }> {
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
   let lastErr = '';
   for (const modelId of FALLBACKS) {
     const started = Date.now();
@@ -115,13 +138,17 @@ export async function completeJson<T = unknown>(
         system,
         messages: [{ role: 'user', content: user }],
       };
-      const res = await client.send(
-        new InvokeModelCommand({
-          modelId,
-          contentType: 'application/json',
-          accept: 'application/json',
-          body: JSON.stringify(body),
-        })
+      const res = await withTimeout(
+        client.send(
+          new InvokeModelCommand({
+            modelId,
+            contentType: 'application/json',
+            accept: 'application/json',
+            body: JSON.stringify(body),
+          })
+        ),
+        timeoutMs,
+        `Bedrock ${modelId}`
       );
       const parsed = JSON.parse(new TextDecoder().decode(res.body));
       const text: string =
