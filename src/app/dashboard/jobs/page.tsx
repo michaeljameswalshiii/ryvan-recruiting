@@ -89,12 +89,30 @@ export default function JobsPage() {
       toast.error('Job title is required');
       return;
     }
+    if (!formData.companyId.trim()) {
+      toast.error('Please select a company');
+      return;
+    }
+
+    const company =
+      companies.find((c: any) => String(c.id) === String(formData.companyId)) ||
+      null;
+    const companyName =
+      formData.companyName.trim() ||
+      company?.name ||
+      company?.companyName ||
+      '';
+
+    if (!companyName) {
+      toast.error('Please select a company');
+      return;
+    }
 
     try {
       await createJobMutation.mutateAsync({
         title: formData.title.trim(),
         companyId: formData.companyId.trim(),
-        companyName: formData.companyName.trim() || 'Unknown',
+        companyName,
         description: formData.description.trim(),
         salaryRange: formData.salaryRange.trim(),
         status: formData.status,
@@ -193,40 +211,46 @@ export default function JobsPage() {
 
       <JobListView jobs={jobs} />
 
-      {/* Add Job Modal */}
+      {/* Add Job Modal — scrollable body + sticky footer so short viewports can reach Create */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[min(92vh,900px)] flex flex-col gap-0 p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-3 pr-12 shrink-0 border-b">
             <DialogTitle>Add New Job</DialogTitle>
             <DialogDescription>Fill in the job details.</DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleAddJobSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="title">Job Title *</Label>
-              <Input
-                id="title"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="Senior Software Engineer"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <form
+            onSubmit={handleAddJobSubmit}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-6 py-4">
               <div>
-                <Label htmlFor="companyId">Company</Label>
+                <Label htmlFor="title">Job Title *</Label>
+                <Input
+                  id="title"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="Senior Software Engineer"
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="companyId">Company *</Label>
                 {companies.length > 0 ? (
                   <select
                     id="companyId"
                     value={formData.companyId}
                     onChange={(e) => handleCompanySelect(e.target.value)}
                     className="w-full h-10 border border-input rounded-md px-3 text-sm bg-background"
+                    required
                   >
                     <option value="">Select company…</option>
                     {[...companies]
                       .sort((a: any, b: any) =>
-                        String(a.name || '').localeCompare(String(b.name || ''))
+                        String(a.name || a.companyName || '').localeCompare(
+                          String(b.name || b.companyName || '')
+                        )
                       )
                       .map((c: any) => (
                         <option key={c.id} value={c.id}>
@@ -236,91 +260,93 @@ export default function JobsPage() {
                   </select>
                 ) : (
                   <Input
-                    id="companyId"
-                    value={formData.companyId}
-                    onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
-                    placeholder="company-123"
+                    id="companyName"
+                    value={formData.companyName}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      setFormData({
+                        ...formData,
+                        companyName: name,
+                        // Local free-text company when no client list is loaded
+                        companyId: name.trim()
+                          ? `name:${name.trim().toLowerCase()}`
+                          : '',
+                      });
+                    }}
+                    placeholder="Company name"
+                    required
                   />
                 )}
               </div>
+
               <div>
-                <Label htmlFor="companyName">Company Name</Label>
-                <Input
-                  id="companyName"
-                  value={formData.companyName}
-                  onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                  placeholder="Acme Corp"
+                <Label>Hiring manager / contact</Label>
+                <HiringManagerSelect
+                  companyId={formData.companyId}
+                  valueContactId={hiringManager.hiringManagerContactId}
+                  onChange={setHiringManager}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Optional. Choose a contact at the company for this req.
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Job responsibilities..."
+                  rows={4}
                 />
               </div>
-            </div>
 
-            <div>
-              <Label>Hiring manager / contact</Label>
-              <HiringManagerSelect
-                companyId={formData.companyId}
-                valueContactId={hiringManager.hiringManagerContactId}
-                onChange={setHiringManager}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Optional. Choose a contact at the company for this req.
-              </p>
-            </div>
+              <div>
+                <Label htmlFor="salaryRange">Salary Range</Label>
+                <Input
+                  id="salaryRange"
+                  value={formData.salaryRange}
+                  onChange={(e) => setFormData({ ...formData, salaryRange: e.target.value })}
+                  placeholder="$80k - $120k"
+                />
+              </div>
 
-            <div>
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Job responsibilities..."
-                rows={4}
-              />
-            </div>
+              <div>
+                <Label htmlFor="status">Status</Label>
+                <select
+                  id="status"
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="w-full border border-input rounded-md p-2 text-sm"
+                >
+                  <option value="Open">Open</option>
+                  <option value="Paused">Paused</option>
+                  <option value="Filled">Filled</option>
+                  <option value="Lost">Lost</option>
+                  <option value="Closed">Closed</option>
+                </select>
+              </div>
 
-            <div>
-              <Label htmlFor="salaryRange">Salary Range</Label>
-              <Input
-                id="salaryRange"
-                value={formData.salaryRange}
-                onChange={(e) => setFormData({ ...formData, salaryRange: e.target.value })}
-                placeholder="$80k - $120k"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="status">Status</Label>
-              <select
-                id="status"
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full border border-input rounded-md p-2 text-sm"
-              >
-                <option value="Open">Open</option>
-                <option value="Paused">Paused</option>
-                <option value="Filled">Filled</option>
-                <option value="Lost">Lost</option>
-                <option value="Closed">Closed</option>
-              </select>
-            </div>
-
-            <label className="flex items-start gap-2 rounded-md border border-input p-3 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                className="mt-0.5 h-4 w-4"
-                checked={formData.showOnWebsite}
-                onChange={(e) =>
-                  setFormData({ ...formData, showOnWebsite: e.target.checked })
-                }
-              />
-              <span>
-                <span className="font-medium">Show on website</span>
-                <span className="block text-xs text-muted-foreground mt-0.5">
-                  List this job on the public careers page and embeds when status is Open.
+              <label className="flex items-start gap-2 rounded-md border border-input p-3 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4"
+                  checked={formData.showOnWebsite}
+                  onChange={(e) =>
+                    setFormData({ ...formData, showOnWebsite: e.target.checked })
+                  }
+                />
+                <span>
+                  <span className="font-medium">Show on website</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">
+                    List this job on the public careers page and embeds when status is Open.
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+            </div>
 
-            <DialogFooter>
+            <DialogFooter className="shrink-0 border-t bg-background px-6 py-4 sm:space-x-2">
               <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                 Cancel
               </Button>
