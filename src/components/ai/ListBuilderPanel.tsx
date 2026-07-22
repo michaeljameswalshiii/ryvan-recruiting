@@ -229,9 +229,9 @@ export function ListBuilderPanel() {
         <div className="flex items-center gap-2 min-w-0">
           <Building2 className="h-4 w-4 text-blue-600 shrink-0" />
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-gray-900">Jobs · BD List Builder</div>
+            <div className="text-sm font-semibold text-gray-900">Company List Builder</div>
             <div className="text-[11px] text-gray-500 truncate">
-              Build company lists in the background — chat stays free
+              Find companies and contacts while you keep working
             </div>
           </div>
         </div>
