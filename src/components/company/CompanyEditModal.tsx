@@ -26,6 +26,8 @@ interface Company {
   state?: string;
   country?: string;
   employee_count?: number;
+  company_size?: string;
+  open_jobs_posted?: number;
   revenue?: string;
   description?: string;
   linkedin_url?: string;
@@ -75,6 +77,8 @@ export default function CompanyEditModal({
     city: "",
     state: "",
     employee_count: "",
+    company_size: "",
+    open_jobs_posted: "",
     revenue: "",
     description: "",
     linkedin_url: "",
@@ -100,6 +104,11 @@ export default function CompanyEditModal({
         city: company.city || "",
         state: company.state || "",
         employee_count: company.employee_count?.toString() || "",
+        company_size: company.company_size || "",
+        open_jobs_posted:
+          company.open_jobs_posted != null
+            ? String(company.open_jobs_posted)
+            : "",
         revenue: company.revenue || "",
         description: company.description || "",
         linkedin_url: company.linkedin_url || "",
@@ -131,6 +140,8 @@ export default function CompanyEditModal({
       formDataToSend.set("state", formData.state);
       formDataToSend.set("country", "US");
       formDataToSend.set("employee_count", formData.employee_count);
+      formDataToSend.set("company_size", formData.company_size);
+      formDataToSend.set("open_jobs_posted", formData.open_jobs_posted);
       formDataToSend.set("revenue", formData.revenue);
       formDataToSend.set("description", formData.description);
       formDataToSend.set("linkedin_url", formData.linkedin_url);
@@ -169,6 +180,11 @@ export default function CompanyEditModal({
         city: company.city || "",
         state: company.state || "",
         employee_count: company.employee_count?.toString() || "",
+        company_size: company.company_size || "",
+        open_jobs_posted:
+          company.open_jobs_posted != null
+            ? String(company.open_jobs_posted)
+            : "",
         revenue: company.revenue || "",
         description: company.description || "",
         linkedin_url: company.linkedin_url || "",
@@ -188,6 +204,8 @@ export default function CompanyEditModal({
         city: "",
         state: "",
         employee_count: "",
+        company_size: "",
+        open_jobs_posted: "",
         revenue: "",
         description: "",
         linkedin_url: "",
@@ -321,16 +339,47 @@ export default function CompanyEditModal({
             </div>
           </div>
 
-{/* Hide Employees and Revenue from UI - kept in DB only */}
-          {/* <div className="grid grid-cols-2 gap-2">
+          {/* Firmographics (optional; list-builder may fill these) */}
+          <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-2">
-              <Label htmlFor="company-employees">Employees</Label>
+              <Label htmlFor="company-employees">Company size (employees)</Label>
               <Input
                 id="company-employees"
                 type="number"
                 value={formData.employee_count}
-                onChange={(e) => setFormData({ ...formData, employee_count: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, employee_count: e.target.value })
+                }
                 placeholder="250"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="company-size-band">Size band (optional)</Label>
+              <Input
+                id="company-size-band"
+                value={formData.company_size}
+                onChange={(e) =>
+                  setFormData({ ...formData, company_size: e.target.value })
+                }
+                placeholder="51-200"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-2">
+              <Label htmlFor="company-open-jobs">Open jobs posted</Label>
+              <Input
+                id="company-open-jobs"
+                type="number"
+                min={0}
+                value={formData.open_jobs_posted}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    open_jobs_posted: e.target.value,
+                  })
+                }
+                placeholder="3"
               />
             </div>
             <div className="grid gap-2">
@@ -338,11 +387,13 @@ export default function CompanyEditModal({
               <Input
                 id="company-revenue"
                 value={formData.revenue}
-                onChange={(e) => setFormData({ ...formData, revenue: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, revenue: e.target.value })
+                }
                 placeholder="$25M-$50M"
               />
             </div>
-          </div> */}
+          </div>
 
           {/* LinkedIn URL */}
           <div className="grid gap-2">

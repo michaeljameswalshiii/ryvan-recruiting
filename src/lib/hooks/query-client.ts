@@ -90,6 +90,10 @@ function formDataToObject(formData: FormData): Record<string, any> {
     const n = Number(obj.employee_count);
     if (!Number.isNaN(n)) obj.employee_count = n;
   }
+  if (obj.open_jobs_posted != null && obj.open_jobs_posted !== '') {
+    const n = Number(obj.open_jobs_posted);
+    if (!Number.isNaN(n) && n >= 0) obj.open_jobs_posted = n;
+  }
   return obj;
 }
 
@@ -115,6 +119,13 @@ export function useCreateClient() {
         employee_count:
           typeof payload.employee_count === 'number'
             ? payload.employee_count
+            : undefined,
+        company_size: payload.company_size
+          ? String(payload.company_size)
+          : undefined,
+        open_jobs_posted:
+          typeof payload.open_jobs_posted === 'number'
+            ? payload.open_jobs_posted
             : undefined,
         revenue: payload.revenue ? String(payload.revenue) : undefined,
         description: payload.description ? String(payload.description) : undefined,

@@ -40,6 +40,8 @@ export async function createClient(client: {
   state?: string;
   country?: string;
   employee_count?: number;
+  company_size?: string;
+  open_jobs_posted?: number;
   revenue?: string;
   description?: string;
   linkedin_url?: string;

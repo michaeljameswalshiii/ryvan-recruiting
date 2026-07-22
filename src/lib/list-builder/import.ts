@@ -12,6 +12,7 @@ import {
   createClient,
   getAllClients,
   getClientById,
+  updateClient,
 } from '@/lib/db/repositories/client-repository';
 import { hasContactSignal, isKeepableContact } from './runner';
 
@@ -79,7 +80,12 @@ export async function importListBuilderRows(
             : undefined,
           city: row.city || '',
           state: row.state || '',
+          // Reuse existing Dynamo company fields where possible
           industry: row.industry || job.industry || '',
+          employee_count: row.employeeCount || undefined,
+          company_size: row.companySize || undefined,
+          open_jobs_posted:
+            row.openJobsPosted != null ? row.openJobsPosted : undefined,
           status: 'identification',
           notes: `Imported from BD list builder. Source: ${row.sourceUrl || row.website || 'web'}`,
         } as any);
@@ -87,6 +93,35 @@ export async function importListBuilderRows(
         companyId = created?.id;
         importedCompanies++;
         if (created) clients.push(created);
+      } else if (companyId) {
+        // Fill firmographic gaps on existing company without overwriting user data
+        const patch: Record<string, unknown> = {};
+        if (!company.industry && (row.industry || job.industry)) {
+          patch.industry = row.industry || job.industry;
+        }
+        if (
+          (company.employee_count == null || company.employee_count === '') &&
+          row.employeeCount
+        ) {
+          patch.employee_count = row.employeeCount;
+        }
+        if (!company.company_size && row.companySize) {
+          patch.company_size = row.companySize;
+        }
+        if (
+          (company.open_jobs_posted == null ||
+            company.open_jobs_posted === '') &&
+          row.openJobsPosted != null
+        ) {
+          patch.open_jobs_posted = row.openJobsPosted;
+        }
+        if (Object.keys(patch).length > 0) {
+          try {
+            await updateClient(tenantId, companyId, patch as any);
+          } catch (e) {
+            console.warn('[list-builder import] firmographic patch failed', e);
+          }
+        }
       }
 
       let contactId: string | undefined;

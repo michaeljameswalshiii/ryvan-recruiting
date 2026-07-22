@@ -31,6 +31,10 @@ type Row = {
   website?: string;
   city?: string;
   state?: string;
+  industry?: string;
+  employeeCount?: number;
+  companySize?: string;
+  openJobsPosted?: number;
   contactName?: string;
   contactTitle?: string;
   email?: string;
@@ -492,6 +496,31 @@ export default function ListBuilderResultsPage() {
                             <span className="inline-flex items-center gap-1">
                               <MapPin className="h-3.5 w-3.5 text-slate-400" />
                               {[r.city, r.state].filter(Boolean).join(', ')}
+                            </span>
+                          )}
+                          {r.industry && (
+                            <span className="inline-flex items-center gap-1">
+                              <Building2 className="h-3.5 w-3.5 text-slate-400" />
+                              {r.industry}
+                            </span>
+                          )}
+                          {(r.companySize || r.employeeCount != null) && (
+                            <span className="text-slate-600">
+                              Size:{' '}
+                              {r.companySize ||
+                                (r.employeeCount != null
+                                  ? `${r.employeeCount}`
+                                  : '—')}
+                              {r.employeeCount != null &&
+                              r.companySize &&
+                              !String(r.companySize).includes(String(r.employeeCount))
+                                ? ` (~${r.employeeCount})`
+                                : ''}
+                            </span>
+                          )}
+                          {r.openJobsPosted != null && (
+                            <span className="text-slate-600">
+                              Open jobs: {r.openJobsPosted}
                             </span>
                           )}
                           {r.contactName && (

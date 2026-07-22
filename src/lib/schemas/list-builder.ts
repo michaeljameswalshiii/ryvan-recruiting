@@ -35,7 +35,23 @@ export interface ListBuilderResultRow {
   website?: string;
   city?: string;
   state?: string;
+  /** Maps to client.industry on import */
   industry?: string;
+  /**
+   * Estimated headcount when a number is known.
+   * Maps to client.employee_count on import.
+   */
+  employeeCount?: number;
+  /**
+   * Size label/band (e.g. "120" or "51-200").
+   * Maps to client.company_size on import; also used when only a range is known.
+   */
+  companySize?: string;
+  /**
+   * Open job postings observed (careers page, etc.).
+   * Maps to client.open_jobs_posted on import. Optional — never invent.
+   */
+  openJobsPosted?: number;
   contactName?: string;
   contactTitle?: string;
   email?: string;

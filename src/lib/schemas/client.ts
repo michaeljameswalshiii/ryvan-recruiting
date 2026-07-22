@@ -94,11 +94,19 @@ export const clientSchema = z.object({
   phone: z.string().optional().or(z.literal('')),
   company: z.string().optional().or(z.literal('')),
   domain: z.string().max(100).optional().or(z.literal('')),
-  industry: z.string().max(50).optional().or(z.literal('')),
+  industry: z.string().max(80).optional().or(z.literal('')),
   city: z.string().max(50).optional().or(z.literal('')),
   state: z.string().max(50).optional().or(z.literal('')),
   country: z.string().max(50).optional().or(z.literal('')),
+  /** Headcount when known (list-builder / Apollo / manual). */
   employee_count: z.number().int().positive().optional(),
+  /**
+   * Optional display band when exact headcount is unknown (e.g. "51-200").
+   * Prefer employee_count when a single number is known.
+   */
+  company_size: z.string().max(40).optional().or(z.literal('')),
+  /** Public open job postings count when observed (careers page, etc.). */
+  open_jobs_posted: z.number().int().min(0).optional(),
   revenue: z.string().max(50).optional().or(z.literal('')),
   description: z.string().max(500).optional().or(z.literal('')),
   linkedin_url: z.string().max(200).optional().or(z.literal('')),

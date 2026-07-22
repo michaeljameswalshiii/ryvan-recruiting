@@ -24,6 +24,11 @@ import {
   resolveGrokApiKey,
 } from './grok-search';
 import { grokBrowseResearch } from './grok-browse';
+import {
+  normalizeIndustry,
+  parseEmployeeCount,
+  parseOpenJobsPosted,
+} from './firmographics';
 
 export type DiscoverCandidate = {
   companyName: string;
@@ -33,9 +38,15 @@ export type DiscoverCandidate = {
   phone?: string;
   email?: string;
   industry?: string;
+  /** Numeric headcount when known */
+  employeeCount?: number;
+  /** Display band / label */
+  companySize?: string;
+  openJobsPosted?: number;
   contactName?: string;
   contactTitle?: string;
   source: 'grok' | 'grok-browse' | 'seed';
+  /** @deprecated prefer employeeCount — kept for older map paths */
   employees?: number | string;
 };
 
@@ -89,6 +100,12 @@ function mapGrokRows(
     if (!companyName) continue;
     const website = x.website || x.url || x.domain || x.site;
     const city = x.city || x.location || x.town;
+    const sizeRaw =
+      x.employeeCount ?? x.employees ?? x.companySize ?? x.size ?? x.headcount;
+    const size = parseEmployeeCount(sizeRaw);
+    const openJobs = parseOpenJobsPosted(
+      x.openJobsPosted ?? x.open_jobs_posted ?? x.openJobs ?? x.num_jobs ?? x.jobs
+    );
     const cand: DiscoverCandidate = {
       companyName,
       website: website ? String(website).trim() : undefined,
@@ -96,7 +113,10 @@ function mapGrokRows(
       state: x.state ? String(x.state).trim() : undefined,
       phone: x.phone ? String(x.phone).trim() : undefined,
       email: x.email ? String(x.email).trim() : undefined,
-      industry: x.industry ? String(x.industry).trim() : undefined,
+      industry: normalizeIndustry(x.industry || x.sector || x.vertical),
+      employeeCount: size.employeeCount,
+      companySize: size.companySize,
+      openJobsPosted: openJobs,
       contactName: (() => {
         const v = x.contactName || x.contact_name || x.owner;
         return v ? String(v).trim() : undefined;
@@ -105,7 +125,7 @@ function mapGrokRows(
         const v = x.contactTitle || x.title;
         return v ? String(v).trim() : undefined;
       })(),
-      employees: x.employees || x.employeeCount || x.size,
+      employees: sizeRaw,
       source,
     };
     if (cand.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cand.email)) {
@@ -266,9 +286,12 @@ Workflow:
 4. Copy phone/email ONLY from tool results.
 
 Final answer MUST be a JSON array only (no markdown prose) with objects:
-companyName, website, city, state, phone, email, contactName, contactTitle, industry
+companyName, website, city, state, phone, email, contactName, contactTitle,
+industry, employeeCount (number if known), companySize (e.g. "51-200" if only a band),
+openJobsPosted (number of open public job listings if seen on careers/jobs pages — omit if unknown)
 
 Rules:
+- industry / company size / open jobs are OPTIONAL — include only when supported by tool page text; never invent
 - Max ${need} companies this batch
 - Do NOT repeat: ${excludeList}
 ${sizeRule}
@@ -292,8 +315,8 @@ Use fetch_website on each company site. Then return JSON array only.`;
 
   const fallbackSystem = `You are Grok doing B2B list research for recruiting BD.
 Return ONLY a JSON array of real companies with a presence in ${targetGeo}.
-Keys: companyName, website, city, state, phone, email, contactName, contactTitle, industry
-NEVER invent phone/email — omit if unsure. Company main phone is preferred over personal email.
+Keys: companyName, website, city, state, phone, email, contactName, contactTitle, industry, employeeCount, companySize, openJobsPosted
+NEVER invent phone/email/size/jobs — omit if unsure. Company main phone is preferred over personal email.
 Max ${need}. Avoid: ${excludeList}
 ${honorCap ? `Prefer under ~${employeeCap} employees when known.` : 'Do not filter by employee count.'}
 Focus: ${focusKw} near ${focusCity}. Cities: ${anchors.join(', ')}

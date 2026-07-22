@@ -476,6 +476,8 @@ export async function executeUpdateCompany(
     "status",
     "revenue",
     "employee_count",
+    "company_size",
+    "open_jobs_posted",
   ] as const) {
     const v = p[key];
     if (v !== undefined && v !== null && String(v).trim() !== "") {

@@ -22,6 +22,8 @@ interface Company {
   state?: string;
   country?: string;
   employee_count?: number;
+  company_size?: string;
+  open_jobs_posted?: number;
   industry?: string;
   revenue?: string;
   description?: string;
@@ -161,10 +163,20 @@ export default function SortableCompanyCard({
             <Globe className="h-3 w-3" />
           </a>
         )}
-        {company.employee_count && (
+        {company.industry && (
+          <span className="text-xs text-muted-foreground truncate max-w-[8rem]">
+            {company.industry}
+          </span>
+        )}
+        {(company.employee_count || company.company_size) && (
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Users className="h-3 w-3" />
-            {company.employee_count}
+            {company.company_size || company.employee_count}
+          </span>
+        )}
+        {company.open_jobs_posted != null && company.open_jobs_posted > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {company.open_jobs_posted} open
           </span>
         )}
         {company.revenue && (

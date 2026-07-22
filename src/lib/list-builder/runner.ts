@@ -28,6 +28,11 @@ import {
   enrichContactFromWeb,
   type DiscoverCandidate,
 } from './discover-sources';
+import {
+  normalizeIndustry,
+  parseEmployeeCount,
+  parseOpenJobsPosted,
+} from './firmographics';
 
 function rowId(): string {
   return `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -151,12 +156,16 @@ async function extractFromSite(
   page: { title: string; text: string; url: string },
   job?: ListBuilderJob
 ): Promise<Partial<ListBuilderResultRow>> {
-  const system = `Extract public contact info for recruiting BD outreach.
+  const system = `Extract public company + contact info for recruiting BD outreach.
 Return ONLY JSON object with optional keys:
-contactName, contactTitle, email, phone, city, state, industry, notes
+contactName, contactTitle, email, phone, city, state, industry,
+employeeCount (number), companySize (string band like "51-200"), openJobsPosted (number), notes
 Rules:
-- NEVER invent emails or phones. Only include if clearly present in the page text.
+- NEVER invent emails, phones, headcount, or open job counts. Only include if clearly present in the page text.
 - Prefer HR, recruiting, talent, people ops, owner, founder, CEO, office manager.
+- industry: short sector label if stated (e.g. commercial construction).
+- employeeCount / companySize: only from explicit "employees", "team of N", about-us stats.
+- openJobsPosted: only if careers/jobs page lists a count or you can count distinct open roles on the page.
 - If nothing found, return {} or notes explaining what is missing.`;
 
   const user = `Company: ${companyName}
@@ -175,7 +184,7 @@ ${page.text.slice(0, 8000)}`;
   // and page is short (saves time budget for more companies)
   const needLlm = !out.email || !out.phone || page.text.length > 400;
   if (needLlm) {
-    const { data } = await completeJson<Record<string, string>>(
+    const { data } = await completeJson<Record<string, string | number>>(
       system,
       user,
       {
@@ -198,12 +207,23 @@ ${page.text.slice(0, 8000)}`;
         'industry',
         'notes',
       ] as const) {
-        if (typeof data[k] === 'string' && data[k].trim()) {
+        const v = data[k];
+        if (typeof v === 'string' && v.trim()) {
           // Prefer regex-found email/phone over model (less hallucination risk)
           if ((k === 'email' || k === 'phone') && out[k]) continue;
-          out[k] = data[k].trim();
+          out[k] = v.trim();
         }
       }
+      const size = parseEmployeeCount(
+        data.employeeCount ?? data.companySize ?? (data as any).employees
+      );
+      if (size.employeeCount) out.employeeCount = size.employeeCount;
+      if (size.companySize) out.companySize = size.companySize;
+      const jobs = parseOpenJobsPosted(
+        data.openJobsPosted ?? (data as any).open_jobs_posted
+      );
+      if (jobs != null) out.openJobsPosted = jobs;
+      if (out.industry) out.industry = normalizeIndustry(out.industry);
     }
   }
 
@@ -351,9 +371,13 @@ async function processListBuilderBatchInner(
     city?: string;
     state?: string;
     contactName?: string;
+    contactTitle?: string;
     email?: string;
     phone?: string;
     industry?: string;
+    employeeCount?: number;
+    companySize?: string;
+    openJobsPosted?: number;
     fromSeed?: boolean;
     source?: string;
   }> = seedToCandidates(job);
@@ -363,18 +387,30 @@ async function processListBuilderBatchInner(
     nextSeedCursor = nextSeedCursor + candidates.length;
   } else {
     const discovered = await discoverCompanies(job, existingNames);
-    candidates = discovered.map((d) => ({
-      companyName: d.companyName,
-      website: d.website,
-      city: d.city,
-      state: d.state,
-      email: d.email,
-      phone: d.phone,
-      industry: d.industry,
-      contactName: d.contactName,
-      contactTitle: d.contactTitle,
-      source: d.source,
-    }));
+    candidates = discovered.map((d) => {
+      const size =
+        d.employeeCount || d.companySize
+          ? {
+              employeeCount: d.employeeCount,
+              companySize: d.companySize,
+            }
+          : parseEmployeeCount(d.employees);
+      return {
+        companyName: d.companyName,
+        website: d.website,
+        city: d.city,
+        state: d.state,
+        email: d.email,
+        phone: d.phone,
+        industry: d.industry,
+        employeeCount: size.employeeCount ?? d.employeeCount,
+        companySize: size.companySize ?? d.companySize,
+        openJobsPosted: d.openJobsPosted,
+        contactName: d.contactName,
+        contactTitle: d.contactTitle,
+        source: d.source,
+      };
+    });
   }
 
   if (candidates.length === 0) {
@@ -469,15 +505,18 @@ async function processListBuilderBatchInner(
     }
 
     let extracted: Partial<ListBuilderResultRow> = {};
-    // Prefer structured contacts from Grok discovery (web_search)
+    // Prefer structured firmographics + contacts from discovery
     if (c.email) extracted.email = c.email;
     if (c.phone) extracted.phone = c.phone;
     if (c.city) extracted.city = c.city;
     if (c.state) extracted.state = c.state;
-    if (c.industry) extracted.industry = c.industry;
+    if (c.industry) extracted.industry = normalizeIndustry(c.industry);
+    if (c.employeeCount) extracted.employeeCount = c.employeeCount;
+    if (c.companySize) extracted.companySize = c.companySize;
+    if (c.openJobsPosted != null) extracted.openJobsPosted = c.openJobsPosted;
     if (c.contactName) extracted.contactName = c.contactName;
-    if ((c as any).contactTitle) {
-      extracted.contactTitle = (c as any).contactTitle;
+    if (c.contactTitle) {
+      extracted.contactTitle = c.contactTitle;
     }
 
     const alreadyKeepable = isKeepableContact({
@@ -502,6 +541,10 @@ async function processListBuilderBatchInner(
           city: siteExtract.city || extracted.city,
           state: siteExtract.state || extracted.state,
           industry: siteExtract.industry || extracted.industry,
+          employeeCount: siteExtract.employeeCount || extracted.employeeCount,
+          companySize: siteExtract.companySize || extracted.companySize,
+          openJobsPosted:
+            siteExtract.openJobsPosted ?? extracted.openJobsPosted,
           contactName: siteExtract.contactName || extracted.contactName,
           contactTitle: siteExtract.contactTitle || extracted.contactTitle,
           notes: siteExtract.notes || extracted.notes,
@@ -595,7 +638,12 @@ async function processListBuilderBatchInner(
       website: website || extracted.sourceUrl,
       city: extracted.city || c.city,
       state: extracted.state || c.state,
-      industry: extracted.industry || c.industry || job.industry,
+      industry:
+        normalizeIndustry(extracted.industry || c.industry || job.industry) ||
+        undefined,
+      employeeCount: extracted.employeeCount || c.employeeCount,
+      companySize: extracted.companySize || c.companySize,
+      openJobsPosted: extracted.openJobsPosted ?? c.openJobsPosted,
       contactName: extracted.contactName,
       contactTitle: extracted.contactTitle,
       email: extracted.email,
