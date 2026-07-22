@@ -118,8 +118,11 @@ export const LIST_BUILDER_DEFAULTS = {
   targetSize: 50,
   maxConcurrentPerUser: 10,
   timeoutMs: 2 * 60 * 60 * 1000, // 2 hours
-  /** Companies researched per tick (Apollo/Tavily/LLM) */
-  batchSize: 6,
+  /**
+   * Companies per tick. Keep modest when Grok browse (fetch_website) is enabled
+   * so the batch fits under Vercel maxDuration.
+   */
+  batchSize: 4,
   maxResultsCap: 200,
   /**
    * Soft empty-batch signal for UI only — do NOT stop the job early.

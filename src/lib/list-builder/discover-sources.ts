@@ -1,6 +1,6 @@
 /**
  * Grok-powered company discovery for list-builder.
- * Uses Grok 4.3 on Amazon Bedrock Mantle (platform AWS path — same as AI Assistant).
+ * Uses Grok 4.3 on Amazon Bedrock Mantle + fetch_website browse loop.
  * No Apollo. No Tavily. No direct xAI API key.
  * @serverOnly
  */
@@ -14,12 +14,16 @@ import {
 } from './geo';
 import { LIST_BUILDER_DEFAULTS } from '@/lib/schemas/list-builder';
 import type { ListBuilderJob } from '@/lib/schemas/list-builder';
-import { extractContactSignals } from './fetch-page';
+import {
+  extractContactSignals,
+  fetchCompanyContactPages,
+} from './fetch-page';
 import {
   grokWebResearch,
   parseJsonFromText,
   resolveGrokApiKey,
 } from './grok-search';
+import { grokBrowseResearch } from './grok-browse';
 
 export type DiscoverCandidate = {
   companyName: string;
@@ -31,7 +35,7 @@ export type DiscoverCandidate = {
   industry?: string;
   contactName?: string;
   contactTitle?: string;
-  source: 'grok' | 'seed';
+  source: 'grok' | 'grok-browse' | 'seed';
   employees?: number | string;
 };
 
@@ -51,14 +55,6 @@ function domainOf(url?: string): string {
     return (url || '').toLowerCase().replace(/^www\./, '');
   }
 }
-
-const EXCLUDED_SEARCH_DOMAINS = [
-  'indeed.com',
-  'linkedin.com',
-  'glassdoor.com',
-  'ziprecruiter.com',
-  'facebook.com',
-];
 
 function dedupeCandidates(
   list: DiscoverCandidate[],
@@ -81,7 +77,8 @@ function dedupeCandidates(
 
 function mapGrokRows(
   rows: any[],
-  targetGeo: string
+  targetGeo: string,
+  source: DiscoverCandidate['source'] = 'grok'
 ): DiscoverCandidate[] {
   const out: DiscoverCandidate[] = [];
   for (const x of rows) {
@@ -109,9 +106,8 @@ function mapGrokRows(
         return v ? String(v).trim() : undefined;
       })(),
       employees: x.employees || x.employeeCount || x.size,
-      source: 'grok',
+      source,
     };
-    // Soft sanity on invented contacts from page text only (regex)
     if (cand.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cand.email)) {
       delete cand.email;
     }
@@ -132,7 +128,59 @@ function mapGrokRows(
 }
 
 /**
- * Discover companies with Grok + live web_search (batch-aware, no Apollo/Tavily).
+ * After Grok names companies, crawl their sites for public email/phone.
+ * Deterministic — does not invent contacts.
+ */
+async function hydrateContactsFromSites(
+  candidates: DiscoverCandidate[],
+  budgetMs: number
+): Promise<DiscoverCandidate[]> {
+  const started = Date.now();
+  const out: DiscoverCandidate[] = [];
+
+  for (const c of candidates) {
+    if (Date.now() - started > budgetMs) {
+      out.push(c);
+      continue;
+    }
+    const hasContact =
+      (c.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) ||
+      (c.phone && (c.phone.match(/\d/g) || []).length >= 7);
+    if (hasContact || !c.website) {
+      out.push(c);
+      continue;
+    }
+
+    let website = c.website;
+    if (!/^https?:\/\//i.test(website)) {
+      website = website.includes('.') ? `https://${website}` : website;
+    }
+    if (!website.includes('.')) {
+      out.push(c);
+      continue;
+    }
+
+    const page = await fetchCompanyContactPages(website);
+    if ('error' in page) {
+      out.push(c);
+      continue;
+    }
+    const sig = extractContactSignals(page.text);
+    out.push({
+      ...c,
+      website: page.url || website,
+      email: c.email || sig.emails[0],
+      phone: c.phone || sig.phones[0],
+      source: c.source === 'seed' ? 'seed' : 'grok-browse',
+    });
+  }
+
+  return out;
+}
+
+/**
+ * Primary discovery: Grok Mantle agent with fetch_website only.
+ * Falls back to completion-only Grok if the browse loop fails.
  */
 export async function discoverCompanyCandidates(
   job: ListBuilderJob,
@@ -152,134 +200,182 @@ export async function discoverCompanyCandidates(
   const already = job.results.length;
   const target = job.targetSize;
   const excludeList = excludeNames.slice(0, 60).join(', ') || '(none yet)';
-  // Rotate focus so batches don't all return the same SERP
-  const focusCity = anchors[(batch - 1) % Math.max(anchors.length, 1)] || targetGeo;
-  const focusKw = keywords[(batch - 1) % Math.max(keywords.length, 1)] || 'construction';
+  const focusCity =
+    anchors[(batch - 1) % Math.max(anchors.length, 1)] || targetGeo;
+  const focusKw =
+    keywords[(batch - 1) % Math.max(keywords.length, 1)] || 'construction';
 
-  const system = `You are Grok 4.3 on Amazon Bedrock Mantle doing B2B list research for a recruiting agency.
-You know US local markets well. Return ONLY real companies you are confident exist in the target area.
+  const browseSystem = `You are Grok 4.3 on Amazon Bedrock Mantle doing B2B list research for a recruiting agency.
 
-Return ONLY a JSON array (no markdown prose outside JSON) of objects with keys:
-companyName, website, city, state, phone, email, contactName, contactTitle, industry, employees
+You have ONE tool: fetch_website — use it to open real company websites and contact/about pages.
+This is how you verify firms and get public phone/email (from page text / emails_found / phones_found).
+
+Workflow:
+1. Name ${need} real ${keywords.slice(0, 2).join('/')} companies in ${targetGeo} (cities like ${anchors.slice(0, 5).join(', ')}).
+2. For each, call fetch_website on their domain, then /contact or /about if needed.
+3. Only keep companies whose site loads and look local to ${targetGeo}.
+4. Copy phone/email ONLY from tool results (emails_found, phones_found, or visible page text). NEVER invent contacts.
+
+Final answer MUST be a JSON array only (no markdown prose) with objects:
+companyName, website, city, state, phone, email, contactName, contactTitle, industry
 
 Rules:
-- Every company must be physically in or primarily serving: ${targetGeo}
-- Valid local cities include: ${anchors.join(', ') || targetGeo}
-- Prefer ${keywords.slice(0, 4).join(', ') || 'local'} firms${cap ? ` with under ~${cap} employees` : ' (SMB preferred)'}
-- Include phone and/or email ONLY if you are highly confident they are public and correct. NEVER invent or guess contact info — omit rather than fabricate.
-- Prefer real company websites (not job boards or social profiles)
 - Max ${need} companies
 - Do NOT repeat: ${excludeList}
-- Diversify this batch around: ${focusKw} near ${focusCity}
-- Put the real city (e.g. Melbourne, Palm Bay) in "city", not only the county name`;
+- Prefer firms${cap ? ` under ~${cap} employees` : ' that are local SMBs'}
+- This batch focus: ${focusKw} near ${focusCity}
+- If a site fails, try another company — still return JSON for what you verified`;
 
-  const user = `Research request (batch ${batch}):
-${job.brief}
+  const browseUser = `Brief: ${job.brief}
 
 REQUIRED location: ${targetGeo}
-Industry focus: ${job.industry || keywords.join(', ')}
-We already have ${already}/${target} usable leads. Find ${need} NEW companies in ${targetGeo} only.
-For this batch emphasize: ${focusKw} companies in/near ${focusCity}.
-Think of established local contractors and construction firms a staffing firm would call.
+Industry: ${job.industry || keywords.join(', ')}
+Progress: ${already}/${target} usable leads already kept.
+Batch #${batch}: find ${need} NEW companies in ${targetGeo}, emphasize ${focusKw} / ${focusCity}.
 
-Return JSON array only.`;
+Use fetch_website on each company site. Then return JSON array only.`;
 
-  const { text, error } = await grokWebResearch({
-    system,
-    user,
-    timeoutMs: Math.max(LIST_BUILDER_DEFAULTS.llmTimeoutMs, 50_000),
-    excludedDomains: EXCLUDED_SEARCH_DOMAINS,
+  // --- Browse-enabled discovery (preferred) ---
+  const browsed = await grokBrowseResearch({
+    system: browseSystem,
+    user: browseUser,
+    maxIterations: 5,
+    timeoutMs: Math.min(LIST_BUILDER_DEFAULTS.batchBudgetMs - 5_000, 52_000),
     usageCtx: {
       tenantId: job.tenant_id,
       userId: job.userId,
       jobId: job.id,
-      purpose: 'discover',
+      purpose: 'discover-browse',
       queryPreview: `${targetGeo}: ${job.brief}`.slice(0, 180),
     },
   });
 
-  if (error && !text) {
-    throw new Error(`discover: ${error}`);
+  let candidates: DiscoverCandidate[] = [];
+
+  if (browsed.text && !browsed.error) {
+    const parsed = parseJsonFromText<any[]>(browsed.text);
+    if (Array.isArray(parsed.data)) {
+      candidates = mapGrokRows(parsed.data, targetGeo, 'grok-browse');
+    }
   }
 
-  const parsed = parseJsonFromText<any[]>(text);
-  if (parsed.error || !Array.isArray(parsed.data)) {
-    // Retry once with a stricter "JSON only" nudge if Grok returned prose
-    const retry = await grokWebResearch({
-      system:
-        system +
-        '\nCRITICAL: Your entire reply must be a single JSON array. No intro, no bullets, no markdown.',
-      user: `Same request. Location ${targetGeo}. Return ONLY JSON array of up to ${need} companies with companyName, website, city, phone, email.`,
-      timeoutMs: 45_000,
-      excludedDomains: EXCLUDED_SEARCH_DOMAINS,
+  // --- Fallback: completion-only Grok (no tools) ---
+  if (candidates.length === 0) {
+    const system = `You are Grok 4.3 on Amazon Bedrock Mantle doing B2B list research.
+Return ONLY a JSON array of real companies in ${targetGeo}.
+Keys: companyName, website, city, state, phone, email, contactName, contactTitle, industry
+NEVER invent phone/email — omit if unsure. Max ${need}. Avoid: ${excludeList}
+Focus: ${focusKw} near ${focusCity}. Cities: ${anchors.join(', ')}`;
+
+    const user = `Brief: ${job.brief}
+Location: ${targetGeo}. Batch ${batch}. Need ${need} NEW companies (${already}/${target} kept).
+JSON array only.`;
+
+    const { text, error } = await grokWebResearch({
+      system,
+      user,
+      timeoutMs: 40_000,
       usageCtx: {
         tenantId: job.tenant_id,
         userId: job.userId,
         jobId: job.id,
-        purpose: 'discover-retry',
-        queryPreview: targetGeo,
+        purpose: 'discover',
+        queryPreview: `${targetGeo}: ${job.brief}`.slice(0, 180),
       },
     });
-    if (retry.error && !retry.text) throw new Error(`discover: ${retry.error}`);
-    const parsed2 = parseJsonFromText<any[]>(retry.text);
-    if (parsed2.error || !Array.isArray(parsed2.data)) {
-      throw new Error(`discover: ${parsed2.error || 'invalid JSON from Grok'}`);
+
+    if (error && !text) {
+      throw new Error(
+        `discover: ${browsed.error || error || 'Grok discovery failed'}`
+      );
     }
-    return dedupeCandidates(
-      mapGrokRows(parsed2.data, targetGeo),
-      excludeNames
-    ).slice(0, need);
+
+    const parsed = parseJsonFromText<any[]>(text);
+    if (parsed.error || !Array.isArray(parsed.data)) {
+      throw new Error(
+        `discover: ${parsed.error || browsed.error || 'invalid JSON from Grok'}`
+      );
+    }
+    candidates = mapGrokRows(parsed.data, targetGeo, 'grok');
   }
 
-  return dedupeCandidates(
-    mapGrokRows(parsed.data, targetGeo),
-    excludeNames
-  ).slice(0, need);
+  let list = dedupeCandidates(candidates, excludeNames).slice(0, need);
+
+  // Always hydrate missing contacts from real sites (deterministic scrape)
+  list = await hydrateContactsFromSites(list, 18_000);
+
+  return list.slice(0, need);
 }
 
 /**
- * When site scrape finds no email/phone, ask Grok to web-search for public contacts.
+ * Contact gap-fill: Grok browses the company site with fetch_website only.
  */
 export async function enrichContactFromWeb(
   companyName: string,
   city?: string,
   website?: string,
   opts?: { userId?: string; tenantId?: string; jobId?: string }
-): Promise<{ email?: string; phone?: string; contactName?: string; notes?: string }> {
+): Promise<{
+  email?: string;
+  phone?: string;
+  contactName?: string;
+  notes?: string;
+}> {
   const keyRes = await resolveGrokApiKey(opts?.userId);
   if ('error' in keyRes) return {};
 
   const place = city || '';
-  const system = `You find public contact info for BD outreach (Grok on Bedrock Mantle).
-Return ONLY JSON object: { "email"?: string, "phone"?: string, "contactName"?: string }
-Rules: NEVER invent or guess digits/addresses. Only include contacts you are highly confident are real and public. Prefer main office phone. Empty object {} if unsure.`;
+  const site = website || '';
 
-  const user = `Public phone or email for:
-Company: ${companyName}
-City/area: ${place || 'unknown'}
-Website: ${website || 'unknown'}
+  // Fast path: deterministic multi-page scrape first
+  if (site && site.includes('.')) {
+    let url = site;
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+    const page = await fetchCompanyContactPages(url);
+    if (!('error' in page)) {
+      const sig = extractContactSignals(page.text);
+      if (sig.emails[0] || sig.phones[0]) {
+        return {
+          email: sig.emails[0],
+          phone: sig.phones[0],
+          notes: 'Contact from site crawl',
+        };
+      }
+    }
+  }
 
-JSON only. Omit fields you cannot verify.`;
+  // Grok + fetch_website to try contact/about URLs it knows
+  const system = `You find public contact info for BD outreach.
+You ONLY have fetch_website. Open the company site, /contact, /about, /locations.
+Return ONLY JSON: { "email"?: string, "phone"?: string, "contactName"?: string }
+NEVER invent. Only values from tool results (emails_found / phones_found / page text). Empty {} if none.`;
 
-  const { text, error } = await grokWebResearch({
+  const user = `Company: ${companyName}
+City: ${place || 'unknown'}
+Website: ${site || 'unknown — try plausible official domain if confident, else return {}'}
+
+fetch_website the homepage and contact page, then JSON only.`;
+
+  const browsed = await grokBrowseResearch({
     system,
     user,
+    maxIterations: 3,
     timeoutMs: 28_000,
     usageCtx: {
       tenantId: opts?.tenantId,
       userId: opts?.userId,
       jobId: opts?.jobId,
-      purpose: 'enrich-contact',
+      purpose: 'enrich-browse',
       queryPreview: companyName,
     },
   });
 
-  if (error && !text) return {};
+  if (!browsed.text) return {};
 
-  const parsed = parseJsonFromText<Record<string, string>>(text);
-  const data = parsed.data && typeof parsed.data === 'object' ? parsed.data : {};
-  // Also scrape any contact strings from raw text as backup
-  const signals = extractContactSignals(text || '');
+  const parsed = parseJsonFromText<Record<string, string>>(browsed.text);
+  const data =
+    parsed.data && typeof parsed.data === 'object' ? parsed.data : {};
+  const signals = extractContactSignals(browsed.text);
 
   const out: {
     email?: string;
@@ -293,7 +389,7 @@ JSON only. Omit fields you cannot verify.`;
   if (phone && (phone.match(/\d/g) || []).length >= 7) out.phone = phone;
   if (data.contactName?.trim()) out.contactName = data.contactName.trim();
   if (out.email || out.phone) {
-    out.notes = 'Contact from Grok (Bedrock Mantle)';
+    out.notes = 'Contact from Grok fetch_website browse';
   }
   return out;
 }

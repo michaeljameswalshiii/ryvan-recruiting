@@ -127,7 +127,14 @@ async function signedFetch(
 async function invokeMantleChat(params: {
   model: string;
   messages: ChatMessage[];
-  tools?: ReturnType<typeof toOpenAITools>;
+  tools?: Array<{
+    type: "function";
+    function: {
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+    };
+  }>;
   temperature?: number;
   maxTokens?: number;
 }): Promise<{
@@ -333,5 +340,120 @@ Use tools when they improve the answer. Be concise and actionable.`;
     text: "Maximum tool iterations reached. Please refine your query.",
     toolsUsed: Array.from(toolsUsed),
     model: usedModel,
+  };
+}
+
+/** OpenAI-style tool def for scoped Mantle agent loops */
+export type MantleOpenAiTool = {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
+/**
+ * Mantle Grok agent with an explicit allow-list of tools (e.g. fetch_website only).
+ * Used by List Builder so Grok can browse real pages without Apollo/Tavily.
+ */
+export async function runMantleGrokScopedAgent(params: {
+  system: string;
+  user: string;
+  tools: MantleOpenAiTool[];
+  executeTool: (
+    name: string,
+    input: Record<string, unknown>
+  ) => Promise<string>;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  maxIterations?: number;
+}): Promise<{ text: string; toolsUsed: string[]; model: string; iterations: number }> {
+  const model = params.model || MANTLE_GROK_43;
+  const maxIterations = Math.min(
+    Math.max(params.maxIterations ?? 5, 1),
+    8
+  );
+  const toolsUsed = new Set<string>();
+  let usedModel = model;
+
+  const messages: ChatMessage[] = [
+    { role: "system", content: params.system },
+    { role: "user", content: params.user },
+  ];
+
+  for (let i = 0; i < maxIterations; i++) {
+    const result = await invokeMantleChat({
+      model,
+      messages,
+      tools: params.tools.length ? params.tools : undefined,
+      temperature: params.temperature ?? 0.2,
+      maxTokens: params.maxTokens ?? 4096,
+    });
+    usedModel = result.model;
+    const toolCalls = result.tool_calls || [];
+
+    if (!toolCalls.length) {
+      return {
+        text: result.content || "",
+        toolsUsed: Array.from(toolsUsed),
+        model: usedModel,
+        iterations: i + 1,
+      };
+    }
+
+    messages.push({
+      role: "assistant",
+      content: result.content,
+      tool_calls: toolCalls,
+    });
+
+    for (const tc of toolCalls) {
+      const name = tc.function?.name || "";
+      toolsUsed.add(name);
+      let input: Record<string, unknown> = {};
+      try {
+        input = JSON.parse(tc.function.arguments || "{}");
+      } catch {
+        input = { query: tc.function.arguments || "" };
+      }
+      try {
+        const out = await params.executeTool(name, input);
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content: out.slice(0, 12_000),
+        });
+      } catch (err) {
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content: `Error: ${err instanceof Error ? err.message : "failed"}`,
+        });
+      }
+    }
+  }
+
+  // Force a final answer without tools after iteration cap
+  const final = await invokeMantleChat({
+    model,
+    temperature: 0.1,
+    maxTokens: params.maxTokens ?? 4096,
+    messages: [
+      ...messages,
+      {
+        role: "user",
+        content:
+          "Stop using tools. Return your final answer now based on what you already fetched.",
+      },
+    ],
+  });
+
+  return {
+    text: final.content || "",
+    toolsUsed: Array.from(toolsUsed),
+    model: final.model || usedModel,
+    iterations: maxIterations + 1,
   };
 }

@@ -492,7 +492,11 @@ async function processListBuilderBatchInner(
       }
     } else if (website && website.includes('.')) {
       extracted.sourceUrl = website;
-      extracted.notes = extracted.notes || 'Contact from Grok (Bedrock Mantle)';
+      extracted.notes =
+        extracted.notes ||
+        (c.source === 'grok-browse'
+          ? 'Contact from Grok site browse'
+          : 'Contact from Grok (Bedrock Mantle)');
     }
 
     // Merge discovery / seed contacts (Grok often returns phone from search)
