@@ -43,17 +43,45 @@ function contactsFromCompany(company: any): ContactOption[] {
   return list
     .filter((c: any) => c && (c.id || c.name))
     .map((c: any) => ({
-      id: String(c.id),
+      id: String(c.id || c.contactId || ''),
       name: String(c.name || 'Unnamed'),
       title: c.title || '',
       email: c.email || '',
-      phone: c.phone || c.preferredPhone || '',
+      phone:
+        c.phone ||
+        c.preferredPhone ||
+        (Array.isArray(c.phones)
+          ? c.phones.find((p: any) => p?.isPreferred)?.number ||
+            c.phones[0]?.number ||
+            ''
+          : '') ||
+        '',
       isPrimary: !!c.isPrimary,
     }))
+    .filter((c: ContactOption) => !!c.id)
     .sort((a: ContactOption, b: ContactOption) => {
       if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
+}
+
+function findCompanyInList(
+  allCompanies: any,
+  companyId?: string
+): any | null {
+  if (!companyId) return null;
+  const list = Array.isArray(allCompanies)
+    ? allCompanies
+    : Array.isArray(allCompanies?.clients)
+      ? allCompanies.clients
+      : [];
+  return (
+    list.find(
+      (c: any) =>
+        String(c?.id) === String(companyId) ||
+        String(c?.PK) === String(companyId)
+    ) || null
+  );
 }
 
 type Props = {
@@ -77,11 +105,12 @@ export function JobHiringManagerCard({
   const { data: allCompanies } = useClients();
 
   const company = useMemo(() => {
-    if (companyFromId) return companyFromId;
-    if (!companyId || !Array.isArray(allCompanies)) return null;
-    return (
-      allCompanies.find((c: any) => String(c.id) === String(companyId)) || null
-    );
+    if (companyFromId && Array.isArray(companyFromId.contacts)) {
+      return companyFromId;
+    }
+    const fromList = findCompanyInList(allCompanies, companyId);
+    if (fromList) return fromList;
+    return companyFromId || null;
   }, [companyFromId, allCompanies, companyId]);
 
   const contacts = useMemo(() => contactsFromCompany(company), [company]);
@@ -289,23 +318,28 @@ export function HiringManagerSelect({
   onChange: (fields: HiringManagerFields) => void;
   disabled?: boolean;
 }) {
-  const { data: companyFromId } = useClient(companyId || '');
-  const { data: allCompanies } = useClients();
+  const { data: companyFromId, isLoading: loadingDetail } = useClient(
+    companyId || ''
+  );
+  const { data: allCompanies, isLoading: loadingList } = useClients();
 
   const company = useMemo(() => {
-    if (companyFromId) return companyFromId;
-    if (!companyId || !Array.isArray(allCompanies)) return null;
-    return (
-      allCompanies.find((c: any) => String(c.id) === String(companyId)) || null
-    );
+    // Prefer detail (freshest), fall back to list match
+    if (companyFromId && Array.isArray(companyFromId.contacts)) {
+      return companyFromId;
+    }
+    const fromList = findCompanyInList(allCompanies, companyId);
+    if (fromList) return fromList;
+    return companyFromId || null;
   }, [companyFromId, allCompanies, companyId]);
 
   const contacts = useMemo(() => contactsFromCompany(company), [company]);
+  const loading = !!(companyId && (loadingDetail || loadingList));
 
   if (!companyId) {
     return (
       <p className="text-xs text-muted-foreground">
-        Select a company first to choose a hiring manager.
+        Select a company first to choose a contact.
       </p>
     );
   }
@@ -315,7 +349,7 @@ export function HiringManagerSelect({
       <select
         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
         value={valueContactId || ''}
-        disabled={disabled || contacts.length === 0}
+        disabled={disabled || loading || contacts.length === 0}
         onChange={(e) => {
           const id = e.target.value;
           if (!id) {
@@ -340,9 +374,11 @@ export function HiringManagerSelect({
         }}
       >
         <option value="">
-          {contacts.length === 0
-            ? 'No contacts — add on company page'
-            : 'None / select hiring manager…'}
+          {loading
+            ? 'Loading contacts…'
+            : contacts.length === 0
+              ? 'No contacts — add on company page'
+              : 'None / select contact…'}
         </option>
         {contacts.map((c) => (
           <option key={c.id} value={c.id}>
@@ -352,13 +388,21 @@ export function HiringManagerSelect({
           </option>
         ))}
       </select>
-      {contacts.length === 0 && (
+      {!loading && contacts.length === 0 && (
         <Link
           href={`/dashboard/companies/${companyId}?tab=contacts`}
           className="text-xs text-blue-600 hover:underline"
         >
           Add a contact on the company first
         </Link>
+      )}
+      {valueContactId && contacts.some((c) => c.id === valueContactId) && (
+        <p className="text-xs text-muted-foreground">
+          Selected:{' '}
+          <span className="font-medium text-foreground">
+            {contacts.find((c) => c.id === valueContactId)?.name}
+          </span>
+        </p>
       )}
     </div>
   );

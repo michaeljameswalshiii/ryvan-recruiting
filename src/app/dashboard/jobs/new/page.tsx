@@ -99,20 +99,37 @@ export default function NewJobPage() {
 
   // Handle add job
   const handleAddJob = async () => {
-    if (!newJobTitle || !newJobCompanyId || !newJobCompanyName) {
+    if (!newJobTitle?.trim() || !newJobCompanyId?.trim()) {
       alert("Title and Company are required");
       return;
     }
 
+    const company = companies.find(
+      (c: any) =>
+        String(c.id) === String(newJobCompanyId) ||
+        String(c.PK) === String(newJobCompanyId)
+    );
+    const companyName =
+      newJobCompanyName?.trim() ||
+      company?.name ||
+      company?.companyName ||
+      "";
+
+    if (!companyName) {
+      alert("Please select a company from the dropdown");
+      return;
+    }
+
     try {
+      // Success/error toasts come from useCreateJob
       await createJobMutation.mutateAsync({
-        title: newJobTitle,
+        title: newJobTitle.trim(),
         description: newJobDescription,
         location: newJobLocation,
         salaryRange: newJobSalary,
         employmentType: newJobEmploymentType,
         companyId: newJobCompanyId,
-        companyName: newJobCompanyName,
+        companyName,
         status: "Open",
         ...hiringManager,
       });
@@ -126,12 +143,10 @@ export default function NewJobPage() {
       setNewJobCompanyId("");
       setNewJobCompanyName("");
       setHiringManager({});
-      
-      alert("Job created successfully!");
+
       router.push('/dashboard/jobs');
     } catch (err: any) {
       console.error("Add job error:", err);
-      alert(`Failed to add job: ${err?.message || err?.error || "Unknown error"}`);
     }
   };
 
@@ -168,30 +183,75 @@ export default function NewJobPage() {
           />
         </div>
         
-        {/* Company Selection - Pre-filled if companyId provided */}
+        {/* Company Selection - dropdown only (name resolved from selection) */}
         <div className="grid gap-2">
           <Label htmlFor="company">Company *</Label>
-          <select
-            id="company"
-            value={newJobCompanyId}
-            onChange={(e) => {
-              setNewJobCompanyId(e.target.value);
-              const company = companies.find((c: any) => c.id === e.target.value);
-              if (company) {
-                setNewJobCompanyName(company.name || "");
-              }
-              // Reset HM when company changes
-              setHiringManager({});
-            }}
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-          >
-            <option value="">Select a company...</option>
-            {companies.map((company: any) => (
-              <option key={company.id} value={company.id}>
-                {company.name}
-              </option>
-            ))}
-          </select>
+          {companies.length > 0 ? (
+            <select
+              id="company"
+              value={newJobCompanyId}
+              onChange={(e) => {
+                const companyId = e.target.value;
+                setNewJobCompanyId(companyId);
+                const company = companies.find(
+                  (c: any) =>
+                    String(c.id) === String(companyId) ||
+                    String(c.PK) === String(companyId)
+                );
+                setNewJobCompanyName(
+                  company?.name || company?.companyName || ""
+                );
+                // Default to primary contact when company changes
+                const contacts = Array.isArray(company?.contacts)
+                  ? company.contacts
+                  : [];
+                const primary =
+                  contacts.find((c: any) => c?.isPrimary) ||
+                  (company?.primaryContactId
+                    ? contacts.find(
+                        (c: any) =>
+                          String(c.id) === String(company.primaryContactId)
+                      )
+                    : null) ||
+                  contacts[0] ||
+                  null;
+                if (primary) {
+                  setHiringManager({
+                    hiringManagerContactId: String(primary.id || ""),
+                    hiringManagerName: String(primary.name || ""),
+                    hiringManagerTitle: String(primary.title || ""),
+                    hiringManagerEmail: String(primary.email || ""),
+                    hiringManagerPhone: String(
+                      primary.phone || primary.preferredPhone || ""
+                    ),
+                  });
+                } else {
+                  setHiringManager({});
+                }
+              }}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">Select a company...</option>
+              {[...companies]
+                .sort((a: any, b: any) =>
+                  String(a.name || a.companyName || "").localeCompare(
+                    String(b.name || b.companyName || "")
+                  )
+                )
+                .map((company: any) => (
+                  <option
+                    key={company.id || company.PK}
+                    value={company.id || company.PK}
+                  >
+                    {company.name || company.companyName || company.id}
+                  </option>
+                ))}
+            </select>
+          ) : (
+            <p className="text-sm text-muted-foreground rounded-md border border-dashed px-3 py-3">
+              No companies yet. Add a company first, then create the job.
+            </p>
+          )}
           {prefilledCompanyId && (
             <p className="text-sm text-muted-foreground">
               ✓ Pre-selected from contact
@@ -200,15 +260,15 @@ export default function NewJobPage() {
         </div>
 
         <div className="grid gap-2">
-          <Label htmlFor="hiringManager">Hiring manager / contact</Label>
+          <Label htmlFor="hiringManager">Contact / hiring manager</Label>
           <HiringManagerSelect
             companyId={newJobCompanyId}
             valueContactId={hiringManager.hiringManagerContactId}
             onChange={setHiringManager}
           />
           <p className="text-xs text-muted-foreground">
-            Pick a company contact (hiring manager). Add contacts on the company
-            page if the list is empty.
+            Pick a company contact for this req. Defaults to primary when you
+            select a company.
           </p>
         </div>
 

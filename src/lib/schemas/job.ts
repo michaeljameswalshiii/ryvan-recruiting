@@ -69,13 +69,30 @@ export const jobSchema = z.object({
   
   // Job details
   title: z.string().min(1, 'Job title is required').max(200),
-  description: z.string().max(5000).optional(),
-  location: z.string().max(200).optional(),
-  salaryRange: z.string().max(100).optional(),
-  employmentType: z.enum(['Full-time', 'Part-time', 'Contract', 'Internship']).default('Full-time'),
+  // Full job descriptions are often long JDs; keep a high ceiling, not a paste blocker
+  description: z.preprocess(
+    (val) => (val === null || val === undefined ? undefined : val),
+    z.string().max(50000).optional()
+  ),
+  location: z.preprocess(
+    (val) => (val === null || val === undefined ? undefined : val),
+    z.string().max(200).optional()
+  ),
+  salaryRange: z.preprocess(
+    (val) => (val === null || val === undefined ? undefined : val),
+    z.string().max(100).optional()
+  ),
+  employmentType: z.preprocess(
+    (val) => {
+      if (val === null || val === undefined) return 'Full-time';
+      if (typeof val === 'string' && val.trim() === '') return 'Full-time';
+      return val;
+    },
+    z.enum(['Full-time', 'Part-time', 'Contract', 'Internship']).default('Full-time')
+  ),
   
-  // Company link
-  companyId: z.string().uuid().optional(),
+  // Company link (ids may be legacy non-UUIDs)
+  companyId: z.string().min(1).optional(),
   companyName: z.string().max(200).optional(),
 
   /**

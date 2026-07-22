@@ -74,13 +74,39 @@ export default function JobsPage() {
   const [hiringManager, setHiringManager] = useState<HiringManagerFields>({});
 
   const handleCompanySelect = (companyId: string) => {
-    const company = companies.find((c: any) => String(c.id) === String(companyId));
+    const company = companies.find(
+      (c: any) =>
+        String(c.id) === String(companyId) || String(c.PK) === String(companyId)
+    );
+    const companyName =
+      company?.name || company?.companyName || '';
     setFormData({
       ...formData,
       companyId,
-      companyName: company?.name || company?.companyName || formData.companyName,
+      companyName,
     });
-    setHiringManager({});
+    // Prefer primary contact as default hiring manager when company changes
+    const contacts = Array.isArray(company?.contacts) ? company.contacts : [];
+    const primary =
+      contacts.find((c: any) => c?.isPrimary) ||
+      (company?.primaryContactId
+        ? contacts.find((c: any) => String(c.id) === String(company.primaryContactId))
+        : null) ||
+      contacts[0] ||
+      null;
+    if (primary) {
+      setHiringManager({
+        hiringManagerContactId: String(primary.id || ''),
+        hiringManagerName: String(primary.name || ''),
+        hiringManagerTitle: String(primary.title || ''),
+        hiringManagerEmail: String(primary.email || ''),
+        hiringManagerPhone: String(
+          primary.phone || primary.preferredPhone || ''
+        ),
+      });
+    } else {
+      setHiringManager({});
+    }
   };
 
   const handleAddJobSubmit = async (e: React.FormEvent) => {
@@ -95,8 +121,11 @@ export default function JobsPage() {
     }
 
     const company =
-      companies.find((c: any) => String(c.id) === String(formData.companyId)) ||
-      null;
+      companies.find(
+        (c: any) =>
+          String(c.id) === String(formData.companyId) ||
+          String(c.PK) === String(formData.companyId)
+      ) || null;
     const companyName =
       formData.companyName.trim() ||
       company?.name ||
@@ -104,11 +133,12 @@ export default function JobsPage() {
       '';
 
     if (!companyName) {
-      toast.error('Please select a company');
+      toast.error('Please select a company from the list');
       return;
     }
 
     try {
+      // Toasts for success/error are handled by useCreateJob
       await createJobMutation.mutateAsync({
         title: formData.title.trim(),
         companyId: formData.companyId.trim(),
@@ -120,7 +150,6 @@ export default function JobsPage() {
         ...hiringManager,
       });
 
-      toast.success('Job created successfully!');
       setIsAddDialogOpen(false);
       setFormData({
         title: '',
@@ -134,8 +163,8 @@ export default function JobsPage() {
       setHiringManager({});
       refetch();
     } catch (err: any) {
+      // useCreateJob already toasts; keep a console trail only
       console.error('Add job error:', err);
-      toast.error(`Failed to add job: ${err?.message || 'Unknown error'}`);
     }
   };
 
@@ -253,41 +282,39 @@ export default function JobsPage() {
                         )
                       )
                       .map((c: any) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name || c.companyName || c.id}
+                        <option key={c.id || c.PK} value={c.id || c.PK}>
+                          {c.name || c.companyName || c.id || c.PK}
                         </option>
                       ))}
                   </select>
                 ) : (
-                  <Input
-                    id="companyName"
-                    value={formData.companyName}
-                    onChange={(e) => {
-                      const name = e.target.value;
-                      setFormData({
-                        ...formData,
-                        companyName: name,
-                        // Local free-text company when no client list is loaded
-                        companyId: name.trim()
-                          ? `name:${name.trim().toLowerCase()}`
-                          : '',
-                      });
-                    }}
-                    placeholder="Company name"
-                    required
-                  />
+                  <div className="rounded-md border border-dashed border-input px-3 py-3 text-sm text-muted-foreground">
+                    No companies yet.{' '}
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline font-medium"
+                      onClick={() => {
+                        setIsAddDialogOpen(false);
+                        router.push('/dashboard/companies');
+                      }}
+                    >
+                      Add a company
+                    </button>{' '}
+                    first, then create the job.
+                  </div>
                 )}
               </div>
 
               <div>
-                <Label>Hiring manager / contact</Label>
+                <Label htmlFor="hiringManager">Contact / hiring manager</Label>
                 <HiringManagerSelect
                   companyId={formData.companyId}
                   valueContactId={hiringManager.hiringManagerContactId}
                   onChange={setHiringManager}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Optional. Choose a contact at the company for this req.
+                  Optional. Pick a company contact for this req (defaults to
+                  primary when you select a company).
                 </p>
               </div>
 

@@ -131,12 +131,42 @@ return useMutation({
       console.log('[useCreateJob] Sending FormData:', {
         title: jobData.title,
         companyId: jobData.companyId,
+        companyName: jobData.companyName,
       });
 
-      const result = await createJobAction(formData);
-      
+      let result: { error?: string; details?: Record<string, string[]>; success?: boolean; job?: unknown } | undefined;
+      try {
+        result = await createJobAction(formData);
+      } catch (actionErr: any) {
+        // Server action threw (network / serialization / unexpected)
+        console.error('[useCreateJob] createJobAction threw:', actionErr);
+        throw new Error(
+          actionErr?.message ||
+            'Server error while creating job. Please try again.'
+        );
+      }
+
+      // Guard: Next.js can surface undefined if the action fails to serialize a return value
+      if (result == null || typeof result !== 'object') {
+        console.error('[useCreateJob] Empty/undefined response from createJobAction');
+        throw new Error(
+          'No response from server while creating job. Please try again.'
+        );
+      }
+
       if (result.error) {
-        throw new Error(result.error || 'Failed to create job');
+        const details = result.details;
+        const detailMsg =
+          details && Object.keys(details).length > 0
+            ? Object.entries(details)
+                .map(([k, v]) => `${k}: ${(v || []).join(', ')}`)
+                .join('; ')
+            : '';
+        throw new Error(
+          detailMsg && !String(result.error).includes(detailMsg)
+            ? `${result.error} (${detailMsg})`
+            : result.error || 'Failed to create job'
+        );
       }
       return result;
     },
@@ -149,7 +179,10 @@ return useMutation({
     onError: (error: any) => {
       console.error('[useCreateJob] Error:', error);
       toast.error('Failed to create job', {
-        description: error.message || 'Please check console for details',
+        description:
+          error instanceof Error
+            ? error.message
+            : error?.message || 'Please check console for details',
       });
     },
   });

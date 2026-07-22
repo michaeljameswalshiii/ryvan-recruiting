@@ -20,11 +20,21 @@ export {
 
 /** Normalize getClients() which returns either an array or `{ clients: [] }`. */
 function normalizeClientsList(allData: unknown): any[] {
-  if (Array.isArray(allData)) return allData;
-  if (allData && typeof allData === 'object' && Array.isArray((allData as any).clients)) {
-    return (allData as any).clients;
+  let list: any[] = [];
+  if (Array.isArray(allData)) list = allData;
+  else if (
+    allData &&
+    typeof allData === 'object' &&
+    Array.isArray((allData as any).clients)
+  ) {
+    list = (allData as any).clients;
   }
-  return [];
+  // Ensure contacts[] is always an array so hiring-manager pickers work
+  return list.map((c) =>
+    c && typeof c === 'object'
+      ? { ...c, contacts: Array.isArray(c.contacts) ? c.contacts : [] }
+      : c
+  );
 }
 
 // Clients Query (for list pages) — always returns a client array
@@ -51,10 +61,17 @@ export function useClient(clientId: string) {
 
       const found = companies.find(
         (c: any) =>
-          String(c.id) === String(clientId) || String(c.PK) === String(clientId)
+          String(c.id) === String(clientId) ||
+          String(c.PK) === String(clientId) ||
+          String(c.companyId) === String(clientId)
       );
 
-      return found || null;
+      // Always return a stable object shape so contact pickers can read contacts[]
+      if (!found) return null;
+      return {
+        ...found,
+        contacts: Array.isArray(found.contacts) ? found.contacts : [],
+      };
     },
     enabled: !!clientId,
     staleTime: 0,

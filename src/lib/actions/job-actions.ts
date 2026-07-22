@@ -19,9 +19,27 @@ import {
   getJobStats,
   linkCandidateToJob,
   unlinkCandidateFromJob,
-  updateCandidateStageInJob
+  updateCandidateStageInJob,
+  getClientById,
 } from '../db/repositories';
 import { createJobSchema, normalizeJobStatus } from '../schemas/job';
+
+/** Safe FormData string (never null — Zod string fields reject null). */
+function formStr(formData: FormData, key: string): string {
+  const v = formData.get(key);
+  if (v === null || v === undefined) return '';
+  return String(v).trim();
+}
+
+/** Ensure server-action payloads are always plain JSON-serializable objects. */
+function plainResult<T extends Record<string, unknown>>(obj: T): T {
+  try {
+    return JSON.parse(JSON.stringify(obj)) as T;
+  } catch {
+    // Last resort: drop non-serializable fields rather than returning undefined to the client
+    return { error: 'Failed to serialize response' } as unknown as T;
+  }
+}
 
 /**
  * Helper to safely convert any value to ISO string
@@ -223,67 +241,101 @@ export async function getJobByIdAction(jobId: string) {
  * Create a new job
  */
 export async function createJobAction(formData: FormData) {
-  let tenantId = await getSessionTenantId();
-  const userId = await getSessionUserId();
-  
-  console.log('[createJobAction] Session → tenantId:', tenantId, 'userId:', userId);
+  try {
+    let tenantId = await getSessionTenantId();
+    const userId = await getSessionUserId();
 
-  if (!tenantId && userId) {
-    tenantId = `tenant-${userId}`;
-    console.log('[createJobAction] Using default tenant:', tenantId);
-  }
+    console.log('[createJobAction] Session → tenantId:', tenantId, 'userId:', userId);
 
-  if (!tenantId) {
-    return { error: 'No tenant ID found. Please log in again.' };
-  }
-
-  const showRaw = formData.get('showOnWebsite');
-  const rawData: Record<string, unknown> = {
-    title: formData.get('title') as string,
-    description: formData.get('description') as string || '',
-    location: formData.get('location') as string || '',
-    salaryRange: formData.get('salaryRange') as string || '',
-    employmentType: formData.get('employmentType') as string || 'Full-time',
-    companyId: formData.get('companyId') as string,
-    companyName: formData.get('companyName') as string,
-    status: formData.get('status') as string || 'Open', // normalized by createJobSchema / jobStatusField
-    showOnWebsite:
-      showRaw !== null &&
-      ['true', '1', 'yes'].includes(String(showRaw).toLowerCase()),
-  };
-
-  const hmFields = [
-    'hiringManagerContactId',
-    'hiringManagerName',
-    'hiringManagerTitle',
-    'hiringManagerEmail',
-    'hiringManagerPhone',
-  ] as const;
-  for (const f of hmFields) {
-    const v = formData.get(f);
-    if (v !== null && String(v).trim() !== '') {
-      rawData[f] = String(v).trim();
+    if (!tenantId && userId) {
+      tenantId = `tenant-${userId}`;
+      console.log('[createJobAction] Using default tenant:', tenantId);
     }
-  }
 
-  console.log('[createJobAction] rawData:', JSON.stringify(rawData));
+    if (!tenantId) {
+      return plainResult({ error: 'No tenant ID found. Please log in again.' });
+    }
 
-  const validated = createJobSchema.safeParse(rawData);
-  
-  if (!validated.success) {
-    console.log('[createJobAction] Zod validation failed:', JSON.stringify(validated.error.flatten().fieldErrors));
-    return {
-      error: 'Invalid input',
-      details: validated.error.flatten().fieldErrors,
+    const showRaw = formData.get('showOnWebsite');
+    let companyId = formStr(formData, 'companyId');
+    let companyName = formStr(formData, 'companyName');
+
+    // Resolve company name from the company record when the client only sent an id
+    // (dropdown-only UI no longer sends a free-text company name field).
+    if (companyId && !companyName) {
+      try {
+        const company = await getClientById(tenantId, companyId);
+        companyName =
+          (company?.name && String(company.name).trim()) ||
+          (company?.companyName && String(company.companyName).trim()) ||
+          '';
+      } catch (lookupErr: any) {
+        console.warn(
+          '[createJobAction] company lookup failed:',
+          lookupErr?.message || lookupErr
+        );
+      }
+    }
+
+    const employmentTypeRaw = formStr(formData, 'employmentType');
+    const rawData: Record<string, unknown> = {
+      title: formStr(formData, 'title'),
+      description: formStr(formData, 'description'),
+      location: formStr(formData, 'location'),
+      salaryRange: formStr(formData, 'salaryRange'),
+      employmentType: employmentTypeRaw || 'Full-time',
+      companyId,
+      companyName,
+      status: formStr(formData, 'status') || 'Open',
+      showOnWebsite:
+        showRaw !== null &&
+        ['true', '1', 'yes'].includes(String(showRaw).toLowerCase()),
     };
-  }
 
-try {
+    const hmFields = [
+      'hiringManagerContactId',
+      'hiringManagerName',
+      'hiringManagerTitle',
+      'hiringManagerEmail',
+      'hiringManagerPhone',
+    ] as const;
+    for (const f of hmFields) {
+      const v = formStr(formData, f);
+      if (v) rawData[f] = v;
+    }
+
+    console.log('[createJobAction] rawData:', JSON.stringify(rawData));
+
+    const validated = createJobSchema.safeParse(rawData);
+
+    if (!validated.success) {
+      const fieldErrors = validated.error.flatten().fieldErrors;
+      // Strip undefined so the payload stays JSON-serializable for the client
+      const details: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(fieldErrors)) {
+        if (v && v.length) details[k] = v;
+      }
+      console.log(
+        '[createJobAction] Zod validation failed:',
+        JSON.stringify(details)
+      );
+      const summary = Object.entries(details)
+        .map(([field, msgs]) => `${field}: ${msgs.join(', ')}`)
+        .join('; ');
+      return plainResult({
+        error: summary ? `Invalid input — ${summary}` : 'Invalid input',
+        details,
+      });
+    }
+
     const job = await createJobRepo(tenantId, validated.data);
-    // Sanitize the job to ensure JSON serializability
-    return { success: true, job: job ? sanitizeJob(job) : null };
+    const sanitized = job ? sanitizeJob(job) : null;
+    return plainResult({ success: true, job: sanitized });
   } catch (error: any) {
-    return { error: error.message || 'Failed to create job' };
+    console.error('[createJobAction] Error:', error?.message, error?.stack);
+    return plainResult({
+      error: error?.message || 'Failed to create job',
+    });
   }
 }
 

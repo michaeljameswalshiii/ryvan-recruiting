@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useUpdateJob } from '@/lib/hooks/query-job';
+import { useClients } from '@/lib/hooks/query-client';
 import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
 import {
@@ -49,6 +50,14 @@ function normalizeQuestionsFromJob(job: any): PreScreenDraft[] {
 
 export default function JobEditModal({ isOpen, onClose, job, onSuccess }: JobEditModalProps) {
   const updateJob = useUpdateJob();
+  const { data: companiesData = [] } = useClients();
+  const companies = useMemo(() => {
+    if (Array.isArray(companiesData)) return companiesData;
+    if (companiesData && Array.isArray((companiesData as any).clients)) {
+      return (companiesData as any).clients;
+    }
+    return [];
+  }, [companiesData]);
 
   const [formData, setFormData] = useState({
     title: job.title || '',
@@ -56,6 +65,7 @@ export default function JobEditModal({ isOpen, onClose, job, onSuccess }: JobEdi
     location: job.location || '',
     salaryRange: job.salaryRange || '',
     employmentType: job.employmentType || 'Full-time',
+    companyId: job.companyId || '',
     companyName: job.companyName || '',
     status: job.status || 'Open',
     showOnWebsite: job.showOnWebsite !== false,
@@ -92,6 +102,9 @@ export default function JobEditModal({ isOpen, onClose, job, onSuccess }: JobEdi
     }
     if (formData.employmentType !== job.employmentType) {
       jobData.employmentType = formData.employmentType;
+    }
+    if (formData.companyId && formData.companyId !== (job.companyId || '')) {
+      jobData.companyId = formData.companyId;
     }
     if (formData.companyName?.trim() !== (job.companyName || '')) {
       jobData.companyName = formData.companyName.trim();
@@ -199,14 +212,54 @@ export default function JobEditModal({ isOpen, onClose, job, onSuccess }: JobEdi
             </div>
 
             <div>
-              <Label>Company Name</Label>
-              <Input value={formData.companyName} onChange={(e) => setFormData({ ...formData, companyName: e.target.value })} />
+              <Label htmlFor="edit-companyId">Company</Label>
+              {companies.length > 0 ? (
+                <select
+                  id="edit-companyId"
+                  value={formData.companyId}
+                  onChange={(e) => {
+                    const companyId = e.target.value;
+                    const company = companies.find(
+                      (c: any) =>
+                        String(c.id) === String(companyId) ||
+                        String(c.PK) === String(companyId)
+                    );
+                    setFormData({
+                      ...formData,
+                      companyId,
+                      companyName:
+                        company?.name ||
+                        company?.companyName ||
+                        formData.companyName,
+                    });
+                    setHiringManager({});
+                  }}
+                  className="w-full h-10 border border-input rounded-md px-3 text-sm bg-background"
+                >
+                  <option value="">Select company…</option>
+                  {[...companies]
+                    .sort((a: any, b: any) =>
+                      String(a.name || a.companyName || '').localeCompare(
+                        String(b.name || b.companyName || '')
+                      )
+                    )
+                    .map((c: any) => (
+                      <option key={c.id || c.PK} value={c.id || c.PK}>
+                        {c.name || c.companyName || c.id || c.PK}
+                      </option>
+                    ))}
+                </select>
+              ) : (
+                <p className="text-sm text-muted-foreground py-2">
+                  {formData.companyName || 'No company linked'}
+                </p>
+              )}
             </div>
 
             <div>
-              <Label>Hiring manager / contact</Label>
+              <Label>Contact / hiring manager</Label>
               <HiringManagerSelect
-                companyId={job.companyId}
+                companyId={formData.companyId || job.companyId}
                 valueContactId={hiringManager.hiringManagerContactId}
                 onChange={setHiringManager}
               />
