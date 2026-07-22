@@ -130,10 +130,13 @@ export const LIST_BUILDER_DEFAULTS = {
   maxDiscoveryBatches: 400,
   /** Mark failed after this many consecutive hard errors */
   maxConsecutiveErrors: 3,
-  /** Soft wall-clock budget per batch (leave headroom under Vercel maxDuration) */
-  batchBudgetMs: 48_000,
-  /** Bedrock invoke timeout */
-  llmTimeoutMs: 22_000,
+  /**
+   * Soft wall-clock budget per batch.
+   * Grok web_search is slower than pure LLM — allow more room under maxDuration 60s.
+   */
+  batchBudgetMs: 55_000,
+  /** Grok / LLM invoke timeout (discovery with web_search needs longer) */
+  llmTimeoutMs: 50_000,
   /** Soft lock TTL after batch starts (shorter = less “stuck” if process dies) */
   lockMs: 55_000,
 } as const;

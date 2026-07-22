@@ -370,6 +370,8 @@ async function processListBuilderBatchInner(
       email: d.email,
       phone: d.phone,
       industry: d.industry,
+      contactName: d.contactName,
+      contactTitle: d.contactTitle,
       source: d.source,
     }));
   }
@@ -447,15 +449,24 @@ async function processListBuilderBatchInner(
     }
 
     let extracted: Partial<ListBuilderResultRow> = {};
-    // Prefer structured contacts from discovery (Apollo phone, Tavily snippet)
+    // Prefer structured contacts from Grok discovery (web_search)
     if (c.email) extracted.email = c.email;
     if (c.phone) extracted.phone = c.phone;
     if (c.city) extracted.city = c.city;
     if (c.state) extracted.state = c.state;
     if (c.industry) extracted.industry = c.industry;
+    if (c.contactName) extracted.contactName = c.contactName;
+    if ((c as any).contactTitle) {
+      extracted.contactTitle = (c as any).contactTitle;
+    }
 
-    if (website && website.includes('.')) {
-      // Homepage + contact/about paths — more likely to expose email/phone
+    const alreadyKeepable = isKeepableContact({
+      email: extracted.email,
+      phone: extracted.phone,
+    });
+
+    // Site scrape fills gaps; skip heavy multi-page crawl if Grok already found contact
+    if (website && website.includes('.') && !alreadyKeepable) {
       const page = await fetchCompanyContactPages(website);
       if (!('error' in page)) {
         const siteExtract = await extractFromSite(
@@ -466,7 +477,6 @@ async function processListBuilderBatchInner(
         );
         extracted = {
           ...siteExtract,
-          // Discovery/site: keep first non-empty of each
           email: siteExtract.email || extracted.email,
           phone: siteExtract.phone || extracted.phone,
           city: siteExtract.city || extracted.city,
@@ -480,24 +490,39 @@ async function processListBuilderBatchInner(
       } else {
         extracted.notes = extracted.notes || `Site fetch: ${page.error}`;
       }
+    } else if (website && website.includes('.')) {
+      extracted.sourceUrl = website;
+      extracted.notes = extracted.notes || 'Contact from Grok web search';
     }
 
-    // Merge seed-provided contact (trusted as user upload)
+    // Merge discovery / seed contacts (Grok often returns phone from search)
     if (c.contactName) extracted.contactName = extracted.contactName || c.contactName;
+    if ((c as any).contactTitle) {
+      extracted.contactTitle =
+        extracted.contactTitle || (c as any).contactTitle;
+    }
     if (c.email) extracted.email = extracted.email || c.email;
     if (c.phone) extracted.phone = extracted.phone || c.phone;
     if (c.city) extracted.city = extracted.city || c.city;
 
-    // Web enrichment when site still has no usable public contact
+    // Grok web search when site scrape still has no usable public contact
     if (!isKeepableContact({ email: extracted.email, phone: extracted.phone })) {
-      if (Date.now() - batchStarted < LIST_BUILDER_DEFAULTS.batchBudgetMs - 8_000) {
+      if (Date.now() - batchStarted < LIST_BUILDER_DEFAULTS.batchBudgetMs - 10_000) {
         const web = await enrichContactFromWeb(
           c.companyName,
           extracted.city || c.city,
-          website
+          website,
+          {
+            userId: job.userId,
+            tenantId: job.tenant_id,
+            jobId: job.id,
+          }
         );
         if (web.email) extracted.email = extracted.email || web.email;
         if (web.phone) extracted.phone = extracted.phone || web.phone;
+        if (web.contactName) {
+          extracted.contactName = extracted.contactName || web.contactName;
+        }
         if (web.notes) {
           extracted.notes = [extracted.notes, web.notes].filter(Boolean).join(' · ');
         }

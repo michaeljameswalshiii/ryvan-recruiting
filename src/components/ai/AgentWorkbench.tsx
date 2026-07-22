@@ -257,7 +257,8 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
             </h2>
             {!isCompact && (
               <p className="mt-1 text-sm leading-relaxed text-slate-400">
-                Describe a market. We keep companies with a public{' '}
+                Describe a market. Grok searches the live web and keeps companies
+                with a public{' '}
                 <span className="text-slate-200">email or phone</span>
                 {' '}(both preferred), while you keep chatting on the left.
               </p>
