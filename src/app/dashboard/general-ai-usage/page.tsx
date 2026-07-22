@@ -17,6 +17,9 @@ import {
   Wrench,
   Trash2,
   Download,
+  PanelRightClose,
+  PanelRightOpen,
+  Columns2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -259,9 +262,25 @@ export default function GeneralAiUsagePage() {
   } | null>(null);
   const [platformModel, setPlatformModel] = useState<PlatformModel>('auto');
 
+  // Right agent panel size (persisted)
+  type AgentPanelSize = 'collapsed' | 'sm' | 'md' | 'lg';
+  const PANEL_KEY = 'trio-agent-panel-size-v1';
+  const [agentPanelSize, setAgentPanelSize] = useState<AgentPanelSize>('md');
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PANEL_KEY);
+      if (raw === 'collapsed' || raw === 'sm' || raw === 'md' || raw === 'lg') {
+        setAgentPanelSize(raw);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   // Restore session chat
   useEffect(() => {
@@ -538,6 +557,40 @@ export default function GeneralAiUsagePage() {
   };
 
   const isEmpty = messages.length === 0;
+
+  const setPanelSize = (size: AgentPanelSize) => {
+    setAgentPanelSize(size);
+    try {
+      localStorage.setItem(PANEL_KEY, size);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const cyclePanelWider = () => {
+    const order: AgentPanelSize[] = ['sm', 'md', 'lg'];
+    const i = order.indexOf(
+      agentPanelSize === 'collapsed' ? 'md' : agentPanelSize
+    );
+    setPanelSize(order[Math.min(order.length - 1, Math.max(0, i) + 1)] || 'lg');
+  };
+
+  const cyclePanelNarrower = () => {
+    const order: AgentPanelSize[] = ['sm', 'md', 'lg'];
+    if (agentPanelSize === 'collapsed') return;
+    const i = order.indexOf(agentPanelSize);
+    if (i <= 0) setPanelSize('collapsed');
+    else setPanelSize(order[i - 1]);
+  };
+
+  const panelWidthClass =
+    agentPanelSize === 'collapsed'
+      ? 'lg:w-12'
+      : agentPanelSize === 'sm'
+        ? 'lg:w-[min(100%,300px)] xl:w-[320px]'
+        : agentPanelSize === 'lg'
+          ? 'lg:w-[min(100%,520px)] xl:w-[560px]'
+          : 'lg:w-[min(100%,400px)] xl:w-[420px]';
 
   return (
     <div className="-m-6 flex h-[calc(100vh-4rem)] flex-col bg-slate-100 lg:flex-row">
@@ -942,9 +995,99 @@ export default function GeneralAiUsagePage() {
       </div>
       </section>
 
-      {/* ── Right: autonomous list agent ───────────────────────────── */}
-      <aside className="flex h-[min(52vh,420px)] min-h-0 w-full shrink-0 flex-col border-t border-slate-800 lg:h-auto lg:w-[min(100%,400px)] lg:border-t-0 xl:w-[420px]">
-        <AgentWorkbench variant="full" />
+      {/* ── Right: autonomous list agent (resizable / collapsible) ── */}
+      <aside
+        className={`relative flex min-h-0 w-full shrink-0 flex-col border-t border-slate-800 bg-slate-950 transition-[width] duration-200 ease-out lg:h-auto lg:border-t-0 ${
+          agentPanelSize === 'collapsed'
+            ? 'h-12 lg:h-auto'
+            : 'h-[min(52vh,420px)]'
+        } ${panelWidthClass}`}
+      >
+        {/* Size controls — always visible on the chat/agent seam */}
+        <div
+          className={`absolute z-20 flex items-center gap-0.5 ${
+            agentPanelSize === 'collapsed'
+              ? 'left-1/2 top-2 -translate-x-1/2 lg:left-1/2 lg:top-3 lg:flex-col lg:gap-1'
+              : 'left-2 top-2 lg:-left-3 lg:top-3 lg:flex-col'
+          }`}
+        >
+          {agentPanelSize === 'collapsed' ? (
+            <button
+              type="button"
+              onClick={() => setPanelSize('md')}
+              title="Expand agent panel"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-white shadow-lg ring-2 ring-white/10 hover:bg-violet-500"
+            >
+              <PanelRightOpen className="h-4 w-4" />
+            </button>
+          ) : (
+            <div className="flex items-center gap-0.5 rounded-full border border-white/10 bg-slate-900/95 p-0.5 shadow-lg backdrop-blur lg:flex-col">
+              <button
+                type="button"
+                onClick={() => setPanelSize('collapsed')}
+                title="Collapse agent panel"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-slate-300 hover:bg-white/10 hover:text-white"
+              >
+                <PanelRightClose className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={cyclePanelNarrower}
+                title="Narrower panel"
+                disabled={agentPanelSize === 'sm'}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-30"
+              >
+                <span className="text-[10px] font-bold leading-none">−</span>
+              </button>
+              <button
+                type="button"
+                onClick={cyclePanelWider}
+                title="Wider panel"
+                disabled={agentPanelSize === 'lg'}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-30"
+              >
+                <span className="text-[10px] font-bold leading-none">+</span>
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setPanelSize(
+                    agentPanelSize === 'md'
+                      ? 'lg'
+                      : agentPanelSize === 'lg'
+                        ? 'sm'
+                        : 'md'
+                  )
+                }
+                title={`Size: ${agentPanelSize.toUpperCase()} (click to cycle)`}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-violet-200 hover:bg-violet-500/20"
+              >
+                <Columns2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {agentPanelSize === 'collapsed' ? (
+          <button
+            type="button"
+            onClick={() => setPanelSize('md')}
+            className="flex h-full min-h-12 w-full flex-col items-center justify-center gap-2 px-1 py-3 text-slate-400 hover:bg-white/5 hover:text-violet-200 lg:py-6"
+            title="Expand Company List Builder"
+          >
+            <Sparkles className="h-4 w-4 text-violet-400" />
+            <span
+              className="hidden text-[10px] font-semibold uppercase tracking-widest text-slate-500 lg:inline"
+              style={{ writingMode: 'vertical-rl' }}
+            >
+              Agent
+            </span>
+          </button>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col pt-1">
+            <AgentWorkbench variant="full" />
+          </div>
+        )}
       </aside>
     </div>
   );
