@@ -73,9 +73,12 @@ const SECTION_HEADERS: Record<string, string[]> = {
   ],
   education: [
     'education',
+    'education and training',
+    'education & training',
     'academic background',
     'academic history',
     'academics',
+    'degrees',
   ],
   skills: [
     'technical skills',
@@ -87,6 +90,8 @@ const SECTION_HEADERS: Record<string, string[]> = {
     'competencies',
     'expertise',
     'tools',
+    'areas of expertise',
+    'key skills',
   ],
   certifications: [
     'certifications',
@@ -95,6 +100,7 @@ const SECTION_HEADERS: Record<string, string[]> = {
     'credentials',
     'professional certifications',
   ],
+  references: ['references', 'professional references'],
 };
 
 const COMMON_SKILLS = [
@@ -151,13 +157,25 @@ function isSectionHeaderLine(line: string): string | null {
   const cleaned = line
     .replace(/[:：|•●▪◦\-–—]+$/g, '')
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    // "01 EXPERIENCE" / "SECTION — Skills"
+    .replace(/^\d{1,2}[\.\)]\s+/, '')
+    .replace(/^section\s+[-–—:]\s*/, '');
   // Headers are usually short
-  if (cleaned.length > 40) return null;
-  for (const [key, aliases] of Object.entries(SECTION_HEADERS)) {
-    for (const a of aliases) {
-      if (cleaned === a || cleaned === a + 's') return key;
+  if (cleaned.length > 48) return null;
+  // Prefer longer aliases first so "education and training" wins over "education"
+  const entries = Object.entries(SECTION_HEADERS).flatMap(([key, aliases]) =>
+    aliases.map((a) => ({ key, a }))
+  );
+  entries.sort((x, y) => y.a.length - x.a.length);
+
+  for (const { key, a } of entries) {
+    if (cleaned === a || cleaned === a + 's') return key;
+    // "Education and Training", "Professional Experience Summary" etc.
+    if (cleaned.startsWith(a + ' ') || cleaned.startsWith(a + '/') || cleaned.startsWith(a + '&')) {
+      return key;
     }
+    if (cleaned.endsWith(' ' + a) && cleaned.length <= a.length + 18) return key;
   }
   return null;
 }
@@ -231,11 +249,19 @@ function isPlausibleName(s: string): boolean {
   if (isSectionHeaderLine(s)) return false;
   // Job titles are not names (incl. ALL CAPS "SOFTWARE ENGINEER")
   if (TITLE_WORDS.test(s)) return false;
+  // Company / org markers
+  if (
+    /\b(llc|l\.l\.c|inc|incorporated|corp|corporation|ltd|company|co\.|group|holdings|partners|university|college|school|hospital|clinic|restaurant|alterations|solutions|services|technologies|consulting)\b/i.test(
+      s
+    )
+  ) {
+    return false;
+  }
   // 2–4 name parts
   const parts = s.trim().split(/\s+/);
   if (parts.length < 2 || parts.length > 4) return false;
   // Reject lines that are mostly numbers or symbols
-  if (/[\d@#$%^&*{}[\]<>]/.test(s)) return false;
+  if (/[\d@#$%^&*{}[\]<>|/]/.test(s)) return false;
   // Each part should look name-like
   return parts.every((p) => /^[A-Za-z][A-Za-z.'-]*$/.test(p) && p.length >= 1);
 }
@@ -294,8 +320,11 @@ export function extractNameFromFilename(filename: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 
-  // Drop trailing words like "final", "updated"
-  name = name.replace(/\b(final|updated|new|copy|v\d+)\b/gi, '').replace(/\s+/g, ' ').trim();
+  // Drop trailing words like "final", "updated", "professional"
+  name = name
+    .replace(/\b(final|updated|new|copy|professional|draft|scan|v\d+)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return name;
 }
 
@@ -421,11 +450,18 @@ function extractTitle(text: string, sections: Record<string, string>, name: stri
 }
 
 function cleanTitle(t: string): string {
-  return t
+  let s = t
     .replace(/\s+/g, ' ')
     .replace(/^[,|•·\-\s]+|[,|•·\-\s]+$/g, '')
-    .trim()
-    .slice(0, 100);
+    .trim();
+  // Multi-column merge: "Operations Manager to ensure efficient workflow..."
+  const glue = s.match(
+    /^((?:(?:Senior|Junior|Staff|Principal|Lead|Associate|Assistant)\s+)?[A-Za-z][A-Za-z/& -]{2,50}?(?:Manager|Director|Engineer|Developer|Analyst|Coach|Coordinator|Specialist|Consultant|Officer|Executive|Architect|Designer|Scientist|Administrator|Recruiter|Owner|President))\b/i
+  );
+  if (glue && s.length > glue[1].length + 12) {
+    s = glue[1].trim();
+  }
+  return s.slice(0, 100);
 }
 
 function extractSkillsFromSection(skillsText: string): string[] {
@@ -504,6 +540,15 @@ function isLikelyJobHeader(line: string): boolean {
   return false;
 }
 
+function looksLikeJobLocation(s: string): boolean {
+  if (!s || s.length > 60) return false;
+  if (TITLE_WORDS.test(s)) return false;
+  // "Boca Raton, Florida" / "East Rutherford, New Jersey" / "City, ST"
+  if (looksLikeLocation(s)) return true;
+  if (/^[A-Z][a-zA-Z .'-]+,\s*[A-Z][a-zA-Z .'-]+$/.test(s)) return true;
+  return false;
+}
+
 function parseExperienceSection(expText: string): ParsedExperience[] {
   if (!expText || expText.length < 10) return [];
 
@@ -516,14 +561,19 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
   for (const line of lines) {
     const bullet = isBulletLine(line);
     const hasDate = DATE_RANGE_RE.test(line);
+    // Multi-column PDFs often glue body text; a bare "Company | City, ST" still starts a role
+    const companyLocHeader =
+      !bullet &&
+      /^\s*[^|•·\n]{2,60}\s*[|•·]\s*[^|•·\n]{2,40}\s*$/.test(line) &&
+      looksLikeJobLocation(line.split(/\s*[|•·]\s*/)[1] || '');
 
     // Start a new job when we already finished a prior role (had dates or bullets)
     // and hit a non-bullet header line (company/title/date row)
     if (
       current.length > 0 &&
-      (bulletsSeen || datesSeen) &&
+      (bulletsSeen || datesSeen || companyLocHeader) &&
       !bullet &&
-      isLikelyJobHeader(line)
+      (isLikelyJobHeader(line) || companyLocHeader)
     ) {
       blocks.push(current);
       current = [line];
@@ -544,26 +594,67 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
     if (!block.length) continue;
     let title = '';
     let company = '';
+    let location = '';
     let dates = '';
     const descLines: string[] = [];
     let inBullets = false;
 
     for (const line of block) {
-      if (isBulletLine(line)) {
+      // "Company | City • bullet text" — split trailing bullet blob
+      let working = line;
+      if (!isBulletLine(working) && /[|•·]/.test(working) && /•/.test(working)) {
+        const bulletIdx = working.search(/\s•\s/);
+        if (bulletIdx > 0) {
+          const head = working.slice(0, bulletIdx).trim();
+          const tail = working.slice(bulletIdx).replace(/^\s*•\s*/, '').trim();
+          // Process head as header line, push bullet as description
+          working = head;
+          if (tail) {
+            // Defer bullet body until after header handling below via synthetic push
+            descLines.push(tail);
+          }
+        }
+      }
+
+      if (isBulletLine(working)) {
         inBullets = true;
-        descLines.push(line.replace(/^[•●▪◦\-\*]\s*/, ''));
+        descLines.push(working.replace(/^[•●▪◦\-\*]\s*/, ''));
         continue;
       }
-      if (inBullets) {
+      // New employer mid-block (common when multi-column glue drops blank lines)
+      if (
+        inBullets &&
+        /^\s*[^|•·\n]{2,60}\s*[|•·]\s*[^|•·\n]{2,40}\s*$/.test(working) &&
+        looksLikeJobLocation(working.split(/\s*[|•·]\s*/)[1] || '')
+      ) {
+        // Close current job early — remaining lines will form the next block upstream
+        // if splitter missed it; still capture cleanly here by treating as header.
+        inBullets = false;
+        if (company || title || dates) {
+          results.push({
+            company: company.slice(0, 120),
+            title: title.slice(0, 100),
+            dates: dates.slice(0, 60),
+            description: descLines.join('\n').trim().slice(0, 1500),
+            ...(location ? { location: location.slice(0, 80) } : {}),
+          });
+          company = '';
+          title = '';
+          dates = '';
+          location = '';
+          descLines.length = 0;
+        }
+        // fall through to header parsers below
+      } else if (inBullets) {
         // Continuation of description without bullet
-        descLines.push(line);
+        descLines.push(working);
         continue;
       }
 
-      const d = extractDateFromLine(line);
+      const d = extractDateFromLine(working);
       if (d && !dates) {
         dates = d;
-        const rest = line
+        const rest = working
           .replace(DATE_RANGE_RE, '')
           .replace(/[|•·]+/g, '|')
           .split('|')
@@ -571,6 +662,10 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
           .filter(Boolean);
         for (const part of rest) {
           if (part.length < 2 || part.length > 80) continue;
+          if (looksLikeJobLocation(part) && !location) {
+            location = part;
+            continue;
+          }
           if (TITLE_WORDS.test(part) && !title) title = cleanTitle(part);
           else if (!company) company = part;
           else if (!title) title = cleanTitle(part);
@@ -579,7 +674,7 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
       }
 
       // "Title at Company"
-      const atMatch = line.match(/^(.+?)\s+at\s+(.+)$/i);
+      const atMatch = working.match(/^(.+?)\s+at\s+(.+)$/i);
       if (atMatch && !title) {
         title = cleanTitle(atMatch[1]);
         company = atMatch[2].replace(DATE_RANGE_RE, '').trim();
@@ -587,7 +682,8 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
       }
 
       // Pipe / bullet-separated header: Company | Title | Dates
-      const pipe = line
+      // Also: Company | City, State
+      const pipe = working
         .split(/\s*[|•·]\s*/)
         .map((p) => p.trim())
         .filter(Boolean);
@@ -598,10 +694,15 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
         if (nonDates.length >= 2) {
           if (TITLE_WORDS.test(nonDates[0]) && !TITLE_WORDS.test(nonDates[1])) {
             title = cleanTitle(nonDates[0]);
-            company = nonDates[1];
+            if (looksLikeJobLocation(nonDates[1])) location = nonDates[1];
+            else company = nonDates[1];
           } else if (TITLE_WORDS.test(nonDates[1])) {
             company = nonDates[0];
             title = cleanTitle(nonDates[1]);
+          } else if (looksLikeJobLocation(nonDates[1])) {
+            // "FitonU Alterations | Boca Raton, Florida"
+            company = nonDates[0];
+            location = nonDates[1];
           } else {
             company = nonDates[0];
             title = cleanTitle(nonDates[1]);
@@ -613,32 +714,103 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
         continue;
       }
 
-      if (TITLE_WORDS.test(line) && !title && line.length < 80) {
-        title = cleanTitle(line);
+      // "Operations/Assistant Coach Managed daily..." — title then glued prose
+      const coachOrTitleLead = working.match(
+        /^((?:Operations\/)?(?:Assistant\s+)?Coach|(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,4}))\s+([A-Z][a-z].{20,})$/
+      );
+      if (!title && coachOrTitleLead && TITLE_WORDS.test(coachOrTitleLead[1])) {
+        title = cleanTitle(coachOrTitleLead[1]);
+        descLines.push(coachOrTitleLead[2]);
+        inBullets = true;
         continue;
       }
-      if (!company && line.length > 1 && line.length < 80 && !looksLikeEmail(line)) {
-        company = line;
+
+      if (TITLE_WORDS.test(working) && !title && working.length < 80) {
+        title = cleanTitle(working);
         continue;
       }
-      if (!title && line.length > 1 && line.length < 80) {
-        title = cleanTitle(line);
+      if (
+        !company &&
+        working.length > 1 &&
+        working.length < 80 &&
+        !looksLikeEmail(working) &&
+        !looksLikeJobLocation(working)
+      ) {
+        company = working;
         continue;
       }
-      descLines.push(line);
+      if (looksLikeJobLocation(working) && !location) {
+        location = working;
+        continue;
+      }
+      if (!title && working.length > 1 && working.length < 80) {
+        title = cleanTitle(working);
+        continue;
+      }
+      descLines.push(working);
     }
 
     if (!title && !company && !dates) continue;
+
+    // Drop education/references that leaked into experience
+    const blob = `${company} ${title} ${descLines.join(' ')}`.toLowerCase();
+    if (
+      /\b(references available|bba|b\.s\.|b\.a\.|m\.b\.a\.|bachelor|master of)\b/i.test(blob) &&
+      /\b(university|college)\b/i.test(blob) &&
+      !TITLE_WORDS.test(title)
+    ) {
+      continue;
+    }
 
     results.push({
       company: company.slice(0, 120),
       title: title.slice(0, 100),
       dates: dates.slice(0, 60),
       description: descLines.join('\n').trim().slice(0, 1500),
+      ...(location ? { location: location.slice(0, 80) } : {}),
     });
   }
 
-  return results.filter((e) => e.company || e.title);
+  return results.filter((e) => {
+    const company = (e.company || '').trim();
+    const title = (e.title || '').trim();
+    // Drop multi-column scrap fragments
+    if (/^(and |to |the |of )/i.test(company)) return false;
+    if (!company && !title) return false;
+    // Titles that are clearly body fragments (only when no employer)
+    if (
+      !company &&
+      /^(logistic|executive staff|monitoring|high-performance|professional football)/i.test(
+        title
+      )
+    ) {
+      return false;
+    }
+    if (company.length > 2) {
+      // Prefer real titles when multi-column glued prose into title field
+      if (
+        title &&
+        /^(professional football|high-performance)/i.test(title) &&
+        e.description
+      ) {
+        const coach = e.description.match(
+          /\b((?:Operations\/)?(?:Assistant\s+)?Coach|[A-Za-z/ ]{0,20}Manager)\b/i
+        );
+        if (coach) e.title = cleanTitle(coach[1]);
+      }
+      return !!(e.title || e.dates || (e.description && e.description.length > 20));
+    }
+    // No company: only keep clear role titles with dates
+    if (
+      title &&
+      TITLE_WORDS.test(title) &&
+      e.dates &&
+      title.split(/\s+/).length <= 6
+    ) {
+      return true;
+    }
+    return false;
+  });
 }
 
 function parseEducationSection(eduText: string): ParsedEducation[] {
@@ -837,51 +1009,122 @@ export function mergeParsedIntoEmptyFields(
   return out;
 }
 
+function scoreExtractedResumeText(text: string): number {
+  if (!text) return -100;
+  let score = Math.min(text.length / 200, 8);
+  const head = text.slice(0, 400);
+  // Strong signal: person name near top
+  if (/^[A-Z][A-Z.'-]+(?:\s+[A-Z][A-Z.'-]+){1,3}\s*$/m.test(head)) score += 8;
+  if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\s*$/m.test(head)) score += 4;
+  if (/@/.test(head)) score += 3;
+  if (/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(head)) score += 2;
+  if (/\b(experience|work history|employment)\b/i.test(text)) score += 3;
+  if (/\b(education|academic)\b/i.test(text)) score += 3;
+  if (/\b(skills|competencies|technologies)\b/i.test(text)) score += 2;
+  if (/\b(summary|profile|objective)\b/i.test(text)) score += 2;
+  // Penalize obvious column-scramble: company-like first line
+  const firstLine = linesOf(text)[0] || '';
+  if (/\b(llc|inc|corp|ltd|university|alterations)\b/i.test(firstLine)) score -= 6;
+  // Penalize contact buried late
+  const emailIdx = text.search(/@/);
+  if (emailIdx > 800) score -= 3;
+  // Penalize many empty bullet-only lines
+  const emptyBullets = (text.match(/^•\s*$/gm) || []).length;
+  score -= Math.min(emptyBullets, 8);
+  return score;
+}
+
 /**
  * Reconstruct text from pdf.js text items with better line breaks (uses y when available).
+ * Tries single-column and two-column layouts; picks the higher-scoring reading order
+ * so multi-column PDFs don't interleave Skills with Experience (or scramble the header).
  */
 export function textFromPdfItems(
-  items: Array<{ str?: string; transform?: number[] }>
+  items: Array<{ str?: string; transform?: number[]; width?: number }>
 ): string {
   if (!items?.length) return '';
 
-  type Line = { y: number; parts: Array<{ x: number; s: string }> };
-  const lines: Line[] = [];
-  const Y_TOL = 2;
-
+  type Part = { x: number; y: number; s: string; w: number };
+  const parts: Part[] = [];
   for (const item of items) {
     const s = item.str ?? '';
     if (!s) continue;
     const tr = item.transform;
     const x = tr?.[4] ?? 0;
     const y = tr?.[5] ?? 0;
-
-    let line = lines.find((l) => Math.abs(l.y - y) < Y_TOL);
-    if (!line) {
-      line = { y, parts: [] };
-      lines.push(line);
-    }
-    line.parts.push({ x, s });
+    const w = item.width ?? s.length * 4;
+    parts.push({ x, y, s, w });
   }
+  if (!parts.length) return '';
 
-  // PDF y increases upward — sort top-to-bottom
-  lines.sort((a, b) => b.y - a.y);
+  const minX = Math.min(...parts.map((p) => p.x));
+  const maxX = Math.max(...parts.map((p) => p.x + p.w));
+  const pageWidth = Math.max(maxX - minX, 1);
+  const maxY = Math.max(...parts.map((p) => p.y));
+  const minY = Math.min(...parts.map((p) => p.y));
+  const pageHeight = Math.max(maxY - minY, 1);
 
-  return lines
-    .map((l) => {
-      l.parts.sort((a, b) => a.x - b.x);
-      let out = '';
-      let prevX = -Infinity;
-      for (const p of l.parts) {
-        if (prevX !== -Infinity && p.x - prevX > 2) {
-          // gap → space if not already spaced
-          if (out && !out.endsWith(' ')) out += ' ';
-        }
-        out += p.s;
-        prevX = p.x + p.s.length * 4; // rough advance
+  const renderColumn = (colParts: Part[]): string => {
+    type Line = { y: number; parts: Array<{ x: number; s: string; w: number }> };
+    const lines: Line[] = [];
+    const Y_TOL = 2.5;
+    for (const p of colParts) {
+      let line = lines.find((l) => Math.abs(l.y - p.y) < Y_TOL);
+      if (!line) {
+        line = { y: p.y, parts: [] };
+        lines.push(line);
       }
-      return out.replace(/[ \t]+/g, ' ').trim();
-    })
+      line.parts.push({ x: p.x, s: p.s, w: p.w });
+    }
+    lines.sort((a, b) => b.y - a.y);
+    return lines
+      .map((l) => {
+        l.parts.sort((a, b) => a.x - b.x);
+        let out = '';
+        let prevEnd = -Infinity;
+        for (const p of l.parts) {
+          if (prevEnd !== -Infinity && p.x - prevEnd > 1.5) {
+            if (out && !out.endsWith(' ')) out += ' ';
+          }
+          out += p.s;
+          prevEnd = p.x + (p.w || p.s.length * 4);
+        }
+        return out.replace(/[ \t]+/g, ' ').trim();
+      })
+      .filter(Boolean)
+      .join('\n');
+  };
+
+  const single = renderColumn(parts);
+
+  // Two-column: keep top ~18% as full-width header, then left then right body.
+  const mid = minX + pageWidth * 0.48;
+  const headerYCut = maxY - pageHeight * 0.18;
+  let leftN = 0;
+  let rightN = 0;
+  for (const p of parts) {
+    if (p.y >= headerYCut) continue;
+    if (p.x + p.w * 0.5 < mid) leftN++;
+    else rightN++;
+  }
+  const twoColumnCandidate =
+    pageWidth > 300 &&
+    leftN >= 10 &&
+    rightN >= 10 &&
+    leftN / (leftN + rightN) > 0.22 &&
+    rightN / (leftN + rightN) > 0.22;
+
+  if (!twoColumnCandidate) return single;
+
+  const headerParts = parts.filter((p) => p.y >= headerYCut);
+  const body = parts.filter((p) => p.y < headerYCut);
+  const left = body.filter((p) => p.x + p.w * 0.5 < mid);
+  const right = body.filter((p) => p.x + p.w * 0.5 >= mid);
+  const twoCol = [renderColumn(headerParts), renderColumn(left), renderColumn(right)]
     .filter(Boolean)
-    .join('\n');
+    .join('\n\n');
+
+  const sSingle = scoreExtractedResumeText(single);
+  const sTwo = scoreExtractedResumeText(twoCol);
+  return sTwo > sSingle + 1 ? twoCol : single;
 }

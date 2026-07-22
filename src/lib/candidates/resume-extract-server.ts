@@ -3,6 +3,9 @@
  * Shared by parse-resume, careers apply, and replace-resume.
  */
 
+import fs from 'fs';
+import path from 'path';
+import { pathToFileURL } from 'url';
 import mammoth from 'mammoth';
 import {
   extractNameFromFilename,
@@ -10,6 +13,132 @@ import {
   textFromPdfItems,
   type StructuredParsedResume,
 } from '@/lib/candidates/resume-text-parser';
+
+/** Real email shapes only (avoid binary noise). */
+const BINARY_EMAIL_RE =
+  /[A-Za-z0-9][A-Za-z0-9._%+-]{0,64}@[A-Za-z0-9][A-Za-z0-9.-]{0,64}\.[A-Za-z]{2,24}/g;
+
+/**
+ * Phone with real punctuation only.
+ * Never match bare space-separated digit runs (PDF font metrics look like "769 605 1000").
+ */
+const BINARY_PHONE_RE =
+  /(?:\+?1[-.\s]?)?(?:\(\d{3}\)[-.\s]?\d{3}[-.\s]?\d{4}|\d{3}[-.]\d{3}[-.]\d{4})\b/g;
+
+function scrapeContactFromBinary(buffer: Buffer): string {
+  const bufferStr = buffer.toString('latin1');
+  const parts: string[] = [];
+  const emails = bufferStr.match(BINARY_EMAIL_RE) || [];
+  const phones = bufferStr.match(BINARY_PHONE_RE) || [];
+
+  const seen = new Set<string>();
+  for (const e of emails) {
+    const key = e.toLowerCase();
+    if (seen.has(key)) continue;
+    if (e.includes('..') || e.length > 80) continue;
+    seen.add(key);
+    parts.push(e);
+  }
+  for (const p of phones) {
+    const digits = p.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 11) continue;
+    // Reject runs of identical digits / obvious junk
+    if (/^(\d)\1+$/.test(digits)) continue;
+    if (seen.has(digits)) continue;
+    seen.add(digits);
+    parts.push(p.trim());
+  }
+  return parts.join('\n');
+}
+
+function resolvePdfWorkerSrc(): string {
+  const rel = [
+    'pdfjs-dist/legacy/build/pdf.worker.mjs',
+    'pdfjs-dist/build/pdf.worker.mjs',
+    'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
+    'pdfjs-dist/build/pdf.worker.min.mjs',
+  ];
+  for (const r of rel) {
+    const abs = path.join(process.cwd(), 'node_modules', r);
+    if (fs.existsSync(abs)) {
+      return pathToFileURL(abs).href;
+    }
+  }
+  // CDN fallback last (pdfjs v5 major)
+  return 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf.worker.min.mjs';
+}
+
+async function extractPdfText(
+  buffer: Buffer
+): Promise<{ text: string; method: string }> {
+  // Prefer legacy build for Node/serverless. Worker src must be set (pdfjs v4+);
+  // never pin an old CDN worker major that doesn't match the installed package.
+  const importCandidates = [
+    'pdfjs-dist/legacy/build/pdf.mjs',
+    'pdfjs-dist',
+  ] as const;
+
+  const workerSrc = resolvePdfWorkerSrc();
+  let lastError: unknown;
+
+  for (const modPath of importCandidates) {
+    try {
+      const pdfjsLib: any = await import(modPath);
+      const getDocument = pdfjsLib.getDocument || pdfjsLib.default?.getDocument;
+      if (!getDocument) continue;
+
+      if (pdfjsLib.GlobalWorkerOptions) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+      }
+
+      const loadingTask = getDocument({
+        data: new Uint8Array(buffer),
+        useSystemFonts: true,
+        isEvalSupported: false,
+        disableFontFace: true,
+      });
+      const pdf = await loadingTask.promise;
+      let full = '';
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const items = textContent.items as Array<{
+          str?: string;
+          transform?: number[];
+          width?: number;
+          hasEOL?: boolean;
+        }>;
+        const pageText = textFromPdfItems(items);
+        const fallback = items
+          .map((i) => i.str || '')
+          .join(' ')
+          .replace(/[ \t]+/g, ' ')
+          .trim();
+        full += (pageText || fallback) + '\n';
+      }
+
+      if (full.trim().length > 20) {
+        return { text: full, method: `pdfjs:${modPath}` };
+      }
+    } catch (e) {
+      lastError = e;
+      console.warn(`[resume-extract] pdfjs failed (${modPath}):`, e);
+    }
+  }
+
+  if (lastError) {
+    console.warn('[resume-extract] all pdfjs paths failed:', lastError);
+  }
+
+  // Last resort: only real contact tokens — never invent phones from font tables.
+  const contactOnly = scrapeContactFromBinary(buffer);
+  if (contactOnly.length > 5) {
+    return { text: contactOnly, method: 'binary-contact-fallback' };
+  }
+
+  return { text: '', method: '' };
+}
 
 export async function extractTextFromResumeBuffer(
   buffer: Buffer,
@@ -20,52 +149,9 @@ export async function extractTextFromResumeBuffer(
   let method = '';
 
   if (lower.endsWith('.pdf')) {
-    try {
-      const pdfjsLib = await import('pdfjs-dist');
-      const getDocument = (pdfjsLib as any).getDocument;
-      if (pdfjsLib.GlobalWorkerOptions) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc =
-          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      }
-      if (getDocument) {
-        const pdf = await getDocument({ data: buffer }).promise;
-        let full = '';
-        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-          const page = await pdf.getPage(pageNum);
-          const textContent = await page.getTextContent();
-          const items = textContent.items as Array<{
-            str?: string;
-            transform?: number[];
-          }>;
-          const pageText = textFromPdfItems(items);
-          full +=
-            (pageText || items.map((i) => i.str || '').join(' ')) + '\n';
-        }
-        if (full.trim().length > 20) {
-          text = full;
-          method = 'pdfjs';
-        }
-      }
-    } catch (e) {
-      console.warn('[resume-extract] pdfjs failed:', e);
-    }
-
-    if (text.length < 10) {
-      try {
-        const bufferStr = buffer.toString('binary');
-        const emails = bufferStr.match(/[\w.-]+@[\w.-]+\.\w+/g);
-        const phones = bufferStr.match(/\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/g);
-        const parts: string[] = [];
-        if (emails) parts.push(...emails);
-        if (phones) parts.push(...phones);
-        if (parts.length) {
-          text = parts.join('\n');
-          method = 'binary-fallback';
-        }
-      } catch {
-        /* ignore */
-      }
-    }
+    const result = await extractPdfText(buffer);
+    text = result.text;
+    method = result.method;
   } else if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
     try {
       const result = await mammoth.extractRawText({ buffer });
