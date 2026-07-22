@@ -39,6 +39,41 @@ const COUNTY_LOCALITIES: Record<string, string[]> = {
     'patrick space force',
     'patrick afb',
   ],
+  /** Missing this map was dropping Fort Lauderdale etc. as "off-geo". */
+  broward: [
+    'fort lauderdale',
+    'ft lauderdale',
+    'hollywood',
+    'pompano beach',
+    'pembroke pines',
+    'miramar',
+    'coral springs',
+    'davie',
+    'plantation',
+    'sunrise',
+    'deerfield beach',
+    'weston',
+    'tamarac',
+    'margate',
+    'coconut creek',
+    'oakland park',
+    'lauderdale lakes',
+    'lauderhill',
+    'hallandale beach',
+    'hallandale',
+    'dania beach',
+    'dania',
+    'cooper city',
+    'parkland',
+    'wilton manors',
+    'lighthouse point',
+    'southwest ranches',
+    'lauderdale by the sea',
+    'lazy lake',
+    'sea ranch lakes',
+    'hillsboro beach',
+    'north lauderdale',
+  ],
   'palm beach': [
     'west palm beach',
     'boca raton',
@@ -80,7 +115,30 @@ const COUNTY_LOCALITIES: Record<string, string[]> = {
     'kendall',
     'cutler bay',
   ],
+  miami: [
+    'miami',
+    'miami beach',
+    'hialeah',
+    'homestead',
+    'coral gables',
+    'doral',
+    'kendall',
+    'cutler bay',
+  ],
   duval: ['jacksonville', 'jacksonville beach', 'atlantic beach', 'neptune beach'],
+  pinellas: [
+    'st petersburg',
+    'saint petersburg',
+    'clearwater',
+    'largo',
+    'pinellas park',
+    'dunedin',
+    'seminole',
+  ],
+  lee: ['fort myers', 'ft myers', 'cape coral', 'bonita springs', 'estero', 'lehigh acres'],
+  collier: ['naples', 'marco island', 'immokalee'],
+  seminole: ['sanford', 'altamonte springs', 'casselberry', 'winter springs', 'lake mary', 'oviedo'],
+  volusia: ['daytona beach', 'deltona', 'ormond beach', 'port orange', 'new smyrna beach', 'de land', 'deland'],
 };
 
 const STATE_ALIASES: Record<string, string[]> = {
@@ -142,10 +200,10 @@ export function resolveTargetGeography(
   }
 
   if (place) {
-    if (/brevard/i.test(place) && !/florida|\bfl\b/i.test(place)) {
-      place = `${place.replace(/,?\s*$/, '')}, Florida`;
-    }
-    if (/palm\s*beach/i.test(place) && !/florida|\bfl\b/i.test(place)) {
+    // Normalize well-known Florida counties so discovery prompts are precise
+    const flCounties =
+      /brevard|broward|palm\s*beach|miami[-\s]?dade|hillsborough|pinellas|orange|duval|lee|collier|seminole|volusia/i;
+    if (flCounties.test(place) && !/florida|\bfl\b/i.test(place)) {
       place = `${place.replace(/,?\s*$/, '')}, Florida`;
     }
     if (

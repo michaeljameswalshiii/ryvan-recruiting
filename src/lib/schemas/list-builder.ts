@@ -123,7 +123,8 @@ export const LIST_BUILDER_DEFAULTS = {
    * so the batch fits under Vercel maxDuration.
    */
   batchSize: 4,
-  maxResultsCap: 200,
+  /** Hard cap on companies per job (UI + API clamp). */
+  maxResultsCap: 50,
   /**
    * Soft empty-batch signal for UI only — do NOT stop the job early.
    * Jobs run until target kept leads, hard error streak, or 2h timeout.

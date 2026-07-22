@@ -315,7 +315,7 @@ export function ListBuilderPanel() {
               <input
                 type="number"
                 min={1}
-                max={200}
+                max={50}
                 value={targetSize}
                 onChange={(e) => setTargetSize(Number(e.target.value) || 50)}
                 className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm"

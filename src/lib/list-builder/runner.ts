@@ -24,6 +24,7 @@ import {
 import { looksInTargetArea, resolveTargetGeography } from './geo';
 import {
   discoverCompanyCandidates,
+  discoveryStrategyPhase,
   enrichContactFromWeb,
   type DiscoverCandidate,
 } from './discover-sources';
@@ -405,7 +406,26 @@ async function processListBuilderBatchInner(
         batchesCompleted: job.progress.batchesCompleted + 1,
         emptyBatchStreak,
         errorStreak: 0,
-        lastMessage: `No new companies this batch — still targeting ${resolveTargetGeography(job.brief, job.geography)}. ${job.results.length}/${job.targetSize} kept · retrying…`,
+        lastMessage: (() => {
+          const nextPhase = discoveryStrategyPhase({
+            ...job,
+            discoveryBatch: nextBatch,
+            progress: {
+              ...job.progress,
+              emptyBatchStreak,
+            },
+          });
+          const relax =
+            nextPhase === 0
+              ? ''
+              : nextPhase === 1
+                ? ' · next batch auto-drops headcount filter'
+                : ' · next batch prioritizes public directories + main phones';
+          return (
+            `No new companies this batch — still targeting ${resolveTargetGeography(job.brief, job.geography)}. ` +
+            `${job.results.length}/${job.targetSize} kept · retrying…${relax}`
+          );
+        })(),
       },
     });
     return {
@@ -533,19 +553,21 @@ async function processListBuilderBatchInner(
       }
     }
 
-    // Drop clear off-geo rows when we have a city (strict keep quality)
+    // Drop clear off-geo rows when we have a city.
+    // Progressive recovery after quiet batches so users need not rephrase:
+    // phase 0 = strict, phase 1 = allow unknown city, phase 2 = trust discovery geo.
     const targetGeoCheck = resolveTargetGeography(job.brief, job.geography);
-    if (
-      (extracted.city || c.city) &&
-      !looksInTargetArea(
-        extracted.city || c.city,
-        c.companyName,
-        targetGeoCheck,
-        { allowUnknown: false }
-      )
-    ) {
-      skippedOffGeo++;
-      continue;
+    const geoPhase = discoveryStrategyPhase(job);
+    const cityForGeo = extracted.city || c.city;
+    if (geoPhase < 2 && cityForGeo) {
+      if (
+        !looksInTargetArea(cityForGeo, c.companyName, targetGeoCheck, {
+          allowUnknown: geoPhase >= 1,
+        })
+      ) {
+        skippedOffGeo++;
+        continue;
+      }
     }
 
     if (match && contactExists(match, extracted.email, extracted.contactName)) {
@@ -620,17 +642,25 @@ async function processListBuilderBatchInner(
         ? ' via seed'
         : '';
 
+  const stratPhase = discoveryStrategyPhase(job);
+  const stratBit =
+    stratPhase === 0
+      ? ''
+      : stratPhase === 1
+        ? ' · auto-relaxed (no headcount filter)'
+        : ' · auto-relaxed (public directories + main phones)';
+
   const lastMessage =
     newRows.length > 0
       ? `Kept ${totals.found}/${job.targetSize} in ${targetGeo} (` +
         `${totals.completeFound} complete, ${totals.partialFound} partial)` +
         ` · +${newRows.length} this batch (${keptComplete} complete / ${keptPartial} partial)` +
-        ` · researched ${researchedThisBatch}${sourceBit}.`
+        ` · researched ${researchedThisBatch}${sourceBit}${stratBit}.`
       : `Researched ${researchedThisBatch} in ${targetGeo}, kept 0` +
         (skippedNoContact ? ` (${skippedNoContact} no public email/phone)` : '') +
         (skippedOffGeo ? ` (${skippedOffGeo} off-geo)` : '') +
         (skippedDuplicate ? `, ${skippedDuplicate} skipped` : '') +
-        `${sourceBit} · ${totals.found}/${job.targetSize} total · continuing until target or time limit…`;
+        `${sourceBit}${stratBit} · ${totals.found}/${job.targetSize} total · continuing until target or time limit…`;
 
   // Safety: discovery batch cap (primary stops = target size + 2h expiresAt)
   if (
