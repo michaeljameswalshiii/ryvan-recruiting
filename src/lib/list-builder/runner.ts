@@ -109,7 +109,13 @@ JSON array only.`;
 
   const { data, error } = await completeJson<
     Array<{ companyName?: string; website?: string; city?: string }>
-  >(system, user);
+  >(system, user, {
+    tenantId: job.tenant_id,
+    userId: job.userId,
+    jobId: job.id,
+    purpose: 'discover',
+    queryPreview: job.brief || job.industry || job.geography,
+  });
 
   if (error || !Array.isArray(data)) {
     console.warn('[list-builder] discover failed', error);
@@ -127,7 +133,8 @@ JSON array only.`;
 async function extractFromSite(
   companyName: string,
   website: string,
-  page: { title: string; text: string; url: string }
+  page: { title: string; text: string; url: string },
+  job?: ListBuilderJob
 ): Promise<Partial<ListBuilderResultRow>> {
   const system = `Extract public contact info for recruiting BD outreach.
 Return ONLY JSON object with optional keys:
@@ -143,7 +150,13 @@ Page title: ${page.title}
 Page text (truncated):
 ${page.text.slice(0, 8000)}`;
 
-  const { data } = await completeJson<Record<string, string>>(system, user);
+  const { data } = await completeJson<Record<string, string>>(system, user, {
+    tenantId: job?.tenant_id,
+    userId: job?.userId,
+    jobId: job?.id,
+    purpose: 'extract',
+    queryPreview: `${companyName} ${website}`,
+  });
   if (!data || typeof data !== 'object') return { sourceUrl: page.url };
   const out: Partial<ListBuilderResultRow> = { sourceUrl: page.url };
   for (const k of [
@@ -295,7 +308,7 @@ export async function processListBuilderBatch(
     if (website && website.includes('.')) {
       const page = await fetchPageText(website);
       if (!('error' in page)) {
-        extracted = await extractFromSite(c.companyName, website, page);
+        extracted = await extractFromSite(c.companyName, website, page, job);
       } else {
         extracted = { notes: `Site fetch: ${page.error}` };
       }

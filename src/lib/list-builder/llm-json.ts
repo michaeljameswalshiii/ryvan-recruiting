@@ -1,5 +1,6 @@
 /**
  * Minimal server-side Bedrock JSON completion for list-builder batches.
+ * Logs each successful invoke to the shared AI Usage dashboard.
  * @serverOnly
  */
 
@@ -7,6 +8,7 @@ import {
   BedrockRuntimeClient,
   InvokeModelCommand,
 } from '@aws-sdk/client-bedrock-runtime';
+import { logBedrockUsage } from '@/lib/aws/athena-bedrock';
 
 const region =
   process.env.AWS_REGION ||
@@ -25,12 +27,86 @@ const FALLBACKS = [
   'us.anthropic.claude-3-haiku-20240307-v1:0',
 ];
 
+export type ListBuilderLlmUsageContext = {
+  tenantId?: string;
+  userId?: string;
+  /** Short label for Recent Activity, e.g. discover | extract */
+  purpose?: string;
+  jobId?: string;
+  queryPreview?: string;
+};
+
+function estimateTokens(text: string): number {
+  // ~4 chars/token heuristic (same spirit as /api/bedrock)
+  return Math.max(1, Math.ceil((text || '').length / 4));
+}
+
+function extractUsage(
+  parsed: any,
+  system: string,
+  user: string,
+  text: string
+): { inputTokens: number; outputTokens: number } {
+  const u = parsed?.usage || parsed?.amazon_bedrock_invocationMetrics;
+  const input =
+    Number(u?.input_tokens ?? u?.inputTokens ?? u?.prompt_tokens) || 0;
+  const output =
+    Number(u?.output_tokens ?? u?.outputTokens ?? u?.completion_tokens) || 0;
+  if (input > 0 || output > 0) {
+    return {
+      inputTokens: input || estimateTokens(system + user),
+      outputTokens: output || estimateTokens(text),
+    };
+  }
+  return {
+    inputTokens: estimateTokens(system + '\n' + user),
+    outputTokens: estimateTokens(text),
+  };
+}
+
+async function logListBuilderUsage(params: {
+  modelId: string;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  ctx?: ListBuilderLlmUsageContext;
+  system: string;
+  user: string;
+}): Promise<void> {
+  const purpose = (params.ctx?.purpose || 'list-builder').trim();
+  const jobBit = params.ctx?.jobId ? ` job=${params.ctx.jobId}` : '';
+  const previewBase =
+    params.ctx?.queryPreview ||
+    params.user.replace(/\s+/g, ' ').trim().slice(0, 120);
+  try {
+    await logBedrockUsage({
+      modelId: params.modelId,
+      inputTokens: params.inputTokens,
+      outputTokens: params.outputTokens,
+      queryPreview: `[List Builder] ${purpose}${jobBit}: ${previewBase}`.slice(
+        0,
+        200
+      ),
+      toolsUsed: ['list-builder', purpose],
+      latencyMs: params.latencyMs,
+      tenantId: params.ctx?.tenantId,
+      userId: params.ctx?.userId,
+      provider: 'bedrock',
+    });
+  } catch (err) {
+    // Never fail the agent batch because usage logging failed
+    console.warn('[list-builder/llm] usage log failed', err);
+  }
+}
+
 export async function completeJson<T = unknown>(
   system: string,
-  user: string
+  user: string,
+  usageCtx?: ListBuilderLlmUsageContext
 ): Promise<{ data?: T; text?: string; error?: string }> {
   let lastErr = '';
   for (const modelId of FALLBACKS) {
+    const started = Date.now();
     try {
       const body = {
         anthropic_version: 'bedrock-2023-05-31',
@@ -56,6 +132,24 @@ export async function completeJson<T = unknown>(
         lastErr = 'Empty model response';
         continue;
       }
+
+      const { inputTokens, outputTokens } = extractUsage(
+        parsed,
+        system,
+        user,
+        text
+      );
+      // Fire-and-forget style but awaited so serverless doesn't freeze mid-log
+      await logListBuilderUsage({
+        modelId,
+        inputTokens,
+        outputTokens,
+        latencyMs: Date.now() - started,
+        ctx: usageCtx,
+        system,
+        user,
+      });
+
       // Extract JSON object or array from markdown fences if present
       const jsonMatch =
         text.match(/```(?:json)?\s*([\s\S]*?)```/i) ||

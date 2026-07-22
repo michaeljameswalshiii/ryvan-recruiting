@@ -25,8 +25,20 @@ import {
 // ============================================================================
 
 export const CLAUDE_PRICING = {
-  // Haiku 4.5
+  // Haiku 4.5 (list-builder default + fallbacks)
   'us.anthropic.claude-haiku-4-2025-01-15': {
+    input: 0.00025,
+    output: 0.00125,
+  },
+  'global.anthropic.claude-haiku-4-5-20251001-v1:0': {
+    input: 0.00025,
+    output: 0.00125,
+  },
+  'us.anthropic.claude-haiku-4-5-20251001-v1:0': {
+    input: 0.00025,
+    output: 0.00125,
+  },
+  'us.anthropic.claude-3-haiku-20240307-v1:0': {
     input: 0.00025,
     output: 0.00125,
   },
@@ -48,6 +60,7 @@ export const CLAUDE_PRICING = {
 
 // Default pricing for unknown models
 const DEFAULT_PRICING = { input: 0.003, output: 0.015 };
+const HAIKU_PRICING = { input: 0.00025, output: 0.00125 };
 
 // ============================================================================
 // Types
@@ -148,7 +161,15 @@ function getDateRange(period: 'day' | 'week' | 'month'): { start: string; end: s
  * Get pricing for a model
  */
 function getModelPricing(modelId: string): { input: number; output: number } {
-  return CLAUDE_PRICING[modelId] || DEFAULT_PRICING;
+  if (CLAUDE_PRICING[modelId]) return CLAUDE_PRICING[modelId];
+  // Strip provider: prefix from multi-provider logs (e.g. bedrock:us.anthropic...)
+  const bare = modelId.includes(':')
+    ? modelId.split(':').slice(1).join(':')
+    : modelId;
+  if (CLAUDE_PRICING[bare]) return CLAUDE_PRICING[bare];
+  const lower = modelId.toLowerCase();
+  if (lower.includes('haiku')) return HAIKU_PRICING;
+  return DEFAULT_PRICING;
 }
 
 /**
