@@ -22,6 +22,11 @@ import {
   fetchCompanyContactPages,
 } from './fetch-page';
 import { looksInTargetArea, resolveTargetGeography } from './geo';
+import {
+  discoverCompanyCandidates,
+  enrichContactFromWeb,
+  type DiscoverCandidate,
+} from './discover-sources';
 
 function rowId(): string {
   return `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -134,63 +139,9 @@ function countCompleteness(rows: Array<{ contactCompleteness?: string; email?: s
 async function discoverCompanies(
   job: ListBuilderJob,
   excludeNames: string[]
-): Promise<Array<{ companyName: string; website?: string; city?: string }>> {
-  const targetGeo = resolveTargetGeography(job.brief, job.geography);
-  const system = `You are a B2B research assistant for a recruiting agency.
-Return ONLY valid JSON: an array of objects with keys companyName, website (domain preferred), city.
-CRITICAL GEOGRAPHY RULES:
-- Every company MUST be physically located in or primarily serving: ${targetGeo}
-- Put the real city/town in the "city" field (e.g. Melbourne, Palm Bay, Titusville for Brevard County)
-- Do NOT return companies from other states or unrelated metros
-- Never invent emails or phones
-Prefer real local businesses a staffing/recruiting firm would call for hiring needs.
-Max ${LIST_BUILDER_DEFAULTS.batchSize} companies. Avoid these names if possible: ${excludeNames.slice(0, 40).join(', ') || '(none)'}`;
-
-  const user = `Brief: ${job.brief}
-Industry / focus: ${job.industry || 'infer from brief'}
-REQUIRED location (strict): ${targetGeo}
-Geography field (may be broader): ${job.geography}
-Batch #: ${job.discoveryBatch + 1}
-Need ${LIST_BUILDER_DEFAULTS.batchSize} more companies in ${targetGeo} only (we already have ${job.results.length} of ${job.targetSize} usable leads with email or phone).
-Suggest DIFFERENT companies each batch — local to ${targetGeo}.
-JSON array only.`;
-
-  const { data, error } = await completeJson<
-    Array<{ companyName?: string; website?: string; city?: string }>
-  >(
-    system,
-    user,
-    {
-      tenantId: job.tenant_id,
-      userId: job.userId,
-      jobId: job.id,
-      purpose: 'discover',
-      queryPreview: `${targetGeo}: ${job.brief || job.industry || ''}`.slice(0, 180),
-    },
-    { timeoutMs: LIST_BUILDER_DEFAULTS.llmTimeoutMs }
-  );
-
-  if (error || !Array.isArray(data)) {
-    console.warn('[list-builder] discover failed', error);
-    // Surface LLM failure to caller via thrown error so error streak increments
-    if (error) throw new Error(`discover: ${error}`);
-    return [];
-  }
-
-  const mapped = data
-    .map((x) => ({
-      companyName: String(x.companyName || '').trim(),
-      website: x.website ? String(x.website).trim() : undefined,
-      city: x.city ? String(x.city).trim() : undefined,
-    }))
-    .filter((x) => x.companyName);
-
-  // Soft geo filter when city clearly outside target (keep unknowns)
-  const filtered = mapped.filter((x) =>
-    looksInTargetArea(x.city, x.companyName, targetGeo)
-  );
-  // If filter wiped everything, fall back to model list (better than stalling)
-  return filtered.length > 0 ? filtered : mapped;
+): Promise<DiscoverCandidate[]> {
+  // Multi-source: Apollo → Tavily → LLM (grounded). Strict geo — no off-target fallback.
+  return discoverCompanyCandidates(job, excludeNames);
 }
 
 async function extractFromSite(
@@ -397,17 +348,30 @@ async function processListBuilderBatchInner(
     companyName: string;
     website?: string;
     city?: string;
+    state?: string;
     contactName?: string;
     email?: string;
     phone?: string;
+    industry?: string;
     fromSeed?: boolean;
+    source?: string;
   }> = seedToCandidates(job);
 
   let nextSeedCursor = job.seedCursor || 0;
   if (candidates.length > 0) {
     nextSeedCursor = nextSeedCursor + candidates.length;
   } else {
-    candidates = await discoverCompanies(job, existingNames);
+    const discovered = await discoverCompanies(job, existingNames);
+    candidates = discovered.map((d) => ({
+      companyName: d.companyName,
+      website: d.website,
+      city: d.city,
+      state: d.state,
+      email: d.email,
+      phone: d.phone,
+      industry: d.industry,
+      source: d.source,
+    }));
   }
 
   if (candidates.length === 0) {
@@ -452,6 +416,7 @@ async function processListBuilderBatchInner(
   const now = new Date().toISOString();
   let researchedThisBatch = 0;
   let skippedNoContact = 0;
+  let skippedOffGeo = 0;
   let skippedDuplicate = 0;
   let keptComplete = 0;
   let keptPartial = 0;
@@ -482,13 +447,38 @@ async function processListBuilderBatchInner(
     }
 
     let extracted: Partial<ListBuilderResultRow> = {};
+    // Prefer structured contacts from discovery (Apollo phone, Tavily snippet)
+    if (c.email) extracted.email = c.email;
+    if (c.phone) extracted.phone = c.phone;
+    if (c.city) extracted.city = c.city;
+    if (c.state) extracted.state = c.state;
+    if (c.industry) extracted.industry = c.industry;
+
     if (website && website.includes('.')) {
-      // Homepage + /contact + /about — more likely to expose email/phone
+      // Homepage + contact/about paths — more likely to expose email/phone
       const page = await fetchCompanyContactPages(website);
       if (!('error' in page)) {
-        extracted = await extractFromSite(c.companyName, website, page, job);
+        const siteExtract = await extractFromSite(
+          c.companyName,
+          website,
+          page,
+          job
+        );
+        extracted = {
+          ...siteExtract,
+          // Discovery/site: keep first non-empty of each
+          email: siteExtract.email || extracted.email,
+          phone: siteExtract.phone || extracted.phone,
+          city: siteExtract.city || extracted.city,
+          state: siteExtract.state || extracted.state,
+          industry: siteExtract.industry || extracted.industry,
+          contactName: siteExtract.contactName || extracted.contactName,
+          contactTitle: siteExtract.contactTitle || extracted.contactTitle,
+          notes: siteExtract.notes || extracted.notes,
+          sourceUrl: siteExtract.sourceUrl || website,
+        };
       } else {
-        extracted = { notes: `Site fetch: ${page.error}` };
+        extracted.notes = extracted.notes || `Site fetch: ${page.error}`;
       }
     }
 
@@ -497,6 +487,37 @@ async function processListBuilderBatchInner(
     if (c.email) extracted.email = extracted.email || c.email;
     if (c.phone) extracted.phone = extracted.phone || c.phone;
     if (c.city) extracted.city = extracted.city || c.city;
+
+    // Web enrichment when site still has no usable public contact
+    if (!isKeepableContact({ email: extracted.email, phone: extracted.phone })) {
+      if (Date.now() - batchStarted < LIST_BUILDER_DEFAULTS.batchBudgetMs - 8_000) {
+        const web = await enrichContactFromWeb(
+          c.companyName,
+          extracted.city || c.city,
+          website
+        );
+        if (web.email) extracted.email = extracted.email || web.email;
+        if (web.phone) extracted.phone = extracted.phone || web.phone;
+        if (web.notes) {
+          extracted.notes = [extracted.notes, web.notes].filter(Boolean).join(' · ');
+        }
+      }
+    }
+
+    // Drop clear off-geo rows when we have a city (strict keep quality)
+    const targetGeoCheck = resolveTargetGeography(job.brief, job.geography);
+    if (
+      (extracted.city || c.city) &&
+      !looksInTargetArea(
+        extracted.city || c.city,
+        c.companyName,
+        targetGeoCheck,
+        { allowUnknown: false }
+      )
+    ) {
+      skippedOffGeo++;
+      continue;
+    }
 
     if (match && contactExists(match, extracted.email, extracted.contactName)) {
       // Company + same contact already in Trio — skip row
@@ -522,8 +543,8 @@ async function processListBuilderBatchInner(
       companyName: c.companyName,
       website: website || extracted.sourceUrl,
       city: extracted.city || c.city,
-      state: extracted.state,
-      industry: extracted.industry || job.industry,
+      state: extracted.state || c.state,
+      industry: extracted.industry || c.industry || job.industry,
       contactName: extracted.contactName,
       contactTitle: extracted.contactTitle,
       email: extracted.email,
@@ -559,16 +580,28 @@ async function processListBuilderBatchInner(
   const nextDiscovery =
     job.discoveryBatch + (candidates[0]?.fromSeed ? 0 : 1);
 
+  const sources = candidates
+    .map((c) => c.source)
+    .filter(Boolean)
+    .slice(0, 4);
+  const sourceBit =
+    sources.length > 0
+      ? ` via ${[...new Set(sources)].join('+')}`
+      : candidates[0]?.fromSeed
+        ? ' via seed'
+        : '';
+
   const lastMessage =
     newRows.length > 0
       ? `Kept ${totals.found}/${job.targetSize} in ${targetGeo} (` +
         `${totals.completeFound} complete, ${totals.partialFound} partial)` +
         ` · +${newRows.length} this batch (${keptComplete} complete / ${keptPartial} partial)` +
-        ` · researched ${researchedThisBatch}.`
+        ` · researched ${researchedThisBatch}${sourceBit}.`
       : `Researched ${researchedThisBatch} in ${targetGeo}, kept 0` +
         (skippedNoContact ? ` (${skippedNoContact} no public email/phone)` : '') +
+        (skippedOffGeo ? ` (${skippedOffGeo} off-geo)` : '') +
         (skippedDuplicate ? `, ${skippedDuplicate} skipped` : '') +
-        ` · ${totals.found}/${job.targetSize} total · continuing until target or time limit…`;
+        `${sourceBit} · ${totals.found}/${job.targetSize} total · continuing until target or time limit…`;
 
   // Safety: discovery batch cap (primary stops = target size + 2h expiresAt)
   if (

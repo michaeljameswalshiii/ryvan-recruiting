@@ -55,9 +55,12 @@ export async function fetchPageText(
     const res = await fetch(parsed.toString(), {
       signal: controller.signal,
       headers: {
+        // Browser-like UA — many contractor sites block short bot strings
         'User-Agent':
-          'TrioSourcingBot/1.0 (+https://turnkey-optimization.vercel.app; list-builder)',
-        Accept: 'text/html,application/xhtml+xml',
+          'Mozilla/5.0 (compatible; TrioListBuilder/1.1; +https://turnkey-optimization.vercel.app) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        Accept:
+          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
       },
       redirect: 'follow',
     });
@@ -102,30 +105,58 @@ export async function fetchCompanyContactPages(
   if (!/^https?:\/\//i.test(base)) base = `https://${base}`;
 
   let origin: string;
+  let startPath = '';
   try {
-    origin = new URL(base).origin;
+    const u = new URL(base);
+    origin = u.origin;
+    // Keep non-root path as first fetch if user/search gave a deep link
+    if (u.pathname && u.pathname !== '/') startPath = u.pathname;
   } catch {
     return { error: 'Invalid URL' };
   }
 
-  const paths = ['', '/contact', '/contact-us', '/about', '/about-us'];
+  const paths = [
+    startPath,
+    '',
+    '/contact',
+    '/contact-us',
+    '/contactus',
+    '/about',
+    '/about-us',
+    '/aboutus',
+    '/locations',
+    '/connect',
+    '/get-in-touch',
+    '/our-team',
+    '/team',
+  ].filter((p, i, arr) => arr.indexOf(p) === i);
+
   let combined = '';
   let bestUrl = base;
   let bestTitle = '';
+  let pagesOk = 0;
 
   for (const path of paths) {
+    // Cap pages to protect batch budget
+    if (pagesOk >= 5) break;
     const page = await fetchPageText(path ? `${origin}${path}` : base);
     if ('error' in page) continue;
+    pagesOk++;
     bestUrl = page.url || bestUrl;
     bestTitle = page.title || bestTitle;
     combined += `\n${page.text}`;
     const sig = extractContactSignals(combined);
+    // Stop early once we have either a strong pair or enough text with one signal
     if (sig.emails.length && sig.phones.length) {
       return {
         url: bestUrl,
         title: bestTitle,
         text: combined.slice(0, MAX_CHARS),
       };
+    }
+    if ((sig.emails.length || sig.phones.length) && pagesOk >= 2) {
+      // Good enough for partial keep — don't burn remaining paths
+      break;
     }
   }
 

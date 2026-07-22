@@ -105,11 +105,17 @@ export async function createListBuilderJob(
   const jobId = generateId();
   const targetSize = clampTarget(input.targetSize);
   // Prefer specific place from the brief (e.g. Brevard County) over generic "United States"
-  const { resolveTargetGeography } = await import('@/lib/list-builder/geo');
+  const { resolveTargetGeography, inferIndustryKeywords } = await import(
+    '@/lib/list-builder/geo'
+  );
   const geography = resolveTargetGeography(
     brief,
     (input.geography || '').trim() || LIST_BUILDER_DEFAULTS.geography
   );
+  const industryFromBrief =
+    (input.industry || '').trim() ||
+    inferIndustryKeywords(brief)[0] ||
+    undefined;
 
   const job: ListBuilderJob = {
     id: jobKey(tenantId, jobId),
@@ -118,7 +124,7 @@ export async function createListBuilderJob(
     type: 'list_builder',
     status: 'queued',
     brief: brief || 'Seed list enrichment',
-    industry: (input.industry || '').trim() || undefined,
+    industry: industryFromBrief,
     geography,
     targetSize,
     seedRows: Array.isArray(input.seedRows) ? input.seedRows.slice(0, 500) : [],

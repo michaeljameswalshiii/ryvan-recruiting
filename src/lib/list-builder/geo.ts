@@ -6,6 +6,94 @@
 import { LIST_BUILDER_DEFAULTS } from '@/lib/schemas/list-builder';
 
 /**
+ * Known cities/towns for counties we target often.
+ * Used so "Melbourne" counts as in "Brevard County, Florida".
+ */
+const COUNTY_LOCALITIES: Record<string, string[]> = {
+  brevard: [
+    'melbourne',
+    'palm bay',
+    'titusville',
+    'cocoa',
+    'cocoa beach',
+    'rockledge',
+    'merritt island',
+    'satellite beach',
+    'cape canaveral',
+    'indialantic',
+    'indian harbour beach',
+    'melbourne beach',
+    'west melbourne',
+    'viera',
+    'suntree',
+    'grant',
+    'valkaria',
+    'malabar',
+    'micco',
+    'barefoot bay',
+    'port st john',
+    'port saint john',
+    'sharpes',
+    'mims',
+    'scottsmoor',
+    'patrick space force',
+    'patrick afb',
+  ],
+  'palm beach': [
+    'west palm beach',
+    'boca raton',
+    'boynton beach',
+    'delray beach',
+    'jupiter',
+    'lake worth',
+    'greenacres',
+    'riviera beach',
+    'palm beach gardens',
+    'wellington',
+    'royal palm beach',
+    'belle glade',
+    'pahokee',
+    'lantana',
+    'hypoluxo',
+    'palm springs',
+    'north palm beach',
+    'juno beach',
+    'tequesta',
+  ],
+  orange: [
+    'orlando',
+    'winter park',
+    'apopka',
+    'ocoee',
+    'winter garden',
+    'maitland',
+    'eatonville',
+  ],
+  hillsborough: ['tampa', 'brandon', 'plant city', 'temple terrace', 'ruskin'],
+  'miami-dade': [
+    'miami',
+    'miami beach',
+    'hialeah',
+    'homestead',
+    'coral gables',
+    'doral',
+    'kendall',
+    'cutler bay',
+  ],
+  duval: ['jacksonville', 'jacksonville beach', 'atlantic beach', 'neptune beach'],
+};
+
+const STATE_ALIASES: Record<string, string[]> = {
+  florida: ['florida', 'fl', 'fla'],
+  texas: ['texas', 'tx'],
+  california: ['california', 'ca', 'calif'],
+  georgia: ['georgia', 'ga'],
+  'north carolina': ['north carolina', 'nc'],
+  'south carolina': ['south carolina', 'sc'],
+  'new york': ['new york', 'ny'],
+};
+
+/**
  * Prefer a specific place named in the brief over a generic geography field
  * (e.g. brief "…in Brevard County…" + geography "United States" → Brevard County, Florida).
  */
@@ -78,7 +166,7 @@ export function resolveTargetGeography(
 function localityTokens(targetGeo: string): string[] {
   return targetGeo
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^a-z0-9\s-]/g, ' ')
     .split(/\s+/)
     .filter(
       (t) =>
@@ -89,20 +177,175 @@ function localityTokens(targetGeo: string): string[] {
     );
 }
 
-/** Soft check: city/text mentions target locality when we have a specific geo */
+/** Known city tokens for the target (county map + tokens from the string itself). */
+export function knownLocalityNames(targetGeo: string): string[] {
+  const lower = (targetGeo || '').toLowerCase();
+  const names = new Set<string>();
+  for (const [county, cities] of Object.entries(COUNTY_LOCALITIES)) {
+    if (lower.includes(county)) {
+      for (const c of cities) names.add(c);
+    }
+  }
+  for (const t of localityTokens(targetGeo)) {
+    if (t.length >= 4) names.add(t);
+  }
+  return [...names];
+}
+
+function stateAliasesInTarget(targetGeo: string): string[] {
+  const lower = (targetGeo || '').toLowerCase();
+  for (const [state, aliases] of Object.entries(STATE_ALIASES)) {
+    if (aliases.some((a) => lower.includes(a))) return aliases;
+  }
+  return [];
+}
+
+/**
+ * True when city/name looks local to the target geography.
+ * Empty city is allowed (unknown) when `allowUnknown` is true.
+ */
 export function looksInTargetArea(
   city: string | undefined,
   companyName: string,
-  targetGeo: string
+  targetGeo: string,
+  options?: { allowUnknown?: boolean }
 ): boolean {
+  const allowUnknown = options?.allowUnknown !== false;
   const tokens = localityTokens(targetGeo);
   if (tokens.length === 0) return true;
   if (/^(united states|usa|us|nationwide)$/i.test(targetGeo.trim())) {
     return true;
   }
-  const hay = `${city || ''} ${companyName}`.toLowerCase();
+
+  const hay = `${city || ''} ${companyName}`.toLowerCase().replace(/\s+/g, ' ');
+  const cityOnly = (city || '').toLowerCase().trim();
+
+  // No city given → keep as unknown unless caller wants strict
+  if (!cityOnly) return allowUnknown;
+
+  // Direct token hit (brevard, florida, etc.)
   const distinctive = tokens.filter((t) => t.length >= 4);
-  if (distinctive.length === 0) return true;
-  if (!(city || '').trim()) return true;
-  return distinctive.some((t) => hay.includes(t));
+  if (distinctive.some((t) => hay.includes(t))) return true;
+
+  // Known cities in this county
+  const locals = knownLocalityNames(targetGeo);
+  if (locals.some((loc) => cityOnly.includes(loc) || hay.includes(loc))) {
+    return true;
+  }
+
+  // State match alone is weak for multi-city states — only accept if
+  // we also see a city-ish token OR the target is the whole state
+  const stateAliases = stateAliasesInTarget(targetGeo);
+  const targetIsStateOnly =
+    stateAliases.length > 0 &&
+    !/county|parish|metro|area/i.test(targetGeo) &&
+    distinctive.every((t) => stateAliases.includes(t));
+  if (targetIsStateOnly && stateAliases.some((a) => hay.includes(a))) {
+    return true;
+  }
+
+  // "Melbourne, FL" for Brevard target: city in map already handled;
+  // reject clear out-of-state markers when we know a target state
+  if (stateAliases.length > 0) {
+    const foreignState =
+      /\b(tx|texas|ca|california|ny|new york|ga|georgia|nc|sc|az|arizona|il|illinois|oh|ohio|pa|pennsylvania|wa|washington)\b/i;
+    if (foreignState.test(cityOnly) && !stateAliases.some((a) => cityOnly.includes(a))) {
+      // e.g. "Houston, TX" while targeting Florida
+      if (!locals.some((loc) => cityOnly.includes(loc))) return false;
+    }
+  }
+
+  // City present but no local signal → reject (was the silent failure mode)
+  return false;
+}
+
+/** Parse "under 300 employees" style size caps from a brief. */
+export function parseEmployeeCap(brief: string): number | undefined {
+  const m = (brief || '').match(
+    /\b(?:under|fewer than|less than|below|up to|max(?:imum)?)\s+(\d{1,5})\s*(?:employees?|staff|people|workers)?/i
+  );
+  if (m?.[1]) return Math.min(parseInt(m[1], 10), 100_000);
+  const m2 = (brief || '').match(
+    /\b(\d{1,5})\s*(?:employees?|staff)\s*(?:or less|or fewer|max)?/i
+  );
+  if (m2?.[1] && /\b(under|fewer|less|small|max)/i.test(brief)) {
+    return Math.min(parseInt(m2[1], 10), 100_000);
+  }
+  return undefined;
+}
+
+/**
+ * Apollo organization_num_employees_ranges for "under N".
+ * Apollo uses "min,max" strings.
+ */
+export function employeeRangesForCap(cap?: number): string[] {
+  // Default SMB bands when no cap in the brief
+  if (!cap || cap <= 0) {
+    return ['1,10', '11,20', '21,50', '51,100', '101,200', '201,500'];
+  }
+  const bands: Array<[number, number]> = [
+    [1, 10],
+    [11, 20],
+    [21, 50],
+    [51, 100],
+    [101, 200],
+    [201, 500],
+    [501, 1000],
+  ];
+  // Include any band whose lower bound is still under the cap
+  return bands
+    .filter(([min]) => min < cap)
+    .map(([min, max]) => `${min},${max}`)
+    .slice(0, 6);
+}
+
+/** Industry / segment keywords inferred from a free-text brief. */
+export function inferIndustryKeywords(brief: string, industryField?: string): string[] {
+  const b = `${brief || ''} ${industryField || ''}`.toLowerCase();
+  const out = new Set<string>();
+  if (industryField?.trim()) out.add(industryField.trim());
+
+  const pairs: Array<[RegExp, string[]]> = [
+    [
+      /construct|general\s*contract|gc\b|builder|building/,
+      [
+        'construction',
+        'general contractor',
+        'commercial construction',
+        'residential construction',
+        'building contractor',
+      ],
+    ],
+    [/roof/, ['roofing', 'roofing contractor']],
+    [/electric/, ['electrical contractor', 'electrician']],
+    [/plumb/, ['plumbing', 'plumbing contractor']],
+    [/hvac|air\s*condition/, ['hvac', 'hvac contractor']],
+    [/concrete|mason/, ['concrete', 'masonry']],
+    [/site\s*work|excav|grading|civil/, ['civil construction', 'site work', 'excavation']],
+    [/paint/, ['painting contractor']],
+    [/landscape|lawn/, ['landscaping']],
+    [/software|saas|tech/, ['software', 'information technology']],
+    [/health|medical|hospital|clinic/, ['healthcare', 'medical']],
+    [/manufactur|factory/, ['manufacturing']],
+    [/logistic|warehous|freight|trucking/, ['logistics', 'trucking', 'warehousing']],
+    [/staffing|recruit/, ['staffing', 'recruiting']],
+  ];
+
+  for (const [re, kws] of pairs) {
+    if (re.test(b)) kws.forEach((k) => out.add(k));
+  }
+
+  if (out.size === 0) out.add('construction');
+  return [...out].slice(0, 10);
+}
+
+/** Anchor cities for search query rotation in a target geo. */
+export function searchAnchorCities(targetGeo: string): string[] {
+  const lower = (targetGeo || '').toLowerCase();
+  for (const [county, cities] of Object.entries(COUNTY_LOCALITIES)) {
+    if (lower.includes(county)) return cities.slice(0, 8);
+  }
+  // Fall back to first distinctive token
+  const tokens = localityTokens(targetGeo);
+  return tokens.length ? [tokens.join(' ')] : [targetGeo];
 }

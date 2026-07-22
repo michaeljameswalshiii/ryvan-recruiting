@@ -118,7 +118,8 @@ export const LIST_BUILDER_DEFAULTS = {
   targetSize: 50,
   maxConcurrentPerUser: 10,
   timeoutMs: 2 * 60 * 60 * 1000, // 2 hours
-  batchSize: 4,
+  /** Companies researched per tick (Apollo/Tavily/LLM) */
+  batchSize: 6,
   maxResultsCap: 200,
   /**
    * Soft empty-batch signal for UI only — do NOT stop the job early.
