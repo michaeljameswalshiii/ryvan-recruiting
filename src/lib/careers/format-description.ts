@@ -68,14 +68,23 @@ function looksLikeHeading(line: string): boolean {
   if (t === t.toUpperCase() && /[A-Z]/.test(t) && t.split(/\s+/).length <= 8) {
     return true;
   }
-  return /^(responsibilities|requirements|qualifications|about (the )?role|what you.ll do|benefits|who you are|the role|overview|summary|must have|nice to have)\b/i.test(
+  return /^(position\s+summary|job\s+summary|role\s+summary|key\s+responsibilities|responsibilities|requirements|qualifications|about (the )?role|what you.?ll do|benefits|who you are|the role|overview|summary|must have|nice to have|essential functions|preferred qualifications|minimum qualifications|education|compensation)\b/i.test(
     t
   );
 }
 
 function isListSectionHeading(line: string): boolean {
-  return /^(key\s+)?responsibilities|requirements|qualifications|what you.?ll do|duties|must have|nice to have|strongly preferred|preferred|required|benefits|about (the )?role|the role|overview|summary|who you are|skills|experience\b/i.test(
-    line.replace(/:$/, "").trim()
+  const t = line.replace(/:$/, "").trim();
+  // Paragraph-style sections (prose body, not auto-bullets)
+  if (
+    /^(position\s+summary|job\s+summary|role\s+summary|summary|overview|about (the )?role|the role|who you are)\b/i.test(
+      t
+    )
+  ) {
+    return false;
+  }
+  return /^(key\s+)?responsibilities|requirements|qualifications|what you.?ll do|duties|must have|nice to have|strongly preferred|preferred|required|benefits|skills|experience|essential functions|preferred qualifications|minimum qualifications\b/i.test(
+    t
   );
 }
 
@@ -98,6 +107,8 @@ function isContinuation(prev: string, next: string): boolean {
   if (isBulletLine(next) || isNumberedLine(next) || looksLikeHeading(next)) {
     return false;
   }
+  // Never glue a section heading into the body that follows
+  if (looksLikeHeading(prev)) return false;
   // New sentence starting with capital after end punctuation → new item
   if (/[.!?]"?$/.test(prev.trim()) && /^[A-Z]/.test(next.trim())) {
     return false;
@@ -110,7 +121,13 @@ function isContinuation(prev: string, next: string): boolean {
     // Prefer merge when previous is long-ish fragment (soft wrap)
     if (prev.trim().length > 40) return true;
     // Short previous without period often still a wrap ("Configure and implement")
-    if (!/^[A-Z][a-z]+$/.test(prev.trim())) return true;
+    // but not title-case multi-word lines (those are usually new items / headings)
+    if (
+      !/^[A-Z][a-z]+$/.test(prev.trim()) &&
+      !/^[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){1,5}$/.test(prev.trim())
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -379,4 +396,96 @@ export function descriptionPreview(raw: string, maxLen = 180): string {
   const s = parts.join(" ").replace(/\s+/g, " ").trim();
   if (s.length <= maxLen) return s;
   return s.slice(0, maxLen - 1).trimEnd() + "…";
+}
+
+/**
+ * Re-serialize structured blocks into clean plain text for storage.
+ * Headings on their own line, blank line before sections, real bullet glyphs.
+ */
+export function blocksToPlainText(blocks: DescBlock[]): string {
+  const lines: string[] = [];
+  for (const b of blocks) {
+    if (b.type === "h") {
+      if (lines.length) lines.push("");
+      lines.push(b.text.replace(/:$/, "").trim());
+      lines.push("");
+    } else if (b.type === "p") {
+      if (lines.length && lines[lines.length - 1] !== "") lines.push("");
+      lines.push(b.text.trim());
+    } else if (b.type === "ul") {
+      if (lines.length && lines[lines.length - 1] !== "") lines.push("");
+      for (const item of b.items) {
+        if (item.trim()) lines.push(`• ${item.trim()}`);
+      }
+    } else if (b.type === "ol") {
+      if (lines.length && lines[lines.length - 1] !== "") lines.push("");
+      b.items.forEach((item, idx) => {
+        if (item.trim()) lines.push(`${idx + 1}. ${item.trim()}`);
+      });
+    }
+  }
+  return lines
+    .join("\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Normalize pasted / messy JD text into clean plain text that renders well
+ * (headings, bullets, soft-wrap merge, HTML strip).
+ * Safe to run on every paste into a description field.
+ */
+export function normalizeJobDescriptionPaste(raw: string): string {
+  if (!raw || !raw.trim()) return "";
+  // Word/Google Docs often paste with NBSP and odd bullets
+  let s = raw
+    .replace(/\u00a0/g, " ")
+    .replace(/[\u2013\u2014]/g, "–")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"');
+  const blocks = parseJobDescription(s);
+  if (!blocks.length) {
+    return s
+      .replace(/\r\n/g, "\n")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+  return blocksToPlainText(blocks);
+}
+
+/**
+ * onPaste helper for description textareas: replaces selection with cleaned text.
+ */
+export function handleJobDescriptionPaste(
+  e: {
+    clipboardData: DataTransfer;
+    preventDefault: () => void;
+    currentTarget: HTMLTextAreaElement;
+  },
+  setValue: (next: string) => void
+): void {
+  const clip =
+    e.clipboardData.getData("text/html") ||
+    e.clipboardData.getData("text/plain") ||
+    "";
+  if (!clip.trim()) return;
+  e.preventDefault();
+  const cleaned = normalizeJobDescriptionPaste(clip);
+  const el = e.currentTarget;
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  const next = el.value.slice(0, start) + cleaned + el.value.slice(end);
+  setValue(next);
+  // Restore caret after React re-render
+  requestAnimationFrame(() => {
+    try {
+      const pos = start + cleaned.length;
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    } catch {
+      /* ignore */
+    }
+  });
 }

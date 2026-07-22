@@ -21,6 +21,7 @@ import {
   HiringManagerSelect,
   type HiringManagerFields,
 } from '@/components/job/JobHiringManagerCard';
+import { handleJobDescriptionPaste } from '@/lib/careers/format-description';
 
 interface Job {
   id: string;
@@ -313,9 +314,14 @@ export default function NewJobPage() {
             id="description"
             value={newJobDescription}
             onChange={(e) => setNewJobDescription(e.target.value)}
-            placeholder="Job description..."
-            rows={4}
+            onPaste={(e) => handleJobDescriptionPaste(e, setNewJobDescription)}
+            placeholder="Paste a job description — headings and bullets are cleaned automatically."
+            rows={10}
+            className="min-h-[160px] text-sm leading-relaxed"
           />
+          <p className="text-xs text-muted-foreground">
+            Paste from Word/Docs is cleaned automatically for a clean layout.
+          </p>
         </div>
 
         {/* Actions */}

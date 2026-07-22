@@ -32,6 +32,7 @@ import { FitScoreBadge, type FitGrade } from "@/components/job/FitScoreBadge";
 import { FillReqPlaybookButton } from "@/components/job/FillReqPlaybookButton";
 import { NextActionPanel } from "@/components/job/NextActionPanel";
 import { JobHiringManagerCard } from "@/components/job/JobHiringManagerCard";
+import { JobDescription } from "@/components/careers/JobDescription";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { APPLICATION_STAGES } from "@/lib/schemas/lead";
@@ -156,6 +157,7 @@ export default function JobDetailPage() {
   const [candidateSearch, setCandidateSearch] = useState("");
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [editFocusDescription, setEditFocusDescription] = useState(false);
   const linkFormRef = useRef<HTMLDivElement>(null);
   const [fitByCandidate, setFitByCandidate] = useState<
     Record<string, FitScoreClient>
@@ -653,16 +655,26 @@ export default function JobDetailPage() {
 
           {/* Job description */}
           <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-            <h2 className="text-sm font-semibold tracking-wide text-gray-800 uppercase mb-4">
-              Job Description
-            </h2>
-            <div className="prose prose-sm max-w-none text-gray-700">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">
-                Position Summary
-              </h3>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                {job.description || "No description provided."}
-              </p>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h2 className="text-sm font-semibold tracking-wide text-gray-800 uppercase">
+                Job Description
+              </h2>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0"
+                onClick={() => {
+                  setEditFocusDescription(true);
+                  setEditOpen(true);
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                Edit
+              </Button>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-slate-50/40 px-4 py-4 sm:px-5 sm:py-5">
+              <JobDescription description={job.description || ""} />
             </div>
           </section>
         </div>
@@ -937,8 +949,12 @@ export default function JobDetailPage() {
 
       <JobEditModal
         isOpen={editOpen}
-        onClose={() => setEditOpen(false)}
+        onClose={() => {
+          setEditOpen(false);
+          setEditFocusDescription(false);
+        }}
         job={job}
+        focusDescription={editFocusDescription}
       />
     </div>
   );
