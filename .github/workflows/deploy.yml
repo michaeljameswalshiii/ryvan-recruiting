@@ -1,4 +1,4 @@
-# Deploy to Vercel from GitHub Actions
+# Deploy to Vercel from GitHub Actions (production on master/main)
 name: Deploy to Vercel
 
 on:
@@ -6,6 +6,7 @@ on:
     branches:
       - master
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,30 +19,67 @@ concurrency:
 jobs:
   deploy-production:
     runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          # pdfjs-dist requires modern Node
+          # pdfjs-dist + modern Next require Node 22+
           node-version: "22"
           cache: "npm"
 
-      - name: Install Dependencies
-        # Use npm install (not npm ci only) so deploy is resilient if lock drifts
-        run: npm install
+      - name: Validate Vercel secrets
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::error::VERCEL_TOKEN secret is missing"
+            exit 1
+          fi
+          if [ -z "${VERCEL_ORG_ID:-}" ]; then
+            echo "::error::VERCEL_ORG_ID secret is missing"
+            exit 1
+          fi
+          if [ -z "${VERCEL_PROJECT_ID:-}" ]; then
+            echo "::error::VERCEL_PROJECT_ID secret is missing"
+            exit 1
+          fi
+          # Old amondnet/vercel-action + vercel@25 rejected tokens with . / : ( ) space
+          if printf '%s' "$VERCEL_TOKEN" | grep -qE '[[:space:]\(\)\./:]'; then
+            echo "::error::VERCEL_TOKEN contains invalid characters for the Vercel CLI. Create a Personal Token at https://vercel.com/account/tokens and set the secret to the raw token only (no quotes, no Bearer prefix)."
+            exit 1
+          fi
+          echo "Vercel secrets present (token length ${#VERCEL_TOKEN})"
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull project settings
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
       - name: Build
-        run: npm run build
-        env:
-          # Avoid hard fail on env-only checks during CI build when secrets are Vercel-side
-          NODE_OPTIONS: --max-old-space-size=4096
+        run: vercel build --prod --token="$VERCEL_TOKEN"
 
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: "--prod"
+      - name: Deploy prebuilt to production
+        id: deploy
+        run: |
+          set -euo pipefail
+          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed: $url"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Vercel production deploy"
+            echo ""
+            echo "- Project: turnkey-optimization"
+            echo "- URL: ${{ steps.deploy.outputs.url || 'n/a' }}"
+            echo "- Alias: https://turnkey-optimization.vercel.app"
+          } >> "$GITHUB_STEP_SUMMARY"
