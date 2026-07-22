@@ -1,7 +1,7 @@
 /**
  * Grok-powered company discovery for list-builder.
- * Uses xAI web_search (same capability as manual Grok research).
- * No Apollo. No Tavily.
+ * Uses Grok 4.3 on Amazon Bedrock Mantle (platform AWS path — same as AI Assistant).
+ * No Apollo. No Tavily. No direct xAI API key.
  * @serverOnly
  */
 
@@ -156,8 +156,8 @@ export async function discoverCompanyCandidates(
   const focusCity = anchors[(batch - 1) % Math.max(anchors.length, 1)] || targetGeo;
   const focusKw = keywords[(batch - 1) % Math.max(keywords.length, 1)] || 'construction';
 
-  const system = `You are Grok doing B2B list research for a recruiting agency (same quality as when a human asks you in chat).
-You have live web_search. USE IT to find real companies — do not invent firms.
+  const system = `You are Grok 4.3 on Amazon Bedrock Mantle doing B2B list research for a recruiting agency.
+You know US local markets well. Return ONLY real companies you are confident exist in the target area.
 
 Return ONLY a JSON array (no markdown prose outside JSON) of objects with keys:
 companyName, website, city, state, phone, email, contactName, contactTitle, industry, employees
@@ -166,11 +166,12 @@ Rules:
 - Every company must be physically in or primarily serving: ${targetGeo}
 - Valid local cities include: ${anchors.join(', ') || targetGeo}
 - Prefer ${keywords.slice(0, 4).join(', ') || 'local'} firms${cap ? ` with under ~${cap} employees` : ' (SMB preferred)'}
-- Include public phone and/or email when you find them on the open web (company site, directories, BBB). NEVER invent contact info.
-- Prefer company websites over job boards or social profiles
+- Include phone and/or email ONLY if you are highly confident they are public and correct. NEVER invent or guess contact info — omit rather than fabricate.
+- Prefer real company websites (not job boards or social profiles)
 - Max ${need} companies
 - Do NOT repeat: ${excludeList}
-- Diversify this batch around: ${focusKw} near ${focusCity}`;
+- Diversify this batch around: ${focusKw} near ${focusCity}
+- Put the real city (e.g. Melbourne, Palm Bay) in "city", not only the county name`;
 
   const user = `Research request (batch ${batch}):
 ${job.brief}
@@ -178,13 +179,12 @@ ${job.brief}
 REQUIRED location: ${targetGeo}
 Industry focus: ${job.industry || keywords.join(', ')}
 We already have ${already}/${target} usable leads. Find ${need} NEW companies in ${targetGeo} only.
-Search the web for real local businesses (directories, company sites, chamber lists, "best of", contractor associations).
 For this batch emphasize: ${focusKw} companies in/near ${focusCity}.
+Think of established local contractors and construction firms a staffing firm would call.
 
 Return JSON array only.`;
 
   const { text, error } = await grokWebResearch({
-    apiKey: keyRes.apiKey,
     system,
     user,
     timeoutMs: Math.max(LIST_BUILDER_DEFAULTS.llmTimeoutMs, 50_000),
@@ -206,7 +206,6 @@ Return JSON array only.`;
   if (parsed.error || !Array.isArray(parsed.data)) {
     // Retry once with a stricter "JSON only" nudge if Grok returned prose
     const retry = await grokWebResearch({
-      apiKey: keyRes.apiKey,
       system:
         system +
         '\nCRITICAL: Your entire reply must be a single JSON array. No intro, no bullets, no markdown.',
@@ -251,19 +250,18 @@ export async function enrichContactFromWeb(
   if ('error' in keyRes) return {};
 
   const place = city || '';
-  const system = `You find public contact info for BD outreach.
-Use web_search. Return ONLY JSON object: { "email"?: string, "phone"?: string, "contactName"?: string }
-Rules: NEVER invent. Only include values you can attribute to a public page. Prefer main office phone and general/info/sales email. Empty object if nothing public.`;
+  const system = `You find public contact info for BD outreach (Grok on Bedrock Mantle).
+Return ONLY JSON object: { "email"?: string, "phone"?: string, "contactName"?: string }
+Rules: NEVER invent or guess digits/addresses. Only include contacts you are highly confident are real and public. Prefer main office phone. Empty object {} if unsure.`;
 
-  const user = `Find public phone or email for:
+  const user = `Public phone or email for:
 Company: ${companyName}
 City/area: ${place || 'unknown'}
 Website: ${website || 'unknown'}
 
-Search the company site, Google business listings, BBB, etc. JSON only.`;
+JSON only. Omit fields you cannot verify.`;
 
   const { text, error } = await grokWebResearch({
-    apiKey: keyRes.apiKey,
     system,
     user,
     timeoutMs: 28_000,
@@ -295,7 +293,7 @@ Search the company site, Google business listings, BBB, etc. JSON only.`;
   if (phone && (phone.match(/\d/g) || []).length >= 7) out.phone = phone;
   if (data.contactName?.trim()) out.contactName = data.contactName.trim();
   if (out.email || out.phone) {
-    out.notes = 'Contact found via Grok web search';
+    out.notes = 'Contact from Grok (Bedrock Mantle)';
   }
   return out;
 }

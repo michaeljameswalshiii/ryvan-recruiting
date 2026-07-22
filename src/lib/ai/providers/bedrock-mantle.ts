@@ -220,6 +220,30 @@ export async function runMantleGrokChat(params: {
   return { text: result.content || "No response", model: result.model };
 }
 
+/**
+ * Single-shot Grok completion on Bedrock Mantle (no app tools).
+ * Used by List Builder for company discovery / contact JSON.
+ */
+export async function runMantleGrokCompletion(params: {
+  system: string;
+  user: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+}): Promise<{ text: string; model: string }> {
+  const model = params.model || MANTLE_GROK_43;
+  const result = await invokeMantleChat({
+    model,
+    temperature: params.temperature ?? 0.25,
+    maxTokens: params.maxTokens ?? 4096,
+    messages: [
+      { role: "system", content: params.system },
+      { role: "user", content: params.user },
+    ],
+  });
+  return { text: result.content || "", model: result.model };
+}
+
 export async function runMantleGrokAgent(params: {
   query: string;
   toolContext: ToolContext;
