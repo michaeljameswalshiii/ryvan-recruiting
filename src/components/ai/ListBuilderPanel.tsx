@@ -66,56 +66,87 @@ export function ListBuilderPanel() {
   const [targetSize, setTargetSize] = useState(50);
   const [seedCsv, setSeedCsv] = useState('');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { quiet?: boolean }) => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     try {
-      const res = await fetch('/api/list-builder', { credentials: 'include' });
+      // Slim list first (no giant results arrays) — keeps UI snappy
+      const res = await fetch('/api/list-builder', {
+        credentials: 'include',
+        signal: controller.signal,
+      });
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.jobs)) {
         setJobs(data.jobs);
-        // Default selection: all non-imported rows when expanding first time
-        setSelected((prev) => {
-          const next = { ...prev };
-          for (const j of data.jobs as ListBuilderJobDto[]) {
-            if (!next[j.id]) {
-              next[j.id] = new Set(
-                (j.results || [])
-                  .filter((r) => !r.imported)
-                  .map((r) => r.id)
-              );
-            }
-          }
-          return next;
-        });
+      } else if (!res.ok) {
+        console.warn('[ListBuilder] load failed', res.status, data);
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.warn('[ListBuilder] load error', err);
     } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
-  }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount once
+  }, []);
 
-  // Poll while any job active
+  // Poll while any job active — status only; tick at most one job and not every poll
   useEffect(() => {
     const hasActive = jobs.some((j) => ACTIVE.has(j.status));
     if (!hasActive) return;
+    let tickToggle = 0;
     const t = setInterval(() => {
-      void load();
-      // Nudge server to process a tick for running jobs
-      for (const j of jobs.filter((x) => x.status === 'running' || x.status === 'queued')) {
-        void fetch(`/api/list-builder/${j.id}`, {
-          method: 'PATCH',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'tick' }),
-        }).then(() => load());
+      void load({ quiet: true });
+      // Every other poll (~24s), advance one running job (avoids stacking heavy batches)
+      tickToggle += 1;
+      if (tickToggle % 2 === 0) {
+        const runnable = jobs.find(
+          (x) => x.status === 'running' || x.status === 'queued'
+        );
+        if (runnable) {
+          void fetch(`/api/list-builder/${runnable.id}`, {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'tick' }),
+          }).then(() => load({ quiet: true }));
+        }
       }
-    }, 12000);
+    }, 12_000);
     return () => clearInterval(t);
   }, [jobs, load]);
+
+  const loadFullJob = async (jobId: string) => {
+    try {
+      const res = await fetch(`/api/list-builder/${jobId}`, {
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.job) {
+        const full = data.job as ListBuilderJobDto;
+        setJobs((prev) =>
+          prev.map((j) => (j.id === jobId ? { ...j, ...full } : j))
+        );
+        setSelected((prev) => {
+          if (prev[jobId]?.size) return prev;
+          return {
+            ...prev,
+            [jobId]: new Set(
+              (full.results || [])
+                .filter((r) => !r.imported)
+                .map((r) => r.id)
+            ),
+          };
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  };
 
   const action = async (jobId: string, act: string) => {
     setBusyId(jobId);
@@ -329,11 +360,12 @@ export function ListBuilderPanel() {
       <div className="max-h-[420px] overflow-y-auto">
         {loading && jobs.length === 0 ? (
           <div className="p-4 text-sm text-gray-500 flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading jobs…
+            <Loader2 className="h-4 w-4 animate-spin" /> Checking for lists…
           </div>
         ) : jobs.length === 0 ? (
           <div className="p-4 text-sm text-gray-500">
-            No list jobs yet. Start one above or ask the assistant to build a BD company list.
+            No lists yet. Click <span className="font-medium">New list</span> or ask the
+            assistant to find companies for you.
           </div>
         ) : (
           <ul className="divide-y divide-blue-100">
@@ -348,7 +380,15 @@ export function ListBuilderPanel() {
                   <button
                     type="button"
                     className="w-full text-left px-3 py-2.5 flex items-start gap-2 hover:bg-white/90"
-                    onClick={() => setExpandedId(open ? null : j.id)}
+                    onClick={() => {
+                      if (open) {
+                        setExpandedId(null);
+                      } else {
+                        setExpandedId(j.id);
+                        // Fetch full results only when expanded (keeps list load fast)
+                        void loadFullJob(j.id);
+                      }
+                    }}
                   >
                     <span
                       className={`mt-0.5 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize ${statusColor(j.status)}`}

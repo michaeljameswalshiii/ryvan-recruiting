@@ -179,14 +179,30 @@ export async function getListBuilderJob(
 
 export async function listJobsForUser(
   tenantId: string,
-  userId: string
+  userId: string,
+  options?: { includeResults?: boolean }
 ): Promise<ListBuilderJob[]> {
   const idx = await getIndex(indexKey(tenantId, userId));
   if (!idx?.ids?.length) return [];
+  const includeResults = options?.includeResults === true;
   const jobs: ListBuilderJob[] = [];
-  for (const jid of idx.ids) {
+  for (const jid of idx.ids.slice(0, 30)) {
     const j = await getListBuilderJob(tenantId, jid);
-    if (j) jobs.push(j);
+    if (!j) continue;
+    if (includeResults) {
+      jobs.push(j);
+    } else {
+      // Lightweight list payload — full results loaded on expand
+      jobs.push({
+        ...j,
+        results: (j.results || []).slice(0, 3),
+        seedRows: [],
+        progress: {
+          ...j.progress,
+          found: j.results?.length ?? j.progress?.found ?? 0,
+        },
+      });
+    }
   }
   return jobs;
 }

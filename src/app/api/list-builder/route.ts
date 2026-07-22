@@ -52,12 +52,16 @@ function parseSeedCsv(csv: string): ListBuilderSeedRow[] {
   return rows;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session?.tenantId || !session?.userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const jobs = await listJobsForUser(session.tenantId, session.userId);
+  // Default: slim list (no full results) so the panel loads instantly
+  const full = request.nextUrl.searchParams.get('full') === '1';
+  const jobs = await listJobsForUser(session.tenantId, session.userId, {
+    includeResults: full,
+  });
   return NextResponse.json({ jobs });
 }
 
