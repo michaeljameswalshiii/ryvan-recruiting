@@ -104,8 +104,12 @@ export async function createListBuilderJob(
   const now = new Date();
   const jobId = generateId();
   const targetSize = clampTarget(input.targetSize);
-  const geography =
-    (input.geography || '').trim() || LIST_BUILDER_DEFAULTS.geography;
+  // Prefer specific place from the brief (e.g. Brevard County) over generic "United States"
+  const { resolveTargetGeography } = await import('@/lib/list-builder/geo');
+  const geography = resolveTargetGeography(
+    brief,
+    (input.geography || '').trim() || LIST_BUILDER_DEFAULTS.geography
+  );
 
   const job: ListBuilderJob = {
     id: jobKey(tenantId, jobId),
@@ -128,7 +132,7 @@ export async function createListBuilderJob(
       partialFound: 0,
       emptyBatchStreak: 0,
       errorStreak: 0,
-      lastMessage: 'Queued — starting shortly…',
+      lastMessage: `Queued — targeting ${geography}, aiming for ${targetSize} usable leads…`,
     },
     notifyChannels: input.notifyChannels?.length
       ? input.notifyChannels

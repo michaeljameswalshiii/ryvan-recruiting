@@ -21,6 +21,7 @@ import {
   extractContactSignals,
   fetchCompanyContactPages,
 } from './fetch-page';
+import { looksInTargetArea, resolveTargetGeography } from './geo';
 
 function rowId(): string {
   return `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -134,17 +135,24 @@ async function discoverCompanies(
   job: ListBuilderJob,
   excludeNames: string[]
 ): Promise<Array<{ companyName: string; website?: string; city?: string }>> {
+  const targetGeo = resolveTargetGeography(job.brief, job.geography);
   const system = `You are a B2B research assistant for a recruiting agency.
 Return ONLY valid JSON: an array of objects with keys companyName, website (domain preferred), city.
-Never invent emails or phones. Only suggest real-looking companies likely to exist in the geography/industry.
-Prefer companies a staffing/recruiting firm would call for hiring needs.
+CRITICAL GEOGRAPHY RULES:
+- Every company MUST be physically located in or primarily serving: ${targetGeo}
+- Put the real city/town in the "city" field (e.g. Melbourne, Palm Bay, Titusville for Brevard County)
+- Do NOT return companies from other states or unrelated metros
+- Never invent emails or phones
+Prefer real local businesses a staffing/recruiting firm would call for hiring needs.
 Max ${LIST_BUILDER_DEFAULTS.batchSize} companies. Avoid these names if possible: ${excludeNames.slice(0, 40).join(', ') || '(none)'}`;
 
   const user = `Brief: ${job.brief}
-Industry: ${job.industry || 'not specified'}
-Geography: ${job.geography}
+Industry / focus: ${job.industry || 'infer from brief'}
+REQUIRED location (strict): ${targetGeo}
+Geography field (may be broader): ${job.geography}
 Batch #: ${job.discoveryBatch + 1}
-Need ${LIST_BUILDER_DEFAULTS.batchSize} more companies (we already have ${job.results.length} of ${job.targetSize}).
+Need ${LIST_BUILDER_DEFAULTS.batchSize} more companies in ${targetGeo} only (we already have ${job.results.length} of ${job.targetSize} usable leads with email or phone).
+Suggest DIFFERENT companies each batch — local to ${targetGeo}.
 JSON array only.`;
 
   const { data, error } = await completeJson<
@@ -157,7 +165,7 @@ JSON array only.`;
       userId: job.userId,
       jobId: job.id,
       purpose: 'discover',
-      queryPreview: job.brief || job.industry || job.geography,
+      queryPreview: `${targetGeo}: ${job.brief || job.industry || ''}`.slice(0, 180),
     },
     { timeoutMs: LIST_BUILDER_DEFAULTS.llmTimeoutMs }
   );
@@ -168,13 +176,21 @@ JSON array only.`;
     if (error) throw new Error(`discover: ${error}`);
     return [];
   }
-  return data
+
+  const mapped = data
     .map((x) => ({
       companyName: String(x.companyName || '').trim(),
       website: x.website ? String(x.website).trim() : undefined,
       city: x.city ? String(x.city).trim() : undefined,
     }))
     .filter((x) => x.companyName);
+
+  // Soft geo filter when city clearly outside target (keep unknowns)
+  const filtered = mapped.filter((x) =>
+    looksInTargetArea(x.city, x.companyName, targetGeo)
+  );
+  // If filter wiped everything, fall back to model list (better than stalling)
+  return filtered.length > 0 ? filtered : mapped;
 }
 
 async function extractFromSite(
@@ -396,13 +412,9 @@ async function processListBuilderBatchInner(
 
   if (candidates.length === 0) {
     const emptyBatchStreak = (job.progress?.emptyBatchStreak || 0) + 1;
-    const seedsDone =
-      (job.seedRows?.length || 0) <= (job.seedCursor || 0);
-    const shouldStop =
-      emptyBatchStreak >= LIST_BUILDER_DEFAULTS.maxEmptyBatches ||
-      (seedsDone && job.discoveryBatch >= 15);
-
-    if (shouldStop) {
+    const nextBatch = job.discoveryBatch + 1;
+    // Only safety-stop: discovery batch cap (target + 2h timeout are primary)
+    if (nextBatch >= LIST_BUILDER_DEFAULTS.maxDiscoveryBatches) {
       const updated = await setJobStatus(tenantId, jobId, 'awaiting_import', {
         lockedUntil: undefined,
         progress: {
@@ -412,22 +424,22 @@ async function processListBuilderBatchInner(
           batchesCompleted: job.progress.batchesCompleted + 1,
           lastMessage:
             job.results.length > 0
-              ? `Could not find more public contacts. Review ${job.results.length} result(s) and import.`
-              : 'Could not find companies with a public email or phone. Try a CSV seed with contact info, or a narrower brief.',
+              ? `Reached discovery limit. Review ${job.results.length} usable lead(s) (target was ${job.targetSize}).`
+              : 'Reached discovery limit without usable contacts. Try a CSV seed or narrower brief.',
         },
       });
       return { job: updated || job, done: true };
     }
 
     await updateListBuilderJob(tenantId, jobId, {
-      discoveryBatch: job.discoveryBatch + 1,
+      discoveryBatch: nextBatch,
       lockedUntil: undefined,
       progress: {
         ...job.progress,
         batchesCompleted: job.progress.batchesCompleted + 1,
         emptyBatchStreak,
         errorStreak: 0,
-        lastMessage: `No candidates this batch (${emptyBatchStreak}/${LIST_BUILDER_DEFAULTS.maxEmptyBatches} empty). Retrying next tick…`,
+        lastMessage: `No new companies this batch — still targeting ${resolveTargetGeography(job.brief, job.geography)}. ${job.results.length}/${job.targetSize} kept · retrying…`,
       },
     });
     return {
@@ -543,25 +555,29 @@ async function processListBuilderBatchInner(
     (job.progress?.researched || 0) + researchedThisBatch;
   const totals = countCompleteness(refreshed.results || []);
 
+  const targetGeo = resolveTargetGeography(job.brief, job.geography);
+  const nextDiscovery =
+    job.discoveryBatch + (candidates[0]?.fromSeed ? 0 : 1);
+
   const lastMessage =
     newRows.length > 0
-      ? `Kept ${totals.found}/${job.targetSize} (` +
+      ? `Kept ${totals.found}/${job.targetSize} in ${targetGeo} (` +
         `${totals.completeFound} complete, ${totals.partialFound} partial)` +
         ` · +${newRows.length} this batch (${keptComplete} complete / ${keptPartial} partial)` +
         ` · researched ${researchedThisBatch}.`
-      : `Researched ${researchedThisBatch}, kept 0` +
+      : `Researched ${researchedThisBatch} in ${targetGeo}, kept 0` +
         (skippedNoContact ? ` (${skippedNoContact} no public email/phone)` : '') +
         (skippedDuplicate ? `, ${skippedDuplicate} skipped` : '') +
-        `. Empty streak ${emptyBatchStreak}/${LIST_BUILDER_DEFAULTS.maxEmptyBatches}.`;
+        ` · ${totals.found}/${job.targetSize} total · continuing until target or time limit…`;
 
-  // Stagnation: many batches with zero keepable rows
+  // Safety: discovery batch cap (primary stops = target size + 2h expiresAt)
   if (
-    emptyBatchStreak >= LIST_BUILDER_DEFAULTS.maxEmptyBatches &&
+    nextDiscovery >= LIST_BUILDER_DEFAULTS.maxDiscoveryBatches &&
     refreshed.results.length < job.targetSize
   ) {
     const done = await setJobStatus(tenantId, jobId, 'awaiting_import', {
       seedCursor: nextSeedCursor,
-      discoveryBatch: job.discoveryBatch + (candidates[0]?.fromSeed ? 0 : 1),
+      discoveryBatch: nextDiscovery,
       lockedUntil: undefined,
       progress: {
         found: totals.found,
@@ -572,10 +588,7 @@ async function processListBuilderBatchInner(
         partialFound: totals.partialFound,
         emptyBatchStreak,
         errorStreak: 0,
-        lastMessage:
-          refreshed.results.length > 0
-            ? `Stopped: ${emptyBatchStreak} batches without new contacts. Review ${totals.found} result(s) (${totals.completeFound} complete, ${totals.partialFound} partial).`
-            : `Stopped: researched ${researched} companies but none had a public email or phone. Try a seed CSV or different brief.`,
+        lastMessage: `Reached discovery limit with ${totals.found}/${job.targetSize} usable leads in ${targetGeo}. Review and import.`,
       },
     });
     return { job: done || refreshed, done: true };
@@ -583,7 +596,7 @@ async function processListBuilderBatchInner(
 
   await updateListBuilderJob(tenantId, jobId, {
     seedCursor: nextSeedCursor,
-    discoveryBatch: job.discoveryBatch + (candidates[0]?.fromSeed ? 0 : 1),
+    discoveryBatch: nextDiscovery,
     lockedUntil: undefined,
     progress: {
       found: totals.found,
@@ -601,6 +614,7 @@ async function processListBuilderBatchInner(
   const latest = await getListBuilderJob(tenantId, jobId);
   if (!latest) return { error: 'Job lost' };
 
+  // Primary success stop: enough usable (email or phone) leads to display
   if (latest.results.length >= latest.targetSize) {
     const endTotals = countCompleteness(latest.results || []);
     const done = await setJobStatus(tenantId, jobId, 'awaiting_import', {
@@ -612,7 +626,7 @@ async function processListBuilderBatchInner(
         partialFound: endTotals.partialFound,
         emptyBatchStreak: 0,
         errorStreak: 0,
-        lastMessage: `Done — ${endTotals.found} companies ready (${endTotals.completeFound} complete, ${endTotals.partialFound} partial).`,
+        lastMessage: `Done — ${endTotals.found}/${latest.targetSize} usable companies in ${targetGeo} (${endTotals.completeFound} complete, ${endTotals.partialFound} partial).`,
       },
     });
     return { job: done || latest, done: true };
@@ -642,3 +656,6 @@ export {
   isValidPhone,
   countCompleteness,
 };
+
+// Re-export geo helpers for callers that imported from runner
+export { resolveTargetGeography, looksInTargetArea } from './geo';

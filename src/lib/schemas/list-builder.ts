@@ -120,8 +120,13 @@ export const LIST_BUILDER_DEFAULTS = {
   timeoutMs: 2 * 60 * 60 * 1000, // 2 hours
   batchSize: 4,
   maxResultsCap: 200,
-  /** Stop after this many consecutive batches with 0 kept rows */
+  /**
+   * Soft empty-batch signal for UI only — do NOT stop the job early.
+   * Jobs run until target kept leads, hard error streak, or 2h timeout.
+   */
   maxEmptyBatches: 8,
+  /** Safety cap on discovery batches (target + timeout are primary stops) */
+  maxDiscoveryBatches: 400,
   /** Mark failed after this many consecutive hard errors */
   maxConsecutiveErrors: 3,
   /** Soft wall-clock budget per batch (leave headroom under Vercel maxDuration) */

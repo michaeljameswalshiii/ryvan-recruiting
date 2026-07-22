@@ -340,7 +340,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
             )}
           </Button>
           <p className="text-center text-[10px] text-slate-500">
-            Keeps email or phone (both preferred) · up to 2 hours · pause anytime
+            Runs until target usable leads (email or phone) · up to 2 hours · pause anytime
           </p>
         </div>
       </div>
@@ -433,8 +433,8 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                       </p>
                       <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">
                         {j.geography}
-                        {emptyStreak > 0 && isActive
-                          ? ` · empty streak ${emptyStreak}/8`
+                        {emptyStreak > 0 && isActive && found < target
+                          ? ` · still hunting (${emptyStreak} quiet batches)`
                           : ''}
                         {j.progress?.lastMessage
                           ? ` · ${j.progress.lastMessage}`
