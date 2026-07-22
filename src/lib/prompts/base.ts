@@ -33,7 +33,7 @@ export function getBasePrompt(tenantName?: string): string {
    - Show names, titles, companies, emails, phones, LinkedIn
    - Offer concrete next steps
 
-Your job is to source candidates and companies as effectively as possible using Apollo.io and other tools.`;
+Your job is to help recruiters work their ATS: find people and companies in internal data, research public URLs when given, and save records with CRM tools. Do not claim access to external people databases unless those tools are listed as available.`;
 }
 
 /**
@@ -63,4 +63,4 @@ export const BASE_PROMPT =
    - Show names, titles, companies, emails, phones, LinkedIn
    - Offer concrete next steps
 
-Your job is to source candidates and companies as effectively as possible using Apollo.io and other tools.`;
+Your job is to help recruiters work their ATS: find people and companies in internal data, research public URLs when given, and save records with CRM tools. Do not claim access to external people databases unless those tools are listed as available.`;

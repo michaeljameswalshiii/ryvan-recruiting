@@ -129,9 +129,14 @@ function buildGeneralAiSystemPrompt(): string {
     externalLines.push(
       "- tavily: optional web search (prefer fetch_website for a specific URL)"
     );
-  } else {
+  }
+  if (!isApolloToolEnabled() && !isTavilyToolEnabled()) {
     externalLines.push(
-      "- Do not claim access to Apollo or live web search (Tavily); use internal_data and fetch_website only for external URLs"
+      "- External people/company databases (e.g. Apollo) and live web search are not available. Use internal_data for ATS records and fetch_website for a specific URL the user provides."
+    );
+  } else if (!isApolloToolEnabled()) {
+    externalLines.push(
+      "- Apollo people/company search is disabled. Do not claim Apollo access. Use internal_data and other available tools."
     );
   }
 

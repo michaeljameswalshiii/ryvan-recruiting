@@ -628,7 +628,7 @@ export default function GeneralAiUsagePage() {
               <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-500">
                 Ask anything, attach documents for analysis, or request
                 revisions in the same thread. Defaults to Most Efficient (Nova
-                Lite / Haiku / Grok 4.3 preferred for tools). Apollo, CRM, and
+                Lite / Haiku / Grok 4.3 preferred for tools). CRM tools and
                 website fetch when needed.
               </p>
 

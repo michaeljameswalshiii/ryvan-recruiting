@@ -2,15 +2,14 @@
  * AI external tool feature flags
  *
  * Apollo + Tavily backends live in the repo (APIs, execute handlers, registry).
+ * Code is kept so Apollo can be re-enabled without a rewrite.
  *
  * Defaults (2026-07):
- *   - Apollo: ON (people/company search for AI Assistant)
- *   - Tavily: OFF (re-enable with AI_TOOLS_TAVILY_ENABLED=true)
+ *   - Apollo: OFF (set AI_TOOLS_APOLLO_ENABLED=true to re-enable tools)
+ *   - Tavily: OFF (set AI_TOOLS_TAVILY_ENABLED=true to enable)
  *
- * Override via Vercel env:
- *   AI_TOOLS_APOLLO_ENABLED=false  → force Apollo off
- *   AI_TOOLS_TAVILY_ENABLED=true   → force Tavily on
- *   AI_TOOLS_TAVILY_ENABLED=false  → keep Tavily off (default)
+ * Also honor NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true for tools when
+ * the server flag is unset (pairs with UI re-enable).
  *
  * @serverOnly
  */
@@ -25,13 +24,18 @@ function envTriState(name: string): "true" | "false" | "unset" {
 
 /**
  * Apollo people + company search tools for the AI assistant.
- * Default ON; set AI_TOOLS_APOLLO_ENABLED=false to disable.
+ * Default OFF. Set AI_TOOLS_APOLLO_ENABLED=true (and preferably
+ * NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true for nav) to re-enable.
  */
 export function isApolloToolEnabled(): boolean {
   const t = envTriState("AI_TOOLS_APOLLO_ENABLED");
   if (t === "false") return false;
   if (t === "true") return true;
-  return true; // default on
+  // Optional single-flag re-enable via public env
+  const pub = envTriState("NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED");
+  if (pub === "true") return true;
+  if (pub === "false") return false;
+  return false; // default off — product is not Apollo-dependent
 }
 
 /**
@@ -63,6 +67,14 @@ export function isExternalToolDisabled(toolName: string): boolean {
 }
 
 export function disabledExternalToolMessage(toolName: string): string {
+  const n = (toolName || "").toLowerCase();
+  if (n.includes("apollo")) {
+    return (
+      `Apollo search is currently disabled. ` +
+      `Re-enable with AI_TOOLS_APOLLO_ENABLED=true (and NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true for the UI). ` +
+      `Use internal_data for ATS records, fetch_website for a URL, or CRM write tools to save people/companies.`
+    );
+  }
   return (
     `The "${toolName}" tool is temporarily disabled in the AI Assistant. ` +
     `Set AI_TOOLS_APOLLO_ENABLED / AI_TOOLS_TAVILY_ENABLED on the server to change. ` +

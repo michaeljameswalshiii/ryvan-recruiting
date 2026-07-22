@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { logout } from "@/lib/api/auth-client";
 import { useTheme } from "@/components/ThemeProvider";
+import { isApolloUiEnabled } from "@/lib/ai/apollo-feature";
 
 const themeOptions = [
   { value: "white", label: "White", icon: "⬜" },
@@ -34,7 +35,7 @@ const themeOptions = [
   { value: "black", label: "Black", icon: "🌙" },
 ] as const;
 
-const navItems = [
+const allNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { href: "/dashboard/candidates", label: "Candidates", icon: Users },
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
@@ -45,11 +46,16 @@ const navItems = [
   { href: "/dashboard/general-ai-usage", label: "AI Assistant", icon: MessageSquare },
   { href: "/dashboard/ai-reliability", label: "AI Reliability", icon: Activity },
   { href: "/dashboard/issues", label: "Issues", icon: AlertCircle },
+  // AI Apollo: only when NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },
   { href: "/dashboard/settings", label: "Email", icon: Mail },
   { href: "/dashboard/dynamo-search", label: "Dynamo Search Tool", icon: Database },
 ];
+
+const navItems = allNavItems.filter(
+  (item) => item.href !== "/dashboard/ai-apollo" || isApolloUiEnabled()
+);
 
 interface DashboardNavProps {
   session?: {

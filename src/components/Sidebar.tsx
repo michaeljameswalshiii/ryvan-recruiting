@@ -24,6 +24,7 @@ import {
   hasPermission,
   type Permission,
 } from '@/lib/roles';
+import { isApolloUiEnabled } from '@/lib/ai/apollo-feature';
 
 type MenuItem = {
   name: string;
@@ -45,6 +46,7 @@ const menuItems: MenuItem[] = [
 ];
 
 const adminItems: MenuItem[] = [
+  // AI Apollo: only when NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true (code kept for re-enable)
   { name: 'AI Apollo', href: '/dashboard/ai-apollo', icon: Bug, permission: 'ai_apollo' },
   { name: 'AI Reliability', href: '/dashboard/ai-reliability', icon: Activity, permission: 'usage' },
   { name: 'Issues', href: '/dashboard/issues', icon: Bug, permission: 'issues' },
@@ -67,7 +69,10 @@ export default function Sidebar({ role }: SidebarProps) {
   const [canScrollDown, setCanScrollDown] = useState(false);
 
   const visibleMain = menuItems.filter((item) => hasPermission(role, item.permission));
-  const visibleAdmin = adminItems.filter((item) => hasPermission(role, item.permission));
+  const visibleAdmin = adminItems.filter((item) => {
+    if (item.href === '/dashboard/ai-apollo' && !isApolloUiEnabled()) return false;
+    return hasPermission(role, item.permission);
+  });
   const visibleSite = siteAdminItems.filter((item) => hasPermission(role, item.permission));
 
   const checkScroll = () => {

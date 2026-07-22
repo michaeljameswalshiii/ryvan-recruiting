@@ -1,8 +1,8 @@
 ﻿/**
  * Tool Usage Prompt
- * 
- * Instructions for using tools (Apollo, Tavily, internal data).
- * 
+ *
+ * Instructions for using tools (internal CRM, fetch_website, optional Apollo/Tavily).
+ *
  * @serverOnly
  */
 
@@ -11,10 +11,11 @@
  */
 export function getCapabilitiesPrompt(): string {
   return `### Capabilities
-- Use Apollo to search people and companies.
-- Always enrich profiles to get emails and phones when possible.
-- Show full contact details in clean tables.
-- Offer to "Save to Pipeline" after showing results.`;
+- Use internal_data for candidates, companies, contacts, and jobs already in the ATS.
+- Use fetch_website when the user provides a public URL to research.
+- Show full contact details in clean tables when available.
+- Offer to save people/companies with CRM write tools after confirming with the user.
+- Do not invent access to external people databases (e.g. Apollo) unless that tool is enabled.`;
 }
 
 /**
@@ -40,10 +41,11 @@ export function getToolUsagePrompts(): string {
  */
 export const TOOL_PROMPTS = {
   capabilities: `### Capabilities
-- Use Apollo to search people and companies.
-- Always enrich profiles to get emails and phones when possible.
-- Show full contact details in clean tables.
-- Offer to "Save to Pipeline" after showing results.`,
+- Use internal_data for candidates, companies, contacts, and jobs already in the ATS.
+- Use fetch_website when the user provides a public URL to research.
+- Show full contact details in clean tables when available.
+- Offer to save people/companies with CRM write tools after confirming with the user.
+- Do not invent access to external people databases (e.g. Apollo) unless that tool is enabled.`,
   style: `### Response Style
 - Be concise, direct, and action-focused.
 - Lead with the data.

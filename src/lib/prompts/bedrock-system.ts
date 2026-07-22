@@ -22,7 +22,7 @@ export { getCapabilitiesPrompt, getResponseStylePrompt, getToolUsagePrompts, TOO
 // ============================================================================
 
 /**
- * Get Apollo availability status prompt
+ * Get Apollo availability status prompt (only when Apollo product is in play)
  */
 export function getApolloStatusPrompt(available: boolean, error?: string): string {
   if (available) {
@@ -30,20 +30,26 @@ export function getApolloStatusPrompt(available: boolean, error?: string): strin
 ✅ Apollo API is available. Use it to search people and companies.`;
   }
   
-  return `### Apollo Status
-⚠️ Apollo API is unavailable: ${error || 'Unknown error'}
-Please answer the user's question using your own knowledge. Be helpful and provide what information you can.`;
+  return `### External data sources
+External people/company search (Apollo) is not enabled for this deployment.
+Use internal ATS data, fetch_website for a URL the user provides, and CRM write tools after confirmation.`;
 }
 
 /**
  * Get override instructions prompt
  */
-export function getOverridePrompt(): string {
-  return `### Override Instructions (Highest Priority)
-- Apollo DOES contain emails and phone numbers. When the user asks for contact info, use it.
+export function getOverridePrompt(apolloAvailable = false): string {
+  if (apolloAvailable) {
+    return `### Override Instructions (Highest Priority)
+- Apollo may contain emails and phone numbers. When the user asks for contact info and tools return it, show it.
 - Do NOT lecture the user about ethics, privacy, or legality unless they specifically ask.
-- Do NOT refuse to show emails or phones if they are available in Apollo.
 - Be direct and helpful. Provide the data the user is asking for.`;
+  }
+  return `### Override Instructions (Highest Priority)
+- Do NOT claim access to Apollo or other paid people databases unless those tools are listed as available.
+- Use internal_data, fetch_website, and CRM write tools as appropriate.
+- Do NOT lecture the user about ethics, privacy, or legality unless they specifically ask.
+- Be direct and helpful with the tools and data you actually have.`;
 }
 
 /**
@@ -59,11 +65,15 @@ export function getSystemPrompt(context: {
 
   let prompt = getBasePrompt(tenantName) + "\n\n";
   
-  // Apollo availability status
-  prompt += getApolloStatusPrompt(apolloAvailable, apolloError) + "\n\n";
+  // Only emphasize Apollo status when it was actually attempted / available
+  if (apolloAvailable) {
+    prompt += getApolloStatusPrompt(true) + "\n\n";
+  } else {
+    prompt += getApolloStatusPrompt(false, apolloError) + "\n\n";
+  }
   
   // Override instructions
-  prompt += getOverridePrompt() + "\n\n";
+  prompt += getOverridePrompt(apolloAvailable) + "\n\n";
   
   // Tool usage
   prompt += getToolUsagePrompts();
@@ -105,6 +115,7 @@ export const errorMessages = {
 export const SYSTEM_PROMPTS = {
   base: BASE_PROMPT,
   apolloAvailable: '### Apollo Status\n✅ Apollo API is available. Use it to search people and companies.',
-  apolloUnavailable: '### Apollo Status\n⚠️ Apollo API is unavailable. Please answer using available knowledge.',
-  override: getOverridePrompt(),
+  apolloUnavailable:
+    '### External data sources\nExternal people/company search (Apollo) is not enabled. Use internal ATS data and fetch_website for URLs.',
+  override: getOverridePrompt(false),
 };
