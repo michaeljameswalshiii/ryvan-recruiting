@@ -35,7 +35,7 @@ import {
   explainAiFetchError,
   parseAiFetchResponse,
 } from '@/lib/ai/parse-response';
-import { ListBuilderPanel } from '@/components/ai/ListBuilderPanel';
+import { AgentWorkbench } from '@/components/ai/AgentWorkbench';
 
 // ---------------------------------------------------------------------------
 // Types / storage
@@ -571,7 +571,9 @@ export function FloatingAiAssistant() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-          <ListBuilderPanel />
+          <div className="mb-2 max-h-[40vh] overflow-hidden rounded-2xl">
+            <AgentWorkbench variant="compact" />
+          </div>
           {messages.length === 0 && (
             <div className="px-2 py-8 text-center">
               <Bot className="mx-auto h-8 w-8 text-slate-300" />

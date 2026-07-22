@@ -28,7 +28,27 @@ export async function GET(
   if (!job || job.userId !== session.userId) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  return NextResponse.json({ job });
+  // Only surface complete contacts (email + phone)
+  const results = (job.results || []).filter((r) => {
+    const email = (r.email || '').trim();
+    const phone = (r.phone || '').trim();
+    return (
+      email &&
+      phone &&
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
+      (phone.match(/\d/g) || []).length >= 7
+    );
+  });
+  return NextResponse.json({
+    job: {
+      ...job,
+      results,
+      progress: {
+        ...job.progress,
+        found: results.length,
+      },
+    },
+  });
 }
 
 export async function PATCH(

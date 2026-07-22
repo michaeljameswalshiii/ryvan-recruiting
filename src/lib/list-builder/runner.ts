@@ -79,6 +79,17 @@ function hasContactSignal(r: {
   );
 }
 
+/** Product rule: only keep rows with both email and phone (name optional). */
+function hasEmailAndPhone(r: { email?: string; phone?: string }): boolean {
+  const email = (r.email || '').trim();
+  const phone = (r.phone || '').trim();
+  if (!email || !phone) return false;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
+  // At least a few digits in phone
+  if ((phone.match(/\d/g) || []).length < 7) return false;
+  return true;
+}
+
 async function discoverCompanies(
   job: ListBuilderJob,
   excludeNames: string[]
@@ -319,6 +330,8 @@ export async function processListBuilderBatch(
       selected: true,
       createdAt: now,
     };
+    // Only surface leads that have both email and phone — never invent; skip incomplete
+    if (!hasEmailAndPhone(row)) continue;
     newRows.push(row);
   }
 
@@ -368,4 +381,4 @@ export async function processListBuilderBatch(
   return { job: latest, done: false };
 }
 
-export { hasContactSignal };
+export { hasContactSignal, hasEmailAndPhone };

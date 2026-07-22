@@ -26,7 +26,7 @@ import {
   explainAiFetchError,
   parseAiFetchResponse,
 } from '@/lib/ai/parse-response';
-import { ListBuilderPanel } from '@/components/ai/ListBuilderPanel';
+import { AgentWorkbench } from '@/components/ai/AgentWorkbench';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -540,13 +540,15 @@ export default function GeneralAiUsagePage() {
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="-m-6 flex h-[calc(100vh-4rem)] flex-col bg-gradient-to-b from-slate-50 to-white">
+    <div className="-m-6 flex h-[calc(100vh-4rem)] flex-col bg-slate-100 lg:flex-row">
+      {/* ── Left: interactive chat ─────────────────────────────────── */}
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-slate-200/80 bg-gradient-to-b from-slate-50 to-white">
       {/* Header */}
-      <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-slate-200/80 bg-white/90 px-6 py-4 backdrop-blur">
+      <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-slate-200/80 bg-white/90 px-5 py-3.5 backdrop-blur sm:px-6">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-              AI Assistant
+            <h1 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
+              Chat
             </h1>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
               <Sparkles className="h-3 w-3" />
@@ -555,25 +557,16 @@ export default function GeneralAiUsagePage() {
                 : PLATFORM_MODELS.find((m) => m.id === platformModel)?.label ||
                   'Platform'}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-              <Cloud className="h-3 w-3" />
-              AWS Bedrock
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+            <span className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600 sm:inline-flex">
               <Wrench className="h-3 w-3" />
-              Research + CRM write
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900">
-              Confirm before save
+              Quick tasks & CRM
             </span>
           </div>
-          <p className="mt-1 text-sm text-slate-500">
-            Chat, research, and CRM actions (candidates, companies, jobs). Write
-            actions ask you to confirm before saving. Default is Most Efficient
-            (Nova Lite / Haiku / Sonnet); lock a model below anytime.
+          <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
+            Instant help — notes, research, CRM updates. Long list builds run on the right.
           </p>
           {/* Model strategy — default Most Efficient, optional lock */}
-          <div className="mt-3 inline-flex flex-wrap rounded-xl border border-orange-200 bg-orange-50/50 p-1 shadow-sm gap-0.5">
+          <div className="mt-2.5 inline-flex flex-wrap rounded-xl border border-orange-200 bg-orange-50/50 p-1 shadow-sm gap-0.5">
             {PLATFORM_MODELS.map((m) => (
               <button
                 key={m.id}
@@ -616,9 +609,8 @@ export default function GeneralAiUsagePage() {
       </header>
 
       {/* Messages / empty */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-8">
-        <div className="mx-auto max-w-3xl space-y-4">
-          <ListBuilderPanel />
+      <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+        <div className="mx-auto max-w-2xl space-y-4">
           {isEmpty ? (
             <div className="flex flex-col items-center px-4 py-12 text-center">
               <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg shadow-slate-900/10">
@@ -948,6 +940,12 @@ export default function GeneralAiUsagePage() {
           </div>
         </div>
       </div>
+      </section>
+
+      {/* ── Right: autonomous list agent ───────────────────────────── */}
+      <aside className="flex h-[min(52vh,420px)] min-h-0 w-full shrink-0 flex-col border-t border-slate-800 lg:h-auto lg:w-[min(100%,400px)] lg:border-t-0 xl:w-[420px]">
+        <AgentWorkbench variant="full" />
+      </aside>
     </div>
   );
 }
