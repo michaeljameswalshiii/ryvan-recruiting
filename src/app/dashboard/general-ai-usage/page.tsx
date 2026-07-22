@@ -26,6 +26,7 @@ import {
   explainAiFetchError,
   parseAiFetchResponse,
 } from '@/lib/ai/parse-response';
+import { ListBuilderPanel } from '@/components/ai/ListBuilderPanel';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -616,7 +617,8 @@ export default function GeneralAiUsagePage() {
 
       {/* Messages / empty */}
       <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-8">
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto max-w-3xl space-y-4">
+          <ListBuilderPanel />
           {isEmpty ? (
             <div className="flex flex-col items-center px-4 py-12 text-center">
               <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg shadow-slate-900/10">

@@ -22,6 +22,7 @@ import {
 } from "./fetch-website";
 import { executeInternalData, INTERNAL_TOOL_NAME, INTERNAL_TOOL_DESCRIPTION } from "./internal";
 import { CRM_WRITE_TOOLS } from "./crm-write";
+import { LIST_BUILDER_TOOLS } from "./list-builder-tools";
 import {
   executeGenerateFile,
   GENERATE_FILE_TOOL_NAME,
@@ -225,6 +226,15 @@ export function getToolSchemas(): Array<{
       name: t.name,
       description: t.description,
       input_schema: t.schema,
+    })),
+    ...LIST_BUILDER_TOOLS.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.schema as {
+        type: string;
+        properties: Record<string, { type: string; description: string }>;
+        required: string[];
+      },
     })),
     {
       name: "score_candidate_fit",

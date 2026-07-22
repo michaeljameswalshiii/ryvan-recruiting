@@ -37,6 +37,7 @@ import { SYSTEM_PROMPTS, getBasePrompt } from "@/lib/prompts/bedrock-system";
 import { getClaudeAssistantPrompt } from "@/lib/prompts/claude-assistant";
 import { getToolSchemas, executeTool, ToolContext, ToolResult, ToolParams } from "@/lib/ai/tools";
 import { CRM_WRITE_TOOLS } from "@/lib/ai/tools/crm-write";
+import { LIST_BUILDER_TOOLS } from "@/lib/ai/tools/list-builder-tools";
 import {
   filterEnabledToolSchemas,
   isApolloToolEnabled,
@@ -122,6 +123,9 @@ function buildGeneralAiSystemPrompt(): string {
       "- apollo / apollo_company_search: external people & company search"
     );
   }
+  externalLines.push(
+    "- start_list_builder / list_builder_status / list_builder_control: background BD list jobs (find companies + contacts for outreach; user can leave and review/import later in the Jobs queue)"
+  );
   externalLines.push(
     "- fetch_website: open and read a public company website/page by URL (use this when the user gives a website or asks you to examine a site — do NOT claim you cannot browse URLs)"
   );
@@ -727,6 +731,11 @@ function getToolSchemasForBedrock(): BedrockTool[] {
     description: t.description,
     input_schema: t.schema,
   }));
+  const listBuilderTools: BedrockTool[] = LIST_BUILDER_TOOLS.map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: t.schema as BedrockTool["input_schema"],
+  }));
 
   const all: BedrockTool[] = [
     {
@@ -832,6 +841,7 @@ function getToolSchemasForBedrock(): BedrockTool[] {
       },
     },
     ...writeTools,
+    ...listBuilderTools,
   ];
   // Apollo/Tavily schemas stay defined above; omitted unless AI_TOOLS_*_ENABLED
   return filterEnabledToolSchemas(all);
@@ -1364,6 +1374,19 @@ async function executeToolByName(
       return JSON.stringify(result.data);
     }
     return `Error: ${result.error || "Write tool failed"}`;
+  }
+
+  // BD list builder (background jobs)
+  if (LIST_BUILDER_TOOLS.some((t) => t.name === toolName)) {
+    const result = await executeTool(
+      toolName,
+      toolInput as ToolParams,
+      toolContext
+    );
+    if (result.success && result.data !== undefined) {
+      return JSON.stringify(result.data);
+    }
+    return `Error: ${result.error || "List builder tool failed"}`;
   }
 
   if (toolName === "apollo_company_search" || toolName === "apollo_company") {

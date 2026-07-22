@@ -57,6 +57,18 @@ export {
   addNoteToContact,
 } from './contact-repository';
 
+// BD list builder jobs
+export {
+  createListBuilderJob,
+  getListBuilderJob,
+  listJobsForUser,
+  updateListBuilderJob,
+  setJobStatus as setListBuilderJobStatus,
+  appendResults as appendListBuilderResults,
+  countActiveJobs as countActiveListBuilderJobs,
+  deleteListBuilderJob,
+} from './list-builder-repository';
+
 // Lead repository - explicit exports to avoid conflicts with job-repository
 export {
   getAllLeads,

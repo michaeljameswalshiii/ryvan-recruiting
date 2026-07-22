@@ -12,6 +12,10 @@
     {
       "path": "/api/cron/sequences-poll-replies",
       "schedule": "30 * * * *"
+    },
+    {
+      "path": "/api/cron/list-builder-run",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

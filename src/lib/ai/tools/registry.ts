@@ -26,6 +26,7 @@ import { FIT_GRAPH_TOOLS } from "./fit-and-graph-tools";
 import { SEQUENCE_TOOLS } from "./sequence-tools";
 import { PLAYBOOK_TOOLS } from "./playbook-tools";
 import { SCREEN_TOOLS } from "./screen-tools";
+import { LIST_BUILDER_TOOLS } from "./list-builder-tools";
 import { recordToolAudit } from "@/lib/db/repositories/tool-audit-repository";
 import {
   disabledExternalToolMessage,
@@ -107,6 +108,15 @@ function initializeRegistry(): void {
 
   // Outreach sequences
   for (const t of SEQUENCE_TOOLS) {
+    TOOL_REGISTRY[t.name] = {
+      name: t.name,
+      description: t.description,
+      execute: t.execute as ToolDefinition["execute"],
+    };
+  }
+
+  // BD list builder (background company/contact research jobs)
+  for (const t of LIST_BUILDER_TOOLS) {
     TOOL_REGISTRY[t.name] = {
       name: t.name,
       description: t.description,
