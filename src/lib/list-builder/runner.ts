@@ -23,10 +23,11 @@ import {
 } from './fetch-page';
 import { resolveTargetGeography } from './geo';
 import {
-  discoverCompanyCandidates,
+  discoverCompanyCandidatesWithDiagnostics,
   discoveryStrategyPhase,
   enrichContactFromWeb,
   type DiscoverCandidate,
+  type DiscoveryDiagnostics,
 } from './discover-sources';
 import {
   normalizeIndustry,
@@ -150,9 +151,9 @@ function countCompleteness(rows: Array<{ contactCompleteness?: string; email?: s
 async function discoverCompanies(
   job: ListBuilderJob,
   excludeNames: string[]
-): Promise<DiscoverCandidate[]> {
-  // Multi-source: Apollo → Tavily → LLM (grounded). Strict geo — no off-target fallback.
-  return discoverCompanyCandidates(job, excludeNames);
+): Promise<{ candidates: DiscoverCandidate[]; diagnostics: DiscoveryDiagnostics }> {
+  // Web directory search + Grok completion + short browse + site hydrate
+  return discoverCompanyCandidatesWithDiagnostics(job, excludeNames);
 }
 
 async function extractFromSite(
@@ -391,10 +392,15 @@ async function processListBuilderBatchInner(
   }> = seedToCandidates(job);
 
   let nextSeedCursor = job.seedCursor || 0;
+  let lastDiagnostics: DiscoveryDiagnostics | null = null;
   if (candidates.length > 0) {
     nextSeedCursor = nextSeedCursor + candidates.length;
   } else {
-    const discovered = await discoverCompanies(job, existingNames);
+    const { candidates: discovered, diagnostics } = await discoverCompanies(
+      job,
+      existingNames
+    );
+    lastDiagnostics = diagnostics;
     candidates = discovered.map((d) => {
       const size =
         d.employeeCount || d.companySize
@@ -445,6 +451,12 @@ async function processListBuilderBatchInner(
       return { job: updated || job, done: true };
     }
 
+    const diag = lastDiagnostics;
+    const diagBit = diag
+      ? ` · sources: web ${diag.webSearchCount}, grok ${diag.completionCount}, browse ${diag.browseCount}, live ${diag.afterHydrate}` +
+        (diag.notes.length ? ` (${diag.notes.slice(0, 2).join('; ')})` : '')
+      : '';
+
     await updateListBuilderJob(tenantId, jobId, {
       discoveryBatch: nextBatch,
       lockedUntil: undefined,
@@ -470,7 +482,7 @@ async function processListBuilderBatchInner(
                 : ' · next batch prioritizes public directories + main phones';
           return (
             `No new companies this batch — still targeting ${resolveTargetGeography(job.brief, job.geography)}. ` +
-            `${job.results.length}/${job.targetSize} kept · retrying…${relax}`
+            `${job.results.length}/${job.targetSize} kept · retrying…${relax}${diagBit}`
           );
         })(),
       },

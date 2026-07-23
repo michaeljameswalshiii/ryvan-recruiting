@@ -1,7 +1,14 @@
 /**
- * Grok-powered company discovery for list-builder.
- * Uses Grok 4.3 on Amazon Bedrock Mantle + fetch_website browse loop.
- * No Apollo. No Tavily. No direct xAI API key.
+ * Company discovery for list-builder.
+ *
+ * Architecture (after 0-kept failure analysis):
+ * 1. DuckDuckGo HTML search — real SERP links (no Apollo/Tavily key)
+ * 2. Grok completion on Mantle — name local firms + websites from knowledge
+ * 3. Optional short Grok+fetch_website browse only if still thin
+ * 4. Hydrate: live-site check + contact crawl (budget-capped)
+ *
+ * Critical: Vercel maxDuration is 60s. Never spend ~50s on browse-only
+ * before producing candidates (that left researched=0 forever).
  * @serverOnly
  */
 
@@ -33,6 +40,10 @@ import {
   analyzePageGeo,
   verifyWebsiteReachable,
 } from './verify';
+import {
+  buildDirectoryQueries,
+  searchWebForCompanies,
+} from './web-directory';
 
 export type DiscoverCandidate = {
   companyName: string;
@@ -42,19 +53,25 @@ export type DiscoverCandidate = {
   phone?: string;
   email?: string;
   industry?: string;
-  /** Numeric headcount when known */
   employeeCount?: number;
-  /** Display band / label */
   companySize?: string;
   openJobsPosted?: number;
   contactName?: string;
   contactTitle?: string;
-  source: 'grok' | 'grok-browse' | 'seed';
-  /** @deprecated prefer employeeCount — kept for older map paths */
+  source: 'grok' | 'grok-browse' | 'seed' | 'web-search';
   employees?: number | string;
   siteVerified?: boolean;
   geoVerified?: boolean;
   pageTextSnippet?: string;
+};
+
+/** Diagnostics for empty batches (surfaced in lastMessage). */
+export type DiscoveryDiagnostics = {
+  webSearchCount: number;
+  completionCount: number;
+  browseCount: number;
+  afterHydrate: number;
+  notes: string[];
 };
 
 function normName(s: string): string {
@@ -155,8 +172,8 @@ function mapGrokRows(
 }
 
 /**
- * After Grok names companies: require live site, crawl contacts, soft geo from page.
- * Unreachable domains are dropped (not returned).
+ * Live-site check + optional contact crawl. Keeps reachable sites even when
+ * contact pages fail (runner will research them → researched count moves).
  */
 async function hydrateContactsFromSites(
   candidates: DiscoverCandidate[],
@@ -168,42 +185,36 @@ async function hydrateContactsFromSites(
 
   for (const c of candidates) {
     if (Date.now() - started > budgetMs) {
-      // Budget: only keep candidates that already had a verified site flag
+      // Time up: keep remaining that already look solid
       if (c.siteVerified && c.website) out.push(c);
+      else if (c.website && c.website.includes('.')) {
+        // Soft-include so runner can still attempt (counts as researched)
+        out.push({ ...c, siteVerified: false });
+      }
       continue;
     }
 
     let website = c.website;
-    if (!website || !website.includes('.')) {
-      // No website → cannot verify — drop from discovery
-      continue;
-    }
-    if (!/^https?:\/\//i.test(website)) {
-      website = `https://${website}`;
-    }
+    if (!website || !website.includes('.')) continue;
+    if (!/^https?:\/\//i.test(website)) website = `https://${website}`;
 
     const reach = await verifyWebsiteReachable(website);
-    if (!reach.ok) {
-      continue; // drop NXDOMAIN / dead sites
-    }
+    if (!reach.ok) continue;
     website = reach.finalUrl || website;
 
     const page = await fetchCompanyContactPages(website);
     if ('error' in page) {
-      // Reachability passed but multi-page crawl failed — still try single page later in runner
       out.push({
         ...c,
         website,
         siteVerified: true,
-        source: c.source === 'seed' ? 'seed' : 'grok-browse',
+        source: c.source === 'seed' ? 'seed' : c.source,
       });
       continue;
     }
     const sig = extractContactSignals(page.text);
     const pageGeo = analyzePageGeo(page.text, targetGeo);
-    if (pageGeo.offTarget) {
-      continue; // e.g. Atlanta HQ page while targeting Broward
-    }
+    if (pageGeo.offTarget) continue;
 
     out.push({
       ...c,
@@ -213,34 +224,24 @@ async function hydrateContactsFromSites(
       siteVerified: true,
       geoVerified: pageGeo.inTarget || undefined,
       pageTextSnippet: page.text.slice(0, 2000),
-      source: c.source === 'seed' ? 'seed' : 'grok-browse',
+      source: c.source === 'seed' ? 'seed' : c.source,
     });
   }
 
   return out;
 }
 
-/**
- * Progressive research strategy baked into the tool so users do not need to
- * rephrase hard briefs (large N + employee cap + bulk contact info).
- *
- * Phase 0 — strict: honor employee cap when present; aim for full contact.
- * Phase 1 — after quiet batches: drop headcount filter; company main phone OK.
- * Phase 2 — deeper recovery: public directories + website + main phone only.
- */
 export type DiscoveryStrategyPhase = 0 | 1 | 2;
 
 export function discoveryStrategyPhase(job: ListBuilderJob): DiscoveryStrategyPhase {
   const empty = job.progress?.emptyBatchStreak || 0;
   const batch = job.discoveryBatch || 0;
-  // Tightened: only escalate after more quiet batches so we don't flood
-  // Atlanta/Orlando/etc. into Broward lists. Phase 2 never skips geo gates in runner.
   if (empty >= 6 || (empty >= 4 && batch >= 8)) return 2;
   if (empty >= 3 || batch >= 5) return 1;
   return 0;
 }
 
-function buildDiscoveryPrompts(opts: {
+function buildCompletionPrompts(opts: {
   job: ListBuilderJob;
   targetGeo: string;
   keywords: string[];
@@ -254,7 +255,7 @@ function buildDiscoveryPrompts(opts: {
   focusKw: string;
   phase: DiscoveryStrategyPhase;
   employeeCap?: number;
-}): { browseSystem: string; browseUser: string; fallbackSystem: string; fallbackUser: string } {
+}): { system: string; user: string } {
   const {
     job,
     targetGeo,
@@ -271,100 +272,61 @@ function buildDiscoveryPrompts(opts: {
     employeeCap,
   } = opts;
 
-  const industryHint = keywords.slice(0, 3).join(' / ') || 'construction';
-  const cityHint = anchors.slice(0, 6).join(', ');
-
-  // Soften hard user constraints inside the tool (do not require user rephrase)
   const honorCap = phase === 0 && !!employeeCap;
-  const sizeRule = honorCap
-    ? `- Prefer firms under ~${employeeCap} employees when known; if size unknown, still include likely local firms`
-    : `- Do NOT filter by employee count. Include local firms of any size when public contact is available`;
 
-  const contactRule =
-    phase >= 1
-      ? `- Prefer company main switchboard phone and official website over personal emails
-- Personal/mobile emails of individuals are optional — omit rather than invent
-- A row with website + main public phone is SUCCESS (partial lead)`
-      : `- Prefer public company email or main phone from the site
-- NEVER invent contacts; personal emails of individuals are optional`;
-
-  const sourceRule =
-    phase >= 2
-      ? `- Prefer public sources: company contact pages, chamber/AGC directories, state license boards (e.g. Florida DBPR), county contractor lists
-- If personal contact pages fail, still return the company with website + main phone`
-      : `- Use official company websites (/contact, /about, /locations) first`;
-
-  const safetyRule = `- This is legitimate B2B company research for recruiting BD, NOT bulk personal data harvesting
-- Only public business contact info published on company/official pages`;
-
-  const browseSystem = `You are Grok doing B2B list research for a recruiting agency (Turnkey List Builder).
-
-You have ONE tool: fetch_website — open real company websites and contact/about pages.
-Use tool results (emails_found, phones_found, page text) for phones/emails. NEVER invent contacts.
-
-Workflow:
-1. Name ${need} real ${industryHint} companies with a presence in ${targetGeo} (cities like ${cityHint}).
-2. For each, call fetch_website on their domain, then /contact or /about if needed.
-3. Keep firms that look local to ${targetGeo} or nearby metro serving that area.
-4. Copy phone/email ONLY from tool results.
-
-Final answer MUST be a JSON array only (no markdown prose) with objects:
-companyName, website, city, state, phone, email, contactName, contactTitle,
-industry, employeeCount (number if known), companySize (e.g. "51-200" if only a band),
-openJobsPosted (number of open public job listings if seen on careers/jobs pages — omit if unknown)
-
-Rules:
-- industry / company size / open jobs are OPTIONAL — include only when supported by tool page text; never invent
-- Max ${need} companies this batch
-- Do NOT repeat: ${excludeList}
-${sizeRule}
-${contactRule}
-${sourceRule}
-${safetyRule}
-- This batch focus: ${focusKw} near ${focusCity}
-- Strategy phase ${phase} (0=strict, 1=soft size, 2=public directories)
-- If a site fails, try another company — still return JSON for what you verified
-- Partial rows (website + main phone) are valuable when the site loads
-- NEVER invent domains — only websites that load via fetch_website
-- Prefer offices in ${targetGeo}; exclude HQ-only firms in Atlanta, Orlando, etc. unless a local branch is verified`;
-
-  const browseUser = `User brief (may be ambitious — follow strategy phase ${phase}, not every hard filter literally):
-${job.brief}
-
-REQUIRED location focus: ${targetGeo}
-Industry: ${job.industry || keywords.join(', ')}
-Progress: ${already}/${target} usable leads already kept.
-Batch #${batch}: find ${need} NEW companies in ${targetGeo}, emphasize ${focusKw} / ${focusCity}.
-${phase >= 1 ? 'Ignore employee-count filters from the brief for this batch.\n' : ''}${phase >= 2 ? 'Prioritize public directories + main company phones.\n' : ''}
-Use fetch_website on each company site. Drop firms whose site fails. Then return JSON array only.`;
-
-  const fallbackSystem = `You are Grok doing B2B list research for recruiting BD.
+  const system = `You are a B2B research assistant for a recruiting agency (list builder).
 Return ONLY a JSON array of real companies with a presence in ${targetGeo}.
-Keys: companyName, website, city, state, phone, email, contactName, contactTitle, industry, employeeCount, companySize, openJobsPosted
-NEVER invent phone/email/size/jobs — omit if unsure. Company main phone is preferred over personal email.
-Max ${need}. Avoid: ${excludeList}
-${honorCap ? `Prefer under ~${employeeCap} employees when known.` : 'Do not filter by employee count.'}
-Focus: ${focusKw} near ${focusCity}. Cities: ${anchors.join(', ')}
-Strategy phase ${phase}.`;
+Each object keys: companyName, website (official domain you are confident is real), city, state,
+phone (optional — only if widely published), email (optional — only if widely published),
+contactName, contactTitle, industry, employeeCount, companySize, openJobsPosted
 
-  const fallbackUser = `Brief: ${job.brief}
-Location: ${targetGeo}. Batch ${batch}. Need ${need} NEW companies (${already}/${target} kept).
-${phase >= 1 ? 'Ignore headcount filters. ' : ''}JSON array only.`;
+CRITICAL:
+- website MUST be a real official company domain (example.com form). Prefer .com that matches the firm.
+- NEVER invent phone/email — omit if unsure.
+- Prefer local ${targetGeo} offices over national HQ elsewhere.
+- Max ${need} companies. Avoid: ${excludeList}
+- ${honorCap ? `Prefer under ~${employeeCap} employees when known.` : 'Do not filter by employee count.'}
+- Focus: ${focusKw} near ${focusCity}. Cities: ${anchors.slice(0, 8).join(', ')}
+- Industry: ${keywords.slice(0, 4).join(', ') || 'construction'}
+- Strategy phase ${phase}.`;
 
-  return { browseSystem, browseUser, fallbackSystem, fallbackUser };
+  const user = `User brief: ${job.brief}
+Location REQUIRED: ${targetGeo}
+Progress: ${already}/${target} usable leads kept. Batch #${batch}.
+Return ${need} NEW companies as JSON array only.`;
+
+  return { system, user };
 }
 
 /**
- * Primary discovery: Grok Mantle agent with fetch_website only.
- * Falls back to completion-only Grok if the browse loop fails.
- * Applies progressive B/C strategy so users need not rephrase hard briefs.
+ * Primary discovery — web search + Grok knowledge, hydrate live sites.
  */
 export async function discoverCompanyCandidates(
   job: ListBuilderJob,
   excludeNames: string[]
 ): Promise<DiscoverCandidate[]> {
+  const { candidates } = await discoverCompanyCandidatesWithDiagnostics(
+    job,
+    excludeNames
+  );
+  return candidates;
+}
+
+export async function discoverCompanyCandidatesWithDiagnostics(
+  job: ListBuilderJob,
+  excludeNames: string[]
+): Promise<{ candidates: DiscoverCandidate[]; diagnostics: DiscoveryDiagnostics }> {
+  const diagnostics: DiscoveryDiagnostics = {
+    webSearchCount: 0,
+    completionCount: 0,
+    browseCount: 0,
+    afterHydrate: 0,
+    notes: [],
+  };
+
   const keyRes = await resolveGrokApiKey(job.userId);
   if ('error' in keyRes) {
+    diagnostics.notes.push(keyRes.error);
     throw new Error(keyRes.error);
   }
 
@@ -383,88 +345,148 @@ export async function discoverCompanyCandidates(
     keywords[(batch - 1) % Math.max(keywords.length, 1)] || 'construction';
   const phase = discoveryStrategyPhase(job);
 
-  const prompts = buildDiscoveryPrompts({
-    job,
-    targetGeo,
-    keywords,
-    anchors,
-    excludeList,
-    need,
-    batch,
-    already,
-    target,
-    focusCity,
-    focusKw,
-    phase,
-    employeeCap,
-  });
+  const batchStarted = Date.now();
+  // Leave headroom under Vercel 60s + runner overhead
+  const hardDeadline = batchStarted + 42_000;
 
-  // --- Browse-enabled discovery (preferred) ---
-  const browsed = await grokBrowseResearch({
-    system: prompts.browseSystem,
-    user: prompts.browseUser,
-    maxIterations: phase >= 1 ? 6 : 5,
-    timeoutMs: Math.min(LIST_BUILDER_DEFAULTS.batchBudgetMs - 5_000, 52_000),
-    usageCtx: {
-      tenantId: job.tenant_id,
-      userId: job.userId,
-      jobId: job.id,
-      purpose: phase >= 1 ? 'discover-browse-relaxed' : 'discover-browse',
-      queryPreview: `p${phase} ${targetGeo}: ${job.brief}`.slice(0, 180),
-    },
-  });
+  let pool: DiscoverCandidate[] = [];
 
-  let candidates: DiscoverCandidate[] = [];
-
-  if (browsed.text && !browsed.error) {
-    const parsed = parseJsonFromText<any[]>(browsed.text);
-    if (Array.isArray(parsed.data)) {
-      candidates = mapGrokRows(parsed.data, targetGeo, 'grok-browse');
+  // --- 1) DuckDuckGo HTML search (real links, no API key) ---
+  try {
+    const queries = buildDirectoryQueries({
+      brief: job.brief,
+      targetGeo,
+      industry: job.industry,
+      keywords,
+      batch,
+    });
+    // 1–2 queries per batch to save time
+    for (const q of queries.slice(0, phase >= 1 ? 2 : 1)) {
+      if (Date.now() > hardDeadline - 25_000) break;
+      const found = await searchWebForCompanies({
+        query: q,
+        targetGeo,
+        need: need + 2,
+      });
+      for (const f of found) {
+        f.source = 'web-search';
+        pool.push(f);
+      }
     }
+    diagnostics.webSearchCount = pool.length;
+    if (pool.length === 0) {
+      diagnostics.notes.push('web-search returned 0 links');
+    }
+  } catch (err: any) {
+    diagnostics.notes.push(`web-search: ${err?.message || err}`);
   }
 
-  // --- Fallback: completion-only Grok (no tools) ---
-  if (candidates.length === 0) {
+  // --- 2) Grok completion (knowledge → JSON companies) — fast, no tools ---
+  if (Date.now() < hardDeadline - 18_000) {
+    const prompts = buildCompletionPrompts({
+      job,
+      targetGeo,
+      keywords,
+      anchors,
+      excludeList,
+      need: need + 2,
+      batch,
+      already,
+      target,
+      focusCity,
+      focusKw,
+      phase,
+      employeeCap,
+    });
     const { text, error } = await grokWebResearch({
-      system: prompts.fallbackSystem,
-      user: prompts.fallbackUser,
-      timeoutMs: 40_000,
+      system: prompts.system,
+      user: prompts.user,
+      timeoutMs: 22_000,
       usageCtx: {
         tenantId: job.tenant_id,
         userId: job.userId,
         jobId: job.id,
-        purpose: phase >= 1 ? 'discover-relaxed' : 'discover',
+        purpose: phase >= 1 ? 'discover-complete-relaxed' : 'discover-complete',
         queryPreview: `p${phase} ${targetGeo}: ${job.brief}`.slice(0, 180),
       },
     });
-
     if (error && !text) {
-      throw new Error(
-        `discover: ${browsed.error || error || 'Grok discovery failed'}`
-      );
+      diagnostics.notes.push(`completion: ${error}`);
+    } else if (text) {
+      const parsed = parseJsonFromText<any[]>(text);
+      if (Array.isArray(parsed.data)) {
+        const mapped = mapGrokRows(parsed.data, targetGeo, 'grok');
+        diagnostics.completionCount = mapped.length;
+        pool.push(...mapped);
+      } else {
+        diagnostics.notes.push(`completion JSON: ${parsed.error || 'invalid'}`);
+      }
     }
-
-    const parsed = parseJsonFromText<any[]>(text);
-    if (parsed.error || !Array.isArray(parsed.data)) {
-      throw new Error(
-        `discover: ${parsed.error || browsed.error || 'invalid JSON from Grok'}`
-      );
-    }
-    candidates = mapGrokRows(parsed.data, targetGeo, 'grok');
   }
 
-  let list = dedupeCandidates(candidates, excludeNames).slice(0, need * 2);
+  // --- 3) Short browse only if still thin (optional, budget-capped) ---
+  if (
+    pool.length < need &&
+    Date.now() < hardDeadline - 20_000 &&
+    phase >= 1
+  ) {
+    const browsed = await grokBrowseResearch({
+      system: `You research local companies. You have fetch_website only.
+Return a JSON array of companies in ${targetGeo} with companyName, website, city, state, phone, email.
+NEVER invent phone/email. Prefer real domains. Max ${need}. Avoid: ${excludeList}`,
+      user: `Brief: ${job.brief}\nFind ${need} ${focusKw} companies near ${focusCity}, ${targetGeo}. JSON array only.`,
+      maxIterations: 3,
+      timeoutMs: 18_000,
+      usageCtx: {
+        tenantId: job.tenant_id,
+        userId: job.userId,
+        jobId: job.id,
+        purpose: 'discover-browse-short',
+        queryPreview: targetGeo,
+      },
+    });
+    if (browsed.text && !browsed.error) {
+      const parsed = parseJsonFromText<any[]>(browsed.text);
+      if (Array.isArray(parsed.data)) {
+        const mapped = mapGrokRows(parsed.data, targetGeo, 'grok-browse');
+        diagnostics.browseCount = mapped.length;
+        pool.push(...mapped);
+      }
+    } else if (browsed.error) {
+      diagnostics.notes.push(`browse: ${browsed.error}`);
+    }
+  }
 
-  // Hydrate: drop dead domains + off-geo pages; fill contacts from live sites
-  const hydrateBudget = phase >= 1 ? 28_000 : 22_000;
+  let list = dedupeCandidates(pool, excludeNames).slice(0, need * 3);
+
+  if (list.length === 0) {
+    diagnostics.notes.push('no candidates before hydrate');
+    return { candidates: [], diagnostics };
+  }
+
+  // --- 4) Hydrate live sites ---
+  const hydrateBudget = Math.max(
+    8_000,
+    Math.min(22_000, hardDeadline - Date.now() - 2_000)
+  );
   list = await hydrateContactsFromSites(list, hydrateBudget, targetGeo);
+  diagnostics.afterHydrate = list.length;
 
-  // Prefer site-verified; pad prompts asked for `need`
-  return list.filter((c) => c.siteVerified).slice(0, need);
+  // Prefer site-verified; if none verified, still return reachable-ish rows for runner
+  const verified = list.filter((c) => c.siteVerified);
+  const finalList = (verified.length > 0 ? verified : list).slice(0, need);
+
+  if (finalList.length === 0) {
+    diagnostics.notes.push(
+      `hydrate dropped all (${pool.length} raw → 0 live sites)`
+    );
+  }
+
+  return { candidates: finalList, diagnostics };
 }
 
 /**
- * Contact gap-fill: Grok browses the company site with fetch_website only.
+ * Contact gap-fill: site crawl first, then short Grok browse.
  */
 export async function enrichContactFromWeb(
   companyName: string,
@@ -483,7 +505,6 @@ export async function enrichContactFromWeb(
   const place = city || '';
   const site = website || '';
 
-  // Fast path: deterministic multi-page scrape first
   if (site && site.includes('.')) {
     let url = site;
     if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
@@ -500,15 +521,14 @@ export async function enrichContactFromWeb(
     }
   }
 
-  // Grok + fetch_website to try contact/about URLs it knows
   const system = `You find public contact info for BD outreach.
 You ONLY have fetch_website. Open the company site, /contact, /about, /locations.
 Return ONLY JSON: { "email"?: string, "phone"?: string, "contactName"?: string }
-NEVER invent. Only values from tool results (emails_found / phones_found / page text). Empty {} if none.`;
+NEVER invent. Only values from tool results. Empty {} if none.`;
 
   const user = `Company: ${companyName}
 City: ${place || 'unknown'}
-Website: ${site || 'unknown — try plausible official domain if confident, else return {}'}
+Website: ${site || 'unknown'}
 
 fetch_website the homepage and contact page, then JSON only.`;
 
@@ -516,7 +536,7 @@ fetch_website the homepage and contact page, then JSON only.`;
     system,
     user,
     maxIterations: 3,
-    timeoutMs: 28_000,
+    timeoutMs: 22_000,
     usageCtx: {
       tenantId: opts?.tenantId,
       userId: opts?.userId,

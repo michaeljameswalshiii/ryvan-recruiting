@@ -184,14 +184,14 @@ export const LIST_BUILDER_DEFAULTS = {
   /** Mark failed after this many consecutive hard errors */
   maxConsecutiveErrors: 3,
   /**
-   * Soft wall-clock budget per batch.
-   * Grok web_search is slower than pure LLM — allow more room under maxDuration 60s.
+   * Soft wall-clock budget per batch under Vercel maxDuration 60s.
+   * Discovery is multi-step (search + Grok + hydrate) — keep headroom.
    */
-  batchBudgetMs: 55_000,
-  /** Grok / LLM invoke timeout (discovery with web_search needs longer) */
-  llmTimeoutMs: 50_000,
+  batchBudgetMs: 50_000,
+  /** Grok / LLM invoke timeout (per call; discovery makes shorter calls) */
+  llmTimeoutMs: 28_000,
   /** Soft lock TTL after batch starts (shorter = less “stuck” if process dies) */
-  lockMs: 55_000,
+  lockMs: 58_000,
   /**
    * Max companies per import API request (client loops until all selected are done).
    * Keeps each Vercel invocation well under maxDuration.
