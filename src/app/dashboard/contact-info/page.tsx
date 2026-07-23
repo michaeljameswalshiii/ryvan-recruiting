@@ -98,7 +98,7 @@ export default function ContactInfoPage() {
 
   const [search, setSearch] = useState('');
   const [bucket, setBucket] = useState<ContactBucket>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortKey, setSortKey] = useState<SortKey>('last_activity');
   const [page, setPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
