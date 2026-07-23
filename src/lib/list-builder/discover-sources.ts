@@ -238,12 +238,9 @@ async function hydrateContactsFromSites(
       if (!('error' in page)) {
         const sig = extractContactSignals(page.text);
         const pageGeo = analyzePageGeo(page.text, targetGeo);
-        if (pageGeo.offTarget && !pageGeo.inTarget) {
-          // National firm with no local signal — still keep for BD if city field matches
-          // only drop if clearly foreign metro AND no local city claim
-          if (!c.city) {
-            // keep lightly
-          }
+        // Drop multi-state / out-of-Florida office footprints early
+        if (pageGeo.hasOfficesOutsideFlorida) {
+          continue;
         }
         out.push({
           ...resolved,
@@ -307,21 +304,27 @@ function buildCompletionPrompts(opts: {
 
   const honorCap = phase === 0 && !!employeeCap;
 
+  const sizeRule = honorCap
+    ? `Prefer under ~${employeeCap} employees when known.`
+    : 'Prefer small-to-mid firms (roughly under 500 employees). Skip national GCs and multi-state chains.';
+
   const system = `You list real construction / contracting companies that operate in ${targetGeo}, Florida.
 Return ONLY a JSON array (no markdown). Each object:
 {"companyName":"...","website":"https://...","city":"...","state":"FL"}
 
 Rules:
-- Prefer mid-size / regional GCs, specialty contractors, and builders — not only national giants
+- Florida-local / regional only — NO firms with offices outside Florida (even if HQ is in Florida)
+- Prefer small-to-medium specialty contractors, regional GCs, and builders — not national giants
 - website: official domain if known; omit if unsure (do not invent random domains)
 - NEVER invent phone or email
 - Max ${need} companies. Do not include: ${excludeList}
-- ${honorCap ? `Prefer under ~${employeeCap} employees when known.` : 'Any size OK.'}
+- ${sizeRule}
 - Focus industry: ${keywords.slice(0, 4).join(', ') || 'construction'} near ${focusCity}
 - Cities: ${anchors.slice(0, 8).join(', ')}`;
 
   const user = `Brief: ${job.brief}
-Location: ${targetGeo}. Batch ${batch}. Need ${need} NEW companies (${already}/${target} already kept).
+Location: ${targetGeo} (Florida-local SMB only — no multi-state footprints).
+Batch ${batch}. Need ${need} NEW companies (${already}/${target} already kept).
 JSON array only.`;
 
   return { system, user };

@@ -36,6 +36,7 @@ import {
 } from './firmographics';
 import {
   evaluateGeoForKeep,
+  exceedsSmbSize,
   tierFromFlags,
   verifyWebsiteReachable,
 } from './verify';
@@ -500,6 +501,7 @@ async function processListBuilderBatchInner(
   let skippedOffGeo = 0;
   let skippedDuplicate = 0;
   let skippedDeadSite = 0;
+  let skippedTooBig = 0;
   let keptComplete = 0;
   let keptPartial = 0;
   let keptVerified = 0;
@@ -656,9 +658,15 @@ async function processListBuilderBatchInner(
       skippedOffGeo++;
       continue;
     }
-    // If city field wrong but page is local, prefer page-local note
-    if (geoEval.pageGeo?.inTarget && geoEval.geoVerified) {
-      // keep city if already local; else leave as-is
+
+    // Prefer small–mid firms; drop clear enterprise headcount when known
+    const sizeCheck = exceedsSmbSize(
+      extracted.employeeCount || c.employeeCount,
+      extracted.companySize || c.companySize
+    );
+    if (sizeCheck.tooBig) {
+      skippedTooBig++;
+      continue;
     }
 
     if (match && contactExists(match, extracted.email, extracted.contactName)) {
@@ -781,7 +789,8 @@ async function processListBuilderBatchInner(
       : `Researched ${researchedThisBatch} in ${targetGeo}, kept 0` +
         (skippedNoContact ? ` (${skippedNoContact} no public email/phone)` : '') +
         (skippedDeadSite ? ` (${skippedDeadSite} dead/missing site)` : '') +
-        (skippedOffGeo ? ` (${skippedOffGeo} off-geo)` : '') +
+        (skippedOffGeo ? ` (${skippedOffGeo} off-geo/multi-state)` : '') +
+        (skippedTooBig ? ` (${skippedTooBig} too large for SMB)` : '') +
         (skippedDuplicate ? `, ${skippedDuplicate} skipped` : '') +
         `${sourceBit}${stratBit} · ${totals.found}/${job.targetSize} total · continuing until target or time limit…`;
 
