@@ -201,7 +201,16 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) toast.error(data.error || 'Action failed');
-      else await load();
+      else {
+        if (act === 'set_visibility') {
+          toast.success(
+            extra?.visibility === 'public'
+              ? 'List is now public to your team'
+              : 'List is now private'
+          );
+        }
+        await load();
+      }
     } finally {
       setBusyId(null);
     }

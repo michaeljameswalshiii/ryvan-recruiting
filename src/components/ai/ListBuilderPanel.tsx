@@ -151,21 +151,35 @@ export function ListBuilderPanel() {
     }
   };
 
-  const action = async (jobId: string, act: string) => {
+  const action = async (
+    jobId: string,
+    act: string,
+    extra?: Record<string, unknown>
+  ) => {
     setBusyId(jobId);
     try {
       const res = await fetch(`/api/list-builder/${jobId}`, {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: act }),
+        body: JSON.stringify({ action: act, ...extra }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(data.error || 'Action failed');
       } else {
         toast.success(
-          act === 'pause' ? 'Paused' : act === 'resume' ? 'Resumed' : act === 'cancel' ? 'Cancelled' : 'Updated'
+          act === 'pause'
+            ? 'Paused'
+            : act === 'resume'
+              ? 'Resumed'
+              : act === 'cancel'
+                ? 'Cancelled'
+                : act === 'set_visibility'
+                  ? extra?.visibility === 'public'
+                    ? 'List is now public to your team'
+                    : 'List is now private'
+                  : 'Updated'
         );
         await load();
       }
@@ -507,6 +521,27 @@ export function ListBuilderPanel() {
                             onClick={() => void action(j.id, 'cancel')}
                           >
                             <X className="h-3 w-3 mr-1" /> Cancel
+                          </Button>
+                        )}
+                        {j.isOwner !== false && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            disabled={busyId === j.id}
+                            onClick={() =>
+                              void action(j.id, 'set_visibility', {
+                                visibility:
+                                  j.visibility === 'public'
+                                    ? 'private'
+                                    : 'public',
+                              })
+                            }
+                            title="Works for older lists too — share with your tenant"
+                          >
+                            {j.visibility === 'public'
+                              ? 'Make private'
+                              : 'Share public'}
                           </Button>
                         )}
                         {(j.status === 'awaiting_import' ||

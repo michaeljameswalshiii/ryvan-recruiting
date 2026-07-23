@@ -101,6 +101,7 @@ export default function ListBuilderResultsPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [sharingBusy, setSharingBusy] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
@@ -189,6 +190,33 @@ export default function ListBuilderResultsPage() {
       clearTimeout(kick);
     };
   }, [id, load]);
+
+  const toggleSharing = async () => {
+    if (!id || !job || job.isOwner === false) return;
+    setSharingBusy(true);
+    try {
+      const next = job.visibility === 'public' ? 'private' : 'public';
+      const res = await fetch(`/api/list-builder/${id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_visibility', visibility: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error || 'Could not update sharing');
+        return;
+      }
+      toast.success(
+        next === 'public'
+          ? 'List is public — teammates on your tenant can open and import it'
+          : 'List is private — only you can see it'
+      );
+      await load();
+    } finally {
+      setSharingBusy(false);
+    }
+  };
 
   const rows = job?.results || [];
   const selectable = rows.filter((r) => !r.imported);
@@ -333,6 +361,21 @@ export default function ListBuilderResultsPage() {
               <span className="font-semibold text-slate-900">{rows.length}</span>{' '}
               leads
             </span>
+            {job.isOwner !== false && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={sharingBusy}
+                onClick={() => void toggleSharing()}
+                className="gap-2"
+                title="Share older and new lists with teammates on your tenant"
+              >
+                {sharingBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                {job.visibility === 'public' ? 'Make private' : 'Share public'}
+              </Button>
+            )}
             <Button
               type="button"
               disabled={importing || selectedCount === 0}
