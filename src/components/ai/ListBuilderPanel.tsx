@@ -64,8 +64,6 @@ export function ListBuilderPanel() {
   const [selected, setSelected] = useState<Record<string, Set<string>>>({});
   const [showStart, setShowStart] = useState(false);
   const [brief, setBrief] = useState('');
-  const [geography, setGeography] = useState('United States');
-  const [targetSize, setTargetSize] = useState(50);
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [seedCsv, setSeedCsv] = useState('');
 
@@ -201,8 +199,7 @@ export function ListBuilderPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           brief: brief.trim() || 'Seed list enrichment',
-          geography: geography.trim() || 'United States',
-          targetSize,
+          // Geography / size inferred from brief + server defaults (no UI fields)
           visibility,
           seedCsv: seedCsv.trim() || undefined,
         }),
@@ -348,28 +345,6 @@ export function ListBuilderPanel() {
             className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm"
             placeholder="e.g. Manufacturing companies in South Florida — hiring managers / HR for recruiting services"
           />
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-gray-600">Geography</label>
-              <input
-                value={geography}
-                onChange={(e) => setGeography(e.target.value)}
-                className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm"
-                placeholder="United States"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-gray-600">Target companies</label>
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={targetSize}
-                onChange={(e) => setTargetSize(Number(e.target.value) || 50)}
-                className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm"
-              />
-            </div>
-          </div>
           <div>
             <label className="text-[11px] text-gray-600 block mb-1">Sharing</label>
             <div className="grid grid-cols-2 gap-1 rounded-md border border-gray-200 p-0.5 bg-gray-50">

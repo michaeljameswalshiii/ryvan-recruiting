@@ -106,8 +106,6 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [brief, setBrief] = useState('');
-  const [geography, setGeography] = useState('United States');
-  const [targetSize, setTargetSize] = useState(50);
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [seedCsv, setSeedCsv] = useState('');
   const [showCsv, setShowCsv] = useState(false);
@@ -229,8 +227,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           brief: brief.trim() || 'Seed list enrichment',
-          geography: geography.trim() || 'United States',
-          targetSize,
+          // Geography / size inferred from brief + server defaults (no UI fields)
           visibility,
           seedCsv: seedCsv.trim() || undefined,
         }),
@@ -300,32 +297,6 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
             className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none ring-violet-500/0 transition focus:border-violet-400/40 focus:bg-white/[0.07] focus:ring-2 focus:ring-violet-500/30"
             placeholder="e.g. Construction companies in Palm Beach County under 300 employees — HR or owners…"
           />
-          <div className={`grid gap-2 ${isCompact ? 'grid-cols-1' : 'grid-cols-2'}`}>
-            <div>
-              <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                Geography
-              </label>
-              <input
-                value={geography}
-                onChange={(e) => setGeography(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-sm text-white outline-none focus:border-violet-400/40"
-                placeholder="United States"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                Target companies
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={targetSize}
-                onChange={(e) => setTargetSize(Number(e.target.value) || 50)}
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-sm text-white outline-none focus:border-violet-400/40"
-              />
-            </div>
-          </div>
           <div>
             <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">
               Sharing
