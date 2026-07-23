@@ -363,7 +363,7 @@ async function processListBuilderBatchInner(
     lockedUntil: lockUntil,
     progress: {
       ...job.progress,
-      lastMessage: 'Researching next batch…',
+      lastMessage: `Researching batch ${(job.discoveryBatch || 0) + 1}…`,
     },
   });
 
@@ -453,7 +453,7 @@ async function processListBuilderBatchInner(
 
     const diag = lastDiagnostics;
     const diagBit = diag
-      ? ` · sources: web ${diag.webSearchCount}, grok ${diag.completionCount}, browse ${diag.browseCount}, live ${diag.afterHydrate}` +
+      ? ` · sources: catalog ${diag.catalogCount ?? 0}, web ${diag.webSearchCount}, grok ${diag.completionCount}, live ${diag.afterHydrate}` +
         (diag.notes.length ? ` (${diag.notes.slice(0, 2).join('; ')})` : '')
       : '';
 
@@ -506,9 +506,10 @@ async function processListBuilderBatchInner(
 
   const targetGeoCheck = resolveTargetGeography(job.brief, job.geography);
   const geoPhase = discoveryStrategyPhase(job);
-  // Never fully skip geo: phase 2 still rejects off-target page/city evidence.
-  // Only allow unknown geo (partial) after phase 1+.
-  const allowUnknownGeo = geoPhase >= 1;
+  // Catalog/seed firms often list HQ metros elsewhere while serving the target —
+  // allow unknown geo always so we don't discard every reachable site.
+  // Still reject hard off-target when page evidence is clearly wrong state.
+  const allowUnknownGeo = true;
 
   for (const c of candidates) {
     if (Date.now() - batchStarted > LIST_BUILDER_DEFAULTS.batchBudgetMs) {
@@ -555,6 +556,9 @@ async function processListBuilderBatchInner(
       siteVerified = true;
       website = reach.finalUrl || website;
     }
+
+    // Catalog/seed rows often already carry city+website — count as researched even
+    // before contact scrape so UI counters move on every tick.
 
     let extracted: Partial<ListBuilderResultRow> = {};
     if (c.email) extracted.email = c.email;

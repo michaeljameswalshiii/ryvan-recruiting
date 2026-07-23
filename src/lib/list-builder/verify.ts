@@ -291,8 +291,38 @@ export function evaluateGeoForKeep(opts: {
     ? analyzePageGeo(pageText, targetGeo)
     : { inTarget: false, offTarget: false, mentions: [] as string[] };
 
-  // Hard reject: page clearly elsewhere
+  // Soften hard reject: national GCs often list many metros. Only hard-reject when
+  // city field also looks off-target (or missing) AND page is off-target.
   if (pageGeo.offTarget) {
+    const cityHay0 = [city, state].filter(Boolean).join(', ');
+    const cityLocal0 = looksInTargetArea(
+      cityHay0 || city,
+      companyName || '',
+      targetGeo,
+      { allowUnknown: true }
+    );
+    // Florida city + national page → keep as partial geo
+    if (cityLocal0) {
+      return {
+        keep: true,
+        geoVerified: false,
+        reason: 'Local city field; page also lists other markets',
+        pageGeo,
+      };
+    }
+    // Same state as target (e.g. FL) even if different county
+    if (
+      state &&
+      /florida|\bfl\b/i.test(String(state)) &&
+      /florida|\bfl\b/i.test(targetGeo)
+    ) {
+      return {
+        keep: true,
+        geoVerified: false,
+        reason: 'In-state firm; website lists multiple markets',
+        pageGeo,
+      };
+    }
     return {
       keep: false,
       geoVerified: false,
@@ -315,6 +345,21 @@ export function evaluateGeoForKeep(opts: {
         keep: true,
         geoVerified: true,
         reason: 'Website location matches target (city field corrected)',
+        pageGeo,
+      };
+    }
+    // Same-state (e.g. Miami firm for Palm Beach County brief) — keep as partial
+    const targetIsFl = /florida|\bfl\b/i.test(targetGeo);
+    const cityIsFl =
+      /florida|\bfl\b/i.test(String(state || '')) ||
+      /\b(miami|fort\s*lauderdale|orlando|tampa|jacksonville|naples|west\s*palm|boca|hollywood|delray|jupiter)\b/i.test(
+        String(city || '')
+      );
+    if (targetIsFl && cityIsFl) {
+      return {
+        keep: true,
+        geoVerified: false,
+        reason: `Florida firm in ${cityHay} (near-market for ${targetGeo})`,
         pageGeo,
       };
     }

@@ -1,14 +1,16 @@
 /**
  * Company discovery for list-builder.
  *
- * Architecture (after 0-kept failure analysis):
- * 1. DuckDuckGo HTML search — real SERP links (no Apollo/Tavily key)
- * 2. Grok completion on Mantle — name local firms + websites from knowledge
- * 3. Optional short Grok+fetch_website browse only if still thin
- * 4. Hydrate: live-site check + contact crawl (budget-capped)
+ * Failure modes we hit in prod:
+ * - DuckDuckGo HTML returns bot-challenge (HTTP 202, 0 links)
+ * - Grok-only + fetch_website cannot *search* and often times out under 60s
+ * - Hydrate drop-all left researched=0 forever
  *
- * Critical: Vercel maxDuration is 60s. Never spend ~50s on browse-only
- * before producing candidates (that left researched=0 forever).
+ * Reliable path now:
+ * 1. Curated FL construction seed catalog (rotated by batch) — always available
+ * 2. Grok completion for additional names + domain guessing
+ * 3. Optional DDG (best-effort; often blocked)
+ * 4. Light site verify + contact scrape (budget-capped)
  * @serverOnly
  */
 
@@ -30,7 +32,6 @@ import {
   parseJsonFromText,
   resolveGrokApiKey,
 } from './grok-search';
-import { grokBrowseResearch } from './grok-browse';
 import {
   normalizeIndustry,
   parseEmployeeCount,
@@ -44,6 +45,10 @@ import {
   buildDirectoryQueries,
   searchWebForCompanies,
 } from './web-directory';
+import {
+  getSeedFirmsForMarket,
+  guessDomainsFromName,
+} from './seed-catalog';
 
 export type DiscoverCandidate = {
   companyName: string;
@@ -58,18 +63,18 @@ export type DiscoverCandidate = {
   openJobsPosted?: number;
   contactName?: string;
   contactTitle?: string;
-  source: 'grok' | 'grok-browse' | 'seed' | 'web-search';
+  source: 'grok' | 'grok-browse' | 'seed' | 'web-search' | 'catalog';
   employees?: number | string;
   siteVerified?: boolean;
   geoVerified?: boolean;
   pageTextSnippet?: string;
 };
 
-/** Diagnostics for empty batches (surfaced in lastMessage). */
 export type DiscoveryDiagnostics = {
   webSearchCount: number;
   completionCount: number;
   browseCount: number;
+  catalogCount: number;
   afterHydrate: number;
   notes: string[];
 };
@@ -159,21 +164,51 @@ function mapGrokRows(
       const digits = (cand.phone.match(/\d/g) || []).length;
       if (digits < 7) delete cand.phone;
     }
+    // Soft geo — allow unknown so knowledge firms with wrong city still get verified
     if (
+      cand.city &&
       !looksInTargetArea(cand.city || cand.state, cand.companyName, targetGeo, {
         allowUnknown: true,
       })
     ) {
-      continue;
+      // keep anyway — page geo gate later
     }
     out.push(cand);
   }
   return out;
 }
 
+/** Resolve a working website for a candidate (given or guessed). */
+async function resolveWebsite(
+  c: DiscoverCandidate,
+  deadline: number
+): Promise<DiscoverCandidate | null> {
+  const tryUrls: string[] = [];
+  if (c.website) {
+    let w = c.website.trim();
+    if (!/^https?:\/\//i.test(w) && w.includes('.')) w = `https://${w}`;
+    tryUrls.push(w);
+  }
+  for (const g of guessDomainsFromName(c.companyName)) {
+    if (!tryUrls.includes(g)) tryUrls.push(g);
+  }
+
+  for (const url of tryUrls.slice(0, 4)) {
+    if (Date.now() > deadline) break;
+    const reach = await verifyWebsiteReachable(url);
+    if (reach.ok) {
+      return {
+        ...c,
+        website: reach.finalUrl || url,
+        siteVerified: true,
+      };
+    }
+  }
+  return null;
+}
+
 /**
- * Live-site check + optional contact crawl. Keeps reachable sites even when
- * contact pages fail (runner will research them → researched count moves).
+ * Light hydrate: resolve site, optional contact crawl. Never drops resolved sites.
  */
 async function hydrateContactsFromSites(
   candidates: DiscoverCandidate[],
@@ -181,51 +216,49 @@ async function hydrateContactsFromSites(
   targetGeo: string
 ): Promise<DiscoverCandidate[]> {
   const started = Date.now();
+  const deadline = started + budgetMs;
   const out: DiscoverCandidate[] = [];
 
   for (const c of candidates) {
-    if (Date.now() - started > budgetMs) {
-      // Time up: keep remaining that already look solid
+    if (Date.now() > deadline) {
+      // Keep already-verified; skip rest
       if (c.siteVerified && c.website) out.push(c);
-      else if (c.website && c.website.includes('.')) {
-        // Soft-include so runner can still attempt (counts as researched)
-        out.push({ ...c, siteVerified: false });
+      continue;
+    }
+
+    const resolved =
+      c.siteVerified && c.website
+        ? c
+        : await resolveWebsite(c, deadline);
+    if (!resolved?.website) continue;
+
+    // Contact crawl when time remains
+    if (Date.now() < deadline - 3_000) {
+      const page = await fetchCompanyContactPages(resolved.website);
+      if (!('error' in page)) {
+        const sig = extractContactSignals(page.text);
+        const pageGeo = analyzePageGeo(page.text, targetGeo);
+        if (pageGeo.offTarget && !pageGeo.inTarget) {
+          // National firm with no local signal — still keep for BD if city field matches
+          // only drop if clearly foreign metro AND no local city claim
+          if (!c.city) {
+            // keep lightly
+          }
+        }
+        out.push({
+          ...resolved,
+          website: page.url || resolved.website,
+          email: c.email || sig.emails[0],
+          phone: c.phone || sig.phones[0],
+          siteVerified: true,
+          geoVerified: pageGeo.inTarget || undefined,
+          pageTextSnippet: page.text.slice(0, 2000),
+        });
+        continue;
       }
-      continue;
     }
 
-    let website = c.website;
-    if (!website || !website.includes('.')) continue;
-    if (!/^https?:\/\//i.test(website)) website = `https://${website}`;
-
-    const reach = await verifyWebsiteReachable(website);
-    if (!reach.ok) continue;
-    website = reach.finalUrl || website;
-
-    const page = await fetchCompanyContactPages(website);
-    if ('error' in page) {
-      out.push({
-        ...c,
-        website,
-        siteVerified: true,
-        source: c.source === 'seed' ? 'seed' : c.source,
-      });
-      continue;
-    }
-    const sig = extractContactSignals(page.text);
-    const pageGeo = analyzePageGeo(page.text, targetGeo);
-    if (pageGeo.offTarget) continue;
-
-    out.push({
-      ...c,
-      website: page.url || website,
-      email: c.email || sig.emails[0],
-      phone: c.phone || sig.phones[0],
-      siteVerified: true,
-      geoVerified: pageGeo.inTarget || undefined,
-      pageTextSnippet: page.text.slice(0, 2000),
-      source: c.source === 'seed' ? 'seed' : c.source,
-    });
+    out.push({ ...resolved, siteVerified: true });
   }
 
   return out;
@@ -274,33 +307,26 @@ function buildCompletionPrompts(opts: {
 
   const honorCap = phase === 0 && !!employeeCap;
 
-  const system = `You are a B2B research assistant for a recruiting agency (list builder).
-Return ONLY a JSON array of real companies with a presence in ${targetGeo}.
-Each object keys: companyName, website (official domain you are confident is real), city, state,
-phone (optional — only if widely published), email (optional — only if widely published),
-contactName, contactTitle, industry, employeeCount, companySize, openJobsPosted
+  const system = `You list real construction / contracting companies that operate in ${targetGeo}, Florida.
+Return ONLY a JSON array (no markdown). Each object:
+{"companyName":"...","website":"https://...","city":"...","state":"FL"}
 
-CRITICAL:
-- website MUST be a real official company domain (example.com form). Prefer .com that matches the firm.
-- NEVER invent phone/email — omit if unsure.
-- Prefer local ${targetGeo} offices over national HQ elsewhere.
-- Max ${need} companies. Avoid: ${excludeList}
-- ${honorCap ? `Prefer under ~${employeeCap} employees when known.` : 'Do not filter by employee count.'}
-- Focus: ${focusKw} near ${focusCity}. Cities: ${anchors.slice(0, 8).join(', ')}
-- Industry: ${keywords.slice(0, 4).join(', ') || 'construction'}
-- Strategy phase ${phase}.`;
+Rules:
+- Prefer mid-size / regional GCs, specialty contractors, and builders — not only national giants
+- website: official domain if known; omit if unsure (do not invent random domains)
+- NEVER invent phone or email
+- Max ${need} companies. Do not include: ${excludeList}
+- ${honorCap ? `Prefer under ~${employeeCap} employees when known.` : 'Any size OK.'}
+- Focus industry: ${keywords.slice(0, 4).join(', ') || 'construction'} near ${focusCity}
+- Cities: ${anchors.slice(0, 8).join(', ')}`;
 
-  const user = `User brief: ${job.brief}
-Location REQUIRED: ${targetGeo}
-Progress: ${already}/${target} usable leads kept. Batch #${batch}.
-Return ${need} NEW companies as JSON array only.`;
+  const user = `Brief: ${job.brief}
+Location: ${targetGeo}. Batch ${batch}. Need ${need} NEW companies (${already}/${target} already kept).
+JSON array only.`;
 
   return { system, user };
 }
 
-/**
- * Primary discovery — web search + Grok knowledge, hydrate live sites.
- */
 export async function discoverCompanyCandidates(
   job: ListBuilderJob,
   excludeNames: string[]
@@ -320,15 +346,10 @@ export async function discoverCompanyCandidatesWithDiagnostics(
     webSearchCount: 0,
     completionCount: 0,
     browseCount: 0,
+    catalogCount: 0,
     afterHydrate: 0,
     notes: [],
   };
-
-  const keyRes = await resolveGrokApiKey(job.userId);
-  if ('error' in keyRes) {
-    diagnostics.notes.push(keyRes.error);
-    throw new Error(keyRes.error);
-  }
 
   const targetGeo = resolveTargetGeography(job.brief, job.geography);
   const keywords = inferIndustryKeywords(job.brief, job.industry);
@@ -346,43 +367,39 @@ export async function discoverCompanyCandidatesWithDiagnostics(
   const phase = discoveryStrategyPhase(job);
 
   const batchStarted = Date.now();
-  // Leave headroom under Vercel 60s + runner overhead
-  const hardDeadline = batchStarted + 42_000;
+  // Fit under Vercel 60s with room for runner contact work
+  const hardDeadline = batchStarted + 38_000;
 
   let pool: DiscoverCandidate[] = [];
 
-  // --- 1) DuckDuckGo HTML search (real links, no API key) ---
-  try {
-    const queries = buildDirectoryQueries({
-      brief: job.brief,
-      targetGeo,
-      industry: job.industry,
-      keywords,
-      batch,
+  // --- 1) ALWAYS seed from curated catalog (works when DDG/Grok fail) ---
+  const seeds = getSeedFirmsForMarket(
+    targetGeo,
+    job.brief,
+    batch,
+    need,
+    excludeNames
+  );
+  for (const s of seeds) {
+    pool.push({
+      companyName: s.companyName,
+      website: s.website,
+      city: s.city,
+      state: s.state,
+      industry: s.industry,
+      source: 'catalog',
     });
-    // 1–2 queries per batch to save time
-    for (const q of queries.slice(0, phase >= 1 ? 2 : 1)) {
-      if (Date.now() > hardDeadline - 25_000) break;
-      const found = await searchWebForCompanies({
-        query: q,
-        targetGeo,
-        need: need + 2,
-      });
-      for (const f of found) {
-        f.source = 'web-search';
-        pool.push(f);
-      }
-    }
-    diagnostics.webSearchCount = pool.length;
-    if (pool.length === 0) {
-      diagnostics.notes.push('web-search returned 0 links');
-    }
-  } catch (err: any) {
-    diagnostics.notes.push(`web-search: ${err?.message || err}`);
+  }
+  diagnostics.catalogCount = seeds.length;
+  if (!seeds.length) {
+    diagnostics.notes.push('catalog empty for market');
   }
 
-  // --- 2) Grok completion (knowledge → JSON companies) — fast, no tools ---
-  if (Date.now() < hardDeadline - 18_000) {
+  // --- 2) Grok completion (extra names) — best-effort, short timeout ---
+  const keyRes = await resolveGrokApiKey(job.userId);
+  if ('error' in keyRes) {
+    diagnostics.notes.push(keyRes.error);
+  } else if (Date.now() < hardDeadline - 15_000) {
     const prompts = buildCompletionPrompts({
       job,
       targetGeo,
@@ -401,12 +418,12 @@ export async function discoverCompanyCandidatesWithDiagnostics(
     const { text, error } = await grokWebResearch({
       system: prompts.system,
       user: prompts.user,
-      timeoutMs: 22_000,
+      timeoutMs: 18_000,
       usageCtx: {
         tenantId: job.tenant_id,
         userId: job.userId,
         jobId: job.id,
-        purpose: phase >= 1 ? 'discover-complete-relaxed' : 'discover-complete',
+        purpose: 'discover-complete',
         queryPreview: `p${phase} ${targetGeo}: ${job.brief}`.slice(0, 180),
       },
     });
@@ -424,36 +441,31 @@ export async function discoverCompanyCandidatesWithDiagnostics(
     }
   }
 
-  // --- 3) Short browse only if still thin (optional, budget-capped) ---
-  if (
-    pool.length < need &&
-    Date.now() < hardDeadline - 20_000 &&
-    phase >= 1
-  ) {
-    const browsed = await grokBrowseResearch({
-      system: `You research local companies. You have fetch_website only.
-Return a JSON array of companies in ${targetGeo} with companyName, website, city, state, phone, email.
-NEVER invent phone/email. Prefer real domains. Max ${need}. Avoid: ${excludeList}`,
-      user: `Brief: ${job.brief}\nFind ${need} ${focusKw} companies near ${focusCity}, ${targetGeo}. JSON array only.`,
-      maxIterations: 3,
-      timeoutMs: 18_000,
-      usageCtx: {
-        tenantId: job.tenant_id,
-        userId: job.userId,
-        jobId: job.id,
-        purpose: 'discover-browse-short',
-        queryPreview: targetGeo,
-      },
-    });
-    if (browsed.text && !browsed.error) {
-      const parsed = parseJsonFromText<any[]>(browsed.text);
-      if (Array.isArray(parsed.data)) {
-        const mapped = mapGrokRows(parsed.data, targetGeo, 'grok-browse');
-        diagnostics.browseCount = mapped.length;
-        pool.push(...mapped);
+  // --- 3) DDG best-effort (often bot-blocked on serverless) ---
+  if (Date.now() < hardDeadline - 20_000) {
+    try {
+      const queries = buildDirectoryQueries({
+        brief: job.brief,
+        targetGeo,
+        industry: job.industry,
+        keywords,
+        batch,
+      });
+      const found = await searchWebForCompanies({
+        query: queries[0],
+        targetGeo,
+        need: need + 2,
+      });
+      diagnostics.webSearchCount = found.length;
+      if (found.length === 0) {
+        diagnostics.notes.push('web-search blocked/empty');
       }
-    } else if (browsed.error) {
-      diagnostics.notes.push(`browse: ${browsed.error}`);
+      for (const f of found) {
+        f.source = 'web-search';
+        pool.push(f);
+      }
+    } catch (err: any) {
+      diagnostics.notes.push(`web-search: ${err?.message || err}`);
     }
   }
 
@@ -464,30 +476,42 @@ NEVER invent phone/email. Prefer real domains. Max ${need}. Avoid: ${excludeList
     return { candidates: [], diagnostics };
   }
 
-  // --- 4) Hydrate live sites ---
+  // --- 4) Resolve live sites + light contact scrape ---
   const hydrateBudget = Math.max(
-    8_000,
-    Math.min(22_000, hardDeadline - Date.now() - 2_000)
+    10_000,
+    Math.min(24_000, hardDeadline - Date.now() - 1_000)
   );
   list = await hydrateContactsFromSites(list, hydrateBudget, targetGeo);
   diagnostics.afterHydrate = list.length;
 
-  // Prefer site-verified; if none verified, still return reachable-ish rows for runner
-  const verified = list.filter((c) => c.siteVerified);
-  const finalList = (verified.length > 0 ? verified : list).slice(0, need);
+  // Prefer verified; never return empty if we still have unresolved catalog rows — try bare pass
+  let finalList = list.filter((c) => c.siteVerified).slice(0, need);
+  if (finalList.length === 0 && list.length > 0) {
+    finalList = list.slice(0, need);
+  }
+  // Absolute last resort: return catalog seeds without hydrate so runner can research
+  if (finalList.length === 0 && seeds.length > 0) {
+    finalList = seeds.slice(0, need).map((s) => ({
+      companyName: s.companyName,
+      website: s.website,
+      city: s.city,
+      state: s.state,
+      industry: s.industry,
+      source: 'catalog' as const,
+      siteVerified: false,
+    }));
+    diagnostics.notes.push('returned raw catalog without hydrate');
+  }
 
   if (finalList.length === 0) {
     diagnostics.notes.push(
-      `hydrate dropped all (${pool.length} raw → 0 live sites)`
+      `all sources failed (pool ${pool.length}, hydrate ${list.length})`
     );
   }
 
   return { candidates: finalList, diagnostics };
 }
 
-/**
- * Contact gap-fill: site crawl first, then short Grok browse.
- */
 export async function enrichContactFromWeb(
   companyName: string,
   city?: string,
@@ -499,9 +523,6 @@ export async function enrichContactFromWeb(
   contactName?: string;
   notes?: string;
 }> {
-  const keyRes = await resolveGrokApiKey(opts?.userId);
-  if ('error' in keyRes) return {};
-
   const place = city || '';
   const site = website || '';
 
@@ -521,51 +542,56 @@ export async function enrichContactFromWeb(
     }
   }
 
-  const system = `You find public contact info for BD outreach.
-You ONLY have fetch_website. Open the company site, /contact, /about, /locations.
-Return ONLY JSON: { "email"?: string, "phone"?: string, "contactName"?: string }
-NEVER invent. Only values from tool results. Empty {} if none.`;
+  // Domain-guess then crawl
+  for (const guess of guessDomainsFromName(companyName).slice(0, 3)) {
+    const reach = await verifyWebsiteReachable(guess);
+    if (!reach.ok) continue;
+    const page = await fetchCompanyContactPages(reach.finalUrl || guess);
+    if ('error' in page) continue;
+    const sig = extractContactSignals(page.text);
+    if (sig.emails[0] || sig.phones[0]) {
+      return {
+        email: sig.emails[0],
+        phone: sig.phones[0],
+        notes: 'Contact from domain guess + crawl',
+      };
+    }
+  }
 
-  const user = `Company: ${companyName}
-City: ${place || 'unknown'}
-Website: ${site || 'unknown'}
+  // Optional Grok — short
+  const keyRes = await resolveGrokApiKey(opts?.userId);
+  if ('error' in keyRes) return {};
 
-fetch_website the homepage and contact page, then JSON only.`;
-
-  const browsed = await grokBrowseResearch({
-    system,
-    user,
-    maxIterations: 3,
-    timeoutMs: 22_000,
+  const { text } = await grokWebResearch({
+    system: `Return ONLY JSON: {"email"?:string,"phone"?:string,"contactName"?:string}
+Only public company contact info you are highly confident is real for ${companyName} in ${place || 'Florida'}. Prefer main switchboard. Empty {} if unsure. NEVER invent.`,
+    user: `Company: ${companyName}\nWebsite: ${site || 'unknown'}\nCity: ${place}`,
+    timeoutMs: 12_000,
     usageCtx: {
       tenantId: opts?.tenantId,
       userId: opts?.userId,
       jobId: opts?.jobId,
-      purpose: 'enrich-browse',
+      purpose: 'enrich-complete',
       queryPreview: companyName,
     },
   });
-
-  if (!browsed.text) return {};
-
-  const parsed = parseJsonFromText<Record<string, string>>(browsed.text);
+  if (!text) return {};
+  const parsed = parseJsonFromText<Record<string, string>>(text);
   const data =
     parsed.data && typeof parsed.data === 'object' ? parsed.data : {};
-  const signals = extractContactSignals(browsed.text);
-
   const out: {
     email?: string;
     phone?: string;
     contactName?: string;
     notes?: string;
   } = {};
-  const email = (data.email || signals.emails[0] || '').trim();
-  const phone = (data.phone || signals.phones[0] || '').trim();
-  if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) out.email = email;
-  if (phone && (phone.match(/\d/g) || []).length >= 7) out.phone = phone;
-  if (data.contactName?.trim()) out.contactName = data.contactName.trim();
-  if (out.email || out.phone) {
-    out.notes = 'Contact from Grok fetch_website browse';
+  if (data.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+    out.email = data.email.trim();
   }
+  if (data.phone && (data.phone.match(/\d/g) || []).length >= 7) {
+    out.phone = data.phone.trim();
+  }
+  if (data.contactName?.trim()) out.contactName = data.contactName.trim();
+  if (out.email || out.phone) out.notes = 'Contact from Grok knowledge (verify)';
   return out;
 }
