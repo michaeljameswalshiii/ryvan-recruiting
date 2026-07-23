@@ -434,7 +434,28 @@ async function processListBuilderBatchInner(
   if (candidates.length === 0) {
     const emptyBatchStreak = (job.progress?.emptyBatchStreak || 0) + 1;
     const nextBatch = job.discoveryBatch + 1;
-    // Only safety-stop: discovery batch cap (target + 2h timeout are primary)
+    const targetGeoEmpty = resolveTargetGeography(job.brief, job.geography);
+
+    // Stop after N consecutive quiet batches (no new candidates this round)
+    if (emptyBatchStreak >= LIST_BUILDER_DEFAULTS.maxEmptyBatches) {
+      const updated = await setJobStatus(tenantId, jobId, 'awaiting_import', {
+        discoveryBatch: nextBatch,
+        lockedUntil: undefined,
+        progress: {
+          ...job.progress,
+          emptyBatchStreak,
+          errorStreak: 0,
+          batchesCompleted: job.progress.batchesCompleted + 1,
+          lastMessage:
+            job.results.length > 0
+              ? `Stopped after ${emptyBatchStreak} quiet batches — review ${job.results.length}/${job.targetSize} kept in ${targetGeoEmpty}.`
+              : `Stopped after ${emptyBatchStreak} quiet batches with no usable leads in ${targetGeoEmpty}. Try a narrower brief or CSV seed.`,
+        },
+      });
+      return { job: updated || job, done: true };
+    }
+
+    // Safety-stop: discovery batch cap
     if (nextBatch >= LIST_BUILDER_DEFAULTS.maxDiscoveryBatches) {
       const updated = await setJobStatus(tenantId, jobId, 'awaiting_import', {
         lockedUntil: undefined,
@@ -481,9 +502,13 @@ async function processListBuilderBatchInner(
               : nextPhase === 1
                 ? ' · next batch auto-drops headcount filter'
                 : ' · next batch prioritizes public directories + main phones';
+          const remain =
+            LIST_BUILDER_DEFAULTS.maxEmptyBatches - emptyBatchStreak;
           return (
-            `No new companies this batch — still targeting ${resolveTargetGeography(job.brief, job.geography)}. ` +
-            `${job.results.length}/${job.targetSize} kept · retrying…${relax}${diagBit}`
+            `No new companies this batch — still targeting ${targetGeoEmpty}. ` +
+            `${job.results.length}/${job.targetSize} kept · quiet ${emptyBatchStreak}/${LIST_BUILDER_DEFAULTS.maxEmptyBatches}` +
+            (remain > 0 ? ` · stops after ${remain} more empty` : '') +
+            ` · retrying…${relax}${diagBit}`
           );
         })(),
       },
@@ -792,9 +817,45 @@ async function processListBuilderBatchInner(
         (skippedOffGeo ? ` (${skippedOffGeo} off-geo/multi-state)` : '') +
         (skippedTooBig ? ` (${skippedTooBig} too large for SMB)` : '') +
         (skippedDuplicate ? `, ${skippedDuplicate} skipped` : '') +
-        `${sourceBit}${stratBit} · ${totals.found}/${job.targetSize} total · continuing until target or time limit…`;
+        `${sourceBit}${stratBit} · ${totals.found}/${job.targetSize} total` +
+        (emptyBatchStreak > 0
+          ? ` · quiet ${emptyBatchStreak}/${LIST_BUILDER_DEFAULTS.maxEmptyBatches}`
+          : '') +
+        (emptyBatchStreak > 0 &&
+        emptyBatchStreak < LIST_BUILDER_DEFAULTS.maxEmptyBatches
+          ? ' · continuing…'
+          : emptyBatchStreak >= LIST_BUILDER_DEFAULTS.maxEmptyBatches
+            ? ''
+            : ' · continuing until target or time limit…');
 
-  // Safety: discovery batch cap (primary stops = target size + 2h expiresAt)
+  // Stop after N consecutive batches with zero new keeps
+  if (
+    emptyBatchStreak >= LIST_BUILDER_DEFAULTS.maxEmptyBatches &&
+    refreshed.results.length < job.targetSize
+  ) {
+    const done = await setJobStatus(tenantId, jobId, 'awaiting_import', {
+      seedCursor: nextSeedCursor,
+      discoveryBatch: nextDiscovery,
+      lockedUntil: undefined,
+      progress: {
+        found: totals.found,
+        target: job.targetSize,
+        batchesCompleted: job.progress.batchesCompleted + 1,
+        researched,
+        completeFound: totals.completeFound,
+        partialFound: totals.partialFound,
+        emptyBatchStreak,
+        errorStreak: 0,
+        lastMessage:
+          totals.found > 0
+            ? `Stopped after ${emptyBatchStreak} quiet batches — review ${totals.found}/${job.targetSize} kept in ${targetGeo}.`
+            : `Stopped after ${emptyBatchStreak} quiet batches with no usable leads in ${targetGeo}. Try a narrower brief or CSV seed.`,
+      },
+    });
+    return { job: done || refreshed, done: true };
+  }
+
+  // Safety: discovery batch cap (primary stops = target size + quiet batches + 2h)
   if (
     nextDiscovery >= LIST_BUILDER_DEFAULTS.maxDiscoveryBatches &&
     refreshed.results.length < job.targetSize
