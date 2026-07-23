@@ -74,7 +74,16 @@ export function crmEntitiesTouchedByTools(toolsUsed: string[]): {
 export async function invalidateCrmCaches(
   queryClient: QueryClient,
   toolsUsed: string[],
-  options?: { forceClients?: boolean; forceAll?: boolean }
+  options?: {
+    forceClients?: boolean;
+    forceAll?: boolean;
+    /**
+     * Soft: mark caches stale without forcing a full refetch of every query.
+     * Use after bulk list-builder import so Chrome doesn't reload the entire
+     * company list in one shot on the results page.
+     */
+    soft?: boolean;
+  }
 ): Promise<void> {
   const touched = crmEntitiesTouchedByTools(toolsUsed);
   if (options?.forceAll) {
@@ -89,13 +98,16 @@ export async function invalidateCrmCaches(
   }
   if (!touched.any) return;
 
+  // soft → none (stale only); default → all (previous behavior for small AI writes)
+  const refetchType = options?.soft ? ('none' as const) : ('all' as const);
+
   const tasks: Promise<unknown>[] = [];
 
   if (touched.clients) {
     tasks.push(
       queryClient.invalidateQueries({
         queryKey: clientKeys.all,
-        refetchType: 'all',
+        refetchType,
       })
     );
   }
@@ -103,7 +115,7 @@ export async function invalidateCrmCaches(
     tasks.push(
       queryClient.invalidateQueries({
         queryKey: leadKeys.all,
-        refetchType: 'all',
+        refetchType,
       })
     );
   }
@@ -111,7 +123,7 @@ export async function invalidateCrmCaches(
     tasks.push(
       queryClient.invalidateQueries({
         queryKey: jobKeys.all,
-        refetchType: 'all',
+        refetchType,
       })
     );
   }
@@ -119,17 +131,20 @@ export async function invalidateCrmCaches(
     tasks.push(
       queryClient.invalidateQueries({
         queryKey: pipelineKeys.all,
-        refetchType: 'all',
+        refetchType,
       })
     );
   }
 
   // Dashboard widgets that aggregate counts
   tasks.push(
-    queryClient.invalidateQueries({ queryKey: ['dashboard'], refetchType: 'all' })
+    queryClient.invalidateQueries({
+      queryKey: ['dashboard'],
+      refetchType,
+    })
   );
   tasks.push(
-    queryClient.invalidateQueries({ queryKey: ['stats'], refetchType: 'all' })
+    queryClient.invalidateQueries({ queryKey: ['stats'], refetchType })
   );
 
   await Promise.all(tasks);

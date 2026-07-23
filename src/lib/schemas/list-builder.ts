@@ -175,4 +175,9 @@ export const LIST_BUILDER_DEFAULTS = {
   llmTimeoutMs: 50_000,
   /** Soft lock TTL after batch starts (shorter = less “stuck” if process dies) */
   lockMs: 55_000,
+  /**
+   * Max companies per import API request (client loops until all selected are done).
+   * Keeps each Vercel invocation well under maxDuration.
+   */
+  importBatchSize: 12,
 } as const;

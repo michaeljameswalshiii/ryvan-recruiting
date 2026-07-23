@@ -101,6 +101,7 @@ export default function ListBuilderResultsPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<string | null>(null);
   const [sharingBusy, setSharingBusy] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -265,32 +266,49 @@ export default function ListBuilderResultsPage() {
       return;
     }
     setImporting(true);
+    setImportProgress(`Importing 0 of ${selectedCount}…`);
     try {
-      const res = await fetch(`/api/list-builder/${id}/import`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rowIds: Array.from(selected),
-          confirmed: true,
-        }),
+      const { importListBuilderInBatches } = await import(
+        '@/lib/list-builder/import-client'
+      );
+      const result = await importListBuilderInBatches({
+        jobId: id,
+        rowIds: Array.from(selected),
+        onProgress: (p) => {
+          setImportProgress(p.message);
+        },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(data.error || 'Import failed');
-      } else {
-        toast.success(
-          `Added ${data.importedCompanies || 0} companies and ${data.importedContacts || 0} contacts`
+
+      if (!result.success) {
+        toast.error(
+          result.partial
+            ? `${result.error || 'Import stopped'} · partial: ${result.importedCompanies} companies, ${result.importedContacts} contacts saved`
+            : result.error || 'Import failed'
         );
+        // Still soft-refresh — some rows may have landed
         void invalidateCrmCaches(
           queryClient,
           ['create_company', 'create_contact'],
-          { forceClients: true }
+          { forceClients: true, soft: true }
         );
         await load();
+        return;
       }
+
+      toast.success(
+        `Added ${result.importedCompanies} companies and ${result.importedContacts} contacts` +
+          (result.skipped ? ` (${result.skipped} skipped)` : '')
+      );
+      // Soft: mark CRM lists stale without refetching everything on this page
+      void invalidateCrmCaches(
+        queryClient,
+        ['create_company', 'create_contact'],
+        { forceClients: true, soft: true }
+      );
+      await load();
     } finally {
       setImporting(false);
+      setImportProgress(null);
     }
   };
 
@@ -387,10 +405,23 @@ export default function ListBuilderResultsPage() {
               ) : (
                 <CheckCircle2 className="h-4 w-4" />
               )}
-              Add to Trio
+              {importing
+                ? importProgress || 'Importing…'
+                : 'Add to Trio'}
             </Button>
           </div>
         </div>
+        {importing && importProgress && (
+          <div className="border-t border-violet-100 bg-violet-50/80 px-6 py-2">
+            <div className="mx-auto flex max-w-6xl items-center gap-3 text-sm text-violet-900">
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              <span className="font-medium">{importProgress}</span>
+              <span className="text-xs text-violet-700/80">
+                Batched import — keep this tab open
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mx-auto max-w-6xl px-6 py-8">

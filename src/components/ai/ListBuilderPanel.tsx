@@ -237,6 +237,10 @@ export function ListBuilderPanel() {
     });
   };
 
+  const [importProgressByJob, setImportProgressByJob] = useState<
+    Record<string, string>
+  >({});
+
   const importSelected = async (jobId: string) => {
     const ids = Array.from(selected[jobId] || []);
     if (ids.length === 0) {
@@ -244,27 +248,48 @@ export function ListBuilderPanel() {
       return;
     }
     setBusyId(jobId);
+    setImportProgressByJob((prev) => ({
+      ...prev,
+      [jobId]: `Importing 0 of ${ids.length}…`,
+    }));
     try {
-      const res = await fetch(`/api/list-builder/${jobId}/import`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rowIds: ids, confirmed: true }),
+      const { importListBuilderInBatches } = await import(
+        '@/lib/list-builder/import-client'
+      );
+      const result = await importListBuilderInBatches({
+        jobId,
+        rowIds: ids,
+        onProgress: (p) => {
+          setImportProgressByJob((prev) => ({
+            ...prev,
+            [jobId]: p.message,
+          }));
+        },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(data.error || 'Import failed');
+      if (!result.success) {
+        toast.error(
+          result.partial
+            ? `${result.error || 'Import stopped'} · partial: ${result.importedCompanies} cos, ${result.importedContacts} contacts`
+            : result.error || 'Import failed'
+        );
       } else {
         toast.success(
-          `Imported ${data.importedCompanies || 0} companies, ${data.importedContacts || 0} contacts`
+          `Imported ${result.importedCompanies} companies, ${result.importedContacts} contacts`
         );
-        void invalidateCrmCaches(queryClient, ['create_company', 'create_contact'], {
-          forceClients: true,
-        });
-        await load();
       }
+      void invalidateCrmCaches(
+        queryClient,
+        ['create_company', 'create_contact'],
+        { forceClients: true, soft: true }
+      );
+      await load();
     } finally {
       setBusyId(null);
+      setImportProgressByJob((prev) => {
+        const next = { ...prev };
+        delete next[jobId];
+        return next;
+      });
     }
   };
 
@@ -553,10 +578,17 @@ export function ListBuilderPanel() {
                             disabled={busyId === j.id}
                             onClick={() => void importSelected(j.id)}
                           >
-                            Import selected to Trio
+                            {busyId === j.id && importProgressByJob[j.id]
+                              ? importProgressByJob[j.id]
+                              : 'Import selected to Trio'}
                           </Button>
                         )}
                       </div>
+                      {busyId === j.id && importProgressByJob[j.id] && (
+                        <p className="text-[11px] text-emerald-800 bg-emerald-50 rounded px-2 py-1">
+                          {importProgressByJob[j.id]} · keep this panel open
+                        </p>
+                      )}
 
                       {(j.results?.length || 0) === 0 ? (
                         <p className="text-xs text-gray-500 py-2">

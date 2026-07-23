@@ -1,5 +1,6 @@
 /**
  * Import selected list-builder rows into Trio companies + contacts.
+ * Designed for small server batches; the UI loops over chunks.
  * @serverOnly
  */
 
@@ -14,34 +15,72 @@ import {
   getClientById,
   updateClient,
 } from '@/lib/db/repositories/client-repository';
+import { LIST_BUILDER_DEFAULTS } from '@/lib/schemas/list-builder';
 import { hasContactSignal, isKeepableContact } from './runner';
 
-export async function importListBuilderRows(
-  tenantId: string,
-  jobId: string,
-  rowIds: string[]
-): Promise<{
+export type ImportListBuilderResult = {
   success: boolean;
   importedCompanies: number;
   importedContacts: number;
   skipped: number;
+  /** Rows processed in this request */
+  processed: number;
+  /** Keepable rows still not imported after this batch */
+  remainingUnimported: number;
+  /** True when no keepable unimported rows left on the job */
+  done: boolean;
   error?: string;
   job?: any;
-}> {
-  const job = await getListBuilderJob(tenantId, jobId);
-  if (!job) return { success: false, importedCompanies: 0, importedContacts: 0, skipped: 0, error: 'Job not found' };
+};
 
-  const idSet = new Set(rowIds);
-  // Allow complete (email+phone) and partial (email or phone) rows
-  const rows = (job.results || []).filter(
-    (r) => idSet.has(r.id) && !r.imported && isKeepableContact(r)
-  );
-  if (rows.length === 0) {
+/**
+ * Import up to `maxRows` of the given rowIds (default: importBatchSize).
+ * Prefer client-side chunking so large lists never sit in one 60s+ invocation.
+ */
+export async function importListBuilderRows(
+  tenantId: string,
+  jobId: string,
+  rowIds: string[],
+  options?: { maxRows?: number }
+): Promise<ImportListBuilderResult> {
+  const job = await getListBuilderJob(tenantId, jobId);
+  if (!job) {
     return {
       success: false,
       importedCompanies: 0,
       importedContacts: 0,
       skipped: 0,
+      processed: 0,
+      remainingUnimported: 0,
+      done: false,
+      error: 'Job not found',
+    };
+  }
+
+  const maxRows = Math.min(
+    Math.max(1, options?.maxRows ?? LIST_BUILDER_DEFAULTS.importBatchSize),
+    LIST_BUILDER_DEFAULTS.importBatchSize
+  );
+
+  const idSet = new Set(rowIds.map(String));
+  // Allow complete (email+phone) and partial (email or phone) rows
+  const candidates = (job.results || []).filter(
+    (r) => idSet.has(r.id) && !r.imported && isKeepableContact(r)
+  );
+  const rows = candidates.slice(0, maxRows);
+
+  if (rows.length === 0) {
+    const remaining = (job.results || []).filter(
+      (r) => !r.imported && isKeepableContact(r)
+    ).length;
+    return {
+      success: false,
+      importedCompanies: 0,
+      importedContacts: 0,
+      skipped: 0,
+      processed: 0,
+      remainingUnimported: remaining,
+      done: remaining === 0,
       error: 'No selected rows with an email or phone to import',
     };
   }
@@ -50,7 +89,7 @@ export async function importListBuilderRows(
   let importedContacts = 0;
   let skipped = 0;
   const clients = await getAllClients(tenantId);
-  const updatedResults = [...job.results];
+  const updatedResults = [...(job.results || [])];
 
   for (const row of rows) {
     const idx = updatedResults.findIndex((r) => r.id === row.id);
@@ -61,7 +100,6 @@ export async function importListBuilderRows(
         : null;
 
       if (!company) {
-        // Match again by name
         const n = (row.companyName || '').toLowerCase();
         company =
           clients.find(
@@ -80,7 +118,6 @@ export async function importListBuilderRows(
             : undefined,
           city: row.city || '',
           state: row.state || '',
-          // Reuse existing Dynamo company fields where possible
           industry: row.industry || job.industry || '',
           employee_count: row.employeeCount || undefined,
           company_size: row.companySize || undefined,
@@ -94,7 +131,6 @@ export async function importListBuilderRows(
         importedCompanies++;
         if (created) clients.push(created);
       } else if (companyId) {
-        // Fill firmographic gaps on existing company without overwriting user data
         const patch: Record<string, unknown> = {};
         if (!company.industry && (row.industry || job.industry)) {
           patch.industry = row.industry || job.industry;
@@ -152,8 +188,6 @@ export async function importListBuilderRows(
           contactId = createdContact?.id;
           importedContacts++;
         }
-      } else if (!hasContactSignal(row)) {
-        // company only — ok
       }
 
       if (idx >= 0) {
@@ -173,12 +207,27 @@ export async function importListBuilderRows(
     }
   }
 
+  const remainingUnimported = updatedResults.filter(
+    (r) => !r.imported && isKeepableContact(r)
+  ).length;
+  const done = remainingUnimported === 0;
+  // Only mark completed when nothing keepable left to import (batched imports)
+  const nextStatus = done ? 'completed' : 'awaiting_import';
+
+  const batchNote =
+    `Imported +${importedCompanies} companies, +${importedContacts} contacts` +
+    (skipped ? `, ${skipped} skipped` : '') +
+    ` this batch` +
+    (done
+      ? ' · list fully imported.'
+      : ` · ${remainingUnimported} keepable left on list.`);
+
   const updatedJob = await updateListBuilderJob(tenantId, jobId, {
     results: updatedResults,
-    status: 'completed',
+    status: nextStatus,
     progress: {
       ...job.progress,
-      lastMessage: `Imported ${importedCompanies} companies, ${importedContacts} contacts.`,
+      lastMessage: batchNote,
     },
   });
 
@@ -187,6 +236,9 @@ export async function importListBuilderRows(
     importedCompanies,
     importedContacts,
     skipped,
+    processed: rows.length,
+    remainingUnimported,
+    done,
     job: updatedJob,
   };
 }
