@@ -156,7 +156,7 @@ export const LIST_BUILDER_DEFAULTS = {
    */
   batchSize: 4,
   /** Hard cap on companies per job (UI + API clamp). */
-  maxResultsCap: 50,
+  maxResultsCap: 100,
   /**
    * Soft empty-batch signal for UI only — do NOT stop the job early.
    * Jobs run until target kept leads, hard error streak, or 2h timeout.

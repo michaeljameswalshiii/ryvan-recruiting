@@ -183,7 +183,7 @@ export const LIST_BUILDER_TOOLS = [
         brief: { type: 'string', description: 'Market description (industry, who to contact, intent)' },
         industry: { type: 'string' },
         geography: { type: 'string', description: 'Default United States' },
-        target_size: { type: 'number', description: 'How many companies (default 50, max 50)' },
+        target_size: { type: 'number', description: 'How many companies (default 50, max 100)' },
         visibility: {
           type: 'string',
           description:

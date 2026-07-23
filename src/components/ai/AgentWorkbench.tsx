@@ -319,7 +319,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
               <input
                 type="number"
                 min={1}
-                max={50}
+                max={100}
                 value={targetSize}
                 onChange={(e) => setTargetSize(Number(e.target.value) || 50)}
                 className="w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-sm text-white outline-none focus:border-violet-400/40"
