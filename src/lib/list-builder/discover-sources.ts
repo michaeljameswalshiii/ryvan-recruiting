@@ -29,6 +29,10 @@ import {
   parseEmployeeCount,
   parseOpenJobsPosted,
 } from './firmographics';
+import {
+  analyzePageGeo,
+  verifyWebsiteReachable,
+} from './verify';
 
 export type DiscoverCandidate = {
   companyName: string;
@@ -48,6 +52,9 @@ export type DiscoverCandidate = {
   source: 'grok' | 'grok-browse' | 'seed';
   /** @deprecated prefer employeeCount — kept for older map paths */
   employees?: number | string;
+  siteVerified?: boolean;
+  geoVerified?: boolean;
+  pageTextSnippet?: string;
 };
 
 function normName(s: string): string {
@@ -148,49 +155,64 @@ function mapGrokRows(
 }
 
 /**
- * After Grok names companies, crawl their sites for public email/phone.
- * Deterministic — does not invent contacts.
+ * After Grok names companies: require live site, crawl contacts, soft geo from page.
+ * Unreachable domains are dropped (not returned).
  */
 async function hydrateContactsFromSites(
   candidates: DiscoverCandidate[],
-  budgetMs: number
+  budgetMs: number,
+  targetGeo: string
 ): Promise<DiscoverCandidate[]> {
   const started = Date.now();
   const out: DiscoverCandidate[] = [];
 
   for (const c of candidates) {
     if (Date.now() - started > budgetMs) {
-      out.push(c);
-      continue;
-    }
-    const hasContact =
-      (c.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) ||
-      (c.phone && (c.phone.match(/\d/g) || []).length >= 7);
-    if (hasContact || !c.website) {
-      out.push(c);
+      // Budget: only keep candidates that already had a verified site flag
+      if (c.siteVerified && c.website) out.push(c);
       continue;
     }
 
     let website = c.website;
-    if (!/^https?:\/\//i.test(website)) {
-      website = website.includes('.') ? `https://${website}` : website;
-    }
-    if (!website.includes('.')) {
-      out.push(c);
+    if (!website || !website.includes('.')) {
+      // No website → cannot verify — drop from discovery
       continue;
     }
+    if (!/^https?:\/\//i.test(website)) {
+      website = `https://${website}`;
+    }
+
+    const reach = await verifyWebsiteReachable(website);
+    if (!reach.ok) {
+      continue; // drop NXDOMAIN / dead sites
+    }
+    website = reach.finalUrl || website;
 
     const page = await fetchCompanyContactPages(website);
     if ('error' in page) {
-      out.push(c);
+      // Reachability passed but multi-page crawl failed — still try single page later in runner
+      out.push({
+        ...c,
+        website,
+        siteVerified: true,
+        source: c.source === 'seed' ? 'seed' : 'grok-browse',
+      });
       continue;
     }
     const sig = extractContactSignals(page.text);
+    const pageGeo = analyzePageGeo(page.text, targetGeo);
+    if (pageGeo.offTarget) {
+      continue; // e.g. Atlanta HQ page while targeting Broward
+    }
+
     out.push({
       ...c,
       website: page.url || website,
       email: c.email || sig.emails[0],
       phone: c.phone || sig.phones[0],
+      siteVerified: true,
+      geoVerified: pageGeo.inTarget || undefined,
+      pageTextSnippet: page.text.slice(0, 2000),
       source: c.source === 'seed' ? 'seed' : 'grok-browse',
     });
   }
@@ -211,9 +233,10 @@ export type DiscoveryStrategyPhase = 0 | 1 | 2;
 export function discoveryStrategyPhase(job: ListBuilderJob): DiscoveryStrategyPhase {
   const empty = job.progress?.emptyBatchStreak || 0;
   const batch = job.discoveryBatch || 0;
-  // Escalate after 2 quiet batches, or after several discovery rounds with nothing kept
-  if (empty >= 4 || (empty >= 2 && batch >= 4)) return 2;
-  if (empty >= 2 || batch >= 2) return 1;
+  // Tightened: only escalate after more quiet batches so we don't flood
+  // Atlanta/Orlando/etc. into Broward lists. Phase 2 never skips geo gates in runner.
+  if (empty >= 6 || (empty >= 4 && batch >= 8)) return 2;
+  if (empty >= 3 || batch >= 5) return 1;
   return 0;
 }
 
@@ -301,7 +324,9 @@ ${safetyRule}
 - This batch focus: ${focusKw} near ${focusCity}
 - Strategy phase ${phase} (0=strict, 1=soft size, 2=public directories)
 - If a site fails, try another company — still return JSON for what you verified
-- Partial rows (website + phone only) are valuable — include them`;
+- Partial rows (website + main phone) are valuable when the site loads
+- NEVER invent domains — only websites that load via fetch_website
+- Prefer offices in ${targetGeo}; exclude HQ-only firms in Atlanta, Orlando, etc. unless a local branch is verified`;
 
   const browseUser = `User brief (may be ambitious — follow strategy phase ${phase}, not every hard filter literally):
 ${job.brief}
@@ -311,7 +336,7 @@ Industry: ${job.industry || keywords.join(', ')}
 Progress: ${already}/${target} usable leads already kept.
 Batch #${batch}: find ${need} NEW companies in ${targetGeo}, emphasize ${focusKw} / ${focusCity}.
 ${phase >= 1 ? 'Ignore employee-count filters from the brief for this batch.\n' : ''}${phase >= 2 ? 'Prioritize public directories + main company phones.\n' : ''}
-Use fetch_website on each company site. Then return JSON array only.`;
+Use fetch_website on each company site. Drop firms whose site fails. Then return JSON array only.`;
 
   const fallbackSystem = `You are Grok doing B2B list research for recruiting BD.
 Return ONLY a JSON array of real companies with a presence in ${targetGeo}.
@@ -428,14 +453,14 @@ export async function discoverCompanyCandidates(
     candidates = mapGrokRows(parsed.data, targetGeo, 'grok');
   }
 
-  let list = dedupeCandidates(candidates, excludeNames).slice(0, need);
+  let list = dedupeCandidates(candidates, excludeNames).slice(0, need * 2);
 
-  // Always hydrate missing contacts from real sites (deterministic scrape)
-  // Give more crawl budget when recovering from quiet batches
-  const hydrateBudget = phase >= 1 ? 24_000 : 18_000;
-  list = await hydrateContactsFromSites(list, hydrateBudget);
+  // Hydrate: drop dead domains + off-geo pages; fill contacts from live sites
+  const hydrateBudget = phase >= 1 ? 28_000 : 22_000;
+  list = await hydrateContactsFromSites(list, hydrateBudget, targetGeo);
 
-  return list.slice(0, need);
+  // Prefer site-verified; pad prompts asked for `need`
+  return list.filter((c) => c.siteVerified).slice(0, need);
 }
 
 /**

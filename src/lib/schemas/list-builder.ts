@@ -37,12 +37,29 @@ export interface ListBuilderSeedRow {
 /** complete = email + phone; partial = email or phone only (still importable) */
 export type ListBuilderContactCompleteness = 'complete' | 'partial';
 
+/**
+ * Quality tier after site + geo gates:
+ * - verified: live site + geo evidence + contact
+ * - partial: live site + contact, geo unconfirmed
+ * - unverified: should rarely be kept (legacy / seed)
+ */
+export type ListBuilderVerificationStatus =
+  | 'verified'
+  | 'partial'
+  | 'unverified';
+
 export interface ListBuilderResultRow {
   id: string;
   companyName: string;
   website?: string;
   city?: string;
   state?: string;
+  /** Homepage resolved and returned HTTP 2xx */
+  siteVerified?: boolean;
+  /** City field and/or page text supports target geography */
+  geoVerified?: boolean;
+  verificationStatus?: ListBuilderVerificationStatus;
+  verificationNotes?: string;
   /** Maps to client.industry on import */
   industry?: string;
   /**

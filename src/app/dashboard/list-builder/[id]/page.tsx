@@ -44,6 +44,10 @@ type Row = {
   notes?: string;
   sourceUrl?: string;
   contactCompleteness?: 'complete' | 'partial';
+  siteVerified?: boolean;
+  geoVerified?: boolean;
+  verificationStatus?: 'verified' | 'partial' | 'unverified';
+  verificationNotes?: string;
   selected?: boolean;
 };
 
@@ -93,6 +97,26 @@ function rowCompleteness(r: Row): 'complete' | 'partial' | null {
   return null;
 }
 
+function rowVerification(
+  r: Row
+): 'verified' | 'partial' | 'unverified' {
+  if (
+    r.verificationStatus === 'verified' ||
+    r.verificationStatus === 'partial' ||
+    r.verificationStatus === 'unverified'
+  ) {
+    return r.verificationStatus;
+  }
+  // Legacy rows (pre-verification fields)
+  if (r.siteVerified && r.geoVerified) return 'verified';
+  if (r.siteVerified) return 'partial';
+  return 'unverified';
+}
+
+function isVerifiedRow(r: Row): boolean {
+  return rowVerification(r) === 'verified';
+}
+
 export default function ListBuilderResultsPage() {
   const params = useParams();
   const router = useRouter();
@@ -120,7 +144,7 @@ export default function ListBuilderResultsPage() {
       const j = data.job as Job;
       const keepable = (j.results || []).filter(isKeepable);
       setJob({ ...j, results: keepable });
-      // Prefer complete for default selection; include partials only if selected flag true
+      // Default: site+geo verified only (quality gate). Respect explicit selected flags.
       setSelected(
         new Set(
           keepable
@@ -128,8 +152,7 @@ export default function ListBuilderResultsPage() {
               if (r.imported) return false;
               if (r.selected === false) return false;
               if (r.selected === true) return true;
-              // Default: select complete only
-              return rowCompleteness(r) === 'complete';
+              return isVerifiedRow(r);
             })
             .map((r) => r.id)
         )
@@ -259,6 +282,21 @@ export default function ListBuilderResultsPage() {
       )
     );
   };
+
+  const selectVerifiedOnly = () => {
+    setSelected(
+      new Set(selectable.filter((r) => isVerifiedRow(r)).map((r) => r.id))
+    );
+  };
+
+  const verifiedCount = useMemo(
+    () => rows.filter((r) => isVerifiedRow(r)).length,
+    [rows]
+  );
+  const partialVerifyCount = useMemo(
+    () => rows.filter((r) => rowVerification(r) === 'partial').length,
+    [rows]
+  );
 
   const importSelected = async () => {
     if (selectedCount === 0) {
@@ -460,14 +498,24 @@ export default function ListBuilderResultsPage() {
               sub: 'Email + phone',
             },
             {
-              label: 'Partial',
+              label: 'Partial contact',
               value: String(partialCount),
               sub: 'Email or phone only',
             },
             {
+              label: 'Verified',
+              value: String(verifiedCount),
+              sub: 'Live site + geo match',
+            },
+            {
+              label: 'Geo unconfirmed',
+              value: String(partialVerifyCount),
+              sub: 'Site OK, location soft',
+            },
+            {
               label: 'Ready to import',
               value: String(selectedCount),
-              sub: 'Companies → Identification',
+              sub: 'Default = verified only',
             },
           ].map((c) => (
             <div
@@ -492,9 +540,9 @@ export default function ListBuilderResultsPage() {
               No contacts yet
             </h2>
             <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
-              We keep companies when we find a public email or phone — never
-              invented. Partial leads (one field only) appear with a badge once
-              found. If the agent is still running, check back shortly.
+              We keep companies with a reachable website, public contact, and
+              location that fits the market — never invented contacts or dead
+              domains. If the agent is still running, check back shortly.
             </p>
             <Link href="/dashboard/general-ai-usage" className="mt-6 inline-block">
               <Button variant="outline">Back to AI Assistant</Button>
@@ -518,19 +566,27 @@ export default function ListBuilderResultsPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={selectCompleteOnly}
+                  onClick={selectVerifiedOnly}
                   className="text-xs font-medium text-violet-700 hover:underline"
                 >
-                  Select complete only
+                  Select verified only
+                </button>
+                <button
+                  type="button"
+                  onClick={selectCompleteOnly}
+                  className="text-xs font-medium text-slate-600 hover:underline"
+                >
+                  Select complete contact
                 </button>
                 <p className="text-xs text-slate-400">
-                  Complete selected by default · partials optional
+                  Verified (site + geo) selected by default
                 </p>
               </div>
             </div>
             <ul className="divide-y divide-slate-100">
               {rows.map((r) => {
                 const completeness = rowCompleteness(r);
+                const verify = rowVerification(r);
                 return (
                   <li
                     key={r.id}
@@ -551,19 +607,42 @@ export default function ListBuilderResultsPage() {
                           <span className="font-semibold text-slate-900">
                             {r.companyName}
                           </span>
+                          {verify === 'verified' && (
+                            <span
+                              className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-800 ring-1 ring-emerald-100"
+                              title={r.verificationNotes || 'Site + geo verified'}
+                            >
+                              Verified
+                            </span>
+                          )}
+                          {verify === 'partial' && (
+                            <span
+                              className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-900 ring-1 ring-sky-100"
+                              title={
+                                r.verificationNotes ||
+                                'Site reachable; location not confirmed'
+                              }
+                            >
+                              Site OK · geo?
+                            </span>
+                          )}
+                          {verify === 'unverified' && (
+                            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 ring-1 ring-rose-100">
+                              Unverified
+                            </span>
+                          )}
                           {completeness === 'complete' && (
-                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-800 ring-1 ring-emerald-100">
-                              Complete
+                            <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-700 ring-1 ring-slate-200">
+                              Email+phone
                             </span>
                           )}
                           {completeness === 'partial' && (
                             <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-900 ring-1 ring-amber-100">
-                              Partial
                               {!isValidEmail(r.email)
-                                ? ' · no email'
+                                ? 'No email'
                                 : !isValidPhone(r.phone)
-                                  ? ' · no phone'
-                                  : ''}
+                                  ? 'No phone'
+                                  : 'Partial contact'}
                             </span>
                           )}
                           {r.companyExists && (

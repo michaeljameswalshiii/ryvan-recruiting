@@ -21,7 +21,7 @@ import {
   extractContactSignals,
   fetchCompanyContactPages,
 } from './fetch-page';
-import { looksInTargetArea, resolveTargetGeography } from './geo';
+import { resolveTargetGeography } from './geo';
 import {
   discoverCompanyCandidates,
   discoveryStrategyPhase,
@@ -33,6 +33,11 @@ import {
   parseEmployeeCount,
   parseOpenJobsPosted,
 } from './firmographics';
+import {
+  evaluateGeoForKeep,
+  tierFromFlags,
+  verifyWebsiteReachable,
+} from './verify';
 
 function rowId(): string {
   return `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -380,6 +385,9 @@ async function processListBuilderBatchInner(
     openJobsPosted?: number;
     fromSeed?: boolean;
     source?: string;
+    siteVerified?: boolean;
+    geoVerified?: boolean;
+    pageTextSnippet?: string;
   }> = seedToCandidates(job);
 
   let nextSeedCursor = job.seedCursor || 0;
@@ -409,6 +417,9 @@ async function processListBuilderBatchInner(
         contactName: d.contactName,
         contactTitle: d.contactTitle,
         source: d.source,
+        siteVerified: d.siteVerified,
+        geoVerified: d.geoVerified,
+        pageTextSnippet: d.pageTextSnippet,
       };
     });
   }
@@ -476,8 +487,16 @@ async function processListBuilderBatchInner(
   let skippedNoContact = 0;
   let skippedOffGeo = 0;
   let skippedDuplicate = 0;
+  let skippedDeadSite = 0;
   let keptComplete = 0;
   let keptPartial = 0;
+  let keptVerified = 0;
+
+  const targetGeoCheck = resolveTargetGeography(job.brief, job.geography);
+  const geoPhase = discoveryStrategyPhase(job);
+  // Never fully skip geo: phase 2 still rejects off-target page/city evidence.
+  // Only allow unknown geo (partial) after phase 1+.
+  const allowUnknownGeo = geoPhase >= 1;
 
   for (const c of candidates) {
     if (Date.now() - batchStarted > LIST_BUILDER_DEFAULTS.batchBudgetMs) {
@@ -486,7 +505,6 @@ async function processListBuilderBatchInner(
     }
     if (job.results.length + newRows.length >= job.targetSize) break;
 
-    // Skip if already in this job's results
     const already = job.results.some(
       (r) =>
         normName(r.companyName) === normName(c.companyName) ||
@@ -504,8 +522,29 @@ async function processListBuilderBatchInner(
       website = website.includes('.') ? `https://${website}` : website;
     }
 
+    // --- P0: require live website ---
+    let siteVerified = !!(c as any).siteVerified;
+    let pageText =
+      typeof (c as any).pageTextSnippet === 'string'
+        ? String((c as any).pageTextSnippet)
+        : '';
+
+    if (!website || !website.includes('.')) {
+      skippedDeadSite++;
+      continue;
+    }
+
+    if (!siteVerified) {
+      const reach = await verifyWebsiteReachable(website);
+      if (!reach.ok) {
+        skippedDeadSite++;
+        continue;
+      }
+      siteVerified = true;
+      website = reach.finalUrl || website;
+    }
+
     let extracted: Partial<ListBuilderResultRow> = {};
-    // Prefer structured firmographics + contacts from discovery
     if (c.email) extracted.email = c.email;
     if (c.phone) extracted.phone = c.phone;
     if (c.city) extracted.city = c.city;
@@ -515,19 +554,18 @@ async function processListBuilderBatchInner(
     if (c.companySize) extracted.companySize = c.companySize;
     if (c.openJobsPosted != null) extracted.openJobsPosted = c.openJobsPosted;
     if (c.contactName) extracted.contactName = c.contactName;
-    if (c.contactTitle) {
-      extracted.contactTitle = c.contactTitle;
-    }
+    if (c.contactTitle) extracted.contactTitle = c.contactTitle;
 
     const alreadyKeepable = isKeepableContact({
       email: extracted.email,
       phone: extracted.phone,
     });
 
-    // Site scrape fills gaps; skip heavy multi-page crawl if Grok already found contact
-    if (website && website.includes('.') && !alreadyKeepable) {
+    // Always prefer multi-page crawl when we need contacts or geo text
+    if (website && website.includes('.') && (!alreadyKeepable || !pageText)) {
       const page = await fetchCompanyContactPages(website);
       if (!('error' in page)) {
+        pageText = page.text || pageText;
         const siteExtract = await extractFromSite(
           c.companyName,
           website,
@@ -550,29 +588,22 @@ async function processListBuilderBatchInner(
           notes: siteExtract.notes || extracted.notes,
           sourceUrl: siteExtract.sourceUrl || website,
         };
+        website = page.url || website;
       } else {
         extracted.notes = extracted.notes || `Site fetch: ${page.error}`;
       }
-    } else if (website && website.includes('.')) {
+    } else if (website) {
       extracted.sourceUrl = website;
-      extracted.notes =
-        extracted.notes ||
-        (c.source === 'grok-browse'
-          ? 'Contact from Grok site browse'
-          : 'Contact from Grok (Bedrock Mantle)');
     }
 
-    // Merge discovery / seed contacts (Grok often returns phone from search)
     if (c.contactName) extracted.contactName = extracted.contactName || c.contactName;
-    if ((c as any).contactTitle) {
-      extracted.contactTitle =
-        extracted.contactTitle || (c as any).contactTitle;
+    if (c.contactTitle) {
+      extracted.contactTitle = extracted.contactTitle || c.contactTitle;
     }
     if (c.email) extracted.email = extracted.email || c.email;
     if (c.phone) extracted.phone = extracted.phone || c.phone;
     if (c.city) extracted.city = extracted.city || c.city;
 
-    // Grok web search when site scrape still has no usable public contact
     if (!isKeepableContact({ email: extracted.email, phone: extracted.phone })) {
       if (Date.now() - batchStarted < LIST_BUILDER_DEFAULTS.batchBudgetMs - 10_000) {
         const web = await enrichContactFromWeb(
@@ -596,25 +627,25 @@ async function processListBuilderBatchInner(
       }
     }
 
-    // Drop clear off-geo rows when we have a city.
-    // Progressive recovery after quiet batches so users need not rephrase:
-    // phase 0 = strict, phase 1 = allow unknown city, phase 2 = trust discovery geo.
-    const targetGeoCheck = resolveTargetGeography(job.brief, job.geography);
-    const geoPhase = discoveryStrategyPhase(job);
-    const cityForGeo = extracted.city || c.city;
-    if (geoPhase < 2 && cityForGeo) {
-      if (
-        !looksInTargetArea(cityForGeo, c.companyName, targetGeoCheck, {
-          allowUnknown: geoPhase >= 1,
-        })
-      ) {
-        skippedOffGeo++;
-        continue;
-      }
+    // --- P0: geo from city field + page content (never skip off-target) ---
+    const geoEval = evaluateGeoForKeep({
+      city: extracted.city || c.city,
+      state: extracted.state || c.state,
+      companyName: c.companyName,
+      targetGeo: targetGeoCheck,
+      pageText,
+      allowUnknownGeo,
+    });
+    if (!geoEval.keep) {
+      skippedOffGeo++;
+      continue;
+    }
+    // If city field wrong but page is local, prefer page-local note
+    if (geoEval.pageGeo?.inTarget && geoEval.geoVerified) {
+      // keep city if already local; else leave as-is
     }
 
     if (match && contactExists(match, extracted.email, extracted.contactName)) {
-      // Company + same contact already in Trio — skip row
       skippedDuplicate++;
       continue;
     }
@@ -623,14 +654,35 @@ async function processListBuilderBatchInner(
       email: extracted.email,
       phone: extracted.phone,
     });
-    // Drop only when neither email nor phone found — never invent
     if (!completeness) {
       skippedNoContact++;
       continue;
     }
 
+    const geoVerified =
+      geoEval.geoVerified || !!(c as any).geoVerified || false;
+    const verificationStatus = tierFromFlags(
+      siteVerified,
+      geoVerified,
+      true
+    );
+    // Do not keep unverified (no site) — already enforced; tier is verified|partial
+    if (verificationStatus === 'unverified') {
+      skippedDeadSite++;
+      continue;
+    }
+
     if (completeness === 'complete') keptComplete++;
     else keptPartial++;
+    if (verificationStatus === 'verified') keptVerified++;
+
+    const verifyNote = [
+      siteVerified ? 'Site OK' : 'Site unchecked',
+      geoVerified ? 'Geo OK' : 'Geo unconfirmed',
+      geoEval.reason,
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
     const row: ListBuilderResultRow = {
       id: rowId(),
@@ -638,6 +690,10 @@ async function processListBuilderBatchInner(
       website: website || extracted.sourceUrl,
       city: extracted.city || c.city,
       state: extracted.state || c.state,
+      siteVerified,
+      geoVerified,
+      verificationStatus,
+      verificationNotes: verifyNote,
       industry:
         normalizeIndustry(extracted.industry || c.industry || job.industry) ||
         undefined,
@@ -651,10 +707,10 @@ async function processListBuilderBatchInner(
       sourceUrl: extracted.sourceUrl || website,
       existingCompanyId: match?.id ? String(match.id) : undefined,
       companyExists: !!match,
-      notes: extracted.notes,
+      notes: [extracted.notes, verifyNote].filter(Boolean).join(' · '),
       contactCompleteness: completeness,
-      // Prefer complete for import defaults; user can still select partials
-      selected: completeness === 'complete',
+      // Default select only fully verified (site + geo + contact)
+      selected: verificationStatus === 'verified',
       createdAt: now,
     };
     newRows.push(row);
@@ -701,11 +757,14 @@ async function processListBuilderBatchInner(
   const lastMessage =
     newRows.length > 0
       ? `Kept ${totals.found}/${job.targetSize} in ${targetGeo} (` +
-        `${totals.completeFound} complete, ${totals.partialFound} partial)` +
-        ` · +${newRows.length} this batch (${keptComplete} complete / ${keptPartial} partial)` +
+        `${totals.completeFound} complete, ${totals.partialFound} partial` +
+        (keptVerified ? `, ${keptVerified} verified` : '') +
+        `)` +
+        ` · +${newRows.length} this batch` +
         ` · researched ${researchedThisBatch}${sourceBit}${stratBit}.`
       : `Researched ${researchedThisBatch} in ${targetGeo}, kept 0` +
         (skippedNoContact ? ` (${skippedNoContact} no public email/phone)` : '') +
+        (skippedDeadSite ? ` (${skippedDeadSite} dead/missing site)` : '') +
         (skippedOffGeo ? ` (${skippedOffGeo} off-geo)` : '') +
         (skippedDuplicate ? `, ${skippedDuplicate} skipped` : '') +
         `${sourceBit}${stratBit} · ${totals.found}/${job.targetSize} total · continuing until target or time limit…`;
