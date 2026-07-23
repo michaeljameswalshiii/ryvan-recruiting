@@ -139,10 +139,10 @@ function normalizeCandidateStage(raw?: string): string | undefined {
 export const CREATE_CANDIDATE_TOOL = "create_candidate";
 export const CREATE_CANDIDATE_DESCRIPTION =
   "Create a new candidate/lead in the recruiting pipeline (Candidates list). " +
-  "NOT for company contacts/hiring managers — use create_contact for Contact Info. " +
+  "NOT for company contacts/hiring managers — use create_contact for Contacts. " +
   "ALWAYS call once without confirmed to preview, show the user, then call again with " +
   "confirmed:true after they agree. Requires name. Optional company is only a note, " +
-  "it does NOT add them under Contact Info.";
+  "it does NOT add them under Contacts.";
 
 export async function executeCreateCandidate(
   params: unknown,
@@ -523,13 +523,13 @@ export async function executeUpdateCompany(
 }
 
 // ---------------------------------------------------------------------------
-// create_contact (company contact → Contact Info list)
+// create_contact (company contact → Contacts list)
 // ---------------------------------------------------------------------------
 
 export const CREATE_CONTACT_TOOL = "create_contact";
 export const CREATE_CONTACT_DESCRIPTION =
   "Add a person as a company contact (hiring manager / business contact). " +
-  "These appear on Contact Info (/dashboard/contact-info), NOT Candidates. " +
+  "These appear on Contacts (/dashboard/contact-info), NOT Candidates. " +
   "Requires name + company_id OR company_name. Preview first, then confirmed:true.";
 
 async function resolveCompanyId(
@@ -606,7 +606,7 @@ export async function executeCreateContact(
     company_name: resolved.name,
     isPrimary: p.is_primary === true || p.isPrimary === true || p.is_primary === "true",
     notes: str(p.notes) || "",
-    destination: "Contact Info (company contact)",
+    destination: "Contacts (company contact)",
   };
 
   const gate = confirmGate(p, CREATE_CONTACT_TOOL, preview);
@@ -643,7 +643,7 @@ export async function executeCreateContact(
           company_id: resolved.id,
           company_name: resolved.name,
         },
-        message: `Added ${preview.name} as a contact at ${resolved.name}. They appear on Contact Info.`,
+        message: `Added ${preview.name} as a contact at ${resolved.name}. They appear under Contacts.`,
         url_hint: "/dashboard/contact-info",
       },
       metadata: { action: CREATE_CONTACT_TOOL, id: created?.id, company_id: resolved.id },
@@ -657,12 +657,12 @@ export async function executeCreateContact(
 }
 
 // ---------------------------------------------------------------------------
-// update_contact (company contact on Contact Info)
+// update_contact (company contact on Contacts)
 // ---------------------------------------------------------------------------
 
 export const UPDATE_CONTACT_TOOL = "update_contact";
 export const UPDATE_CONTACT_DESCRIPTION =
-  "Update an existing company contact (hiring manager / Contact Info person). " +
+  "Update an existing company contact (hiring manager / Contacts person). " +
   "Requires contact_id. Prefer company_id when known; otherwise the contact is located by id across companies. " +
   "Supports work_phone and mobile_phone (or phone). Preview first, then confirmed:true. " +
   "After success, the CRM lists refresh — there is no intentional delay.";
@@ -862,7 +862,7 @@ export async function executeUpdateContact(
           phone: refreshed?.phone || refreshed?.preferredPhone,
           phones: refreshed?.phones,
         },
-        message: `Updated contact ${refreshed?.name || contactId}. Changes appear immediately on Contact Info (refresh if a tab was already open).`,
+        message: `Updated contact ${refreshed?.name || contactId}. Changes appear immediately under Contacts (refresh if a tab was already open).`,
         url_hint: `/dashboard/contact-info/${contactId}`,
       },
       metadata: {

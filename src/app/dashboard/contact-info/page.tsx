@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -19,6 +19,11 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  DEFAULT_PAGE_SIZE,
+  PaginationBar,
+  paginateItems,
+} from '@/components/ui/pagination-bar';
 import { useClients } from '@/lib/hooks/query-client';
 import { useAddContact, useRemoveContact } from '@/lib/hooks/contact-mutations';
 import { getDisplayPhone } from '@/lib/contacts/phone';
@@ -94,6 +99,7 @@ export default function ContactInfoPage() {
   const [search, setSearch] = useState('');
   const [bucket, setBucket] = useState<ContactBucket>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [page, setPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [newContact, setNewContact] = useState({
@@ -221,6 +227,15 @@ export default function ContactInfoPage() {
     return list;
   }, [enriched, search, bucket, sortKey]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [search, bucket, sortKey]);
+
+  const paged = useMemo(
+    () => paginateItems(filtered, page, DEFAULT_PAGE_SIZE),
+    [filtered, page]
+  );
+
   const handleAdd = async () => {
     if (!newContact.clientId || !newContact.name.trim()) {
       alert('Company and name are required');
@@ -327,7 +342,7 @@ export default function ContactInfoPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Contact Info</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Contacts</h1>
           <p className="text-sm text-gray-500">Manage business contacts across companies</p>
         </div>
         <div className="flex items-center justify-center py-16 text-gray-500">
@@ -343,7 +358,7 @@ export default function ContactInfoPage() {
       <div className="space-y-6">
         <div className="flex justify-between items-start gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Contact Info</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Contacts</h1>
             <p className="text-sm text-gray-500">Manage business contacts across companies</p>
           </div>
           <Button onClick={() => refetch()} variant="outline">
@@ -362,11 +377,11 @@ export default function ContactInfoPage() {
   }
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="min-w-0 max-w-full space-y-5">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Contact Info</h1>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Contacts</h1>
           <p className="text-sm text-gray-500">
             Manage business contacts — click any card to filter
           </p>
@@ -492,10 +507,24 @@ export default function ContactInfoPage() {
             <option value="last_activity">Sort: Last Activity</option>
           </select>
           <span className="text-xs text-gray-500 whitespace-nowrap">
-            Showing {filtered.length} contact{filtered.length === 1 ? '' : 's'}
+            {filtered.length} contact{filtered.length === 1 ? '' : 's'}
+            {filtered.length > DEFAULT_PAGE_SIZE
+              ? ` · page ${paged.page}/${paged.totalPages}`
+              : ''}
           </span>
         </div>
       </div>
+
+      {filtered.length > 0 && (
+        <PaginationBar
+          page={paged.page}
+          totalPages={paged.totalPages}
+          total={paged.total}
+          onPageChange={setPage}
+          itemLabel={paged.total === 1 ? 'contact' : 'contacts'}
+          className="rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm"
+        />
+      )}
 
       {/* Table */}
       {filtered.length === 0 ? (
@@ -523,47 +552,47 @@ export default function ContactInfoPage() {
           </div>
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px]">
+        <div className="min-w-0 max-w-full bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto max-w-full">
+            <table className="w-full table-fixed min-w-[720px]">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[22%]">
                     Contact
                   </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[16%]">
                     Company
                   </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[18%]">
                     Email
                   </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[14%]">
                     Phone
                   </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[10%] hidden lg:table-cell">
                     Added
                   </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[12%] hidden xl:table-cell">
                     Last Activity
                   </th>
-                  <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className="text-right px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[8%]">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((c) => {
+                {paged.slice.map((c) => {
                   const rowKey = `${c.clientId}-${c.id}`;
                   return (
                     <tr key={rowKey} className="hover:bg-gray-50/80 transition-colors">
-                      <td className="px-4 py-3.5">
+                      <td className="px-3 py-3.5 max-w-0">
                         <div className="flex items-center gap-3 min-w-0">
                           <div
                             className={`h-9 w-9 shrink-0 rounded-full ${avatarColor(c.name)} text-white flex items-center justify-center text-xs font-semibold`}
                           >
                             {getInitials(c.name)}
                           </div>
-                          <div className="min-w-0">
+                          <div className="min-w-0 overflow-hidden">
                             <div className="flex items-center gap-1.5 min-w-0">
                               <Link
                                 href={detailHref(c)}
@@ -585,25 +614,25 @@ export default function ContactInfoPage() {
                         </div>
                       </td>
 
-                      <td className="px-4 py-3.5">
+                      <td className="px-3 py-3.5 max-w-0">
                         {c.clientId ? (
                           <Link
                             href={`/dashboard/companies/${c.clientId}`}
-                            className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline min-w-0"
+                            className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline min-w-0 max-w-full"
                           >
                             <Building2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                             <span className="truncate">{c.companyName}</span>
                           </Link>
                         ) : (
-                          <span className="text-sm text-gray-600">{c.companyName}</span>
+                          <span className="text-sm text-gray-600 truncate block">{c.companyName}</span>
                         )}
                       </td>
 
-                      <td className="px-4 py-3.5">
+                      <td className="px-3 py-3.5 max-w-0">
                         {c.email ? (
                           <a
                             href={`mailto:${c.email}`}
-                            className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600 min-w-0"
+                            className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600 min-w-0 max-w-full"
                           >
                             <Mail className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                             <span className="truncate">{c.email}</span>
@@ -613,29 +642,30 @@ export default function ContactInfoPage() {
                         )}
                       </td>
 
-                      <td className="px-4 py-3.5">
+                      <td className="px-3 py-3.5 max-w-0">
                         {c.phone ? (
                           <a
                             href={`tel:${c.phone}`}
-                            className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600 whitespace-nowrap"
+                            className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600 min-w-0 max-w-full"
+                            title={c.phone}
                           >
                             <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                            {c.phone}
+                            <span className="truncate">{c.phone}</span>
                           </a>
                         ) : (
                           <span className="text-sm text-gray-400 italic">—</span>
                         )}
                       </td>
 
-                      <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
+                      <td className="px-3 py-3.5 text-sm text-gray-600 whitespace-nowrap hidden lg:table-cell">
                         {formatShortDate(c.added)}
                       </td>
 
-                      <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
+                      <td className="px-3 py-3.5 text-sm text-gray-600 whitespace-nowrap hidden xl:table-cell">
                         {formatRelativeActivity(c.lastActivity)}
                       </td>
 
-                      <td className="px-4 py-3.5 text-right">
+                      <td className="px-3 py-3.5 text-right">
                         <div className="relative inline-flex items-center gap-1 justify-end">
                           <Button
                             variant="ghost"

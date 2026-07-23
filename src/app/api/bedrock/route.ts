@@ -157,7 +157,7 @@ FILE tools:
 
 WRITE tools (CRM mutations — same data as the UI):
 - create_candidate, update_candidate, update_candidate_stage → Candidates list (pipeline)
-- create_contact → company contact on Contact Info (hiring managers, NOT candidates)
+- create_contact → company contact on Contacts (hiring managers, NOT candidates)
 - create_company, update_company → Companies
 - create_job, update_job
 - link_candidate_to_job, update_job_candidate_stage

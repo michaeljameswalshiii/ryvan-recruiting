@@ -41,7 +41,7 @@ const QUICK_ACTIONS = [
   {
     href: "/dashboard/contacts/new",
     label: "Add Contact",
-    description: "Company contact for Contact Info",
+    description: "Company contact for Contacts",
     icon: Contact,
   },
   {
