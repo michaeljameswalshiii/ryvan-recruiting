@@ -385,7 +385,15 @@ async function processListBuilderBatchInner(
   });
 
   const clients = await getAllClients(tenantId);
-  const existingNames = job.results.map((r) => r.companyName);
+  // Exclude kept results AND already-researched names so we don't re-burn quiet
+  // batches on the same dead ends.
+  const priorSeen = Array.isArray((job.progress as any)?.seenNames)
+    ? ((job.progress as any).seenNames as string[])
+    : [];
+  const existingNames = [
+    ...job.results.map((r) => r.companyName),
+    ...priorSeen,
+  ];
 
   // Prefer seed rows first
   let candidates: Array<{
@@ -804,10 +812,19 @@ async function processListBuilderBatchInner(
   const refreshed = await getListBuilderJob(tenantId, jobId);
   if (!refreshed) return { error: 'Job lost after update' };
 
-  const emptyBatchStreak =
-    newRows.length === 0
-      ? (job.progress?.emptyBatchStreak || 0) + 1
-      : 0;
+  // Quiet = no NEW keeps. But if we still researched companies this tick,
+  // do not burn quiet budget as fast (filter misses ≠ discovery dry).
+  // Full quiet only when we had nothing to research OR zero research progress.
+  let emptyBatchStreak = 0;
+  if (newRows.length > 0) {
+    emptyBatchStreak = 0;
+  } else if (researchedThisBatch === 0) {
+    // True dry: no candidates / nothing researched
+    emptyBatchStreak = (job.progress?.emptyBatchStreak || 0) + 2;
+  } else {
+    // Researched but all filtered — slower quiet burn
+    emptyBatchStreak = (job.progress?.emptyBatchStreak || 0) + 1;
+  }
   const researched =
     (job.progress?.researched || 0) + researchedThisBatch;
   const totals = countCompleteness(refreshed.results || []);
@@ -844,21 +861,16 @@ async function processListBuilderBatchInner(
         ` · +${newRows.length} this batch` +
         ` · researched ${researchedThisBatch}${sourceBit}${stratBit}.`
       : `Researched ${researchedThisBatch} in ${targetGeo}, kept 0` +
-        (skippedNoContact ? ` (${skippedNoContact} no public email/phone)` : '') +
-        (skippedDeadSite ? ` (${skippedDeadSite} dead/missing site)` : '') +
-        (skippedOffGeo ? ` (${skippedOffGeo} off-geo/multi-state)` : '') +
-        (skippedTooBig ? ` (${skippedTooBig} too large for SMB)` : '') +
-        (skippedDuplicate ? `, ${skippedDuplicate} skipped` : '') +
+        (skippedNoContact ? ` · ${skippedNoContact} no contact/site keep` : '') +
+        (skippedDeadSite ? ` · ${skippedDeadSite} dead site` : '') +
+        (skippedOffGeo ? ` · ${skippedOffGeo} off-geo` : '') +
+        (skippedTooBig ? ` · ${skippedTooBig} too large` : '') +
+        (skippedDuplicate ? ` · ${skippedDuplicate} duplicate` : '') +
         `${sourceBit}${stratBit} · ${totals.found}/${job.targetSize} total` +
         (emptyBatchStreak > 0
           ? ` · quiet ${emptyBatchStreak}/${LIST_BUILDER_DEFAULTS.maxEmptyBatches}`
           : '') +
-        (emptyBatchStreak > 0 &&
-        emptyBatchStreak < LIST_BUILDER_DEFAULTS.maxEmptyBatches
-          ? ' · continuing…'
-          : emptyBatchStreak >= LIST_BUILDER_DEFAULTS.maxEmptyBatches
-            ? ''
-            : ' · continuing until target or time limit…');
+        ' · continuing…';
 
   // Stop after N consecutive batches with zero new keeps
   if (
@@ -911,6 +923,14 @@ async function processListBuilderBatchInner(
     return { job: done || refreshed, done: true };
   }
 
+  const seenNames = [
+    ...new Set([
+      ...priorSeen,
+      ...job.results.map((r) => r.companyName),
+      ...candidates.map((c) => c.companyName).filter(Boolean),
+    ]),
+  ].slice(-400);
+
   await updateListBuilderJob(tenantId, jobId, {
     seedCursor: nextSeedCursor,
     discoveryBatch: nextDiscovery,
@@ -925,7 +945,8 @@ async function processListBuilderBatchInner(
       emptyBatchStreak,
       errorStreak: 0,
       lastMessage,
-    },
+      seenNames,
+    } as any,
   });
 
   const latest = await getListBuilderJob(tenantId, jobId);

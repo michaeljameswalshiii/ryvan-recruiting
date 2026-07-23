@@ -134,6 +134,8 @@ export interface ListBuilderJob {
     emptyBatchStreak?: number;
     /** Consecutive batch failures (LLM/infra) */
     errorStreak?: number;
+    /** Company names already researched (avoid re-trying dead ends) */
+    seenNames?: string[];
   };
   /** In-app now; email reserved */
   notifyChannels: ListBuilderNotifyChannel[];
@@ -175,14 +177,14 @@ export const LIST_BUILDER_DEFAULTS = {
    * Companies per tick. Keep modest when Grok browse (fetch_website) is enabled
    * so the batch fits under Vercel maxDuration.
    */
-  batchSize: 6,
+  batchSize: 8,
   /** Hard cap on companies per job (UI + API clamp). */
   maxResultsCap: 100,
   /**
-   * Stop after this many consecutive batches with zero new keeps.
-   * Higher = more patience when market is thin; lower = stop sooner.
+   * Quiet budget: dry discovery burns 2 points; researched-but-filtered burns 1.
+   * Stop when streak hits this (allows longer runs toward target).
    */
-  maxEmptyBatches: 25,
+  maxEmptyBatches: 40,
   /** Safety cap on discovery batches (target + timeout are primary stops) */
   maxDiscoveryBatches: 400,
   /** Mark failed after this many consecutive hard errors */

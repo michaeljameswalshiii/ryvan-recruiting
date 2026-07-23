@@ -435,18 +435,25 @@ export function analyzePageGeo(
   const outOfState = flTarget ? detectOfficesOutsideFlorida(text) : [];
   const hasOfficesOutsideFlorida = outOfState.length > 0;
 
-  const inTarget = localHits > 0;
-  // Off-target if foreign markers and no local evidence
+  const mentionsFlorida = /\bflorida\b|\bFL\b/.test(text);
+  const inTarget = localHits > 0 || (mentionsFlorida && flTarget && foreign.length === 0);
+
+  // Multi-state national pages often list Atlanta/Dallas + Florida — that is NOT
+  // auto-reject if Florida is clearly on the page (happy medium for GC lists).
+  // Hard off-target only when page points elsewhere with no FL / local signal.
   const offTarget =
-    (foreign.length > 0 && localHits === 0) || hasOfficesOutsideFlorida;
+    (foreign.length > 0 && localHits === 0 && !mentionsFlorida) ||
+    (hasOfficesOutsideFlorida && !mentionsFlorida && localHits === 0);
 
   let evidence: string | undefined;
-  if (hasOfficesOutsideFlorida) {
-    evidence = `Offices outside Florida: ${outOfState.slice(0, 4).join(', ')} — Florida-only target`;
-  } else if (foreign.length > 0 && localHits === 0) {
+  if (offTarget && hasOfficesOutsideFlorida) {
+    evidence = `No Florida presence on site; offices: ${outOfState.slice(0, 4).join(', ')}`;
+  } else if (offTarget && foreign.length > 0) {
     evidence = `Page suggests ${foreign.slice(0, 3).join(', ')} — outside ${targetGeo}`;
   } else if (inTarget) {
-    evidence = `Page mentions local: ${mentions.slice(0, 4).join(', ')}`;
+    evidence = `Page mentions local: ${mentions.slice(0, 4).join(', ') || 'Florida'}`;
+  } else if (hasOfficesOutsideFlorida && mentionsFlorida) {
+    evidence = 'Multi-state firm with Florida presence (kept as near-market)';
   }
 
   return {

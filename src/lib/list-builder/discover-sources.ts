@@ -305,37 +305,37 @@ function buildCompletionPrompts(opts: {
   const honorCap = phase === 0 && !!employeeCap;
 
   const sizeRule = honorCap
-    ? `Prefer under ~${employeeCap} employees when known.`
-    : 'Prefer small-to-mid firms (roughly under 500 employees). Skip national multi-state chains.';
+    ? `Prefer under ~${employeeCap} employees when known; still include if size unknown.`
+    : 'Prefer regional and mid-size firms; national GCs with a Florida office are OK.';
 
   const umbrella = keywords.length
     ? keywords.slice(0, 12).join(', ')
     : 'businesses matching the brief';
   const batchFocus = focusKw || keywords[0] || 'local business';
 
-  const system = `You list real companies that operate in ${targetGeo}, Florida, matching this industry umbrella:
+  const system = `You list real companies that do business in or near ${targetGeo}, Florida, matching:
 ${umbrella}
 
 Return ONLY a JSON array (no markdown). Each object:
 {"companyName":"...","website":"https://...","city":"...","state":"FL","industry":"..."}
 
 Rules:
-- Cover the FULL umbrella: not only the single word in the brief — include related segments/trades listed above
-- This batch especially emphasize: ${batchFocus}
-- Florida-local / regional only — NO firms with offices outside Florida (even if HQ is in Florida)
-- Prefer small-to-medium firms — not national giants
-- website: official domain if known; omit if unsure (do not invent random domains)
+- Cover related trades/segments, not just one keyword — this batch emphasize: ${batchFocus}
+- Prefer firms with a real office or active projects in ${targetGeo} / South Florida
+- Regional FL firms AND national firms with a FL office are both OK
+- Include specialty trades (electrical, mechanical, roofing, concrete, civil, remodeling) not only large GCs
+- website: official domain if known; omit if unsure — do NOT invent domains
 - NEVER invent phone or email
 - Max ${need} companies. Do not include: ${excludeList}
 - ${sizeRule}
 - Cities: ${anchors.slice(0, 8).join(', ')}`;
 
   const user = `Brief: ${job.brief}
-Location: ${targetGeo} (Florida-local SMB only — no multi-state footprints).
-Industry umbrella (all related segments OK): ${umbrella}
+Location focus: ${targetGeo}, Florida (South Florida OK if same market).
+Industry umbrella: ${umbrella}
 Batch ${batch} focus: ${batchFocus} near ${focusCity}.
 Need ${need} NEW companies (${already}/${target} already kept).
-JSON array only.`;
+JSON array only — prioritize names you have not listed before.`;
 
   return { system, user };
 }
@@ -390,7 +390,7 @@ export async function discoverCompanyCandidatesWithDiagnostics(
     targetGeo,
     job.brief,
     batch,
-    need,
+    Math.max(need, 10),
     excludeNames
   );
   for (const s of seeds) {
@@ -482,7 +482,8 @@ export async function discoverCompanyCandidatesWithDiagnostics(
     }
   }
 
-  let list = dedupeCandidates(pool, excludeNames).slice(0, need * 3);
+  // Wider pool per tick so hydrate has more to work with after dead domains
+  let list = dedupeCandidates(pool, excludeNames).slice(0, need * 4);
 
   if (list.length === 0) {
     diagnostics.notes.push('no candidates before hydrate');
