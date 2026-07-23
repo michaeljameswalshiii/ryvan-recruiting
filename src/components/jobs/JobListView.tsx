@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -22,6 +22,11 @@ import {
   jobStatusSortRank,
   type JobStatus,
 } from '@/lib/jobs/status';
+import {
+  DEFAULT_PAGE_SIZE,
+  PaginationBar,
+  paginateItems,
+} from '@/components/ui/pagination-bar';
 
 export type JobListItem = {
   id: string;
@@ -126,6 +131,7 @@ export function JobListView({ jobs }: JobListViewProps) {
   const [search, setSearch] = useState('');
   const [bucket, setBucket] = useState<JobBucket>('all');
   const [sortKey, setSortKey] = useState<SortKey>('last_activity');
+  const [page, setPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const enriched = useMemo(() => {
@@ -230,6 +236,21 @@ export function JobListView({ jobs }: JobListViewProps) {
 
     return list;
   }, [enriched, search, bucket, sortKey]);
+
+  // Reset to page 1 when filters change (same as candidates / contacts)
+  useEffect(() => {
+    setPage(1);
+  }, [search, bucket, sortKey]);
+
+  const paged = useMemo(
+    () => paginateItems(filtered, page, DEFAULT_PAGE_SIZE),
+    [filtered, page]
+  );
+
+  // Keep page in range if list shrinks (e.g. after delete)
+  useEffect(() => {
+    if (page > paged.totalPages) setPage(paged.totalPages);
+  }, [page, paged.totalPages]);
 
   const handleDelete = (jobId: string, jobTitle: string) => {
     if (!confirm(`Delete job "${jobTitle}"? This cannot be undone.`)) return;
@@ -366,17 +387,31 @@ export function JobListView({ jobs }: JobListViewProps) {
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
             aria-label="Sort jobs"
           >
-            <option value="last_activity">Sort: Last Activity</option>
+            <option value="last_activity">Sort: Last Action</option>
             <option value="added">Sort: Date Added</option>
             <option value="title">Sort: Title</option>
             <option value="candidates">Sort: Candidates</option>
             <option value="status">Sort: Status</option>
           </select>
           <span className="text-xs text-gray-500 whitespace-nowrap">
-            Showing {filtered.length} job{filtered.length === 1 ? '' : 's'}
+            {filtered.length} job{filtered.length === 1 ? '' : 's'}
+            {filtered.length > DEFAULT_PAGE_SIZE
+              ? ` · page ${paged.page}/${paged.totalPages}`
+              : ''}
           </span>
         </div>
       </div>
+
+      {filtered.length > 0 && (
+        <PaginationBar
+          page={paged.page}
+          totalPages={paged.totalPages}
+          total={paged.total}
+          onPageChange={setPage}
+          itemLabel={paged.total === 1 ? 'job' : 'jobs'}
+          className="rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm"
+        />
+      )}
 
       {filtered.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center shadow-sm">
@@ -418,11 +453,11 @@ export function JobListView({ jobs }: JobListViewProps) {
                   <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                     Candidates
                   </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 hidden lg:table-cell">
                     Added
                   </th>
                   <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Last Activity
+                    Last Action
                   </th>
                   <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                     Actions
@@ -430,7 +465,7 @@ export function JobListView({ jobs }: JobListViewProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((j) => (
+                {paged.slice.map((j) => (
                   <tr key={j.id} className="hover:bg-gray-50/80 transition-colors">
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-3 min-w-0">
@@ -493,7 +528,7 @@ export function JobListView({ jobs }: JobListViewProps) {
                       </Link>
                     </td>
 
-                    <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
+                    <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap hidden lg:table-cell">
                       {formatShortDate(j.added)}
                     </td>
 
