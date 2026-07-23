@@ -35,8 +35,11 @@ export type PageGeoEvidence = {
   evidence?: string;
 };
 
-/** Prefer small–mid market; drop when headcount clearly exceeds this. */
-export const SMB_EMPLOYEE_CAP = 500;
+/**
+ * Prefer small–mid market; hard-drop only when headcount clearly exceeds this.
+ * (Soft preference stays ~500 in discovery prompts.)
+ */
+export const SMB_EMPLOYEE_CAP = 750;
 
 export type VerificationTier = 'verified' | 'partial' | 'unverified';
 
@@ -506,6 +509,7 @@ export function evaluateGeoForKeep(opts: {
   }
 
   // Soften other off-target (e.g. Orlando when targeting Broward): keep FL-only near-market
+  // Same-state multi-location is allowed; multi-state was already hard-dropped above.
   if (pageGeo.offTarget) {
     const cityHay0 = [city, state].filter(Boolean).join(', ');
     const cityLocal0 = looksInTargetArea(
@@ -514,19 +518,22 @@ export function evaluateGeoForKeep(opts: {
       targetGeo,
       { allowUnknown: true }
     );
-    // Same state Florida, different county, no out-of-state offices → partial OK
-    if (
-      cityLocal0 ||
-      (state &&
-        /florida|\bfl\b/i.test(String(state)) &&
-        /florida|\bfl\b/i.test(targetGeo))
-    ) {
+    const flTarget = isFloridaTarget(targetGeo);
+    const cityIsFl =
+      flTarget &&
+      (/florida|\bfl\b/i.test(String(state || '')) ||
+        /\b(miami|fort\s*lauderdale|orlando|tampa|jacksonville|naples|west\s*palm|boca|hollywood|delray|jupiter|plantation|davie|boynton|wellington)\b/i.test(
+          String(city || '')
+        ));
+
+    // Florida-only firm serving multiple FL metros → keep (partial geo)
+    if (cityLocal0 || cityIsFl || (flTarget && /florida|\bfl\b/i.test(String(state || '')))) {
       return {
         keep: true,
-        geoVerified: false,
+        geoVerified: !!cityLocal0 || !!pageGeo.inTarget,
         reason: cityLocal0
-          ? 'Local city field; other FL markets on site'
-          : 'In-state FL firm; website lists multiple FL markets',
+          ? 'Local city; other FL markets on site (OK)'
+          : 'Florida firm with multi-metro FL footprint (OK — no out-of-state offices)',
         pageGeo,
       };
     }

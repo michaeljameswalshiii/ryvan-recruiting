@@ -182,7 +182,7 @@ export const LIST_BUILDER_DEFAULTS = {
    * Stop after this many consecutive batches with zero new keeps.
    * Higher = more patience when market is thin; lower = stop sooner.
    */
-  maxEmptyBatches: 18,
+  maxEmptyBatches: 25,
   /** Safety cap on discovery batches (target + timeout are primary stops) */
   maxDiscoveryBatches: 400,
   /** Mark failed after this many consecutive hard errors */

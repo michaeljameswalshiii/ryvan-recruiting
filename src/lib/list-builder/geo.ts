@@ -357,44 +357,253 @@ export function employeeRangesForCap(cap?: number): string[] {
     .slice(0, 6);
 }
 
-/** Industry / segment keywords inferred from a free-text brief. */
+/**
+ * Industry umbrellas: when the user asks for a parent sector (e.g. "construction companies"),
+ * expand to related sub-industries / trades so discovery covers the full category.
+ * Works the same for every industry that has an umbrella defined.
+ */
+const INDUSTRY_UMBRELLAS: Array<{
+  /** Matches brief language for this umbrella */
+  match: RegExp;
+  /** Parent label + related segments to search */
+  keywords: string[];
+}> = [
+  {
+    // Parent "construction" OR any related trade still expands the full umbrella
+    match:
+      /construct|general\s*contract|\bgc\b|builder|building|contractor|remodel|renovat|roof|electric|plumb|hvac|concrete|mason|excav|civil\s*construct|drywall|flooring|framing|carpent|landscap|paving|demolition|design-?build|pool\s*construct|insulation|fire\s*protect/,
+    keywords: [
+      'construction',
+      'general contractor',
+      'commercial construction',
+      'residential construction',
+      'building contractor',
+      'design-build',
+      'construction management',
+      'roofing',
+      'roofing contractor',
+      'electrical contractor',
+      'electrician',
+      'plumbing',
+      'plumbing contractor',
+      'hvac',
+      'hvac contractor',
+      'concrete',
+      'masonry',
+      'site work',
+      'excavation',
+      'civil construction',
+      'painting contractor',
+      'drywall',
+      'flooring contractor',
+      'framing',
+      'carpentry',
+      'landscaping',
+      'paving',
+      'demolition',
+      'fire protection contractor',
+      'insulation contractor',
+      'window and door contractor',
+      'pool construction',
+      'home builder',
+      'remodeling contractor',
+    ],
+  },
+  {
+    match:
+      /health|medical|hospital|clinic|dental|pharma|biotech|nursing|home\s*health|physician|urgent\s*care|outpatient|assisted\s*living/,
+    keywords: [
+      'healthcare',
+      'medical',
+      'hospital',
+      'clinic',
+      'physician practice',
+      'dental',
+      'dental practice',
+      'home health',
+      'nursing home',
+      'assisted living',
+      'pharmacy',
+      'medical device',
+      'behavioral health',
+      'urgent care',
+      'outpatient',
+      'healthcare staffing',
+    ],
+  },
+  {
+    match:
+      /software|saas|tech\b|information\s*tech|\bit\b|cyber|cloud\b|app\s*dev|msp\b|managed\s*it|fintech|healthtech/,
+    keywords: [
+      'software',
+      'saas',
+      'information technology',
+      'it services',
+      'cybersecurity',
+      'cloud services',
+      'software development',
+      'managed it',
+      'msp',
+      'web development',
+      'data analytics',
+      'fintech',
+      'healthtech',
+    ],
+  },
+  {
+    match: /manufactur|factory|industrial\s*product|fabricat|machine\s*shop/,
+    keywords: [
+      'manufacturing',
+      'fabrication',
+      'machine shop',
+      'industrial manufacturing',
+      'metal fabrication',
+      'plastics manufacturing',
+      'electronics manufacturing',
+      'food manufacturing',
+      'contract manufacturing',
+      'assembly',
+    ],
+  },
+  {
+    match: /logistic|warehous|freight|trucking|shipping|supply\s*chain|distribution/,
+    keywords: [
+      'logistics',
+      'trucking',
+      'warehousing',
+      'freight',
+      'distribution',
+      'supply chain',
+      'third party logistics',
+      '3pl',
+      'courier',
+      'last mile delivery',
+    ],
+  },
+  {
+    match: /staffing|recruit|talent\s*acquis|workforce|temp\s*agenc/,
+    keywords: [
+      'staffing',
+      'recruiting',
+      'employment agency',
+      'workforce solutions',
+      'temporary staffing',
+      'executive search',
+      'healthcare staffing',
+      'it staffing',
+      'light industrial staffing',
+    ],
+  },
+  {
+    match: /real\s*estate|propert(?:y|ies)|brokerage|commercial\s*re\b|multifamily/,
+    keywords: [
+      'real estate',
+      'commercial real estate',
+      'property management',
+      'real estate brokerage',
+      'multifamily',
+      'residential real estate',
+      'development',
+      'leasing',
+    ],
+  },
+  {
+    match: /hospitalit|hotel|restaurant|food\s*service|catering|resort/,
+    keywords: [
+      'hospitality',
+      'hotel',
+      'restaurant',
+      'food service',
+      'catering',
+      'resort',
+      'bar and grill',
+      'quick service restaurant',
+    ],
+  },
+  {
+    match: /financ|bank|credit\s*union|account|cpa\b|insurance|wealth/,
+    keywords: [
+      'financial services',
+      'banking',
+      'accounting',
+      'cpa firm',
+      'insurance',
+      'insurance agency',
+      'wealth management',
+      'mortgage',
+      'bookkeeping',
+    ],
+  },
+  {
+    match: /legal|law\s*firm|attorney|lawyer/,
+    keywords: [
+      'law firm',
+      'legal services',
+      'attorney',
+      'litigation',
+      'corporate law',
+      'personal injury law',
+    ],
+  },
+  {
+    match: /retail|e-?commerce|store\b|shop\b/,
+    keywords: [
+      'retail',
+      'ecommerce',
+      'consumer retail',
+      'specialty retail',
+      'wholesale',
+    ],
+  },
+  {
+    match: /education|school|university|training|edtech/,
+    keywords: [
+      'education',
+      'private school',
+      'tutoring',
+      'corporate training',
+      'edtech',
+      'childcare',
+    ],
+  },
+];
+
+/**
+ * Industry / segment keywords inferred from a free-text brief.
+ * Parent-sector asks (e.g. "construction companies") expand to the full umbrella
+ * of related trades/segments. Specific asks (e.g. "roofing") still add the parent
+ * umbrella so related firms can surface.
+ */
 export function inferIndustryKeywords(brief: string, industryField?: string): string[] {
   const b = `${brief || ''} ${industryField || ''}`.toLowerCase();
   const out = new Set<string>();
   if (industryField?.trim()) out.add(industryField.trim());
 
-  const pairs: Array<[RegExp, string[]]> = [
-    [
-      /construct|general\s*contract|gc\b|builder|building/,
-      [
-        'construction',
-        'general contractor',
-        'commercial construction',
-        'residential construction',
-        'building contractor',
-      ],
-    ],
-    [/roof/, ['roofing', 'roofing contractor']],
-    [/electric/, ['electrical contractor', 'electrician']],
-    [/plumb/, ['plumbing', 'plumbing contractor']],
-    [/hvac|air\s*condition/, ['hvac', 'hvac contractor']],
-    [/concrete|mason/, ['concrete', 'masonry']],
-    [/site\s*work|excav|grading|civil/, ['civil construction', 'site work', 'excavation']],
-    [/paint/, ['painting contractor']],
-    [/landscape|lawn/, ['landscaping']],
-    [/software|saas|tech/, ['software', 'information technology']],
-    [/health|medical|hospital|clinic/, ['healthcare', 'medical']],
-    [/manufactur|factory/, ['manufacturing']],
-    [/logistic|warehous|freight|trucking/, ['logistics', 'trucking', 'warehousing']],
-    [/staffing|recruit/, ['staffing', 'recruiting']],
-  ];
+  let matchedUmbrella = false;
+  for (const um of INDUSTRY_UMBRELLAS) {
+    if (um.match.test(b)) {
+      matchedUmbrella = true;
+      for (const k of um.keywords) out.add(k);
+    }
+  }
 
-  for (const [re, kws] of pairs) {
+  // Lightweight extras if user named a niche not fully covered above
+  const extras: Array<[RegExp, string[]]> = [
+    [/solar|renewable/, ['solar contractor', 'renewable energy']],
+    [/security\s*system|alarm/, ['security systems', 'low voltage contractor']],
+    [/janitor|cleaning|facility\s*mainten/, ['janitorial', 'facility maintenance']],
+  ];
+  for (const [re, kws] of extras) {
     if (re.test(b)) kws.forEach((k) => out.add(k));
   }
 
-  if (out.size === 0) out.add('construction');
-  return [...out].slice(0, 10);
+  if (!matchedUmbrella && out.size === 0) {
+    // Generic "companies in X" — use remaining free-text nouns lightly
+    out.add('construction');
+  }
+
+  // Enough terms to rotate across discovery batches (focusKw cycles)
+  return [...out].slice(0, 24);
 }
 
 /** Anchor cities for search query rotation in a target geo. */

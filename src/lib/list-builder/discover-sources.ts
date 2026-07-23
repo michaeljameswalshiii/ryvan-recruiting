@@ -306,25 +306,35 @@ function buildCompletionPrompts(opts: {
 
   const sizeRule = honorCap
     ? `Prefer under ~${employeeCap} employees when known.`
-    : 'Prefer small-to-mid firms (roughly under 500 employees). Skip national GCs and multi-state chains.';
+    : 'Prefer small-to-mid firms (roughly under 500 employees). Skip national multi-state chains.';
 
-  const system = `You list real construction / contracting companies that operate in ${targetGeo}, Florida.
+  const umbrella = keywords.length
+    ? keywords.slice(0, 12).join(', ')
+    : 'businesses matching the brief';
+  const batchFocus = focusKw || keywords[0] || 'local business';
+
+  const system = `You list real companies that operate in ${targetGeo}, Florida, matching this industry umbrella:
+${umbrella}
+
 Return ONLY a JSON array (no markdown). Each object:
-{"companyName":"...","website":"https://...","city":"...","state":"FL"}
+{"companyName":"...","website":"https://...","city":"...","state":"FL","industry":"..."}
 
 Rules:
+- Cover the FULL umbrella: not only the single word in the brief — include related segments/trades listed above
+- This batch especially emphasize: ${batchFocus}
 - Florida-local / regional only — NO firms with offices outside Florida (even if HQ is in Florida)
-- Prefer small-to-medium specialty contractors, regional GCs, and builders — not national giants
+- Prefer small-to-medium firms — not national giants
 - website: official domain if known; omit if unsure (do not invent random domains)
 - NEVER invent phone or email
 - Max ${need} companies. Do not include: ${excludeList}
 - ${sizeRule}
-- Focus industry: ${keywords.slice(0, 4).join(', ') || 'construction'} near ${focusCity}
 - Cities: ${anchors.slice(0, 8).join(', ')}`;
 
   const user = `Brief: ${job.brief}
 Location: ${targetGeo} (Florida-local SMB only — no multi-state footprints).
-Batch ${batch}. Need ${need} NEW companies (${already}/${target} already kept).
+Industry umbrella (all related segments OK): ${umbrella}
+Batch ${batch} focus: ${batchFocus} near ${focusCity}.
+Need ${need} NEW companies (${already}/${target} already kept).
 JSON array only.`;
 
   return { system, user };
