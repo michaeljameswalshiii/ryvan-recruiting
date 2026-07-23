@@ -6,7 +6,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import type { ReportingStats, PeriodKey, AttentionItem } from '@/lib/aws/reporting';
 import {
@@ -34,44 +34,18 @@ import {
   ArrowDownRight,
   Minus,
   UserRound,
-  X,
 } from 'lucide-react';
 import { DeskNextActions } from '@/components/desk/DeskNextActions';
-
-/** Persist dismissed "Needs attention" rows (browser-local, 30-day expiry). */
-const DISMISS_STORAGE_KEY = 'trio-needs-attention-dismissed-v1';
-const DISMISS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-
-type DismissMap = Record<string, number>; // key → dismissedAt ms
+import { DismissRowButton } from '@/components/ui/DismissRowButton';
+import { useDismissedItems } from '@/hooks/useDismissedItems';
+import { buildDismissKey } from '@/lib/ui/dismissed-items';
 
 function attentionDismissKey(item: AttentionItem): string {
-  return `${item.type}:${item.id}`;
-}
-
-function loadDismissed(): DismissMap {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(DISMISS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as DismissMap;
-    if (!parsed || typeof parsed !== 'object') return {};
-    const now = Date.now();
-    const fresh: DismissMap = {};
-    for (const [k, ts] of Object.entries(parsed)) {
-      if (typeof ts === 'number' && now - ts < DISMISS_TTL_MS) fresh[k] = ts;
-    }
-    return fresh;
-  } catch {
-    return {};
-  }
-}
-
-function saveDismissed(map: DismissMap) {
-  try {
-    localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    /* ignore quota */
-  }
+  return buildDismissKey({
+    feed: 'attention',
+    entityType: item.type,
+    entityId: item.id,
+  });
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
@@ -134,45 +108,37 @@ export function DashboardHome({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [dismissed, setDismissed] = useState<DismissMap>({});
-  const [dismissHydrated, setDismissHydrated] = useState(false);
+  const {
+    hydrated: dismissHydrated,
+    dismiss,
+    clearFeed,
+    isHidden,
+  } = useDismissedItems();
 
-  useEffect(() => {
-    setDismissed(loadDismissed());
-    setDismissHydrated(true);
-  }, []);
-
-  const dismissItem = useCallback((item: AttentionItem) => {
-    const key = attentionDismissKey(item);
-    setDismissed((prev) => {
-      const next = { ...prev, [key]: Date.now() };
-      saveDismissed(next);
-      return next;
-    });
-  }, []);
+  const dismissItem = useCallback(
+    (item: AttentionItem) => {
+      dismiss(attentionDismissKey(item));
+    },
+    [dismiss]
+  );
 
   const clearDismissed = useCallback(() => {
-    setDismissed({});
-    try {
-      localStorage.removeItem(DISMISS_STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+    clearFeed('attention');
+  }, [clearFeed]);
 
   const visibleAttention = useMemo(() => {
     if (!dismissHydrated) return stats.needsAttention.slice(0, 8);
     return stats.needsAttention
-      .filter((item) => !dismissed[attentionDismissKey(item)])
+      .filter((item) => !isHidden(attentionDismissKey(item)))
       .slice(0, 8);
-  }, [stats.needsAttention, dismissed, dismissHydrated]);
+  }, [stats.needsAttention, dismissHydrated, isHidden]);
 
   const dismissedCount = useMemo(() => {
     if (!dismissHydrated) return 0;
-    return stats.needsAttention.filter(
-      (item) => !!dismissed[attentionDismissKey(item)]
+    return stats.needsAttention.filter((item) =>
+      isHidden(attentionDismissKey(item))
     ).length;
-  }, [stats.needsAttention, dismissed, dismissHydrated]);
+  }, [stats.needsAttention, dismissHydrated, isHidden]);
 
   const setPeriod = (key: PeriodKey) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -485,19 +451,11 @@ export function DashboardHome({
                         </div>
                       </div>
                     </Link>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        dismissItem(item);
-                      }}
+                    <DismissRowButton
+                      label={`Dismiss ${item.title}`}
+                      onDismiss={() => dismissItem(item)}
                       className="mt-1 shrink-0 rounded-lg p-1.5 text-gray-400 opacity-70 hover:bg-gray-200/80 hover:text-gray-700 hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
-                      title="Dismiss — hide for 30 days (no next step needed)"
-                      aria-label={`Dismiss ${item.title}`}
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
+                    />
                   </div>
                 );
               })

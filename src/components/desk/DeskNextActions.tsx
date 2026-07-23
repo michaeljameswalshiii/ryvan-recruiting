@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Loader2,
@@ -11,6 +11,9 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DismissRowButton } from "@/components/ui/DismissRowButton";
+import { useDismissedItems } from "@/hooks/useDismissedItems";
+import { buildDismissKey } from "@/lib/ui/dismissed-items";
 import { toast } from "sonner";
 
 type NextAction = {
@@ -31,6 +34,16 @@ type Props = {
   limit?: number;
 };
 
+function deskActionKey(a: NextAction): string {
+  return buildDismissKey({
+    feed: "desk",
+    entityType: "candidate",
+    entityId: a.candidateId || a.meta?.enrollmentId?.toString() || a.label,
+    actionKind: a.kind,
+    extra: a.jobId || undefined,
+  });
+}
+
 export function DeskNextActions({ compact, className, limit = 12 }: Props) {
   const [loading, setLoading] = useState(true);
   const [actions, setActions] = useState<NextAction[]>([]);
@@ -40,6 +53,7 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
     urgent: number;
   } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const { dismiss, clearFeed, isHidden, hydrated } = useDismissedItems();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,7 +63,6 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
       });
       const data = await res.json();
       if (!res.ok) {
-        // Silent fail on compact strip
         if (!compact) toast.error(data.error || "Failed to load desk actions");
         return;
       }
@@ -65,6 +78,16 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const visibleActions = useMemo(() => {
+    if (!hydrated) return actions;
+    return actions.filter((a) => !isHidden(deskActionKey(a)));
+  }, [actions, hydrated, isHidden]);
+
+  const dismissedCount = useMemo(() => {
+    if (!hydrated) return 0;
+    return actions.filter((a) => isHidden(deskActionKey(a))).length;
+  }, [actions, hydrated, isHidden]);
 
   async function runDue(enrollmentId?: string) {
     setBusy(enrollmentId || "batch");
@@ -101,7 +124,11 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
     }
   }
 
-  async function quickEnroll(candidateId: string, jobId?: string, name?: string) {
+  async function quickEnroll(
+    candidateId: string,
+    jobId?: string,
+    name?: string
+  ) {
     setBusy(`enroll-${candidateId}`);
     try {
       const res = await fetch("/api/sequences/quick-enroll", {
@@ -121,7 +148,9 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
       }
       toast.success(
         `Enrolled ${name || "candidate"}${
-          data.firstStepRan && data.runResult?.success ? " · first step sent" : ""
+          data.firstStepRan && data.runResult?.success
+            ? " · first step sent"
+            : ""
         }`
       );
       await load();
@@ -132,7 +161,7 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
     }
   }
 
-  if (compact && !loading && actions.length === 0) {
+  if (compact && !loading && visibleActions.length === 0 && dismissedCount === 0) {
     return null;
   }
 
@@ -155,7 +184,31 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
             </span>
           )}
         </div>
-        <div className="flex gap-1 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
+          {dismissedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => clearFeed("desk")}
+              className="text-[11px] font-medium text-slate-500 hover:text-slate-800 hover:underline px-1"
+              title="Show desk items you dismissed"
+            >
+              Restore {dismissedCount}
+            </button>
+          )}
+          {visibleActions.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                for (const a of visibleActions) {
+                  dismiss(deskActionKey(a));
+                }
+              }}
+              className="text-[11px] font-medium text-slate-500 hover:text-slate-800 hover:underline px-1"
+              title="Dismiss all visible desk actions for 30 days"
+            >
+              Dismiss
+            </button>
+          )}
           {(summary?.due || 0) > 0 && (
             <Button
               type="button"
@@ -201,15 +254,32 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
         </p>
       )}
 
-      {!loading && actions.length > 0 && (
-        <ul className={`space-y-1.5 ${compact ? "max-h-36" : "max-h-64"} overflow-y-auto`}>
-          {actions.map((a, i) => {
+      {!loading && actions.length > 0 && visibleActions.length === 0 && (
+        <div className="text-xs text-muted-foreground py-1 flex items-center gap-2">
+          <span>All desk actions dismissed for now.</span>
+          {dismissedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => clearFeed("desk")}
+              className="font-medium text-blue-600 hover:underline"
+            >
+              Restore {dismissedCount}
+            </button>
+          )}
+        </div>
+      )}
+
+      {!loading && visibleActions.length > 0 && (
+        <ul
+          className={`space-y-1.5 ${compact ? "max-h-36" : "max-h-64"} overflow-y-auto`}
+        >
+          {visibleActions.map((a, i) => {
             const enrollId = a.meta?.enrollmentId as string | undefined;
             const jobTitle = a.meta?.jobTitle as string | undefined;
             return (
               <li
                 key={`${a.candidateId}-${a.kind}-${i}`}
-                className="flex items-center justify-between gap-2 rounded-lg border border-amber-100/80 bg-white/80 px-2.5 py-1.5 text-xs"
+                className="group flex items-center justify-between gap-2 rounded-lg border border-amber-100/80 bg-white/80 px-2.5 py-1.5 text-xs"
               >
                 <div className="min-w-0">
                   <div className="font-medium text-slate-800 truncate">
@@ -259,6 +329,12 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
                       <ChevronRight className="h-3.5 w-3.5" />
                     </Link>
                   )}
+                  <DismissRowButton
+                    alwaysVisible
+                    label={`Dismiss ${a.candidateName || "action"}`}
+                    onDismiss={() => dismiss(deskActionKey(a))}
+                    className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  />
                 </div>
               </li>
             );

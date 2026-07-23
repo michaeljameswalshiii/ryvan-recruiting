@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Loader2,
   Zap,
@@ -11,6 +11,9 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DismissRowButton } from "@/components/ui/DismissRowButton";
+import { useDismissedItems } from "@/hooks/useDismissedItems";
+import { buildDismissKey } from "@/lib/ui/dismissed-items";
 import { toast } from "sonner";
 
 type NextAction = {
@@ -39,6 +42,16 @@ function kindColor(kind: string) {
   return "bg-slate-50 border-slate-200 text-slate-800";
 }
 
+function jobNextKey(jobId: string, a: NextAction): string {
+  return buildDismissKey({
+    feed: "job_next",
+    entityType: a.candidateId ? "candidate" : "job",
+    entityId: a.candidateId || jobId,
+    actionKind: a.kind,
+    extra: jobId,
+  });
+}
+
 export function NextActionPanel({ jobId, className }: Props) {
   const [loading, setLoading] = useState(true);
   const [actions, setActions] = useState<NextAction[]>([]);
@@ -50,6 +63,7 @@ export function NextActionPanel({ jobId, className }: Props) {
   } | null>(null);
   const [jobAction, setJobAction] = useState<NextAction | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const { dismiss, clearFeed, isHidden, hydrated } = useDismissedItems();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -177,7 +191,26 @@ export function NextActionPanel({ jobId, className }: Props) {
     }
   }
 
-  const top = actions.filter((a) => a.kind !== "none").slice(0, 12);
+  const top = useMemo(
+    () => actions.filter((a) => a.kind !== "none").slice(0, 12),
+    [actions]
+  );
+
+  const visibleTop = useMemo(() => {
+    if (!hydrated) return top;
+    return top.filter((a) => !isHidden(jobNextKey(jobId, a)));
+  }, [top, hydrated, isHidden, jobId]);
+
+  const dismissedCount = useMemo(() => {
+    if (!hydrated) return 0;
+    return top.filter((a) => isHidden(jobNextKey(jobId, a))).length;
+  }, [top, hydrated, isHidden, jobId]);
+
+  const jobActionKey = jobAction
+    ? jobNextKey(jobId, { ...jobAction, candidateId: undefined })
+    : "";
+  const showJobAction =
+    !!jobAction && (!hydrated || !isHidden(jobActionKey));
 
   return (
     <section
@@ -197,6 +230,28 @@ export function NextActionPanel({ jobId, className }: Props) {
           )}
         </div>
         <div className="flex items-center gap-1">
+          {dismissedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => clearFeed("job_next")}
+              className="text-[11px] font-medium text-slate-500 hover:text-slate-800 hover:underline px-1"
+            >
+              Restore {dismissedCount}
+            </button>
+          )}
+          {(visibleTop.length > 0 || showJobAction) && (
+            <button
+              type="button"
+              onClick={() => {
+                if (showJobAction && jobAction) dismiss(jobActionKey);
+                for (const a of visibleTop) dismiss(jobNextKey(jobId, a));
+              }}
+              className="text-[11px] font-medium text-slate-500 hover:text-slate-800 hover:underline px-1"
+              title="Dismiss all visible next actions for 30 days"
+            >
+              Dismiss
+            </button>
+          )}
           <Button
             type="button"
             size="sm"
@@ -235,32 +290,57 @@ export function NextActionPanel({ jobId, className }: Props) {
           </div>
         )}
 
-        {!loading && jobAction && (
+        {!loading && showJobAction && jobAction && (
           <div
-            className={`rounded-xl border px-3 py-2 text-sm ${kindColor(jobAction.kind)}`}
+            className={`group rounded-xl border px-3 py-2 text-sm ${kindColor(jobAction.kind)}`}
           >
-            <div className="font-medium flex items-center gap-1">
-              <UserPlus className="h-3.5 w-3.5" />
-              {jobAction.label}
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="font-medium flex items-center gap-1">
+                  <UserPlus className="h-3.5 w-3.5" />
+                  {jobAction.label}
+                </div>
+                <p className="text-xs opacity-90 mt-0.5">{jobAction.reason}</p>
+              </div>
+              <DismissRowButton
+                alwaysVisible
+                label="Dismiss job action"
+                onDismiss={() => dismiss(jobActionKey)}
+                className="shrink-0 rounded p-1 opacity-70 hover:opacity-100 hover:bg-black/5"
+              />
             </div>
-            <p className="text-xs opacity-90 mt-0.5">{jobAction.reason}</p>
           </div>
         )}
 
-        {!loading && top.length === 0 && !jobAction && (
+        {!loading && visibleTop.length === 0 && !showJobAction && (
           <div className="text-sm text-muted-foreground text-center py-6 flex flex-col items-center gap-1">
             <AlertCircle className="h-4 w-4" />
-            No urgent actions — pipeline looks calm.
+            {top.length > 0 || jobAction ? (
+              <>
+                <span>All next actions dismissed for now.</span>
+                {dismissedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => clearFeed("job_next")}
+                    className="text-xs font-medium text-blue-600 hover:underline"
+                  >
+                    Restore {dismissedCount}
+                  </button>
+                )}
+              </>
+            ) : (
+              "No urgent actions — pipeline looks calm."
+            )}
           </div>
         )}
 
         {!loading &&
-          top.map((a, i) => {
+          visibleTop.map((a, i) => {
             const enrollId = a.meta?.enrollmentId as string | undefined;
             return (
               <div
                 key={`${a.candidateId}-${a.kind}-${i}`}
-                className={`rounded-xl border px-3 py-2 ${kindColor(a.kind)}`}
+                className={`group rounded-xl border px-3 py-2 ${kindColor(a.kind)}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -275,7 +355,7 @@ export function NextActionPanel({ jobId, className }: Props) {
                       {a.reason}
                     </p>
                   </div>
-                  <div className="flex flex-col gap-1 shrink-0">
+                  <div className="flex flex-col gap-1 shrink-0 items-end">
                     {a.kind === "send_due_step" && enrollId && (
                       <Button
                         type="button"
@@ -351,6 +431,12 @@ export function NextActionPanel({ jobId, className }: Props) {
                           Nudge
                         </Button>
                       )}
+                    <DismissRowButton
+                      alwaysVisible
+                      label={`Dismiss ${a.candidateName || "action"}`}
+                      onDismiss={() => dismiss(jobNextKey(jobId, a))}
+                      className="shrink-0 rounded p-1 opacity-70 hover:opacity-100 hover:bg-black/5"
+                    />
                   </div>
                 </div>
               </div>
