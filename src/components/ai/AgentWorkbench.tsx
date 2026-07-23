@@ -30,6 +30,11 @@ export type ListBuilderJobDto = {
   brief: string;
   geography: string;
   targetSize: number;
+  /** private = owner only; public = shared with all users on the tenant */
+  visibility?: 'private' | 'public';
+  userId?: string;
+  /** True when current user owns the job (from API) */
+  isOwner?: boolean;
   progress: {
     found: number;
     target: number;
@@ -103,6 +108,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
   const [brief, setBrief] = useState('');
   const [geography, setGeography] = useState('United States');
   const [targetSize, setTargetSize] = useState(50);
+  const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [seedCsv, setSeedCsv] = useState('');
   const [showCsv, setShowCsv] = useState(false);
 
@@ -180,14 +186,18 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
     };
   }, [load]);
 
-  const action = async (jobId: string, act: string) => {
+  const action = async (
+    jobId: string,
+    act: string,
+    extra?: Record<string, unknown>
+  ) => {
     setBusyId(jobId);
     try {
       const res = await fetch(`/api/list-builder/${jobId}`, {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: act }),
+        body: JSON.stringify({ action: act, ...extra }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) toast.error(data.error || 'Action failed');
@@ -212,6 +222,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
           brief: brief.trim() || 'Seed list enrichment',
           geography: geography.trim() || 'United States',
           targetSize,
+          visibility,
           seedCsv: seedCsv.trim() || undefined,
         }),
       });
@@ -219,10 +230,15 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
       if (!res.ok) {
         toast.error(data.error || 'Could not start agent');
       } else {
-        toast.success('Agent launched — keep working, we’ll notify when ready');
+        toast.success(
+          visibility === 'public'
+            ? 'Agent launched — list is public to your team'
+            : 'Agent launched — keep working, we’ll notify when ready'
+        );
         setBrief('');
         setSeedCsv('');
         setShowCsv(false);
+        setVisibility('private');
         await load();
       }
     } finally {
@@ -300,6 +316,40 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                 className="w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-sm text-white outline-none focus:border-violet-400/40"
               />
             </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">
+              Sharing
+            </label>
+            <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-white/10 bg-white/5 p-1">
+              <button
+                type="button"
+                onClick={() => setVisibility('private')}
+                className={`rounded-md px-2 py-1.5 text-xs font-medium transition ${
+                  visibility === 'private'
+                    ? 'bg-violet-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Private
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibility('public')}
+                className={`rounded-md px-2 py-1.5 text-xs font-medium transition ${
+                  visibility === 'public'
+                    ? 'bg-violet-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Public
+              </button>
+            </div>
+            <p className="mt-1 text-[10px] text-slate-500">
+              {visibility === 'public'
+                ? 'Any teammate on your tenant can view and import this list.'
+                : 'Only you can see this list.'}
+            </p>
           </div>
           {!isCompact && (
             <button
@@ -419,6 +469,16 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                         >
                           {meta.label}
                         </span>
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${
+                            j.visibility === 'public'
+                              ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/25'
+                              : 'bg-slate-500/15 text-slate-400 ring-slate-500/20'
+                          }`}
+                        >
+                          {j.visibility === 'public' ? 'Public' : 'Private'}
+                          {j.isOwner === false ? ' · team' : ''}
+                        </span>
                         <span className="text-[10px] font-medium text-slate-300">
                           {found} kept · {researched} researched · target {target}
                         </span>
@@ -453,7 +513,8 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                   </div>
 
                   <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                    {(j.status === 'running' || j.status === 'queued') && (
+                    {j.isOwner !== false &&
+                      (j.status === 'running' || j.status === 'queued') && (
                       <Button
                         size="sm"
                         variant="ghost"
@@ -464,7 +525,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                         <Pause className="mr-1 h-3 w-3" /> Pause
                       </Button>
                     )}
-                    {j.status === 'paused' && (
+                    {j.isOwner !== false && j.status === 'paused' && (
                       <Button
                         size="sm"
                         variant="ghost"
@@ -475,7 +536,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                         <Play className="mr-1 h-3 w-3" /> Resume
                       </Button>
                     )}
-                    {isActive && (
+                    {j.isOwner !== false && isActive && (
                       <Button
                         size="sm"
                         variant="ghost"
@@ -484,6 +545,23 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                         onClick={() => void action(j.id, 'cancel')}
                       >
                         <X className="mr-1 h-3 w-3" /> Cancel
+                      </Button>
+                    )}
+                    {j.isOwner !== false && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 rounded-lg px-2 text-[11px] text-slate-400 hover:bg-white/10 hover:text-white"
+                        disabled={busyId === j.id}
+                        onClick={() =>
+                          void action(j.id, 'set_visibility', {
+                            visibility:
+                              j.visibility === 'public' ? 'private' : 'public',
+                          })
+                        }
+                        title="Toggle private / public sharing with your team"
+                      >
+                        {j.visibility === 'public' ? 'Make private' : 'Share public'}
                       </Button>
                     )}
                     {(isDone || found > 0 || j.status === 'cancelled') && (

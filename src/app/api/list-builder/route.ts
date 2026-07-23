@@ -62,7 +62,12 @@ export async function GET(request: NextRequest) {
   const jobs = await listJobsForUser(session.tenantId, session.userId, {
     includeResults: full,
   });
-  return NextResponse.json({ jobs });
+  // Annotate ownership so UI can hide pause/cancel on shared public lists
+  const annotated = jobs.map((j) => ({
+    ...j,
+    isOwner: j.userId === session.userId,
+  }));
+  return NextResponse.json({ jobs: annotated });
 }
 
 export async function POST(request: NextRequest) {
@@ -85,6 +90,16 @@ export async function POST(request: NextRequest) {
     seedRows = [...seedRows, ...parseSeedCsv(body.seedCsv)];
   }
 
+  const visibilityRaw = String(body.visibility || body.sharing || '')
+    .toLowerCase()
+    .trim();
+  const visibility =
+    visibilityRaw === 'public' || visibilityRaw === 'shared'
+      ? 'public'
+      : visibilityRaw === 'private'
+        ? 'private'
+        : undefined;
+
   const { job, error } = await createListBuilderJob(
     session.tenantId,
     session.userId,
@@ -93,6 +108,7 @@ export async function POST(request: NextRequest) {
       industry: body.industry,
       geography: body.geography,
       targetSize: body.targetSize ? Number(body.targetSize) : undefined,
+      visibility,
       seedRows,
     }
   );

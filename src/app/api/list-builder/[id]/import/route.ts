@@ -5,7 +5,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/server-auth';
-import { getListBuilderJob } from '@/lib/db/repositories/list-builder-repository';
+import {
+  canViewListBuilderJob,
+  getListBuilderJob,
+} from '@/lib/db/repositories/list-builder-repository';
 import { importListBuilderRows } from '@/lib/list-builder/import';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +24,8 @@ export async function POST(
   }
   const { id } = await params;
   const job = await getListBuilderJob(session.tenantId, id);
-  if (!job || job.userId !== session.userId) {
+  // Public lists: any same-tenant teammate may import selected rows into their CRM
+  if (!job || !canViewListBuilderJob(job, session.userId)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 

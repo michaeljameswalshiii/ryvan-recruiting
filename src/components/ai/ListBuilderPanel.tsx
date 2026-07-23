@@ -28,6 +28,8 @@ export type ListBuilderJobDto = {
   brief: string;
   geography: string;
   targetSize: number;
+  visibility?: 'private' | 'public';
+  isOwner?: boolean;
   progress: {
     found: number;
     target: number;
@@ -64,6 +66,7 @@ export function ListBuilderPanel() {
   const [brief, setBrief] = useState('');
   const [geography, setGeography] = useState('United States');
   const [targetSize, setTargetSize] = useState(50);
+  const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [seedCsv, setSeedCsv] = useState('');
 
   const load = useCallback(async (opts?: { quiet?: boolean }) => {
@@ -186,6 +189,7 @@ export function ListBuilderPanel() {
           brief: brief.trim() || 'Seed list enrichment',
           geography: geography.trim() || 'United States',
           targetSize,
+          visibility,
           seedCsv: seedCsv.trim() || undefined,
         }),
       });
@@ -193,10 +197,15 @@ export function ListBuilderPanel() {
       if (!res.ok) {
         toast.error(data.error || 'Failed to start');
       } else {
-        toast.success('List builder started — you can keep working');
+        toast.success(
+          visibility === 'public'
+            ? 'List builder started — shared with your team'
+            : 'List builder started — you can keep working'
+        );
         setShowStart(false);
         setBrief('');
         setSeedCsv('');
+        setVisibility('private');
         await load();
         if (data.job?.id) setExpandedId(data.job.id);
       }
@@ -323,6 +332,38 @@ export function ListBuilderPanel() {
             </div>
           </div>
           <div>
+            <label className="text-[11px] text-gray-600 block mb-1">Sharing</label>
+            <div className="grid grid-cols-2 gap-1 rounded-md border border-gray-200 p-0.5 bg-gray-50">
+              <button
+                type="button"
+                onClick={() => setVisibility('private')}
+                className={`rounded px-2 py-1.5 text-xs font-medium ${
+                  visibility === 'private'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500'
+                }`}
+              >
+                Private
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibility('public')}
+                className={`rounded px-2 py-1.5 text-xs font-medium ${
+                  visibility === 'public'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500'
+                }`}
+              >
+                Public
+              </button>
+            </div>
+            <p className="mt-1 text-[10px] text-gray-500">
+              {visibility === 'public'
+                ? 'Teammates on your tenant can view and import this list.'
+                : 'Only you can see this list.'}
+            </p>
+          </div>
+          <div>
             <label className="text-[11px] text-gray-600 flex items-center gap-1">
               <Upload className="h-3 w-3" /> Optional CSV seed (company, website required)
             </label>
@@ -390,11 +431,23 @@ export function ListBuilderPanel() {
                       }
                     }}
                   >
-                    <span
-                      className={`mt-0.5 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize ${statusColor(j.status)}`}
-                    >
-                      {j.status.replace(/_/g, ' ')}
-                    </span>
+                    <div className="mt-0.5 flex flex-col gap-1 shrink-0">
+                      <span
+                        className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize ${statusColor(j.status)}`}
+                      >
+                        {j.status.replace(/_/g, ' ')}
+                      </span>
+                      <span
+                        className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                          j.visibility === 'public'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : 'bg-slate-50 text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        {j.visibility === 'public' ? 'Public' : 'Private'}
+                        {j.isOwner === false ? ' · team' : ''}
+                      </span>
+                    </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium text-gray-900 truncate">
                         {j.brief || 'List job'}
@@ -422,7 +475,8 @@ export function ListBuilderPanel() {
                   {open && (
                     <div className="px-3 pb-3 space-y-2">
                       <div className="flex flex-wrap gap-1.5">
-                        {(j.status === 'running' || j.status === 'queued') && (
+                        {j.isOwner !== false &&
+                          (j.status === 'running' || j.status === 'queued') && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -433,7 +487,7 @@ export function ListBuilderPanel() {
                             <Pause className="h-3 w-3 mr-1" /> Pause
                           </Button>
                         )}
-                        {j.status === 'paused' && (
+                        {j.isOwner !== false && j.status === 'paused' && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -444,7 +498,7 @@ export function ListBuilderPanel() {
                             <Play className="h-3 w-3 mr-1" /> Resume
                           </Button>
                         )}
-                        {ACTIVE.has(j.status) && (
+                        {j.isOwner !== false && ACTIVE.has(j.status) && (
                           <Button
                             size="sm"
                             variant="outline"

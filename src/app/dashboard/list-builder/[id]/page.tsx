@@ -53,6 +53,8 @@ type Job = {
   brief: string;
   geography: string;
   targetSize: number;
+  visibility?: 'private' | 'public';
+  isOwner?: boolean;
   progress: {
     found: number;
     target: number;
@@ -307,6 +309,16 @@ export default function ListBuilderResultsPage() {
                 <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-800 ring-1 ring-violet-200">
                   <Sparkles className="h-3 w-3" />
                   {job.status.replace(/_/g, ' ')}
+                </span>
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ring-1 ${
+                    job.visibility === 'public'
+                      ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                      : 'bg-slate-50 text-slate-600 ring-slate-200'
+                  }`}
+                >
+                  {job.visibility === 'public' ? 'Public · team' : 'Private'}
+                  {job.isOwner === false ? ' (shared with you)' : ''}
                 </span>
               </div>
               <p className="mt-0.5 line-clamp-1 text-sm text-slate-500">

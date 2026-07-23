@@ -17,6 +17,14 @@ export type ListBuilderStatus = (typeof LIST_BUILDER_STATUSES)[number];
 
 export type ListBuilderNotifyChannel = 'in_app' | 'email';
 
+/**
+ * private — only the owner (userId) can see the job in their queue and open results.
+ * public  — any team member on the same tenant can see the list, open results, and import.
+ * Control actions (pause/cancel/delete) stay owner-only.
+ */
+export const LIST_BUILDER_VISIBILITIES = ['private', 'public'] as const;
+export type ListBuilderVisibility = (typeof LIST_BUILDER_VISIBILITIES)[number];
+
 export interface ListBuilderSeedRow {
   companyName: string;
   website?: string;
@@ -77,6 +85,10 @@ export interface ListBuilderJob {
   userId: string;
   type: 'list_builder';
   status: ListBuilderStatus;
+  /**
+   * Sharing within the tenant. Defaults to private for older jobs missing the field.
+   */
+  visibility: ListBuilderVisibility;
   /** User free-text brief */
   brief: string;
   industry?: string;
@@ -124,6 +136,8 @@ export interface CreateListBuilderInput {
   industry?: string;
   geography?: string;
   targetSize?: number;
+  /** private (default) or public (shared with all users on the tenant) */
+  visibility?: ListBuilderVisibility;
   seedRows?: ListBuilderSeedRow[];
   notifyChannels?: ListBuilderNotifyChannel[];
 }
@@ -132,6 +146,8 @@ export interface CreateListBuilderInput {
 export const LIST_BUILDER_DEFAULTS = {
   geography: 'United States',
   targetSize: 50,
+  /** Default list sharing — private unless user opts into public */
+  visibility: 'private' as ListBuilderVisibility,
   maxConcurrentPerUser: 10,
   timeoutMs: 2 * 60 * 60 * 1000, // 2 hours
   /**

@@ -5,6 +5,8 @@
 
 import type { ToolContext, ToolResult } from './types';
 import {
+  canManageListBuilderJob,
+  canViewListBuilderJob,
   createListBuilderJob,
   getListBuilderJob,
   listJobsForUser,
@@ -36,6 +38,13 @@ export async function executeStartListBuilder(
 
   const targetSize = p.target_size ?? p.targetSize;
   const geography = str(p.geography) || str(p.geo) || LIST_BUILDER_DEFAULTS.geography;
+  const visRaw = str(p.visibility || p.sharing).toLowerCase();
+  const visibility =
+    visRaw === 'public' || visRaw === 'shared'
+      ? 'public'
+      : visRaw === 'private'
+        ? 'private'
+        : undefined;
 
   const { job, error } = await createListBuilderJob(
     context.tenantId,
@@ -48,6 +57,7 @@ export async function executeStartListBuilder(
         targetSize != null && targetSize !== ''
           ? Number(targetSize)
           : LIST_BUILDER_DEFAULTS.targetSize,
+      visibility,
     }
   );
   if (error || !job) {
@@ -91,7 +101,7 @@ export async function executeListBuilderStatus(
   const jobId = str(p.job_id) || str(p.jobId) || str(p.id);
   if (jobId) {
     const job = await getListBuilderJob(context.tenantId, jobId);
-    if (!job || job.userId !== context.userId) {
+    if (!job || !canViewListBuilderJob(job, context.userId)) {
       return { success: false, error: 'Job not found' };
     }
     return {
@@ -115,9 +125,11 @@ export async function executeListBuilderStatus(
       jobs: jobs.slice(0, 10).map((j) => ({
         id: j.id,
         status: j.status,
+        visibility: j.visibility || 'private',
         brief: j.brief.slice(0, 80),
         found: j.results.length,
         target: j.targetSize,
+        owner: j.userId === context.userId ? 'you' : 'teammate',
       })),
     },
   };
@@ -137,8 +149,8 @@ export async function executeListBuilderControl(
     return { success: false, error: 'job_id and action (pause|resume|cancel) required' };
   }
   const job = await getListBuilderJob(context.tenantId, jobId);
-  if (!job || job.userId !== context.userId) {
-    return { success: false, error: 'Job not found' };
+  if (!job || !canManageListBuilderJob(job, context.userId)) {
+    return { success: false, error: 'Job not found or not owned by you' };
   }
   if (action === 'pause') {
     await setJobStatus(context.tenantId, jobId, 'paused');
@@ -172,13 +184,19 @@ export const LIST_BUILDER_TOOLS = [
         industry: { type: 'string' },
         geography: { type: 'string', description: 'Default United States' },
         target_size: { type: 'number', description: 'How many companies (default 50, max 50)' },
+        visibility: {
+          type: 'string',
+          description:
+            'private (default, only you) or public (shared with all teammates on the same tenant)',
+        },
       },
       required: ['brief'],
     },
   },
   {
     name: 'list_builder_status',
-    description: 'List the user list-builder jobs or get one job by job_id (progress + sample rows).',
+    description:
+      'List list-builder jobs visible to you (own + public team lists) or get one job by job_id.',
     execute: executeListBuilderStatus,
     schema: {
       type: 'object',

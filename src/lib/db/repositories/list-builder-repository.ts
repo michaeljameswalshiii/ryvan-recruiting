@@ -3,7 +3,8 @@
  *
  * Keys:
  *   lb-job#${tenantId}#${jobId}
- *   lb-index#${tenantId}#${userId}
+ *   lb-index#${tenantId}#${userId}     — per-user private + owned jobs
+ *   lb-public#${tenantId}              — job ids shared with the whole tenant
  *
  * @serverOnly
  */
@@ -14,6 +15,7 @@ import type {
   ListBuilderJob,
   ListBuilderResultRow,
   ListBuilderStatus,
+  ListBuilderVisibility,
 } from '../../schemas/list-builder';
 import { LIST_BUILDER_DEFAULTS } from '../../schemas/list-builder';
 
@@ -31,6 +33,33 @@ function jobKey(tenantId: string, jobId: string): string {
 
 function indexKey(tenantId: string, userId: string): string {
   return `lb-index#${tenantId}#${userId}`;
+}
+
+function publicIndexKey(tenantId: string): string {
+  return `lb-public#${tenantId}`;
+}
+
+/** Normalize missing field on older jobs → private. */
+export function normalizeVisibility(
+  v?: string | null
+): ListBuilderVisibility {
+  return v === 'public' ? 'public' : 'private';
+}
+
+export function canViewListBuilderJob(
+  job: Pick<ListBuilderJob, 'userId' | 'visibility'>,
+  userId: string
+): boolean {
+  if (job.userId === userId) return true;
+  return normalizeVisibility(job.visibility) === 'public';
+}
+
+/** Pause / resume / cancel / delete — owner only. */
+export function canManageListBuilderJob(
+  job: Pick<ListBuilderJob, 'userId'>,
+  userId: string
+): boolean {
+  return job.userId === userId;
 }
 
 interface IdIndex {
@@ -69,6 +98,37 @@ async function addToIndex(
   } satisfies IdIndex);
 }
 
+async function addToPublicIndex(tenantId: string, jobId: string): Promise<void> {
+  const key = publicIndexKey(tenantId);
+  const existing = await getIndex(key);
+  const ids = existing?.ids ? [...existing.ids] : [];
+  if (!ids.includes(jobId)) ids.unshift(jobId);
+  const trimmed = ids.slice(0, 100);
+  await putItem(tableNames.profiles, {
+    id: key,
+    tenant_id: tenantId,
+    type: 'list_builder_public_index',
+    ids: trimmed,
+    updatedAt: new Date().toISOString(),
+  } satisfies IdIndex);
+}
+
+async function removeFromPublicIndex(
+  tenantId: string,
+  jobId: string
+): Promise<void> {
+  const key = publicIndexKey(tenantId);
+  const existing = await getIndex(key);
+  if (!existing?.ids?.length) return;
+  const next = existing.ids.filter((x) => x !== jobId);
+  if (next.length === existing.ids.length) return;
+  await putItem(tableNames.profiles, {
+    ...existing,
+    ids: next,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 function clampTarget(n?: number): number {
   const v = typeof n === 'number' && Number.isFinite(n) ? Math.floor(n) : LIST_BUILDER_DEFAULTS.targetSize;
   return Math.min(Math.max(v, 1), LIST_BUILDER_DEFAULTS.maxResultsCap);
@@ -104,6 +164,9 @@ export async function createListBuilderJob(
   const now = new Date();
   const jobId = generateId();
   const targetSize = clampTarget(input.targetSize);
+  const visibility = normalizeVisibility(
+    input.visibility || LIST_BUILDER_DEFAULTS.visibility
+  );
   // Prefer specific place from the brief (e.g. Brevard County) over generic "United States"
   const { resolveTargetGeography, inferIndustryKeywords } = await import(
     '@/lib/list-builder/geo'
@@ -123,6 +186,7 @@ export async function createListBuilderJob(
     userId,
     type: 'list_builder',
     status: 'queued',
+    visibility,
     brief: brief || 'Seed list enrichment',
     industry: industryFromBrief,
     geography,
@@ -156,6 +220,9 @@ export async function createListBuilderJob(
   const stored = { ...job, jobId };
   await putItem(tableNames.profiles, stored);
   await addToIndex(tenantId, userId, jobId);
+  if (visibility === 'public') {
+    await addToPublicIndex(tenantId, jobId);
+  }
 
   return { job: publicJob(stored as ListBuilderJob & { jobId: string }) };
 }
@@ -169,6 +236,7 @@ function publicJob(
   return {
     ...raw,
     id: shortId,
+    visibility: normalizeVisibility(raw.visibility),
   };
 }
 
@@ -192,48 +260,92 @@ export async function getListBuilderJob(
   }
 }
 
+function summarizeJobForList(
+  j: ListBuilderJob,
+  includeResults: boolean
+): ListBuilderJob {
+  const all = j.results || [];
+  let completeFound = 0;
+  let partialFound = 0;
+  for (const r of all) {
+    const email = (r.email || '').trim();
+    const phone = (r.phone || '').trim();
+    const hasEmail = !!email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const hasPhone = !!phone && (phone.match(/\d/g) || []).length >= 7;
+    if (hasEmail && hasPhone) completeFound++;
+    else if (hasEmail || hasPhone) partialFound++;
+  }
+  const progress = {
+    ...j.progress,
+    found: all.length || j.progress?.found || 0,
+    completeFound: j.progress?.completeFound ?? completeFound,
+    partialFound: j.progress?.partialFound ?? partialFound,
+  };
+  if (includeResults) {
+    return { ...j, progress };
+  }
+  // Lightweight list payload — full results loaded on expand
+  return {
+    ...j,
+    results: all.slice(0, 3),
+    seedRows: [],
+    progress,
+  };
+}
+
+/**
+ * Own jobs + public jobs shared by anyone on the same tenant.
+ */
 export async function listJobsForUser(
   tenantId: string,
   userId: string,
   options?: { includeResults?: boolean }
 ): Promise<ListBuilderJob[]> {
-  const idx = await getIndex(indexKey(tenantId, userId));
-  if (!idx?.ids?.length) return [];
   const includeResults = options?.includeResults === true;
+  const ownIdx = await getIndex(indexKey(tenantId, userId));
+  const pubIdx = await getIndex(publicIndexKey(tenantId));
+  const idOrder: string[] = [];
+  const seen = new Set<string>();
+  for (const jid of [...(ownIdx?.ids || []), ...(pubIdx?.ids || [])]) {
+    if (!jid || seen.has(jid)) continue;
+    seen.add(jid);
+    idOrder.push(jid);
+  }
+  if (idOrder.length === 0) return [];
+
   const jobs: ListBuilderJob[] = [];
-  for (const jid of idx.ids.slice(0, 30)) {
+  for (const jid of idOrder.slice(0, 40)) {
     const j = await getListBuilderJob(tenantId, jid);
     if (!j) continue;
-    const all = j.results || [];
-    let completeFound = 0;
-    let partialFound = 0;
-    for (const r of all) {
-      const email = (r.email || '').trim();
-      const phone = (r.phone || '').trim();
-      const hasEmail = !!email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-      const hasPhone = !!phone && (phone.match(/\d/g) || []).length >= 7;
-      if (hasEmail && hasPhone) completeFound++;
-      else if (hasEmail || hasPhone) partialFound++;
-    }
-    const progress = {
-      ...j.progress,
-      found: all.length || j.progress?.found || 0,
-      completeFound: j.progress?.completeFound ?? completeFound,
-      partialFound: j.progress?.partialFound ?? partialFound,
-    };
-    if (includeResults) {
-      jobs.push({ ...j, progress });
-    } else {
-      // Lightweight list payload — full results loaded on expand
-      jobs.push({
-        ...j,
-        results: all.slice(0, 3),
-        seedRows: [],
-        progress,
-      });
-    }
+    if (!canViewListBuilderJob(j, userId)) continue;
+    jobs.push(summarizeJobForList(j, includeResults));
   }
+  // Newest first
+  jobs.sort((a, b) => {
+    const ta = new Date(a.createdAt || 0).getTime();
+    const tb = new Date(b.createdAt || 0).getTime();
+    return tb - ta;
+  });
   return jobs;
+}
+
+/** Owner can flip private ↔ public after create. */
+export async function setListBuilderVisibility(
+  tenantId: string,
+  userId: string,
+  jobId: string,
+  visibility: ListBuilderVisibility
+): Promise<ListBuilderJob | null> {
+  const job = await getListBuilderJob(tenantId, jobId);
+  if (!job || !canManageListBuilderJob(job, userId)) return null;
+  const next = normalizeVisibility(visibility);
+  const shortId = job.id;
+  if (next === 'public') {
+    await addToPublicIndex(tenantId, shortId);
+  } else {
+    await removeFromPublicIndex(tenantId, shortId);
+  }
+  return updateListBuilderJob(tenantId, jobId, { visibility: next });
 }
 
 /** Jobs that cron should advance */
@@ -339,20 +451,27 @@ export async function deleteListBuilderJob(
   const key = jobId.startsWith('lb-job#')
     ? jobId
     : jobKey(tenantId, jobId);
+  const shortId = jobId.includes('#') ? jobId.split('#').pop()! : jobId;
   try {
+    const existing = await getItem<ListBuilderJob & { jobId?: string }>(
+      tableNames.profiles,
+      { id: key }
+    );
+    if (existing && existing.userId !== userId) return false;
     await deleteItem(tableNames.profiles, { id: key });
     const idx = await getIndex(indexKey(tenantId, userId));
     if (idx?.ids) {
       await putItem(tableNames.profiles, {
         ...idx,
-        ids: idx.ids.filter((x) => x !== jobId && !key.endsWith(x)),
+        ids: idx.ids.filter((x) => x !== shortId && x !== jobId && !key.endsWith(x)),
         updatedAt: new Date().toISOString(),
       });
     }
+    await removeFromPublicIndex(tenantId, shortId);
     return true;
   } catch {
     return false;
   }
 }
 
-export { jobKey, indexKey, generateId as generateListBuilderId };
+export { jobKey, indexKey, publicIndexKey, generateId as generateListBuilderId };

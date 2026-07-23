@@ -6,8 +6,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/server-auth';
 import {
+  canManageListBuilderJob,
+  canViewListBuilderJob,
   getListBuilderJob,
   setJobStatus,
+  setListBuilderVisibility,
   updateListBuilderJob,
 } from '@/lib/db/repositories/list-builder-repository';
 import { processListBuilderBatch } from '@/lib/list-builder/runner';
@@ -25,7 +28,7 @@ export async function GET(
   }
   const { id } = await params;
   const job = await getListBuilderJob(session.tenantId, id);
-  if (!job || job.userId !== session.userId) {
+  if (!job || !canViewListBuilderJob(job, session.userId)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   // Surface keepable contacts: complete (email+phone) and partial (email or phone)
@@ -49,6 +52,7 @@ export async function GET(
   return NextResponse.json({
     job: {
       ...job,
+      isOwner: canManageListBuilderJob(job, session.userId),
       results,
       progress: {
         ...job.progress,
@@ -70,7 +74,7 @@ export async function PATCH(
   }
   const { id } = await params;
   const job = await getListBuilderJob(session.tenantId, id);
-  if (!job || job.userId !== session.userId) {
+  if (!job || !canViewListBuilderJob(job, session.userId)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
@@ -81,6 +85,56 @@ export async function PATCH(
     /* empty */
   }
   const action = String(body.action || '').toLowerCase();
+
+  // Anyone who can view may tick (advance) a public running job so shared queues keep moving
+  if (action === 'tick' || action === 'process') {
+    if (job.status === 'paused' || job.status === 'cancelled') {
+      return NextResponse.json({ job, message: 'Not runnable' });
+    }
+    try {
+      await processListBuilderBatch(session.tenantId, id);
+    } catch (err) {
+      console.error('[list-builder tick]', err);
+    }
+    const fresh = await getListBuilderJob(session.tenantId, id);
+    return NextResponse.json({ job: fresh });
+  }
+
+  // Import-style selection can be done by any viewer on public lists
+  if (action === 'select_rows' && Array.isArray(body.rowIds)) {
+    const selected = new Set(body.rowIds.map(String));
+    const results = (job.results || []).map((r) => ({
+      ...r,
+      selected: selected.has(r.id),
+    }));
+    const updated = await updateListBuilderJob(session.tenantId, id, { results });
+    return NextResponse.json({ job: updated });
+  }
+
+  // Owner-only controls below
+  if (!canManageListBuilderJob(job, session.userId)) {
+    return NextResponse.json(
+      { error: 'Only the list owner can pause, cancel, or change sharing' },
+      { status: 403 }
+    );
+  }
+
+  if (action === 'set_visibility' || action === 'share') {
+    const v = String(body.visibility || body.sharing || '').toLowerCase();
+    if (v !== 'public' && v !== 'private') {
+      return NextResponse.json(
+        { error: 'visibility must be public or private' },
+        { status: 400 }
+      );
+    }
+    const updated = await setListBuilderVisibility(
+      session.tenantId,
+      session.userId,
+      id,
+      v
+    );
+    return NextResponse.json({ job: updated });
+  }
 
   if (action === 'pause') {
     if (!['queued', 'running'].includes(job.status)) {
@@ -112,29 +166,6 @@ export async function PATCH(
     const updated = await setJobStatus(session.tenantId, id, 'cancelled', {
       progress: { ...job.progress, lastMessage: 'Cancelled by user.' },
     });
-    return NextResponse.json({ job: updated });
-  }
-
-  if (action === 'tick' || action === 'process') {
-    if (job.status === 'paused' || job.status === 'cancelled') {
-      return NextResponse.json({ job, message: 'Not runnable' });
-    }
-    try {
-      await processListBuilderBatch(session.tenantId, id);
-    } catch (err) {
-      console.error('[list-builder tick]', err);
-    }
-    const fresh = await getListBuilderJob(session.tenantId, id);
-    return NextResponse.json({ job: fresh });
-  }
-
-  if (action === 'select_rows' && Array.isArray(body.rowIds)) {
-    const selected = new Set(body.rowIds.map(String));
-    const results = (job.results || []).map((r) => ({
-      ...r,
-      selected: selected.has(r.id),
-    }));
-    const updated = await updateListBuilderJob(session.tenantId, id, { results });
     return NextResponse.json({ job: updated });
   }
 
