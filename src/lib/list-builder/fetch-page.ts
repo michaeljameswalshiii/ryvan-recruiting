@@ -22,15 +22,27 @@ export function extractContactSignals(text: string): {
     if (e.endsWith('.png') || e.endsWith('.jpg') || e.endsWith('.gif')) continue;
     emails.add(e);
   }
-  // US-style phones
+  // US phones: (561) 361-6700, 561.361.6700, 561-361-6700, +1 561 361 6700
   const phoneRe =
-    /(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b/g;
+    /(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]|\d{3}[-.\s])\d{3}[-.\s]\d{4}\b/g;
   for (const m of text.match(phoneRe) || []) {
     const digits = (m.match(/\d/g) || []).join('');
     if (digits.length < 10 || digits.length > 11) continue;
-    // Drop obvious non-phones (years, ids)
+    // Drop years / sequential junk
     if (/^20\d{2}/.test(digits)) continue;
-    phones.add(m.trim());
+    if (/^(\d)\1{9,}$/.test(digits)) continue;
+    // Normalize display: keep original if readable, else format
+    phones.add(m.trim().replace(/\s+/g, ' '));
+  }
+  // tel: links often stripped to digits only in body
+  const telDigits = text.match(/\b(?:tel[:\s]*)?(\d{3})(\d{3})(\d{4})\b/g);
+  if (telDigits) {
+    for (const raw of telDigits) {
+      const d = (raw.match(/\d/g) || []).join('');
+      if (d.length === 10 && !/^20\d{2}/.test(d)) {
+        phones.add(`(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`);
+      }
+    }
   }
   return { emails: [...emails].slice(0, 8), phones: [...phones].slice(0, 8) };
 }

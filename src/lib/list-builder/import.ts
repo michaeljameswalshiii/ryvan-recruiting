@@ -63,15 +63,26 @@ export async function importListBuilderRows(
   );
 
   const idSet = new Set(rowIds.map(String));
-  // Allow complete (email+phone) and partial (email or phone) rows
+  const isImportable = (r: {
+    email?: string;
+    phone?: string;
+    website?: string;
+    companyName?: string;
+    contactCompleteness?: string;
+  }) =>
+    isKeepableContact(r) ||
+    r.contactCompleteness === 'website' ||
+    (!!r.website && !!r.companyName);
+
+  // Contact rows + website-only company leads
   const candidates = (job.results || []).filter(
-    (r) => idSet.has(r.id) && !r.imported && isKeepableContact(r)
+    (r) => idSet.has(r.id) && !r.imported && isImportable(r)
   );
   const rows = candidates.slice(0, maxRows);
 
   if (rows.length === 0) {
     const remaining = (job.results || []).filter(
-      (r) => !r.imported && isKeepableContact(r)
+      (r) => !r.imported && isImportable(r)
     ).length;
     return {
       success: false,
@@ -81,7 +92,7 @@ export async function importListBuilderRows(
       processed: 0,
       remainingUnimported: remaining,
       done: remaining === 0,
-      error: 'No selected rows with an email or phone to import',
+      error: 'No selected rows to import (need company website and/or contact)',
     };
   }
 

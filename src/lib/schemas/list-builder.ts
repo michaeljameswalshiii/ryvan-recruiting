@@ -34,8 +34,12 @@ export interface ListBuilderSeedRow {
   phone?: string;
 }
 
-/** complete = email + phone; partial = email or phone only (still importable) */
-export type ListBuilderContactCompleteness = 'complete' | 'partial';
+/**
+ * complete = email + phone
+ * partial = email or phone only
+ * website = live site + local signal, no public email/phone yet (still importable for outreach later)
+ */
+export type ListBuilderContactCompleteness = 'complete' | 'partial' | 'website';
 
 /**
  * Quality tier after site + geo gates:
@@ -171,14 +175,14 @@ export const LIST_BUILDER_DEFAULTS = {
    * Companies per tick. Keep modest when Grok browse (fetch_website) is enabled
    * so the batch fits under Vercel maxDuration.
    */
-  batchSize: 4,
+  batchSize: 6,
   /** Hard cap on companies per job (UI + API clamp). */
   maxResultsCap: 100,
   /**
-   * Stop the job after this many consecutive batches with zero new keeps
-   * ("quiet batches"). Avoids endless still-hunting when filters exhaust the market.
+   * Stop after this many consecutive batches with zero new keeps.
+   * Higher = more patience when market is thin; lower = stop sooner.
    */
-  maxEmptyBatches: 10,
+  maxEmptyBatches: 18,
   /** Safety cap on discovery batches (target + timeout are primary stops) */
   maxDiscoveryBatches: 400,
   /** Mark failed after this many consecutive hard errors */

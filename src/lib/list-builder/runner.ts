@@ -21,7 +21,7 @@ import {
   extractContactSignals,
   fetchCompanyContactPages,
 } from './fetch-page';
-import { resolveTargetGeography } from './geo';
+import { parseEmployeeCap, resolveTargetGeography } from './geo';
 import {
   discoverCompanyCandidatesWithDiagnostics,
   discoveryStrategyPhase,
@@ -108,7 +108,9 @@ function isValidEmail(email?: string): boolean {
 
 function isValidPhone(phone?: string): boolean {
   const p = (phone || '').trim();
-  return !!p && (p.match(/\d/g) || []).length >= 7;
+  const digits = (p.match(/\d/g) || []).length;
+  // 10–11 digit US (or 7+ local) — was too picky when sites omit area code formatting
+  return !!p && digits >= 7 && digits <= 15;
 }
 
 /** Both email and phone present and well-formed. */
@@ -117,34 +119,48 @@ function hasEmailAndPhone(r: { email?: string; phone?: string }): boolean {
 }
 
 /**
- * Keepable lead: at least one of email or phone (never invent).
- * complete = both; partial = only one.
+ * Keep tiers (never invent contacts):
+ * - complete: email + phone
+ * - partial: email or phone
+ * - website: live site + usable for BD when allowWebsiteLeads (happy medium)
  */
-function contactCompleteness(r: {
-  email?: string;
-  phone?: string;
-}): 'complete' | 'partial' | null {
+function contactCompleteness(
+  r: { email?: string; phone?: string },
+  opts?: { allowWebsiteLead?: boolean; hasLiveSite?: boolean }
+): 'complete' | 'partial' | 'website' | null {
   const em = isValidEmail(r.email);
   const ph = isValidPhone(r.phone);
   if (em && ph) return 'complete';
   if (em || ph) return 'partial';
+  if (opts?.allowWebsiteLead && opts?.hasLiveSite) return 'website';
   return null;
 }
 
 function isKeepableContact(r: { email?: string; phone?: string }): boolean {
-  return contactCompleteness(r) !== null;
+  return contactCompleteness(r) === 'complete' || contactCompleteness(r) === 'partial';
 }
 
-function countCompleteness(rows: Array<{ contactCompleteness?: string; email?: string; phone?: string }>) {
+function countCompleteness(
+  rows: Array<{
+    contactCompleteness?: string;
+    email?: string;
+    phone?: string;
+    website?: string;
+    siteVerified?: boolean;
+  }>
+) {
   let completeFound = 0;
   let partialFound = 0;
   for (const r of rows) {
     const c =
       r.contactCompleteness ||
-      contactCompleteness(r) ||
+      contactCompleteness(r, {
+        allowWebsiteLead: true,
+        hasLiveSite: !!(r.siteVerified || r.website),
+      }) ||
       null;
     if (c === 'complete') completeFound++;
-    else if (c === 'partial') partialFound++;
+    else if (c === 'partial' || c === 'website') partialFound++;
   }
   return { completeFound, partialFound, found: completeFound + partialFound };
 }
@@ -684,12 +700,21 @@ async function processListBuilderBatchInner(
       continue;
     }
 
-    // Prefer small–mid firms; drop clear enterprise headcount when known
+    // Size: only hard-drop when brief names a cap AND we know they're far above it
+    // (e.g. "under 300") — don't discard mid-market firms with unknown headcount
+    const briefCap = parseEmployeeCap(job.brief);
+    const sizeCap = briefCap && briefCap > 0 ? Math.max(briefCap * 2, 500) : 2500;
     const sizeCheck = exceedsSmbSize(
       extracted.employeeCount || c.employeeCount,
-      extracted.companySize || c.companySize
+      extracted.companySize || c.companySize,
+      sizeCap
     );
-    if (sizeCheck.tooBig) {
+    // Only drop when headcount is known and clearly huge; skip when size unknown
+    if (
+      sizeCheck.tooBig &&
+      (typeof (extracted.employeeCount || c.employeeCount) === 'number' ||
+        /\d{3,}/.test(String(extracted.companySize || c.companySize || '')))
+    ) {
       skippedTooBig++;
       continue;
     }
@@ -699,10 +724,12 @@ async function processListBuilderBatchInner(
       continue;
     }
 
-    const completeness = contactCompleteness({
-      email: extracted.email,
-      phone: extracted.phone,
-    });
+    // Happy medium: keep email/phone when found; also keep live local sites as
+    // "website" leads (importable companies) so keep-rate isn't ~5%.
+    const completeness = contactCompleteness(
+      { email: extracted.email, phone: extracted.phone },
+      { allowWebsiteLead: true, hasLiveSite: siteVerified }
+    );
     if (!completeness) {
       skippedNoContact++;
       continue;
@@ -710,13 +737,14 @@ async function processListBuilderBatchInner(
 
     const geoVerified =
       geoEval.geoVerified || !!(c as any).geoVerified || false;
+    const hasContact = completeness === 'complete' || completeness === 'partial';
     const verificationStatus = tierFromFlags(
       siteVerified,
       geoVerified,
-      true
+      hasContact
     );
-    // Do not keep unverified (no site) — already enforced; tier is verified|partial
-    if (verificationStatus === 'unverified') {
+    // Website-only rows: still keep if site is live (tier may be partial/unverified)
+    if (!siteVerified && verificationStatus === 'unverified') {
       skippedDeadSite++;
       continue;
     }
@@ -728,6 +756,7 @@ async function processListBuilderBatchInner(
     const verifyNote = [
       siteVerified ? 'Site OK' : 'Site unchecked',
       geoVerified ? 'Geo OK' : 'Geo unconfirmed',
+      completeness === 'website' ? 'Website lead (no public email/phone yet)' : null,
       geoEval.reason,
     ]
       .filter(Boolean)
@@ -741,7 +770,10 @@ async function processListBuilderBatchInner(
       state: extracted.state || c.state,
       siteVerified,
       geoVerified,
-      verificationStatus,
+      verificationStatus:
+        completeness === 'website' && verificationStatus === 'unverified'
+          ? 'partial'
+          : verificationStatus,
       verificationNotes: verifyNote,
       industry:
         normalizeIndustry(extracted.industry || c.industry || job.industry) ||
@@ -758,8 +790,8 @@ async function processListBuilderBatchInner(
       companyExists: !!match,
       notes: [extracted.notes, verifyNote].filter(Boolean).join(' · '),
       contactCompleteness: completeness,
-      // Default select only fully verified (site + geo + contact)
-      selected: verificationStatus === 'verified',
+      // Auto-select rows with any contact; website-only stays unchecked for review
+      selected: hasContact && (verificationStatus === 'verified' || verificationStatus === 'partial'),
       createdAt: now,
     };
     newRows.push(row);

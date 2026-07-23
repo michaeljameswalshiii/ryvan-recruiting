@@ -31,13 +31,20 @@ export async function GET(
   if (!job || !canViewListBuilderJob(job, session.userId)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  // Surface keepable contacts: complete (email+phone) and partial (email or phone)
+  // Surface keepable rows: contact (email/phone) or website-only leads
   const results = (job.results || []).filter((r) => {
     const email = (r.email || '').trim();
     const phone = (r.phone || '').trim();
     const hasEmail = !!email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     const hasPhone = !!phone && (phone.match(/\d/g) || []).length >= 7;
-    return hasEmail || hasPhone;
+    const hasWebsite =
+      r.contactCompleteness === 'website' ||
+      (!!r.website &&
+        r.siteVerified !== false &&
+        (r.verificationStatus === 'partial' ||
+          r.verificationStatus === 'verified' ||
+          r.siteVerified === true));
+    return hasEmail || hasPhone || (hasWebsite && !!(r.website || r.companyName));
   });
   const completeFound = results.filter((r) => {
     const email = (r.email || '').trim();
