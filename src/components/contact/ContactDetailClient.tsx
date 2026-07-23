@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -21,6 +21,11 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  DEFAULT_PAGE_SIZE,
+  PaginationBar,
+  paginateItems,
+} from '@/components/ui/pagination-bar';
 import { toast } from 'sonner';
 import { useRemoveContact } from '@/lib/hooks/query-client';
 import { useUpdateContact } from '@/lib/hooks/contact-mutations';
@@ -134,6 +139,7 @@ export default function ContactDetailClient({
   >('overview');
   const [activities, setActivities] = useState<any[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [activityPage, setActivityPage] = useState(1);
   const [noteType, setNoteType] = useState('Note');
   const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
@@ -179,14 +185,17 @@ export default function ContactDetailClient({
             ? data.events
             : data.activities || []
         );
+        setActivityPage(1);
       } else {
         const events = await getContactActivities(contactId);
         setActivities(Array.isArray(events) ? events : []);
+        setActivityPage(1);
       }
     } catch {
       try {
         const events = await getContactActivities(contactId);
         setActivities(Array.isArray(events) ? events : []);
+        setActivityPage(1);
       } catch {
         setActivities([]);
       }
@@ -198,6 +207,23 @@ export default function ContactDetailClient({
   useEffect(() => {
     fetchActivities();
   }, [fetchActivities]);
+
+  const sortedActivities = useMemo(() => {
+    return [...activities].sort((a, b) => {
+      const ta = new Date(
+        a.createdAt || a.timestamp || a.created_at || 0
+      ).getTime();
+      const tb = new Date(
+        b.createdAt || b.timestamp || b.created_at || 0
+      ).getTime();
+      return tb - ta;
+    });
+  }, [activities]);
+
+  const pagedActivities = useMemo(
+    () => paginateItems(sortedActivities, activityPage, DEFAULT_PAGE_SIZE),
+    [sortedActivities, activityPage]
+  );
 
   // Sync form when contact prop changes
   useEffect(() => {
@@ -772,11 +798,21 @@ export default function ContactDetailClient({
                 <div className="flex justify-center py-10">
                   <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
                 </div>
-              ) : activities.length === 0 ? (
+              ) : sortedActivities.length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-8">
                   No activity yet. Log the first note above.
                 </p>
               ) : (
+                <div className="space-y-3">
+                  <PaginationBar
+                    page={pagedActivities.page}
+                    totalPages={pagedActivities.totalPages}
+                    total={pagedActivities.total}
+                    onPageChange={setActivityPage}
+                    itemLabel={
+                      pagedActivities.total === 1 ? 'activity' : 'activities'
+                    }
+                  />
                 <div className="overflow-x-auto rounded-xl border border-gray-100">
                   <table className="w-full text-sm min-w-[520px]">
                     <thead>
@@ -793,7 +829,7 @@ export default function ContactDetailClient({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {activities.map((act: any, index: number) => {
+                      {pagedActivities.slice.map((act: any, index: number) => {
                         const label = getActivityType(act);
                         return (
                           <tr
@@ -820,6 +856,7 @@ export default function ContactDetailClient({
                       })}
                     </tbody>
                   </table>
+                </div>
                 </div>
               )}
             </section>
@@ -980,13 +1017,22 @@ export default function ContactDetailClient({
             <div className="flex justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
             </div>
-          ) : activities.length === 0 ? (
+          ) : sortedActivities.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-10">
               No timeline events yet.
             </p>
           ) : (
             <div className="space-y-3">
-              {activities.map((act: any, index: number) => {
+              <PaginationBar
+                page={pagedActivities.page}
+                totalPages={pagedActivities.totalPages}
+                total={pagedActivities.total}
+                onPageChange={setActivityPage}
+                itemLabel={
+                  pagedActivities.total === 1 ? 'activity' : 'activities'
+                }
+              />
+              {pagedActivities.slice.map((act: any, index: number) => {
                 const label = getActivityType(act);
                 return (
                   <div

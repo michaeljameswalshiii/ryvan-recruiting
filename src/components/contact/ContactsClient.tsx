@@ -1,23 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Plus, RefreshCw, User, Mail, Phone, Building2 } from 'lucide-react';
+import { Plus, RefreshCw, User, Building2 } from 'lucide-react';
 import { useClients, useAddContact, useRemoveContact } from '@/lib/hooks/query-client';
+import {
+  DEFAULT_PAGE_SIZE,
+  PaginationBar,
+  paginateItems,
+} from '@/components/ui/pagination-bar';
 
 export function ContactsClient() {
   const router = useRouter();
   const { data: clients = [], isLoading, error, refetch } = useClients();
-  
-  // DEBUG: Log what's happening
-  useEffect(() => {
-    console.log('[ContactsClient] isLoading:', isLoading);
-    console.log('[ContactsClient] error:', error);
-    console.log('[ContactsClient] clients:', clients);
-    console.log('[ContactsClient] clients length:', clients?.length);
-  }, [isLoading, error, clients]);
-const addContactMutation = useAddContact();
+  const addContactMutation = useAddContact();
   const removeContactMutation = useRemoveContact();
 
   const handleDeleteContact = async (companyId: string, contactId: string, contactName: string) => {
@@ -41,20 +38,47 @@ const addContactMutation = useAddContact();
   const [newContactEmail, setNewContactEmail] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
   const [newContactTitle, setNewContactTitle] = useState('');
+  const [page, setPage] = useState(1);
 
-  // Build contacts list from all companies
-  const allContacts: Array<{contact: any; companyId: string; companyName: string}> = [];
-  clients.forEach((company: any) => {
-    if (company.contacts && Array.isArray(company.contacts)) {
-      company.contacts.forEach((contact: any) => {
-        allContacts.push({
-          contact,
-          companyId: company.id,
-          companyName: company.name
+  // Build contacts list from all companies (newest first when dates exist)
+  const allContacts = useMemo(() => {
+    const rows: Array<{
+      contact: any;
+      companyId: string;
+      companyName: string;
+    }> = [];
+    clients.forEach((company: any) => {
+      if (company.contacts && Array.isArray(company.contacts)) {
+        company.contacts.forEach((contact: any) => {
+          rows.push({
+            contact,
+            companyId: company.id,
+            companyName: company.name,
+          });
         });
-      });
-    }
-  });
+      }
+    });
+    rows.sort((a, b) => {
+      const ta = new Date(
+        a.contact.updatedAt || a.contact.createdAt || 0
+      ).getTime();
+      const tb = new Date(
+        b.contact.updatedAt || b.contact.createdAt || 0
+      ).getTime();
+      if (tb !== ta) return tb - ta;
+      return String(a.contact.name || '').localeCompare(String(b.contact.name || ''));
+    });
+    return rows;
+  }, [clients]);
+
+  const paged = useMemo(
+    () => paginateItems(allContacts, page, DEFAULT_PAGE_SIZE),
+    [allContacts, page]
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [clients.length]);
 
   const handleAddContact = async () => {
     if (!selectedCompany || !newContactName) {
@@ -228,6 +252,15 @@ const addContactMutation = useAddContact();
           </Button>
         </div>
       ) : (
+        <div className="space-y-3">
+          <PaginationBar
+            page={paged.page}
+            totalPages={paged.totalPages}
+            total={paged.total}
+            onPageChange={setPage}
+            itemLabel={paged.total === 1 ? 'contact' : 'contacts'}
+            className="rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm"
+          />
         <div className="bg-white border rounded-lg overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
@@ -241,7 +274,7 @@ const addContactMutation = useAddContact();
               </tr>
             </thead>
             <tbody className="divide-y">
-              {allContacts.map((item, idx) => (
+              {paged.slice.map((item, idx) => (
                 <tr key={`${item.companyId}-${item.contact.id}-${idx}`} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -297,12 +330,6 @@ const addContactMutation = useAddContact();
             </tbody>
           </table>
         </div>
-      )}
-
-      {/* Stats Footer */}
-      {allContacts.length > 0 && (
-        <div className="mt-4 text-sm text-gray-500">
-          Showing {allContacts.length} contact{allContacts.length !== 1 ? 's' : ''}
         </div>
       )}
     </div>

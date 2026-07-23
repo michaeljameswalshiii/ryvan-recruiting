@@ -1,11 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
+import {
+  DEFAULT_PAGE_SIZE,
+  PaginationBar,
+  paginateItems,
+} from '@/components/ui/pagination-bar';
 
 type CompanyEventType =
   | 'NOTE'
@@ -123,6 +128,7 @@ export function CompanyEventTimeline({
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('general');
   const [addingNote, setAddingNote] = useState(false);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (!initialEvents.length) {
@@ -136,11 +142,19 @@ export function CompanyEventTimeline({
       setLoading(true);
       setError(null);
       const response = await fetch(
-        `/api/companies/${companyId}/events?limit=50`
+        `/api/companies/${companyId}/events?limit=200`
       );
       if (!response.ok) throw new Error('Failed to fetch events');
       const data = await response.json();
-      setEvents(data.events || []);
+      const list = Array.isArray(data.events) ? data.events : [];
+      // Newest first
+      list.sort(
+        (a: CompanyEvent, b: CompanyEvent) =>
+          new Date(b.createdAt || b.timestamp || 0).getTime() -
+          new Date(a.createdAt || a.timestamp || 0).getTime()
+      );
+      setEvents(list);
+      setPage(1);
     } catch (err) {
       console.error('Failed to fetch events:', err);
       setError('Failed to load events');
@@ -179,6 +193,19 @@ export function CompanyEventTimeline({
       setAddingNote(false);
     }
   }
+
+  const sortedEvents = useMemo(() => {
+    return [...events].sort(
+      (a, b) =>
+        new Date(b.createdAt || b.timestamp || 0).getTime() -
+        new Date(a.createdAt || a.timestamp || 0).getTime()
+    );
+  }, [events]);
+
+  const paged = useMemo(
+    () => paginateItems(sortedEvents, page, DEFAULT_PAGE_SIZE),
+    [sortedEvents, page]
+  );
 
   return (
     <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
@@ -238,11 +265,19 @@ export function CompanyEventTimeline({
         <div className="flex justify-center py-10">
           <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
         </div>
-      ) : events.length === 0 ? (
+      ) : sortedEvents.length === 0 ? (
         <p className="text-sm text-gray-500 text-center py-8">
           No activity yet. Log the first note above.
         </p>
       ) : (
+        <div className="space-y-3">
+          <PaginationBar
+            page={paged.page}
+            totalPages={paged.totalPages}
+            total={paged.total}
+            onPageChange={setPage}
+            itemLabel={paged.total === 1 ? 'activity' : 'activities'}
+          />
         <div className="overflow-x-auto rounded-xl border border-gray-100">
           <table className="w-full text-sm min-w-[520px]">
             <thead>
@@ -259,7 +294,7 @@ export function CompanyEventTimeline({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {events.map((event, index) => {
+              {paged.slice.map((event, index) => {
                 const label = getActivityLabel(event);
                 return (
                   <tr
@@ -291,6 +326,7 @@ export function CompanyEventTimeline({
               })}
             </tbody>
           </table>
+        </div>
         </div>
       )}
     </section>

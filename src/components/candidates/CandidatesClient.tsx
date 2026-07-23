@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -18,6 +18,11 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  DEFAULT_PAGE_SIZE,
+  PaginationBar,
+  paginateItems,
+} from '@/components/ui/pagination-bar';
 import { toast } from 'sonner';
 import {
   useLeads,
@@ -337,6 +342,7 @@ export function CandidatesClient() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStage, setBulkStage] = useState('');
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [page, setPage] = useState(1);
 
   const candidates = useMemo(() => (Array.isArray(leads) ? leads : []), [leads]);
 
@@ -548,6 +554,15 @@ export function CandidatesClient() {
 
     return list;
   }, [enriched, search, bucket, sortKey]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, bucket, sortKey]);
+
+  const paged = useMemo(
+    () => paginateItems(filtered, page, DEFAULT_PAGE_SIZE),
+    [filtered, page]
+  );
 
   const goToNewCandidate = () => {
     router.push('/dashboard/candidates/new');
@@ -761,10 +776,24 @@ export function CandidatesClient() {
             <option value="stage">Sort: Stage</option>
           </select>
           <span className="text-xs text-gray-500 whitespace-nowrap">
-            Showing {filtered.length} candidate{filtered.length === 1 ? '' : 's'}
+            {filtered.length} candidate{filtered.length === 1 ? '' : 's'}
+            {filtered.length > DEFAULT_PAGE_SIZE
+              ? ` · page ${paged.page}/${paged.totalPages}`
+              : ''}
           </span>
         </div>
       </div>
+
+      {filtered.length > 0 && (
+        <PaginationBar
+          page={paged.page}
+          totalPages={paged.totalPages}
+          total={paged.total}
+          onPageChange={setPage}
+          itemLabel={paged.total === 1 ? 'candidate' : 'candidates'}
+          className="rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm"
+        />
+      )}
 
       {/* Bulk selection toolbar */}
       {selectedIds.size > 0 && (
@@ -913,7 +942,7 @@ export function CandidatesClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((c) => {
+                {paged.slice.map((c) => {
                   const stageValue = LIST_STAGE_OPTIONS.some((o) => o.id === c.stage)
                     ? c.stage
                     : normalizeStage(c.stage);

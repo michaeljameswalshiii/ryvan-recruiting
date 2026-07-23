@@ -26,6 +26,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  DEFAULT_PAGE_SIZE,
+  PaginationBar,
+  paginateItems,
+} from '@/components/ui/pagination-bar';
 import { toast } from 'sonner';
 import { SendEmailModal } from '@/components/email/send-email-modal';
 import { ResumeViewer } from '@/components/candidate/ResumeViewer';
@@ -260,6 +265,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   >('overview');
   const [notes, setNotes] = useState<any[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
+  const [activityPage, setActivityPage] = useState(1);
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('Conversation');
   const [addingNote, setAddingNote] = useState(false);
@@ -952,6 +958,15 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notes, safe.notes, safe.createdAt]);
 
+  const pagedActivity = useMemo(
+    () => paginateItems(activityRows, activityPage, DEFAULT_PAGE_SIZE),
+    [activityRows, activityPage]
+  );
+
+  useEffect(() => {
+    setActivityPage(1);
+  }, [notes.length, candidateId]);
+
   return (
     <div className="max-w-[1400px] mx-auto space-y-5 pb-10">
       {/* ── Header ───────────────────────────────────────────────── */}
@@ -1450,6 +1465,16 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   No activity yet. Log the first note above.
                 </p>
               ) : (
+                <div className="space-y-3">
+                  <PaginationBar
+                    page={pagedActivity.page}
+                    totalPages={pagedActivity.totalPages}
+                    total={pagedActivity.total}
+                    onPageChange={setActivityPage}
+                    itemLabel={
+                      pagedActivity.total === 1 ? 'activity' : 'activities'
+                    }
+                  />
                 <div className="overflow-x-auto rounded-xl border border-gray-100">
                   <table className="w-full text-sm min-w-[560px]">
                     <thead>
@@ -1469,7 +1494,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {activityRows.map((note: any, index: number) => {
+                      {pagedActivity.slice.map((note: any, index: number) => {
                         const label = getNoteTypeLabel(note);
                         const rowId = String(note.id || note.timestamp || index);
                         const mutable = isMutableActivity(note);
@@ -1586,6 +1611,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                       })}
                     </tbody>
                   </table>
+                </div>
                 </div>
               )}
             </section>
@@ -1717,7 +1743,16 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             </p>
           ) : (
             <div className="space-y-3">
-              {activityRows.map((note: any, index: number) => {
+              <PaginationBar
+                page={pagedActivity.page}
+                totalPages={pagedActivity.totalPages}
+                total={pagedActivity.total}
+                onPageChange={setActivityPage}
+                itemLabel={
+                  pagedActivity.total === 1 ? 'activity' : 'activities'
+                }
+              />
+              {pagedActivity.slice.map((note: any, index: number) => {
                 const label = getNoteTypeLabel(note);
                 const rowId = String(note.id || note.timestamp || index);
                 const mutable = isMutableActivity(note);

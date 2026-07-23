@@ -1,6 +1,11 @@
 ﻿'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  DEFAULT_PAGE_SIZE,
+  PaginationBar,
+  paginateItems,
+} from '@/components/ui/pagination-bar';
 
 // Event types matching the server types
 type EventType = 'EMAIL_SENT' | 'NOTE' | 'STATUS_CHANGE' | 'INTERVIEW_SCHEDULED';
@@ -43,6 +48,7 @@ export function EventTimeline({ candidateId, initialEvents = [] }: EventTimeline
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('general');
   const [addingNote, setAddingNote] = useState(false);
+  const [page, setPage] = useState(1);
 
   // Fetch events on mount if not provided
   useEffect(() => {
@@ -54,10 +60,17 @@ export function EventTimeline({ candidateId, initialEvents = [] }: EventTimeline
   async function fetchEvents() {
     try {
       setLoading(true);
-      const response = await fetch(`/api/candidate/${candidateId}/events?limit=20`);
+      const response = await fetch(`/api/candidate/${candidateId}/events?limit=200`);
       if (!response.ok) throw new Error('Failed to fetch events');
       const data = await response.json();
-      setEvents(data.events || []);
+      const list = Array.isArray(data.events) ? data.events : [];
+      list.sort(
+        (a: CandidateEvent, b: CandidateEvent) =>
+          new Date(b.createdAt || b.timestamp || 0).getTime() -
+          new Date(a.createdAt || a.timestamp || 0).getTime()
+      );
+      setEvents(list);
+      setPage(1);
     } catch (err) {
       console.error('Failed to fetch events:', err);
       setError('Failed to load events');
@@ -124,6 +137,19 @@ export function EventTimeline({ candidateId, initialEvents = [] }: EventTimeline
       minute: '2-digit',
     });
   }
+
+  const sortedEvents = useMemo(() => {
+    return [...events].sort(
+      (a, b) =>
+        new Date(b.createdAt || b.timestamp || 0).getTime() -
+        new Date(a.createdAt || a.timestamp || 0).getTime()
+    );
+  }, [events]);
+
+  const paged = useMemo(
+    () => paginateItems(sortedEvents, page, DEFAULT_PAGE_SIZE),
+    [sortedEvents, page]
+  );
 
   if (loading) {
     return (
@@ -246,11 +272,21 @@ export function EventTimeline({ candidateId, initialEvents = [] }: EventTimeline
       )}
 
       {/* Events List */}
-      {events.length === 0 ? (
+      {sortedEvents.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
           No activity yet
         </div>
       ) : (
+        <div>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <PaginationBar
+              page={paged.page}
+              totalPages={paged.totalPages}
+              total={paged.total}
+              onPageChange={setPage}
+              itemLabel={paged.total === 1 ? 'activity' : 'activities'}
+            />
+          </div>
         <div style={{ position: 'relative' }}>
           {/* Timeline Line */}
           <div style={{
@@ -263,7 +299,7 @@ export function EventTimeline({ candidateId, initialEvents = [] }: EventTimeline
           }} />
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {events.map((event) => {
+            {paged.slice.map((event) => {
               const config = getEventConfig(event.eventType);
               return (
                 <div key={event.id} style={{ display: 'flex', gap: '1rem', position: 'relative' }}>
@@ -334,6 +370,7 @@ export function EventTimeline({ candidateId, initialEvents = [] }: EventTimeline
               );
             })}
           </div>
+        </div>
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -31,6 +31,11 @@ import {
   companyStageOptions,
   normalizeCompanyStage,
 } from '@/lib/schemas/client';
+import {
+  DEFAULT_PAGE_SIZE,
+  PaginationBar,
+  paginateItems,
+} from '@/components/ui/pagination-bar';
 
 type SortKey = 'last_activity' | 'name' | 'added' | 'stage' | 'contacts';
 
@@ -242,6 +247,7 @@ export function CompaniesClient() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStage, setBulkStage] = useState('');
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [page, setPage] = useState(1);
 
   /**
    * Update company BD pipeline stage from the list.
@@ -408,6 +414,16 @@ export function CompaniesClient() {
 
     return list;
   }, [enriched, search, bucket, sortKey]);
+
+  // Reset to first page when filters/sort change
+  useEffect(() => {
+    setPage(1);
+  }, [search, bucket, sortKey]);
+
+  const paged = useMemo(
+    () => paginateItems(filtered, page, DEFAULT_PAGE_SIZE),
+    [filtered, page]
+  );
 
   const handleCreateCompany = async () => {
     if (!newCompanyName.trim()) {
@@ -660,10 +676,24 @@ export function CompaniesClient() {
             <option value="contacts">Sort: Contacts</option>
           </select>
           <span className="text-xs text-gray-500 whitespace-nowrap">
-            Showing {filtered.length} compan{filtered.length === 1 ? 'y' : 'ies'}
+            {filtered.length} compan{filtered.length === 1 ? 'y' : 'ies'}
+            {filtered.length > DEFAULT_PAGE_SIZE
+              ? ` · page ${paged.page}/${paged.totalPages}`
+              : ''}
           </span>
         </div>
       </div>
+
+      {filtered.length > 0 && (
+        <PaginationBar
+          page={paged.page}
+          totalPages={paged.totalPages}
+          total={paged.total}
+          onPageChange={setPage}
+          itemLabel={paged.total === 1 ? 'company' : 'companies'}
+          className="rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm"
+        />
+      )}
 
       {/* Bulk selection toolbar */}
       {selectedIds.size > 0 && (
@@ -807,7 +837,7 @@ export function CompaniesClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((c) => (
+                {paged.slice.map((c) => (
                   <tr
                     key={c.id}
                     className={`hover:bg-gray-50/80 transition-colors ${
