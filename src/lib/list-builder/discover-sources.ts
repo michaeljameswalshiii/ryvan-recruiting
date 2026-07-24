@@ -49,6 +49,7 @@ import {
   getSeedFirmsForMarket,
   guessDomainsFromName,
 } from './seed-catalog';
+import { novaGroundingDiscoverBatch } from './nova-grounding';
 
 export type DiscoverCandidate = {
   companyName: string;
@@ -63,7 +64,13 @@ export type DiscoverCandidate = {
   openJobsPosted?: number;
   contactName?: string;
   contactTitle?: string;
-  source: 'grok' | 'grok-browse' | 'seed' | 'web-search' | 'catalog';
+  source:
+    | 'grok'
+    | 'grok-browse'
+    | 'seed'
+    | 'web-search'
+    | 'catalog'
+    | 'nova-grounding';
   employees?: number | string;
   siteVerified?: boolean;
   geoVerified?: boolean;
@@ -75,6 +82,9 @@ export type DiscoveryDiagnostics = {
   completionCount: number;
   browseCount: number;
   catalogCount: number;
+  novaGroundingCount: number;
+  novaGroundingCalls: number;
+  estimatedCostUsd: number;
   afterHydrate: number;
   notes: string[];
 };
@@ -360,6 +370,9 @@ export async function discoverCompanyCandidatesWithDiagnostics(
     completionCount: 0,
     browseCount: 0,
     catalogCount: 0,
+    novaGroundingCount: 0,
+    novaGroundingCalls: 0,
+    estimatedCostUsd: 0,
     afterHydrate: 0,
     notes: [],
   };
@@ -381,11 +394,54 @@ export async function discoverCompanyCandidatesWithDiagnostics(
 
   const batchStarted = Date.now();
   // Fit under Vercel 60s with room for runner contact work
-  const hardDeadline = batchStarted + 38_000;
+  // Nova grounding can use ~15–35s; leave headroom for hydrate
+  const hardDeadline = batchStarted + 42_000;
 
   let pool: DiscoverCandidate[] = [];
 
-  // --- 1) ALWAYS seed from curated catalog (works when DDG/Grok fail) ---
+  // --- 1) PRIMARY: Nova Web Grounding agent batch (live web source) ---
+  const useNova =
+    process.env.LIST_BUILDER_DISABLE_NOVA_GROUNDING !== '1' &&
+    process.env.LIST_BUILDER_DISABLE_NOVA_GROUNDING !== 'true';
+
+  if (useNova && Date.now() < hardDeadline - 18_000) {
+    try {
+      const nova = await novaGroundingDiscoverBatch({
+        brief: job.brief,
+        targetGeo,
+        keywords,
+        focusCity,
+        focusKw,
+        need: need + 4,
+        excludeNames,
+        batch,
+        already,
+        target,
+        // 2 rounds when early batches / low keep; 1 round to save cost when deep
+        maxRounds: phase >= 1 || already < target * 0.4 ? 2 : 1,
+        tenantId: job.tenant_id,
+        userId: job.userId,
+        jobId: job.id,
+      });
+      diagnostics.novaGroundingCount = nova.candidates.length;
+      diagnostics.novaGroundingCalls = nova.usage.groundingCalls;
+      diagnostics.estimatedCostUsd += nova.usage.estimatedTotalCost;
+      if (nova.error && !nova.candidates.length) {
+        diagnostics.notes.push(`nova-grounding: ${nova.error}`);
+      } else {
+        pool.push(...nova.candidates);
+        diagnostics.notes.push(
+          `nova-grounding: ${nova.candidates.length} firms, ${nova.usage.groundingCalls} call(s), ~$${nova.usage.estimatedTotalCost.toFixed(3)}`
+        );
+      }
+    } catch (err: any) {
+      diagnostics.notes.push(`nova-grounding: ${err?.message || err}`);
+    }
+  } else if (!useNova) {
+    diagnostics.notes.push('nova-grounding disabled via env');
+  }
+
+  // --- 2) Catalog seeds (always — fills gaps / offline) ---
   const seeds = getSeedFirmsForMarket(
     targetGeo,
     job.brief,
@@ -408,54 +464,58 @@ export async function discoverCompanyCandidatesWithDiagnostics(
     diagnostics.notes.push('catalog empty for market');
   }
 
-  // --- 2) Grok completion (extra names) — best-effort, short timeout ---
-  const keyRes = await resolveGrokApiKey(job.userId);
-  if ('error' in keyRes) {
-    diagnostics.notes.push(keyRes.error);
-  } else if (Date.now() < hardDeadline - 15_000) {
-    const prompts = buildCompletionPrompts({
-      job,
-      targetGeo,
-      keywords,
-      anchors,
-      excludeList,
-      need: need + 2,
-      batch,
-      already,
-      target,
-      focusCity,
-      focusKw,
-      phase,
-      employeeCap,
-    });
-    const { text, error } = await grokWebResearch({
-      system: prompts.system,
-      user: prompts.user,
-      timeoutMs: 18_000,
-      usageCtx: {
-        tenantId: job.tenant_id,
-        userId: job.userId,
-        jobId: job.id,
-        purpose: 'discover-complete',
-        queryPreview: `p${phase} ${targetGeo}: ${job.brief}`.slice(0, 180),
-      },
-    });
-    if (error && !text) {
-      diagnostics.notes.push(`completion: ${error}`);
-    } else if (text) {
-      const parsed = parseJsonFromText<any[]>(text);
-      if (Array.isArray(parsed.data)) {
-        const mapped = mapGrokRows(parsed.data, targetGeo, 'grok');
-        diagnostics.completionCount = mapped.length;
-        pool.push(...mapped);
-      } else {
-        diagnostics.notes.push(`completion JSON: ${parsed.error || 'invalid'}`);
+  // --- 3) Grok completion (extra names) — best-effort if still thin ---
+  if (pool.length < need * 2 && Date.now() < hardDeadline - 16_000) {
+    const keyRes = await resolveGrokApiKey(job.userId);
+    if ('error' in keyRes) {
+      diagnostics.notes.push(keyRes.error);
+    } else {
+      const prompts = buildCompletionPrompts({
+        job,
+        targetGeo,
+        keywords,
+        anchors,
+        excludeList,
+        need: need + 2,
+        batch,
+        already,
+        target,
+        focusCity,
+        focusKw,
+        phase,
+        employeeCap,
+      });
+      const { text, error } = await grokWebResearch({
+        system: prompts.system,
+        user: prompts.user,
+        timeoutMs: 16_000,
+        usageCtx: {
+          tenantId: job.tenant_id,
+          userId: job.userId,
+          jobId: job.id,
+          purpose: 'discover-complete',
+          queryPreview: `p${phase} ${targetGeo}: ${job.brief}`.slice(0, 180),
+        },
+      });
+      if (error && !text) {
+        diagnostics.notes.push(`completion: ${error}`);
+      } else if (text) {
+        const parsed = parseJsonFromText<any[]>(text);
+        if (Array.isArray(parsed.data)) {
+          const mapped = mapGrokRows(parsed.data, targetGeo, 'grok');
+          diagnostics.completionCount = mapped.length;
+          pool.push(...mapped);
+        } else {
+          diagnostics.notes.push(
+            `completion JSON: ${parsed.error || 'invalid'}`
+          );
+        }
       }
     }
   }
 
-  // --- 3) DDG best-effort (often bot-blocked on serverless) ---
-  if (Date.now() < hardDeadline - 20_000) {
+  // --- 4) DDG best-effort (often bot-blocked on serverless) ---
+  if (pool.length < need && Date.now() < hardDeadline - 20_000) {
     try {
       const queries = buildDirectoryQueries({
         brief: job.brief,

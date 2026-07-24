@@ -418,6 +418,7 @@ async function processListBuilderBatchInner(
 
   let nextSeedCursor = job.seedCursor || 0;
   let lastDiagnostics: DiscoveryDiagnostics | null = null;
+  // Always run discovery when not consuming seed rows (need diagnostics/cost even if empty)
   if (candidates.length > 0) {
     nextSeedCursor = nextSeedCursor + candidates.length;
   } else {
@@ -499,9 +500,19 @@ async function processListBuilderBatchInner(
 
     const diag = lastDiagnostics;
     const diagBit = diag
-      ? ` · sources: catalog ${diag.catalogCount ?? 0}, web ${diag.webSearchCount}, grok ${diag.completionCount}, live ${diag.afterHydrate}` +
+      ? ` · sources: nova ${diag.novaGroundingCount ?? 0}, catalog ${diag.catalogCount ?? 0}, grok ${diag.completionCount}, live ${diag.afterHydrate}` +
+        (diag.estimatedCostUsd
+          ? ` · ~$${diag.estimatedCostUsd.toFixed(3)}`
+          : '') +
         (diag.notes.length ? ` (${diag.notes.slice(0, 2).join('; ')})` : '')
       : '';
+
+    const emptyCost =
+      (Number(job.progress?.estimatedCostUsd) || 0) +
+      (diag?.estimatedCostUsd || 0);
+    const emptyNova =
+      (Number(job.progress?.novaGroundingCalls) || 0) +
+      (diag?.novaGroundingCalls || 0);
 
     await updateListBuilderJob(tenantId, jobId, {
       discoveryBatch: nextBatch,
@@ -511,6 +522,8 @@ async function processListBuilderBatchInner(
         batchesCompleted: job.progress.batchesCompleted + 1,
         emptyBatchStreak,
         errorStreak: 0,
+        estimatedCostUsd: emptyCost,
+        novaGroundingCalls: emptyNova,
         lastMessage: (() => {
           const nextPhase = discoveryStrategyPhase({
             ...job,
@@ -528,11 +541,13 @@ async function processListBuilderBatchInner(
                 : ' · next batch prioritizes public directories + main phones';
           const remain =
             LIST_BUILDER_DEFAULTS.maxEmptyBatches - emptyBatchStreak;
+          const costBit =
+            emptyCost > 0 ? ` · est. $${emptyCost.toFixed(3)} AI` : '';
           return (
             `No new companies this batch — still targeting ${targetGeoEmpty}. ` +
             `${job.results.length}/${job.targetSize} kept · quiet ${emptyBatchStreak}/${LIST_BUILDER_DEFAULTS.maxEmptyBatches}` +
             (remain > 0 ? ` · stops after ${remain} more empty` : '') +
-            ` · retrying…${relax}${diagBit}`
+            ` · retrying…${relax}${diagBit}${costBit}`
           );
         })(),
       },
@@ -931,6 +946,16 @@ async function processListBuilderBatchInner(
     ]),
   ].slice(-400);
 
+  const batchCost = lastDiagnostics?.estimatedCostUsd || 0;
+  const estimatedCostUsd =
+    (Number(job.progress?.estimatedCostUsd) || 0) + batchCost;
+  const novaGroundingCalls =
+    (Number(job.progress?.novaGroundingCalls) || 0) +
+    (lastDiagnostics?.novaGroundingCalls || 0);
+
+  const costBit =
+    estimatedCostUsd > 0 ? ` · est. $${estimatedCostUsd.toFixed(3)} AI` : '';
+
   await updateListBuilderJob(tenantId, jobId, {
     seedCursor: nextSeedCursor,
     discoveryBatch: nextDiscovery,
@@ -944,9 +969,11 @@ async function processListBuilderBatchInner(
       partialFound: totals.partialFound,
       emptyBatchStreak,
       errorStreak: 0,
-      lastMessage,
+      lastMessage: lastMessage + costBit,
       seenNames,
-    } as any,
+      estimatedCostUsd,
+      novaGroundingCalls,
+    },
   });
 
   const latest = await getListBuilderJob(tenantId, jobId);

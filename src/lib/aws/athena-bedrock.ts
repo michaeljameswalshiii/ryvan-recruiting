@@ -56,11 +56,19 @@ export const CLAUDE_PRICING = {
     input: 0.015,
     output: 0.075,
   },
+  // Amazon Nova (approx on-demand $/1K tokens — confirm in Bedrock pricing)
+  'us.amazon.nova-2-lite-v1:0': { input: 0.00006, output: 0.00024 },
+  'amazon.nova-2-lite-v1:0': { input: 0.00006, output: 0.00024 },
+  'us.amazon.nova-lite-v1:0': { input: 0.00006, output: 0.00024 },
+  'amazon.nova-lite-v1:0': { input: 0.00006, output: 0.00024 },
+  'us.amazon.nova-pro-v1:0': { input: 0.0008, output: 0.0032 },
+  'amazon.nova-pro-v1:0': { input: 0.0008, output: 0.0032 },
 } as Record<string, { input: number; output: number }>;
 
 // Default pricing for unknown models
 const DEFAULT_PRICING = { input: 0.003, output: 0.015 };
 const HAIKU_PRICING = { input: 0.00025, output: 0.00125 };
+const NOVA_LITE_PRICING = { input: 0.00006, output: 0.00024 };
 
 // ============================================================================
 // Types
@@ -169,6 +177,13 @@ function getModelPricing(modelId: string): { input: number; output: number } {
   if (CLAUDE_PRICING[bare]) return CLAUDE_PRICING[bare];
   const lower = modelId.toLowerCase();
   if (lower.includes('haiku')) return HAIKU_PRICING;
+  if (lower.includes('nova-lite') || lower.includes('nova-2-lite')) {
+    return NOVA_LITE_PRICING;
+  }
+  if (lower.includes('nova-pro')) {
+    return CLAUDE_PRICING['us.amazon.nova-pro-v1:0'] || DEFAULT_PRICING;
+  }
+  if (lower.includes('nova')) return NOVA_LITE_PRICING;
   return DEFAULT_PRICING;
 }
 

@@ -136,6 +136,10 @@ export interface ListBuilderJob {
     errorStreak?: number;
     /** Company names already researched (avoid re-trying dead ends) */
     seenNames?: string[];
+    /** Cumulative estimated USD for Nova grounding + LLM this job */
+    estimatedCostUsd?: number;
+    /** Nova grounding Converse calls this job */
+    novaGroundingCalls?: number;
   };
   /** In-app now; email reserved */
   notifyChannels: ListBuilderNotifyChannel[];
