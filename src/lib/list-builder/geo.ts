@@ -317,6 +317,38 @@ export function looksInTargetArea(
   return false;
 }
 
+/**
+ * Parse desired list size from free-text brief, e.g.
+ * "100 Construction companies in Palm Beach…" → 100
+ * Does not treat "under 500 employees" as a target size.
+ */
+export function parseTargetSizeFromBrief(brief: string): number | undefined {
+  const b = brief || '';
+  // "100 companies" / "50 firms" / "75 contractors" / "100 leads"
+  const withNoun = b.match(
+    /\b(\d{1,3})\s*(?:companies|company|firms?|businesses|contractors?|builders?|leads?|accounts?|organizations?|orgs?|prospects?)\b/i
+  );
+  if (withNoun?.[1]) {
+    const n = parseInt(withNoun[1], 10);
+    if (n >= 1 && n <= 500) return n;
+  }
+  // "find 100" / "list 50" / "get me 75"
+  const findN = b.match(
+    /\b(?:find|list|get|need|want|gather|pull)\s+(?:me\s+)?(\d{1,3})\b/i
+  );
+  if (findN?.[1]) {
+    const n = parseInt(findN[1], 10);
+    if (n >= 1 && n <= 500) return n;
+  }
+  // Leading "100 …" at start of brief
+  const leading = b.trim().match(/^(\d{1,3})\b/);
+  if (leading?.[1] && !/\bemployees?\b/i.test(b.slice(0, 40))) {
+    const n = parseInt(leading[1], 10);
+    if (n >= 5 && n <= 500) return n; // ignore tiny leading nums
+  }
+  return undefined;
+}
+
 /** Parse "under 300 employees" style size caps from a brief. */
 export function parseEmployeeCap(brief: string): number | undefined {
   const m = (brief || '').match(

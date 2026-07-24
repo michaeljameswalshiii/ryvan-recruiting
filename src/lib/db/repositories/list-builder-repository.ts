@@ -163,13 +163,21 @@ export async function createListBuilderJob(
 
   const now = new Date();
   const jobId = generateId();
-  const targetSize = clampTarget(input.targetSize);
   const visibility = normalizeVisibility(
     input.visibility || LIST_BUILDER_DEFAULTS.visibility
   );
   // Prefer specific place from the brief (e.g. Brevard County) over generic "United States"
-  const { resolveTargetGeography, inferIndustryKeywords } = await import(
-    '@/lib/list-builder/geo'
+  const {
+    resolveTargetGeography,
+    inferIndustryKeywords,
+    parseTargetSizeFromBrief,
+  } = await import('@/lib/list-builder/geo');
+  // Explicit targetSize wins; else parse "100 companies…" from brief; else default (50)
+  const fromBrief = parseTargetSizeFromBrief(brief);
+  const targetSize = clampTarget(
+    input.targetSize != null && Number.isFinite(Number(input.targetSize))
+      ? Number(input.targetSize)
+      : fromBrief
   );
   const geography = resolveTargetGeography(
     brief,
