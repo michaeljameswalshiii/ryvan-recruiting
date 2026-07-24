@@ -11,6 +11,7 @@ import {
   getUsageByModel,
   getRecentCalls,
   getUsageDiagnostics,
+  formatModelDisplayName,
 } from '@/lib/aws/athena-bedrock';
 import { DollarSign, Activity, Cpu, Clock, TrendingUp, BarChart3 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -80,7 +81,8 @@ export default async function UsageDashboardPage() {
         <div>
           <h1 className="text-3xl font-bold">AI Usage Dashboard</h1>
           <p className="text-muted-foreground">
-            Track Bedrock / Claude / OpenAI / Gemini / Grok usage, tokens, and estimated costs
+            Track Bedrock / Claude / OpenAI / Gemini / Grok usage, tokens, and estimated costs.
+            Costs are estimates from published list rates (not your AWS invoice).
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -204,6 +206,9 @@ export default async function UsageDashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Usage by Model</CardTitle>
+            <CardDescription>
+              Friendly names · hover for full model id
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {byModel.length === 0 ? (
@@ -211,17 +216,28 @@ export default async function UsageDashboardPage() {
             ) : (
               <div className="space-y-4">
                 {byModel.map((model) => (
-                  <div key={model.modelId} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Cpu className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium truncate max-w-[200px]">
-                        {model.modelId.split('.').pop()}
-                      </span>
+                  <div key={model.modelId} className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Cpu className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <span
+                          className="text-sm font-medium block truncate max-w-[220px]"
+                          title={model.modelId}
+                        >
+                          {formatModelDisplayName(model.modelId)}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground truncate block max-w-[220px]">
+                          {model.modelId}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium">{model.invocations}</div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-medium">{model.invocations} calls</div>
                       <p className="text-xs text-muted-foreground">
                         {formatNumber(model.totalTokens)} tokens
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatCurrency(model.estimatedCost)} est.
                       </p>
                     </div>
                   </div>
@@ -290,7 +306,9 @@ export default async function UsageDashboardPage() {
                           {formatEstDateTime(call.timestamp)}
                         </span>
                         {' · '}
-                        {(call.modelId || '').split(/[.:]/).pop() || call.modelId}
+                        <span title={call.modelId || undefined}>
+                          {formatModelDisplayName(call.modelId || '')}
+                        </span>
                       </p>
                     </div>
                   </div>

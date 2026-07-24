@@ -24,25 +24,32 @@ import {
 // Constants - Claude Pricing (per 1K tokens)
 // ============================================================================
 
+/**
+ * Estimated on-demand pricing in USD **per 1,000 tokens** (not per million).
+ * Sources: Anthropic public API list (Haiku 4.5 $1/$5 per MTok; Sonnet 4.6 $3/$15)
+ * and Amazon Bedrock Nova Lite ($0.06/$0.24 per MTok). Marked "estimated" in UI —
+ * Bedrock region / batch / cache rates can differ from API list prices.
+ */
 export const CLAUDE_PRICING = {
-  // Haiku 4.5 (list-builder default + fallbacks)
+  // Claude Haiku 4.5 — $1 / $5 per MTok → $0.001 / $0.005 per 1K
   'us.anthropic.claude-haiku-4-2025-01-15': {
-    input: 0.00025,
-    output: 0.00125,
+    input: 0.001,
+    output: 0.005,
   },
   'global.anthropic.claude-haiku-4-5-20251001-v1:0': {
-    input: 0.00025,
-    output: 0.00125,
+    input: 0.001,
+    output: 0.005,
   },
   'us.anthropic.claude-haiku-4-5-20251001-v1:0': {
-    input: 0.00025,
-    output: 0.00125,
+    input: 0.001,
+    output: 0.005,
   },
+  // Claude 3 Haiku (legacy) — $0.25 / $1.25 per MTok
   'us.anthropic.claude-3-haiku-20240307-v1:0': {
     input: 0.00025,
     output: 0.00125,
   },
-  // Sonnet 4.6
+  // Sonnet 4.6 — $3 / $15 per MTok
   'global.anthropic.claude-sonnet-4-6': {
     input: 0.003,
     output: 0.015,
@@ -51,12 +58,12 @@ export const CLAUDE_PRICING = {
     input: 0.003,
     output: 0.015,
   },
-  // Opus 4.7
+  // Opus family (approx list)
   'us.anthropic.claude-opus-4-7-2025-01-15': {
     input: 0.015,
     output: 0.075,
   },
-  // Amazon Nova (approx on-demand $/1K tokens — confirm in Bedrock pricing)
+  // Amazon Nova Lite — $0.06 / $0.24 per MTok
   'us.amazon.nova-2-lite-v1:0': { input: 0.00006, output: 0.00024 },
   'amazon.nova-2-lite-v1:0': { input: 0.00006, output: 0.00024 },
   'us.amazon.nova-lite-v1:0': { input: 0.00006, output: 0.00024 },
@@ -65,9 +72,11 @@ export const CLAUDE_PRICING = {
   'amazon.nova-pro-v1:0': { input: 0.0008, output: 0.0032 },
 } as Record<string, { input: number; output: number }>;
 
-// Default pricing for unknown models
+// Default = Sonnet-class estimate for unknown models
 const DEFAULT_PRICING = { input: 0.003, output: 0.015 };
-const HAIKU_PRICING = { input: 0.00025, output: 0.00125 };
+// Haiku 4.5 default when id only says "haiku"
+const HAIKU_PRICING = { input: 0.001, output: 0.005 };
+const HAIKU_3_PRICING = { input: 0.00025, output: 0.00125 };
 const NOVA_LITE_PRICING = { input: 0.00006, output: 0.00024 };
 
 // ============================================================================
@@ -171,20 +180,89 @@ function getDateRange(period: 'day' | 'week' | 'month'): { start: string; end: s
 function getModelPricing(modelId: string): { input: number; output: number } {
   if (CLAUDE_PRICING[modelId]) return CLAUDE_PRICING[modelId];
   // Strip provider: prefix from multi-provider logs (e.g. bedrock:us.anthropic...)
-  const bare = modelId.includes(':')
-    ? modelId.split(':').slice(1).join(':')
-    : modelId;
+  // Careful: Bedrock ids also contain ":" in the version suffix (v1:0)
+  let bare = modelId;
+  if (/^(bedrock|openai|anthropic|google|xai|grok):/i.test(modelId)) {
+    bare = modelId.replace(/^(bedrock|openai|anthropic|google|xai|grok):/i, '');
+  }
   if (CLAUDE_PRICING[bare]) return CLAUDE_PRICING[bare];
+  // Match by partial id (cross-region prefixes vary)
+  for (const [key, price] of Object.entries(CLAUDE_PRICING)) {
+    if (modelId.includes(key) || key.includes(bare) || bare.includes(key.replace(/^us\.|^global\./, ''))) {
+      // Prefer exact-ish substring on model family
+      if (
+        modelId.includes(key.replace(/^us\.|^global\./, '')) ||
+        bare.includes(key.replace(/^us\.|^global\./, ''))
+      ) {
+        return price;
+      }
+    }
+  }
   const lower = modelId.toLowerCase();
+  if (lower.includes('haiku-4') || lower.includes('haiku-4-5') || lower.includes('haiku_4')) {
+    return HAIKU_PRICING;
+  }
+  if (lower.includes('claude-3-haiku') || lower.includes('haiku-20240307')) {
+    return HAIKU_3_PRICING;
+  }
   if (lower.includes('haiku')) return HAIKU_PRICING;
-  if (lower.includes('nova-lite') || lower.includes('nova-2-lite')) {
+  if (lower.includes('nova-lite') || lower.includes('nova-2-lite') || lower.includes('nova_lite')) {
     return NOVA_LITE_PRICING;
   }
-  if (lower.includes('nova-pro')) {
+  if (lower.includes('nova-pro') || lower.includes('nova_pro')) {
     return CLAUDE_PRICING['us.amazon.nova-pro-v1:0'] || DEFAULT_PRICING;
   }
   if (lower.includes('nova')) return NOVA_LITE_PRICING;
+  if (lower.includes('sonnet')) return DEFAULT_PRICING;
   return DEFAULT_PRICING;
+}
+
+/**
+ * Human-readable model name for Usage dashboard (never show a bare "3" or "0").
+ */
+export function formatModelDisplayName(modelId: string): string {
+  const raw = (modelId || '').trim();
+  if (!raw) return 'Unknown model';
+  const id = raw.toLowerCase();
+
+  if (id.includes('haiku-4') || id.includes('haiku-4-5') || id.includes('haiku_4')) {
+    return 'Claude Haiku 4.5';
+  }
+  if (id.includes('claude-3-haiku') || id.includes('haiku-20240307')) {
+    return 'Claude 3 Haiku';
+  }
+  if (id.includes('haiku')) return 'Claude Haiku';
+  if (id.includes('sonnet-4-6') || id.includes('sonnet-4.6')) return 'Claude Sonnet 4.6';
+  if (id.includes('sonnet')) return 'Claude Sonnet';
+  if (id.includes('opus')) return 'Claude Opus';
+  if (id.includes('nova-2-lite') || id.includes('nova-lite') || id.includes('nova_lite')) {
+    return 'Amazon Nova Lite';
+  }
+  if (id.includes('nova-pro')) return 'Amazon Nova Pro';
+  if (id.includes('nova-micro')) return 'Amazon Nova Micro';
+  if (id.includes('nova')) return 'Amazon Nova';
+  if (id.includes('grok-4.3') || id.includes('grok-4-3')) return 'Grok 4.3';
+  if (id.includes('grok-3') || /grok\.3\b/.test(id) || id.endsWith('.3') && id.includes('grok')) {
+    return 'Grok 3';
+  }
+  if (id.includes('grok')) return 'Grok';
+  if (id.includes('gpt-4o')) return 'OpenAI GPT-4o';
+  if (id.includes('gpt-4.1') || id.includes('gpt-4-1')) return 'OpenAI GPT-4.1';
+  if (id.includes('o3')) return 'OpenAI o3';
+  if (id.includes('gpt')) return 'OpenAI GPT';
+  if (id.includes('gemini')) return 'Google Gemini';
+  if (id.includes('apollo')) return 'Apollo Search';
+
+  // Prefer last meaningful path segment, but skip pure version tokens like "0" or "3"
+  const parts = raw.split(/[/.:]+/).filter(Boolean);
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    if (/^\d+$/.test(p)) continue; // skip bare version numbers ("3", "0")
+    if (/^v\d+$/i.test(p)) continue;
+    const label = p.length > 48 ? `${p.slice(0, 45)}…` : p;
+    return label;
+  }
+  return raw.length > 48 ? `${raw.slice(0, 45)}…` : raw;
 }
 
 /**
