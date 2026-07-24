@@ -468,6 +468,116 @@ export function analyzePageGeo(
   };
 }
 
+const NAME_STOPWORDS = new Set([
+  'inc',
+  'llc',
+  'ltd',
+  'co',
+  'corp',
+  'corporation',
+  'company',
+  'companies',
+  'group',
+  'the',
+  'and',
+  'of',
+  'for',
+  'associates',
+  'services',
+  'service',
+  'solutions',
+  'international',
+  'usa',
+  'us',
+]);
+
+/** Significant tokens from a company name for site identity checks. */
+export function significantNameTokens(companyName: string): string[] {
+  return String(companyName || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 3 && !NAME_STOPWORDS.has(t));
+}
+
+/**
+ * Double-check discovered company name against live site title/body/domain.
+ * Drops wrong-site matches (e.g. name "Acme Roofing" but page is a directory or different brand).
+ */
+export function companyNameMatchesSite(
+  companyName: string,
+  opts: {
+    pageText?: string;
+    pageTitle?: string;
+    website?: string;
+  }
+): { ok: boolean; confidence: 'high' | 'medium' | 'low' | 'none'; reason?: string } {
+  const tokens = significantNameTokens(companyName);
+  if (!tokens.length) {
+    return { ok: true, confidence: 'low', reason: 'Name too generic to verify' };
+  }
+
+  let host = '';
+  try {
+    const raw = opts.website || '';
+    const u = raw.startsWith('http') ? raw : `https://${raw}`;
+    host = new URL(u).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    host = String(opts.website || '')
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/^www\./, '')
+      .split('/')[0];
+  }
+  const hostSlug = host.replace(/\.(com|net|org|io|co|us|biz).*$/i, '').replace(/[^a-z0-9]/g, '');
+
+  const title = String(opts.pageTitle || '').toLowerCase();
+  const body = String(opts.pageText || '')
+    .toLowerCase()
+    .slice(0, 12_000);
+  const hay = `${title} ${body}`;
+
+  let inTitle = 0;
+  let inBody = 0;
+  let inHost = 0;
+  for (const t of tokens) {
+    if (title.includes(t)) inTitle++;
+    if (body.includes(t)) inBody++;
+    if (hostSlug.includes(t.replace(/[^a-z0-9]/g, ''))) inHost++;
+  }
+
+  const need = Math.max(1, Math.ceil(tokens.length * 0.5));
+  // High: domain or title clearly carries the brand
+  if (inHost >= need || inTitle >= need) {
+    return {
+      ok: true,
+      confidence: 'high',
+      reason: inHost >= need ? 'Name matches website domain' : 'Name matches page title',
+    };
+  }
+  // Medium: enough tokens appear on the page body
+  if (inBody >= need) {
+    return {
+      ok: true,
+      confidence: 'medium',
+      reason: 'Name appears on company website',
+    };
+  }
+  // Single distinctive long token in host (e.g. "mymiamiroofing")
+  const long = tokens.filter((t) => t.length >= 6);
+  if (long.some((t) => hostSlug.includes(t))) {
+    return { ok: true, confidence: 'medium', reason: 'Distinctive name token in domain' };
+  }
+
+  return {
+    ok: false,
+    confidence: 'none',
+    reason: `Site does not match company name "${companyName}" (title/domain/body check failed)`,
+  };
+}
+
 /**
  * Combined city-field + page-text geo decision for keep/drop.
  */

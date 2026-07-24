@@ -35,6 +35,7 @@ import {
   parseOpenJobsPosted,
 } from './firmographics';
 import {
+  companyNameMatchesSite,
   evaluateGeoForKeep,
   exceedsSmbSize,
   tierFromFlags,
@@ -564,7 +565,9 @@ async function processListBuilderBatchInner(
   let skippedNoContact = 0;
   let skippedOffGeo = 0;
   let skippedDuplicate = 0;
+  let skippedInTrio = 0;
   let skippedDeadSite = 0;
+  let skippedNameMismatch = 0;
   let skippedTooBig = 0;
   let keptComplete = 0;
   let keptPartial = 0;
@@ -595,36 +598,38 @@ async function processListBuilderBatchInner(
     }
 
     researchedThisBatch++;
+
+    // --- Already in Trio (name or domain) → never add to agent results ---
     const match = companyMatches(clients, c.companyName, c.website);
+    if (match) {
+      skippedInTrio++;
+      continue;
+    }
+
     let website = c.website;
     if (website && !/^https?:\/\//i.test(website)) {
       website = website.includes('.') ? `https://${website}` : website;
     }
-
-    // --- P0: require live website ---
-    let siteVerified = !!(c as any).siteVerified;
-    let pageText =
-      typeof (c as any).pageTextSnippet === 'string'
-        ? String((c as any).pageTextSnippet)
-        : '';
 
     if (!website || !website.includes('.')) {
       skippedDeadSite++;
       continue;
     }
 
-    if (!siteVerified) {
-      const reach = await verifyWebsiteReachable(website);
-      if (!reach.ok) {
-        skippedDeadSite++;
-        continue;
-      }
-      siteVerified = true;
-      website = reach.finalUrl || website;
-    }
+    // --- 1) Always verify website is live (do not trust discovery flag alone) ---
+    let pageText =
+      typeof (c as any).pageTextSnippet === 'string'
+        ? String((c as any).pageTextSnippet)
+        : '';
+    let pageTitle = '';
 
-    // Catalog/seed rows often already carry city+website — count as researched even
-    // before contact scrape so UI counters move on every tick.
+    const reach = await verifyWebsiteReachable(website);
+    if (!reach.ok) {
+      skippedDeadSite++;
+      continue;
+    }
+    let siteVerified = true;
+    website = reach.finalUrl || website;
 
     let extracted: Partial<ListBuilderResultRow> = {};
     if (c.email) extracted.email = c.email;
@@ -638,45 +643,37 @@ async function processListBuilderBatchInner(
     if (c.contactName) extracted.contactName = c.contactName;
     if (c.contactTitle) extracted.contactTitle = c.contactTitle;
 
-    const alreadyKeepable = isKeepableContact({
-      email: extracted.email,
-      phone: extracted.phone,
-    });
-
-    // Always prefer multi-page crawl when we need contacts or geo text
-    if (website && website.includes('.') && (!alreadyKeepable || !pageText)) {
-      const page = await fetchCompanyContactPages(website);
-      if (!('error' in page)) {
-        pageText = page.text || pageText;
-        const siteExtract = await extractFromSite(
-          c.companyName,
-          website,
-          page,
-          job
-        );
-        extracted = {
-          ...siteExtract,
-          email: siteExtract.email || extracted.email,
-          phone: siteExtract.phone || extracted.phone,
-          city: siteExtract.city || extracted.city,
-          state: siteExtract.state || extracted.state,
-          industry: siteExtract.industry || extracted.industry,
-          employeeCount: siteExtract.employeeCount || extracted.employeeCount,
-          companySize: siteExtract.companySize || extracted.companySize,
-          openJobsPosted:
-            siteExtract.openJobsPosted ?? extracted.openJobsPosted,
-          contactName: siteExtract.contactName || extracted.contactName,
-          contactTitle: siteExtract.contactTitle || extracted.contactTitle,
-          notes: siteExtract.notes || extracted.notes,
-          sourceUrl: siteExtract.sourceUrl || website,
-        };
-        website = page.url || website;
-      } else {
-        extracted.notes = extracted.notes || `Site fetch: ${page.error}`;
-      }
-    } else if (website) {
-      extracted.sourceUrl = website;
+    // Multi-page crawl for contacts + title/body for name check
+    const page = await fetchCompanyContactPages(website);
+    if ('error' in page) {
+      // Reachability passed but content fetch failed — still require a real page
+      skippedDeadSite++;
+      continue;
     }
+    pageText = page.text || pageText;
+    pageTitle = page.title || '';
+    website = page.url || website;
+    const siteExtract = await extractFromSite(
+      c.companyName,
+      website,
+      page,
+      job
+    );
+    extracted = {
+      ...siteExtract,
+      email: siteExtract.email || extracted.email,
+      phone: siteExtract.phone || extracted.phone,
+      city: siteExtract.city || extracted.city,
+      state: siteExtract.state || extracted.state,
+      industry: siteExtract.industry || extracted.industry,
+      employeeCount: siteExtract.employeeCount || extracted.employeeCount,
+      companySize: siteExtract.companySize || extracted.companySize,
+      openJobsPosted: siteExtract.openJobsPosted ?? extracted.openJobsPosted,
+      contactName: siteExtract.contactName || extracted.contactName,
+      contactTitle: siteExtract.contactTitle || extracted.contactTitle,
+      notes: siteExtract.notes || extracted.notes,
+      sourceUrl: siteExtract.sourceUrl || website,
+    };
 
     if (c.contactName) extracted.contactName = extracted.contactName || c.contactName;
     if (c.contactTitle) {
@@ -685,6 +682,24 @@ async function processListBuilderBatchInner(
     if (c.email) extracted.email = extracted.email || c.email;
     if (c.phone) extracted.phone = extracted.phone || c.phone;
     if (c.city) extracted.city = extracted.city || c.city;
+
+    // --- 3) Double-check company name against live site ---
+    const nameCheck = companyNameMatchesSite(c.companyName, {
+      pageText,
+      pageTitle,
+      website,
+    });
+    if (!nameCheck.ok) {
+      skippedNameMismatch++;
+      continue;
+    }
+
+    // Re-check Trio after resolving final domain (redirects may change host)
+    const matchAfterSite = companyMatches(clients, c.companyName, website);
+    if (matchAfterSite) {
+      skippedInTrio++;
+      continue;
+    }
 
     if (!isKeepableContact({ email: extracted.email, phone: extracted.phone })) {
       if (Date.now() - batchStarted < LIST_BUILDER_DEFAULTS.batchBudgetMs - 10_000) {
@@ -709,7 +724,7 @@ async function processListBuilderBatchInner(
       }
     }
 
-    // --- P0: geo from city field + page content (never skip off-target) ---
+    // --- Geo from city field + page content ---
     const geoEval = evaluateGeoForKeep({
       city: extracted.city || c.city,
       state: extracted.state || c.state,
@@ -724,7 +739,6 @@ async function processListBuilderBatchInner(
     }
 
     // Size: only hard-drop when brief names a cap AND we know they're far above it
-    // (e.g. "under 300") — don't discard mid-market firms with unknown headcount
     const briefCap = parseEmployeeCap(job.brief);
     const sizeCap = briefCap && briefCap > 0 ? Math.max(briefCap * 2, 500) : 2500;
     const sizeCheck = exceedsSmbSize(
@@ -732,18 +746,12 @@ async function processListBuilderBatchInner(
       extracted.companySize || c.companySize,
       sizeCap
     );
-    // Only drop when headcount is known and clearly huge; skip when size unknown
     if (
       sizeCheck.tooBig &&
       (typeof (extracted.employeeCount || c.employeeCount) === 'number' ||
         /\d{3,}/.test(String(extracted.companySize || c.companySize || '')))
     ) {
       skippedTooBig++;
-      continue;
-    }
-
-    if (match && contactExists(match, extracted.email, extracted.contactName)) {
-      skippedDuplicate++;
       continue;
     }
 
@@ -777,7 +785,8 @@ async function processListBuilderBatchInner(
     if (verificationStatus === 'verified') keptVerified++;
 
     const verifyNote = [
-      siteVerified ? 'Site OK' : 'Site unchecked',
+      siteVerified ? 'Site verified live' : 'Site unchecked',
+      nameCheck.reason || `Name check ${nameCheck.confidence}`,
       geoVerified ? 'Geo OK' : 'Geo unconfirmed',
       completeness === 'website' ? 'Website lead (no public email/phone yet)' : null,
       geoEval.reason,
@@ -796,7 +805,11 @@ async function processListBuilderBatchInner(
       verificationStatus:
         completeness === 'website' && verificationStatus === 'unverified'
           ? 'partial'
-          : verificationStatus,
+          : nameCheck.confidence === 'high' && siteVerified && geoVerified
+            ? 'verified'
+            : verificationStatus === 'verified' && nameCheck.confidence === 'none'
+              ? 'partial'
+              : verificationStatus,
       verificationNotes: verifyNote,
       industry:
         normalizeIndustry(extracted.industry || c.industry || job.industry) ||
@@ -809,8 +822,8 @@ async function processListBuilderBatchInner(
       email: extracted.email,
       phone: extracted.phone,
       sourceUrl: extracted.sourceUrl || website,
-      existingCompanyId: match?.id ? String(match.id) : undefined,
-      companyExists: !!match,
+      existingCompanyId: undefined,
+      companyExists: false,
       notes: [extracted.notes, verifyNote].filter(Boolean).join(' · '),
       contactCompleteness: completeness,
       // Auto-select rows with any contact; website-only stays unchecked for review
@@ -877,10 +890,12 @@ async function processListBuilderBatchInner(
         ` · researched ${researchedThisBatch}${sourceBit}${stratBit}.`
       : `Researched ${researchedThisBatch} in ${targetGeo}, kept 0` +
         (skippedNoContact ? ` · ${skippedNoContact} no contact/site keep` : '') +
-        (skippedDeadSite ? ` · ${skippedDeadSite} dead site` : '') +
+        (skippedDeadSite ? ` · ${skippedDeadSite} dead/unreadable site` : '') +
+        (skippedInTrio ? ` · ${skippedInTrio} already in Trio` : '') +
+        (skippedNameMismatch ? ` · ${skippedNameMismatch} name≠site` : '') +
         (skippedOffGeo ? ` · ${skippedOffGeo} off-geo` : '') +
         (skippedTooBig ? ` · ${skippedTooBig} too large` : '') +
-        (skippedDuplicate ? ` · ${skippedDuplicate} duplicate` : '') +
+        (skippedDuplicate ? ` · ${skippedDuplicate} in-job duplicate` : '') +
         `${sourceBit}${stratBit} · ${totals.found}/${job.targetSize} total` +
         (emptyBatchStreak > 0
           ? ` · quiet ${emptyBatchStreak}/${LIST_BUILDER_DEFAULTS.maxEmptyBatches}`
