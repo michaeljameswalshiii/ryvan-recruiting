@@ -21,6 +21,7 @@
   "dependencies": {
     "@apollo/client": "^3.11.8",
     "@aws-crypto/sha256-js": "^5.2.0",
+    "@aws-sdk/client-bedrock-agentcore": "^3.1094.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1045.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.1045.0",
     "@aws-sdk/client-dynamodb": "^3.1045.0",

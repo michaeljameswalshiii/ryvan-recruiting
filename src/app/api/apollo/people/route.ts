@@ -1,12 +1,24 @@
 import { NextRequest } from 'next/server';
 import { logApolloUsage } from '@/lib/aws/athena-bedrock';
 import { searchPeople } from '@/lib/apollo/client';
+import { getSession, getSessionTenantId } from '@/lib/server-auth';
 
 const APOLLO_COST_PER_RESULT = 0.01;
+
+async function resolveTenantId(request: NextRequest): Promise<string | null> {
+  const session = await getSession().catch(() => null);
+  return (
+    request.headers.get('x-tenant-id') ||
+    session?.tenantId ||
+    (await getSessionTenantId().catch(() => null)) ||
+    null
+  );
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
+    const tenantId = await resolveTenantId(request);
 
     const result = await searchPeople({
       q: body.q || body.query || '',
@@ -21,6 +33,7 @@ export async function POST(request: NextRequest) {
       technologies: body.technologies,
       per_page: body.per_page || 25,
       page: body.page || 1,
+      auth: tenantId ? { tenantId } : undefined,
     });
 
     if (result.error && result.people.length === 0) {
@@ -41,6 +54,7 @@ export async function POST(request: NextRequest) {
         resultsCount: result.people.length,
         estimatedCost: result.people.length * APOLLO_COST_PER_RESULT,
         queryPreview: body.q || body.query,
+        tenantId: tenantId || undefined,
       }).catch(() => {});
     }
 

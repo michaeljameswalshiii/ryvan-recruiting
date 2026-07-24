@@ -127,20 +127,26 @@ function buildGeneralAiSystemPrompt(): string {
     "- start_list_builder / list_builder_status / list_builder_control: background BD list jobs (find companies + contacts for outreach; user can leave and review/import later in the Jobs queue)"
   );
   externalLines.push(
+    "- source_candidates: Find people to FILL a job. Pass a careers job URL (/careers/{tenant}/{jobId}) or role brief. Uses Apollo/PDL for real candidates — never treat a job URL as a person search query."
+  );
+  externalLines.push(
+    "- web_search: Amazon Bedrock AgentCore public web search (AWS-resident). Only for researching a known person or company news — NOT for filling a req from a job posting URL. Prefer source_candidates for hiring."
+  );
+  externalLines.push(
     "- fetch_website: open and read a public company website/page by URL (use this when the user gives a website or asks you to examine a site — do NOT claim you cannot browse URLs)"
   );
   if (isTavilyToolEnabled()) {
     externalLines.push(
-      "- tavily: optional web search (prefer fetch_website for a specific URL)"
+      "- tavily: optional third-party web search (prefer web_search for AWS-resident search; fetch_website for a specific URL)"
     );
   }
   if (!isApolloToolEnabled() && !isTavilyToolEnabled()) {
     externalLines.push(
-      "- External people/company databases (e.g. Apollo) and live web search are not available. Use internal_data for ATS records and fetch_website for a specific URL the user provides."
+      "- Apollo people/company database is disabled. Use web_search for public resume/person research, internal_data for ATS records, and fetch_website for a specific URL."
     );
   } else if (!isApolloToolEnabled()) {
     externalLines.push(
-      "- Apollo people/company search is disabled. Do not claim Apollo access. Use internal_data and other available tools."
+      "- Apollo people/company search is disabled. Do not claim Apollo access. Use web_search, internal_data, and other available tools."
     );
   }
 
@@ -489,7 +495,7 @@ function resolveRequestedModelId(requestedModel?: string): string | undefined {
 
 /** Recruiting / CRM / research intents that need Claude tool_use (Sonnet). */
 function hasToolOrAgenticIntent(query: string): boolean {
-  return /\b(search|find people|find companies|apollo|research|look up|linkedin|pipeline|candidates|leads|web search|latest news|tavily|website|browse|examine|http|https|create |add |update |move |link |save |job|company|client|contact|download|docx|xlsx|spreadsheet|word doc|export|attachment|generate (a |the )?file|write (a |the )?file)\b/i.test(
+  return /\b(search|find people|find companies|apollo|research|look up|linkedin|github|resume|cv\b|portfolio|pipeline|candidates|leads|source candidates|fill (this |the )?req|fill (this |the )?job|great fits|web search|latest news|tavily|website|browse|examine|http|https|careers\/|who is|background on|public footprint|create |add |update |move |link |save |job|company|client|contact|download|docx|xlsx|spreadsheet|word doc|export|attachment|generate (a |the )?file|write (a |the )?file)\b/i.test(
     query || ""
   );
 }
@@ -772,6 +778,63 @@ function getToolSchemasForBedrock(): BedrockTool[] {
         properties: {
           query: { type: "string", description: "Search query for web search" },
           max_results: { type: "number", description: "Maximum number of results (default 5)" },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      name: "source_candidates",
+      description:
+        "Find people who could fill a job posting. Pass a Trio careers URL (/careers/{tenant}/{jobId}), job_id, or role brief. Uses Apollo/PDL. Prefer this when the user wants candidates for a req — not web_search on the job URL.",
+      input_schema: {
+        type: "object",
+        properties: {
+          input: {
+            type: "string",
+            description:
+              "Careers job URL, or free-text role brief (title + location + skills)",
+          },
+          query: {
+            type: "string",
+            description: "Alias for input",
+          },
+          job_id: {
+            type: "string",
+            description: "Optional job id if already known",
+          },
+          limit: {
+            type: "number",
+            description: "Max candidates (default 12)",
+          },
+        },
+        required: ["input"],
+      },
+    },
+    {
+      name: "web_search",
+      description:
+        "Amazon Bedrock AgentCore public web search (AWS-resident). Research a known person or company news. Do NOT use for filling a job from a careers URL — use source_candidates instead. Always cite title+URL. ~$0.007/query.",
+      input_schema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description:
+              "Search query ≤200 chars (e.g. Jane Doe software engineer Miami resume)",
+          },
+          max_results: {
+            type: "number",
+            description: "Max results 1–25 (default 10)",
+          },
+          purpose: {
+            type: "string",
+            description:
+              "general | resume_research | person_research — resume/person runs focused multi-queries",
+          },
+          multi: {
+            type: "boolean",
+            description: "Run multiple focused queries (costs more; default true for resume_research)",
+          },
         },
         required: ["query"],
       },
@@ -1267,6 +1330,61 @@ async function executeToolByName(
     return `Error: ${result.error || "Unknown error"}`;
   }
 
+  if (
+    toolName === "source_candidates" ||
+    toolName === "fill_job" ||
+    toolName === "source_for_job"
+  ) {
+    const result = await executeTool(
+      "source_candidates",
+      {
+        query:
+          (toolInput.input as string) ||
+          (toolInput.url as string) ||
+          query,
+        input: toolInput.input || toolInput.url || query,
+        job_id: toolInput.job_id || toolInput.jobId,
+        limit: toolInput.limit || 12,
+      } as ToolParams,
+      toolContext
+    );
+    if (result.success && result.data) {
+      const { formatSourceCandidatesForModel } = await import(
+        "@/lib/ai/tools/source-candidates"
+      );
+      return formatSourceCandidatesForModel(result.data as any);
+    }
+    return `Error: ${result.error || "Candidate sourcing failed"}`;
+  }
+
+  if (
+    toolName === "web_search" ||
+    toolName === "agentcore_web_search" ||
+    toolName === "resume_web_search"
+  ) {
+    const result = await executeTool(
+      "web_search",
+      {
+        query,
+        max_results: toolInput.max_results || toolInput.maxResults || 10,
+        purpose: toolInput.purpose || toolInput.mode || "general",
+        multi: toolInput.multi,
+        person: toolInput.person,
+        company: toolInput.company,
+        title: toolInput.title,
+        brief: toolInput.brief,
+      } as ToolParams,
+      toolContext
+    );
+    if (result.success && result.data) {
+      const { formatAgentCoreWebSearchForModel } = await import(
+        "@/lib/ai/tools/agentcore-web-search"
+      );
+      return formatAgentCoreWebSearchForModel(result.data as any);
+    }
+    return `Error: ${result.error || "AgentCore Web Search failed"}`;
+  }
+
   if (toolName === "fetch_website") {
     const url =
       (toolInput.url as string) ||
@@ -1473,7 +1591,9 @@ async function runMCPAgent(
     options?.systemPrompt ||
     `You are an MCP (Multi-step Cognitive Processor) agent powered by Claude on AWS Bedrock.
 Specialize in talent sourcing, recruiting, and CRM operations for Trio Recruiting.
-Use only the tools provided in this request (internal ATS data, CRM writes, website fetch, files).
+Use only the tools provided in this request (internal ATS data, CRM writes, source_candidates, web_search, website fetch, files).
+When the user wants people to fill a job / careers posting / "great fits for this role": use source_candidates with the careers URL or brief — never web_search the job URL as a query.
+For public resume / person research / "who is this" / GitHub-LinkedIn footprint on a named person: use web_search with purpose=resume_research and always cite titles + URLs.
 Think step-by-step: Plan → Use tools when needed → Observe results → Reflect → Final Answer.
 Only use tools when they genuinely help. Be concise and actionable.`;
 
@@ -2088,6 +2208,8 @@ ${pageContext}`
     let usedModel = selectedModel;
     let crmMutated = false;
     let generatedFiles: NonNullable<ToolContext["generatedFiles"]> = [];
+    /** Shared accumulator for AgentCore / third-party tool USD spend this turn */
+    const toolSpendAcc: NonNullable<ToolContext["toolSpend"]> = [];
 
     // ---------- BYOK Anthropic ----------
     if (provider === "anthropic") {
@@ -2117,6 +2239,7 @@ ${pageContext}`
         tenantId,
         userId,
         requestUrl: appUrl,
+        toolSpend: toolSpendAcc,
       };
 
       const systemPrompt =
@@ -2179,6 +2302,7 @@ ${pageContext}`
         userId,
         requestUrl: appUrl,
         generatedFiles: [],
+        toolSpend: toolSpendAcc,
       };
       const systemPrompt = generalMode
         ? generalSystemPrompt
@@ -2253,6 +2377,7 @@ ${pageContext}`
         userId,
         requestUrl: appUrl,
         generatedFiles: [],
+        toolSpend: toolSpendAcc,
       };
 
       const systemPrompt =
@@ -2325,6 +2450,7 @@ ${pageContext}`
         userId,
         requestUrl: appUrl,
         generatedFiles: [],
+        toolSpend: toolSpendAcc,
       };
 
       const systemPrompt =
@@ -2376,6 +2502,7 @@ ${pageContext}`
         userId,
         requestUrl: appUrl,
         generatedFiles: [],
+        toolSpend: toolSpendAcc,
       };
       const systemPrompt = generalMode
         ? generalSystemPrompt
@@ -2446,6 +2573,7 @@ ${pageContext}`
           userId,
           requestUrl: appUrl,
           generatedFiles: [],
+          toolSpend: toolSpendAcc,
         };
         const agentResult = await runMCPAgent(lastUserQuery, toolContextFb, {
           history: conversation.slice(0, -1),
@@ -2511,6 +2639,7 @@ ${pageContext}`
         userId,
         requestUrl: appUrl,
         generatedFiles: [],
+        toolSpend: toolSpendAcc,
       };
 
       const conversation = buildConversationMessages(messages);
@@ -2608,6 +2737,10 @@ ${pageContext}`
     // Log to DynamoDB for dashboard usage tracking (await so failures are visible)
     // General AI Usage appears on /dashboard/usage with a [General AI] prefix
     const previewPrefix = generalMode ? "[General AI] " : "";
+    const estimatedToolCostUsd = toolSpendAcc.reduce(
+      (sum, e) => sum + (Number(e.estimatedCostUsd) || 0),
+      0
+    );
     const usageLog = await logBedrockUsage({
       modelId: `${provider}:${usedModel}`,
       inputTokens: promptTokens,
@@ -2649,7 +2782,14 @@ ${pageContext}`
         tenantId: tenantId ? "provided" : "anonymous",
       } as RateLimitInfo,
       tokens,
+      /** Model token cost estimate (USD) */
       cost,
+      /** AgentCore / external tool spend this turn (USD) */
+      estimatedToolCostUsd,
+      toolSpend: toolSpendAcc,
+      /** Convenience: model + tools */
+      estimatedTotalCostUsd:
+        (typeof cost === "number" ? cost : 0) + estimatedToolCostUsd,
     });
     
     return addRateLimitHeaders(response, rateLimitResult);

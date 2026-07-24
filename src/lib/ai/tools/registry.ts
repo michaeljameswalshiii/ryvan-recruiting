@@ -27,6 +27,16 @@ import { SEQUENCE_TOOLS } from "./sequence-tools";
 import { PLAYBOOK_TOOLS } from "./playbook-tools";
 import { SCREEN_TOOLS } from "./screen-tools";
 import { LIST_BUILDER_TOOLS } from "./list-builder-tools";
+import {
+  executeAgentCoreWebSearch,
+  AGENTCORE_WEB_SEARCH_TOOL_NAME,
+  AGENTCORE_WEB_SEARCH_TOOL_DESCRIPTION,
+} from "./agentcore-web-search";
+import {
+  executeSourceCandidates,
+  SOURCE_CANDIDATES_TOOL_NAME,
+  SOURCE_CANDIDATES_TOOL_DESCRIPTION,
+} from "./source-candidates";
 import { recordToolAudit } from "@/lib/db/repositories/tool-audit-repository";
 import {
   disabledExternalToolMessage,
@@ -65,6 +75,20 @@ function initializeRegistry(): void {
     name: TAVILY_TOOL_NAME,
     description: TAVILY_TOOL_DESCRIPTION,
     execute: executeTavilySearch,
+  };
+
+  // Amazon Bedrock AgentCore Web Search (public web / resume research)
+  TOOL_REGISTRY[AGENTCORE_WEB_SEARCH_TOOL_NAME] = {
+    name: AGENTCORE_WEB_SEARCH_TOOL_NAME,
+    description: AGENTCORE_WEB_SEARCH_TOOL_DESCRIPTION,
+    execute: executeAgentCoreWebSearch,
+  };
+
+  // Source people to fill a job (careers URL / brief → Apollo/PDL)
+  TOOL_REGISTRY[SOURCE_CANDIDATES_TOOL_NAME] = {
+    name: SOURCE_CANDIDATES_TOOL_NAME,
+    description: SOURCE_CANDIDATES_TOOL_DESCRIPTION,
+    execute: executeSourceCandidates,
   };
 
   // Direct website fetch (no third-party API key)
@@ -264,6 +288,7 @@ export const TOOL_NAMES = {
   apollo: APOLLO_TOOL_NAME,
   apolloCompany: APOLLO_COMPANY_TOOL_NAME,
   tavily: TAVILY_TOOL_NAME,
+  webSearch: AGENTCORE_WEB_SEARCH_TOOL_NAME,
   fetchWebsite: FETCH_WEBSITE_TOOL_NAME,
   internal: INTERNAL_TOOL_NAME,
 } as const;

@@ -308,18 +308,19 @@ export async function runFillReqPlaybook(params: {
     source: 'internal' as const,
   }));
 
-  // e. External Apollo people search (when configured)
+  // e. External Apollo people search (when configured — tenant BYOK or platform)
   const external: ExternalApolloCandidate[] = [];
   const wantApollo = options?.includeApollo !== false;
   if (wantApollo) {
     try {
       const {
-        isApolloConfigured,
+        resolveApolloConfigured,
         searchPeople,
       } = await import('@/lib/apollo/client');
-      if (!isApolloConfigured()) {
+      const apolloAuth = tenantId ? { tenantId } : undefined;
+      if (!(await resolveApolloConfigured(apolloAuth))) {
         notes.push(
-          'Apollo not configured (APOLLO_API_KEY) — external sourcing skipped.'
+          'Apollo not configured — add a company key in Settings or set APOLLO_API_KEY. External sourcing skipped.'
         );
       } else {
         const apolloLimit = Math.min(options?.apolloLimit ?? 8, 15);
@@ -336,6 +337,7 @@ export async function runFillReqPlaybook(params: {
           locations: job.location ? [job.location] : undefined,
           per_page: apolloLimit,
           page: 1,
+          auth: apolloAuth,
         });
         if (apolloRes.error) {
           notes.push(`Apollo search warning: ${apolloRes.error}`);

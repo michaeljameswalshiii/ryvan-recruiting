@@ -4,9 +4,10 @@ import {
   searchPeople,
   searchCompanies,
   heuristicParseQuery,
-  isApolloConfigured,
+  resolveApolloConfigured,
   type ApolloPerson,
 } from '@/lib/apollo/client';
+import { getSession, getSessionTenantId } from '@/lib/server-auth';
 
 /**
  * POST /api/apollo
@@ -96,6 +97,14 @@ export async function POST(request: NextRequest) {
       per_page = 15,
     } = body;
 
+    const session = await getSession().catch(() => null);
+    const tenantId =
+      request.headers.get('x-tenant-id') ||
+      session?.tenantId ||
+      (await getSessionTenantId().catch(() => null)) ||
+      null;
+    const apolloAuth = tenantId ? { tenantId } : undefined;
+
     const text = (query || message || '').trim();
     if (!text) {
       return NextResponse.json(
@@ -111,15 +120,15 @@ export async function POST(request: NextRequest) {
 
     // ── Real Apollo people search ──────────────────────────────────────────
     if (wantsPeople) {
-      if (!isApolloConfigured()) {
+      if (!(await resolveApolloConfigured(apolloAuth))) {
         return NextResponse.json({
           success: false,
           results: [],
           count: 0,
           response:
-            'Apollo is not configured. Set **APOLLO_API_KEY** (master key) in Vercel environment variables.',
+            'Apollo is not configured. Add a **company Apollo key** in Settings, or set **APOLLO_API_KEY** on the server.',
           source: 'config',
-          error: 'APOLLO_API_KEY not set',
+          error: 'Apollo API key not configured',
         });
       }
 
@@ -131,6 +140,7 @@ export async function POST(request: NextRequest) {
         keywords: parsed.keywords,
         per_page: Math.min(per_page || 15, 25),
         page: page || 1,
+        auth: apolloAuth,
       });
 
       if (result.error && result.people.length === 0) {
@@ -143,6 +153,7 @@ export async function POST(request: NextRequest) {
           locations: [],
           keywords: ['python'],
           per_page: 15,
+          auth: apolloAuth,
         });
 
         if (broader.people.length > 0) {
@@ -205,10 +216,11 @@ export async function POST(request: NextRequest) {
 
     // ── Company sourcing from chat ─────────────────────────────────────────
     if (wantsCompanies) {
-      if (!isApolloConfigured()) {
+      if (!(await resolveApolloConfigured(apolloAuth))) {
         return NextResponse.json({
           success: false,
-          response: 'Apollo is not configured. Set APOLLO_API_KEY in Vercel.',
+          response:
+            'Apollo is not configured. Add a company Apollo key in Settings, or set APOLLO_API_KEY on the server.',
           source: 'config',
         });
       }
@@ -219,6 +231,7 @@ export async function POST(request: NextRequest) {
         keywords: parsed.keywords,
         locations: parsed.locations,
         per_page: 15,
+        auth: apolloAuth,
       });
 
       if (result.error && result.companies.length === 0) {

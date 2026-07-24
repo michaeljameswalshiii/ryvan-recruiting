@@ -566,6 +566,49 @@ export async function logPdlUsage(params: {
 }
 
 /**
+ * Log Amazon Bedrock AgentCore Web Search usage (~$7 / 1k queries).
+ */
+export async function logAgentCoreWebSearchUsage(params: {
+  resultsCount: number;
+  estimatedCost: number;
+  queryPreview: string;
+  latencyMs?: number;
+  tenantId?: string;
+  userId?: string;
+  userEmail?: string;
+}): Promise<{ ok: boolean; tenantId?: string; error?: string }> {
+  const session = await getSession().catch(() => null);
+  return logBedrockUsage({
+    modelId: 'agentcore-web-search',
+    inputTokens: 0,
+    outputTokens: Math.max(1, (params.resultsCount || 0) * 10),
+    queryPreview: params.queryPreview || '',
+    toolsUsed: ['web_search', 'agentcore'],
+    latencyMs: params.latencyMs || 0,
+    tenantId:
+      params.tenantId ||
+      session?.tenantId ||
+      (await getSessionTenantId()) ||
+      'tenant-2024-001',
+    userId:
+      params.userId ||
+      session?.userId ||
+      (await getSessionUserId()) ||
+      'agentcore',
+    userEmail:
+      params.userEmail ||
+      session?.email ||
+      (await getSessionUserEmail()) ||
+      'agentcore@system',
+    provider: 'agentcore',
+    estimatedCostUsd:
+      params.estimatedCost != null && Number.isFinite(params.estimatedCost)
+        ? params.estimatedCost
+        : undefined,
+  });
+}
+
+/**
  * Get Bedrock usage summary for a period
  * 
  * @param period - Time period: 'day', 'week', or 'month'

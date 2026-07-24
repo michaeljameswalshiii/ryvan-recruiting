@@ -19,3 +19,14 @@ EMAIL_USER=your-email@gmail.com
 EMAIL_PASS=your-app-password
 EMAIL_FROM=your-email@gmail.com
 EMAIL_FROM_NAME=Your Name
+
+# -- Amazon Bedrock AgentCore Web Search (public web / resume research) --
+# Create an AgentCore Gateway + target connectorId: web-search (us-east-1)
+# AGENTCORE_GATEWAY_URL=https://gateway-xxxx.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp
+# AGENTCORE_GATEWAY_ID=xxxx
+# AGENTCORE_REGION=us-east-1
+# AGENTCORE_WEB_SEARCH_TOOL_NAME=WebSearch
+# AGENTCORE_WEB_SEARCH_USD_PER_QUERY=0.007
+# AGENTCORE_WEB_SEARCH_DISABLED=false
+# IAM caller: bedrock-agentcore:InvokeGateway
+# Gateway role: bedrock-agentcore:InvokeWebSearch on arn:aws:bedrock-agentcore:us-east-1:aws:tool/web-search.v1

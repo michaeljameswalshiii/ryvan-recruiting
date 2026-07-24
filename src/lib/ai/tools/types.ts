@@ -17,6 +17,13 @@ export interface ToolParams {
 /**
  * Execution context passed to all tools
  */
+export interface ToolSpendEntry {
+  tool: string;
+  estimatedCostUsd: number;
+  queries?: number;
+  label?: string;
+}
+
 export interface ToolContext {
   tenantId: string | null;
   userId: string | null;
@@ -29,6 +36,11 @@ export interface ToolContext {
     sizeBytes: number;
     format: string;
   }>;
+  /**
+   * Accumulated third-party / AgentCore tool spend for this agent turn.
+   * Surfaced on the AI response as estimatedToolCostUsd + toolSpend.
+   */
+  toolSpend?: ToolSpendEntry[];
 }
 
 /**

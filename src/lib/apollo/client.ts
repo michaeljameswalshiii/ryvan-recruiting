@@ -74,6 +74,8 @@ export type PeopleSearchInput = {
   technologies?: string[];
   per_page?: number;
   page?: number;
+  /** Tenant BYOK / explicit key */
+  auth?: ApolloAuthContext;
 };
 
 export type CompanySearchInput = {
@@ -86,6 +88,7 @@ export type CompanySearchInput = {
   minJobs?: number;
   per_page?: number;
   page?: number;
+  auth?: ApolloAuthContext;
 };
 
 export type JobSearchInput = {
@@ -94,6 +97,7 @@ export type JobSearchInput = {
   locations?: string[];
   keywords?: string[];
   per_page?: number;
+  auth?: ApolloAuthContext;
 };
 
 const SENIORITY_MAP: Record<string, string> = {
@@ -120,7 +124,15 @@ const SENIORITY_MAP: Record<string, string> = {
   lead: 'senior',
 };
 
-function getApiKey(): string {
+/** Optional auth context for tenant BYOK or explicit key override */
+export type ApolloAuthContext = {
+  /** Explicit key (highest priority) */
+  apiKey?: string;
+  /** Resolve tenant-shared BYOK, then platform env */
+  tenantId?: string | null;
+};
+
+function getEnvApiKey(): string {
   // Vercel env names are case-sensitive on Linux — accept common variants
   const key =
     process.env.APOLLO_API_KEY ||
@@ -133,11 +145,36 @@ function getApiKey(): string {
 }
 
 export function isApolloConfigured(): boolean {
-  return getApiKey().length > 10;
+  return getEnvApiKey().length > 10;
 }
 
-function headers(): HeadersInit {
-  const key = getApiKey();
+/** Sync env-only check; prefer resolveApolloConfigured for tenant-aware checks */
+export async function resolveApolloConfigured(
+  auth?: ApolloAuthContext
+): Promise<boolean> {
+  const key = await resolveApiKey(auth);
+  return key.length > 10;
+}
+
+async function resolveApiKey(auth?: ApolloAuthContext): Promise<string> {
+  if (auth?.apiKey && auth.apiKey.trim().length > 10) {
+    return auth.apiKey.trim();
+  }
+  if (auth?.tenantId) {
+    try {
+      const { resolveApolloApiKey } = await import(
+        '@/lib/db/repositories/tenant-apollo-credentials-repository'
+      );
+      const resolved = await resolveApolloApiKey(auth.tenantId);
+      if (resolved?.apiKey) return resolved.apiKey;
+    } catch (err) {
+      console.warn('[apollo] tenant key resolve failed', err);
+    }
+  }
+  return getEnvApiKey();
+}
+
+function headersFor(key: string): HeadersInit {
   return {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache',
@@ -251,21 +288,24 @@ export function mapOrganization(o: any): ApolloCompany {
 
 async function apolloFetch(
   path: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  auth?: ApolloAuthContext
 ): Promise<{ ok: boolean; status: number; data: any; error?: string }> {
-  if (!isApolloConfigured()) {
+  const key = await resolveApiKey(auth);
+  if (key.length <= 10) {
     return {
       ok: false,
       status: 400,
       data: null,
-      error: 'Apollo API key is not configured (set APOLLO_API_KEY)',
+      error:
+        'Apollo API key is not configured. Add a company Apollo key in Settings, or set APOLLO_API_KEY on the server.',
     };
   }
 
   try {
     const response = await fetch(`${APOLLO_BASE}${path}`, {
       method: 'POST',
-      headers: headers(),
+      headers: headersFor(key),
       body: JSON.stringify(body),
     });
 
@@ -287,7 +327,8 @@ async function apolloFetch(
 
       let friendly = msg;
       if (response.status === 401) {
-        friendly = 'Invalid Apollo API key (401). Check APOLLO_API_KEY.';
+        friendly =
+          'Invalid Apollo API key (401). Update the company key in Settings → Integrations.';
       } else if (response.status === 403) {
         friendly =
           'Apollo plan or master API key required for this search (403).';
@@ -408,7 +449,11 @@ export async function searchPeople(
     body.person_titles = [input.q.replace(/\bin\s+.+$/i, '').trim()].filter(Boolean);
   }
 
-  const result = await apolloFetch('/mixed_people/api_search', body);
+  const result = await apolloFetch(
+    '/mixed_people/api_search',
+    body,
+    input.auth
+  );
   if (!result.ok) {
     return { people: [], total: 0, error: result.error, raw: result.data };
   }
@@ -490,7 +535,11 @@ export async function searchCompanies(
     body.q_organization_keyword_tags = [input.q];
   }
 
-  const result = await apolloFetch('/mixed_companies/search', body);
+  const result = await apolloFetch(
+    '/mixed_companies/search',
+    body,
+    input.auth
+  );
   if (!result.ok) {
     return { companies: [], total: 0, error: result.error, raw: result.data };
   }
@@ -537,6 +586,7 @@ export async function searchJobs(
     jobTitles: titles,
     minJobs: 1,
     per_page: Math.min(input.per_page || 15, 25),
+    auth: input.auth,
   });
 
   if (companyResult.error && companyResult.companies.length === 0) {
@@ -556,18 +606,26 @@ export async function searchJobs(
     if (!co.id) return [] as ApolloJob[];
 
     // Prefer dedicated job postings endpoint; fall back gracefully
-    let res = await apolloFetch('/organizations/job_postings', {
-      organization_id: co.id,
-      per_page: 5,
-      page: 1,
-    });
+    let res = await apolloFetch(
+      '/organizations/job_postings',
+      {
+        organization_id: co.id,
+        per_page: 5,
+        page: 1,
+      },
+      input.auth
+    );
 
     // Some accounts expose nested path instead
     if (!res.ok) {
-      res = await apolloFetch(`/organizations/${co.id}/job_postings`, {
-        per_page: 5,
-        page: 1,
-      });
+      res = await apolloFetch(
+        `/organizations/${co.id}/job_postings`,
+        {
+          per_page: 5,
+          page: 1,
+        },
+        input.auth
+      );
     }
 
     if (!res.ok || !res.data) return [] as ApolloJob[];
@@ -647,30 +705,61 @@ export async function searchJobs(
   };
 }
 
-export async function checkApolloHealth(): Promise<{
+export async function checkApolloHealth(
+  auth?: ApolloAuthContext
+): Promise<{
   connected: boolean;
   message: string;
+  source?: 'tenant' | 'platform' | 'none';
 }> {
-  if (!isApolloConfigured()) {
+  const key = await resolveApiKey(auth);
+  if (key.length <= 10) {
     return {
       connected: false,
-      message: 'APOLLO_API_KEY not set',
+      message:
+        'No Apollo key — add one in Settings (shared for your company) or set APOLLO_API_KEY',
+      source: 'none',
     };
   }
 
   // Lightweight people search to verify key + plan
-  const result = await apolloFetch('/mixed_people/api_search', {
-    person_titles: ['software engineer'],
-    per_page: 1,
-    page: 1,
-  });
+  const result = await apolloFetch(
+    '/mixed_people/api_search',
+    {
+      person_titles: ['software engineer'],
+      per_page: 1,
+      page: 1,
+    },
+    { apiKey: key, tenantId: auth?.tenantId }
+  );
+
+  let source: 'tenant' | 'platform' = 'platform';
+  if (auth?.tenantId) {
+    try {
+      const { resolveApolloApiKey } = await import(
+        '@/lib/db/repositories/tenant-apollo-credentials-repository'
+      );
+      const r = await resolveApolloApiKey(auth.tenantId);
+      if (r?.source) source = r.source;
+    } catch {
+      /* ignore */
+    }
+  }
 
   if (result.ok) {
-    return { connected: true, message: 'Apollo connected' };
+    return {
+      connected: true,
+      message:
+        source === 'tenant'
+          ? 'Apollo connected (company key)'
+          : 'Apollo connected (platform key)',
+      source,
+    };
   }
 
   return {
     connected: false,
     message: result.error || 'Apollo unreachable',
+    source,
   };
 }

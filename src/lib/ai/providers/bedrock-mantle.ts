@@ -200,6 +200,19 @@ async function executeToolByName(
     toolContext
   );
   if (result.success) {
+    if (
+      toolName === "web_search" ||
+      toolName === "agentcore_web_search" ||
+      toolName === "resume_web_search"
+    ) {
+      const { formatAgentCoreWebSearchForModel } = await import(
+        "@/lib/ai/tools/agentcore-web-search"
+      );
+      return formatAgentCoreWebSearchForModel(result.data as any).slice(
+        0,
+        12000
+      );
+    }
     return JSON.stringify(result.data ?? { ok: true }).slice(0, 8000);
   }
   return `Tool failed: ${toolName} — ${result.error || "unknown"}`;

@@ -1,13 +1,13 @@
-import { checkApolloHealth, isApolloConfigured } from '@/lib/apollo/client';
+import { checkApolloHealth } from '@/lib/apollo/client';
+import { getSession, getSessionTenantId } from '@/lib/server-auth';
 
 export async function GET() {
-  if (!isApolloConfigured()) {
-    return Response.json({
-      connected: false,
-      message: 'APOLLO_API_KEY not configured',
-    });
-  }
+  const session = await getSession().catch(() => null);
+  const tenantId =
+    session?.tenantId || (await getSessionTenantId().catch(() => null));
 
-  const health = await checkApolloHealth();
+  const health = await checkApolloHealth(
+    tenantId ? { tenantId } : undefined
+  );
   return Response.json(health);
 }

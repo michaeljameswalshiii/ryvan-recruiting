@@ -67,6 +67,11 @@ interface Message {
   modelLabel?: string;
   /** Files produced by generate_file tool */
   generatedFiles?: GeneratedFile[];
+  /** Model token cost estimate (USD) */
+  cost?: number;
+  /** AgentCore / external tool spend this turn (USD) */
+  estimatedToolCostUsd?: number;
+  estimatedTotalCostUsd?: number;
 }
 
 /**
@@ -509,6 +514,18 @@ export default function GeneralAiUsagePage() {
               (f) => f?.fileName && f?.contentBase64
             )
           : [];
+        const toolCost =
+          typeof result.estimatedToolCostUsd === 'number'
+            ? result.estimatedToolCostUsd
+            : undefined;
+        const modelCost =
+          typeof result.cost === 'number' ? result.cost : undefined;
+        const totalCost =
+          typeof result.estimatedTotalCostUsd === 'number'
+            ? result.estimatedTotalCostUsd
+            : toolCost != null || modelCost != null
+              ? (modelCost || 0) + (toolCost || 0)
+              : undefined;
         setMessages((prev) => [
           ...prev,
           {
@@ -523,6 +540,9 @@ export default function GeneralAiUsagePage() {
             modelLabel,
             generatedFiles:
               generatedFiles.length > 0 ? generatedFiles : undefined,
+            cost: modelCost,
+            estimatedToolCostUsd: toolCost,
+            estimatedTotalCostUsd: totalCost,
           },
         ]);
         // CRM tools write on the server — refresh lists immediately
@@ -813,6 +833,31 @@ export default function GeneralAiUsagePage() {
                                   {t}
                                 </span>
                               ))}
+                            {(typeof m.estimatedToolCostUsd === 'number' &&
+                              m.estimatedToolCostUsd > 0) ||
+                            (typeof m.estimatedTotalCostUsd === 'number' &&
+                              m.estimatedTotalCostUsd > 0) ? (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-100"
+                                title={
+                                  m.estimatedToolCostUsd
+                                    ? `Tools ~$${m.estimatedToolCostUsd.toFixed(4)}${
+                                        m.cost
+                                          ? ` · Model ~$${m.cost.toFixed(4)}`
+                                          : ''
+                                      }`
+                                    : 'Estimated turn cost'
+                                }
+                              >
+                                ~
+                                $
+                                {(
+                                  m.estimatedTotalCostUsd ??
+                                  m.estimatedToolCostUsd ??
+                                  0
+                                ).toFixed(4)}
+                              </span>
+                            ) : null}
                           </div>
                         )}
                     </div>

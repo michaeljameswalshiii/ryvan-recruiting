@@ -1,12 +1,18 @@
 import { NextRequest } from 'next/server';
 import { logApolloUsage } from '@/lib/aws/athena-bedrock';
 import { searchCompanies } from '@/lib/apollo/client';
+import { getSession, getSessionTenantId } from '@/lib/server-auth';
 
 const APOLLO_COST_PER_RESULT = 0.005;
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
+    const session = await getSession().catch(() => null);
+    const tenantId =
+      request.headers.get('x-tenant-id') ||
+      session?.tenantId ||
+      (await getSessionTenantId().catch(() => null));
 
     const result = await searchCompanies({
       q: body.q || body.query || '',
@@ -19,6 +25,7 @@ export async function POST(request: NextRequest) {
       minJobs: body.minJobs,
       per_page: body.per_page || 25,
       page: body.page || 1,
+      auth: tenantId ? { tenantId } : undefined,
     });
 
     if (result.error && result.companies.length === 0) {

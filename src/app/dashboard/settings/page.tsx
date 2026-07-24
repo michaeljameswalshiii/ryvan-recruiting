@@ -34,6 +34,7 @@ import { TeamSettings } from '@/components/settings/TeamSettings';
 import { OrgSettings } from '@/components/settings/OrgSettings';
 import { PlanSettings } from '@/components/settings/PlanSettings';
 import { McpKeysSettings } from '@/components/settings/McpKeysSettings';
+import { ApolloSettings } from '@/components/settings/ApolloSettings';
 
 interface EmailConnection {
   provider: 'gmail' | 'outlook';
@@ -430,12 +431,26 @@ export default function SettingsPage() {
 
       {tab === 'team' && canTeamAdmin && <TeamSettings />}
       {tab === 'organization' && canTeamAdmin && <OrgSettings />}
-      {tab === 'integrations' && canTeamAdmin && <McpKeysSettings />}
+      {tab === 'integrations' && canTeamAdmin && (
+        <div className="space-y-6">
+          <ApolloSettings />
+          <McpKeysSettings />
+        </div>
+      )}
       {tab === 'plan' && <PlanSettings />}
 
       {tab === 'account' && (
       <>
-      {/* AI Providers — top of page so BYOK keys are easy to find */}
+      {/*
+        Company Apollo BYOK — tenant-wide people search key.
+        Team admins save; every user in the tenant uses it (Fill job, AI tools, etc.).
+        Also on Integrations tab for admins.
+      */}
+      <div id="apollo-company-key" className="scroll-mt-6">
+        <ApolloSettings />
+      </div>
+
+      {/* AI Providers — chat model BYOK (personal keys, not tenant-wide) */}
       <Card className="border-blue-100 shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -445,6 +460,7 @@ export default function SettingsPage() {
           <CardDescription>
             Choose Platform Bedrock (default), or bring your own Anthropic, OpenAI,
             Gemini, or Grok keys. Keys are encrypted and only used for your chat sessions.
+            For people search (Apollo), use the company key section above.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">

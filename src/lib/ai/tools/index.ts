@@ -55,6 +55,14 @@ export type { ApolloCompanySearchParams, ApolloCompanySearchResultData, ApolloCo
 export { executeTavilySearch, TAVILY_TOOL_NAME, TAVILY_TOOL_DESCRIPTION } from "./tavily";
 export type { TavilySearchParams, TavilySearchResultData, TavilyResult } from "./tavily";
 
+// AgentCore Web Search
+export {
+  executeAgentCoreWebSearch,
+  AGENTCORE_WEB_SEARCH_TOOL_NAME,
+  AGENTCORE_WEB_SEARCH_TOOL_DESCRIPTION,
+  formatAgentCoreWebSearchForModel,
+} from "./agentcore-web-search";
+
 // Fetch website (direct URL read)
 export {
   executeFetchWebsite,
@@ -154,6 +162,46 @@ export function getToolSchemas(): Array<{
         properties: {
           query: { type: "string", description: "Search query for web search" },
           max_results: { type: "number", description: "Maximum number of results (default 5)" },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      name: "source_candidates",
+      description:
+        "Find people to fill a job. Careers URL or role brief. Apollo/PDL — not web pages about a job URL.",
+      input_schema: {
+        type: "object",
+        properties: {
+          input: {
+            type: "string",
+            description: "Careers job URL or role brief",
+          },
+          job_id: { type: "string", description: "Optional job id" },
+          limit: { type: "number", description: "Max people (default 12)" },
+        },
+        required: ["input"],
+      },
+    },
+    {
+      name: "web_search",
+      description:
+        "AgentCore public web search. For known-person research only — use source_candidates to fill a job posting.",
+      input_schema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query ≤200 chars",
+          },
+          max_results: {
+            type: "number",
+            description: "Max results 1–25 (default 10)",
+          },
+          purpose: {
+            type: "string",
+            description: "general | resume_research | person_research",
+          },
         },
         required: ["query"],
       },
@@ -384,11 +432,13 @@ export function selectTools(query: string): string[] {
     "employee", "employees", "candidate"
   ];
   
-  // Web search keywords
+  // Web search keywords (AgentCore public web + optional Tavily)
   const searchKeywords = [
-    "news", "latest", "current", "today", "recent", 
-    "what is", "who is", "when did", "how does", 
-    "weather", "stock", "price"
+    "news", "latest", "current", "today", "recent",
+    "what is", "who is", "when did", "how does",
+    "weather", "stock", "price",
+    "resume", "linkedin", "github", "portfolio", "public footprint",
+    "background on", "research",
   ];
 
   // Direct website / URL examination
@@ -429,8 +479,13 @@ export function selectTools(query: string): string[] {
     tools.push(FETCH_WEBSITE_TOOL_NAME);
   }
   
-  // Add web search (general queries)
-  if (isTavilyToolEnabled() && searchKeywords.some(kw => q.includes(kw))) {
+  // AgentCore public web / resume research (always available when Gateway configured at runtime)
+  if (searchKeywords.some((kw) => q.includes(kw))) {
+    tools.push("web_search");
+  }
+
+  // Optional third-party web search
+  if (isTavilyToolEnabled() && searchKeywords.some((kw) => q.includes(kw))) {
     tools.push(TAVILY_TOOL_NAME);
   }
   
