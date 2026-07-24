@@ -252,6 +252,19 @@ export function formatModelDisplayName(modelId: string): string {
   if (id.includes('gpt')) return 'OpenAI GPT';
   if (id.includes('gemini')) return 'Google Gemini';
   if (id.includes('apollo')) return 'Apollo Search';
+  if (
+    id.includes('peopledatalabs') ||
+    id.includes('people-data-labs') ||
+    id.includes('people_data_labs') ||
+    id === 'pdl' ||
+    id.startsWith('pdl-') ||
+    id.startsWith('pdl_')
+  ) {
+    if (id.includes('person-search') || id.includes('person_search')) {
+      return 'People Data Labs · Person Search';
+    }
+    return 'People Data Labs';
+  }
 
   // Prefer last meaningful path segment, but skip pure version tokens like "0" or "3"
   const parts = raw.split(/[/.:]+/).filter(Boolean);
@@ -382,6 +395,11 @@ export async function logBedrockUsage(params: {
   userId?: string | null;
   userEmail?: string | null;
   provider?: string;
+  /**
+   * When set, use this USD amount instead of token-based pricing.
+   * Used for third-party APIs (Apollo, People Data Labs) billed per result/credit.
+   */
+  estimatedCostUsd?: number | null;
 }): Promise<{ ok: boolean; tenantId?: string; error?: string }> {
   try {
     const session = await getSession().catch(() => null);
@@ -407,11 +425,15 @@ export async function logBedrockUsage(params: {
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID().slice(0, 8)
         : Math.random().toString(36).slice(2, 10);
-    const estimatedCost = calculateCost(
-      params.modelId,
-      params.inputTokens,
-      params.outputTokens
-    );
+    const estimatedCost =
+      params.estimatedCostUsd != null &&
+      Number.isFinite(Number(params.estimatedCostUsd))
+        ? Math.max(0, Number(params.estimatedCostUsd))
+        : calculateCost(
+            params.modelId,
+            params.inputTokens,
+            params.outputTokens
+          );
 
     const record: BedrockUsageRecord = {
       PK: `TENANT#${tenantId}`,
@@ -469,6 +491,7 @@ export async function logApolloUsage(params: {
   return logBedrockUsage({
     modelId: params.modelId || 'apollo-search',
     inputTokens: 0,
+    // Synthetic tokens for “results” column on usage UI; cost uses estimatedCostUsd
     outputTokens: Math.max(1, (params.resultsCount || 0) * 100),
     queryPreview: params.queryPreview || '',
     toolsUsed: ['apollo'],
@@ -489,6 +512,56 @@ export async function logApolloUsage(params: {
       (await getSessionUserEmail()) ||
       'apollo@system',
     provider: 'apollo',
+    estimatedCostUsd:
+      params.estimatedCost != null && Number.isFinite(params.estimatedCost)
+        ? params.estimatedCost
+        : undefined,
+  });
+}
+
+/**
+ * Log People Data Labs (Person Search) usage into the same Usage dashboard.
+ * Cost is per returned person / credit (see PDL_COST_PER_PERSON).
+ */
+export async function logPdlUsage(params: {
+  modelId?: string;
+  resultsCount: number;
+  estimatedCost: number;
+  queryPreview: string;
+  latencyMs?: number;
+  tenantId?: string;
+  userId?: string;
+  userEmail?: string;
+}): Promise<{ ok: boolean; tenantId?: string; error?: string }> {
+  const session = await getSession().catch(() => null);
+  return logBedrockUsage({
+    modelId: params.modelId || 'peopledatalabs-person-search',
+    inputTokens: 0,
+    // Surface result count as pseudo-tokens so the table shows volume
+    outputTokens: Math.max(1, (params.resultsCount || 0) * 100),
+    queryPreview: params.queryPreview || '',
+    toolsUsed: ['peopledatalabs', 'person-search'],
+    latencyMs: params.latencyMs || 0,
+    tenantId:
+      params.tenantId ||
+      session?.tenantId ||
+      (await getSessionTenantId()) ||
+      'tenant-2024-001',
+    userId:
+      params.userId ||
+      session?.userId ||
+      (await getSessionUserId()) ||
+      'pdl',
+    userEmail:
+      params.userEmail ||
+      session?.email ||
+      (await getSessionUserEmail()) ||
+      'pdl@system',
+    provider: 'peopledatalabs',
+    estimatedCostUsd:
+      params.estimatedCost != null && Number.isFinite(params.estimatedCost)
+        ? params.estimatedCost
+        : undefined,
   });
 }
 

@@ -315,6 +315,9 @@ const extra = data as Record<string, unknown>;
     lead.salary_requirements = extra.salary_requirements;
   }
   if (extra.full_address) lead.full_address = extra.full_address;
+  if (extra.company != null && String(extra.company).trim()) {
+    lead.company = String(extra.company).trim();
+  }
 
   // Save to DynamoDB
   await putItem(leadsTable, lead);

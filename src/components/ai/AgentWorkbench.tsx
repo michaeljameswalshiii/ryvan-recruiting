@@ -1,8 +1,9 @@
 'use client';
 
 /**
- * Premium right-pane agent launcher + live job queue for Company List Builder.
- * Results open on a dedicated page — this pane stays focused and calm.
+ * Premium right-pane agent launcher + live job queue.
+ * Modes: Companies (web list-builder) | Candidates (People Data Labs).
+ * Results open on dedicated pages — this pane stays focused and calm.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -19,21 +20,22 @@ import {
   CheckCircle2,
   Clock3,
   CircleDashed,
+  Building2,
+  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-// toast used for launch / control feedback
 
-export type ListBuilderJobDto = {
+export type AgentMode = 'companies' | 'candidates';
+
+export type AgentJobDto = {
   id: string;
   status: string;
   brief: string;
   geography: string;
   targetSize: number;
-  /** private = owner only; public = shared with all users on the tenant */
   visibility?: 'private' | 'public';
   userId?: string;
-  /** True when current user owns the job (from API) */
   isOwner?: boolean;
   progress: {
     found: number;
@@ -45,6 +47,7 @@ export type ListBuilderJobDto = {
     partialFound?: number;
     emptyBatchStreak?: number;
     errorStreak?: number;
+    estimatedCostUsd?: number;
   };
   results?: unknown[];
   expiresAt?: string;
@@ -96,34 +99,59 @@ function statusMeta(status: string): {
   }
 }
 
+function apiBase(mode: AgentMode): string {
+  return mode === 'candidates'
+    ? '/api/candidate-list-builder'
+    : '/api/list-builder';
+}
+
+function resultsPath(mode: AgentMode, id: string): string {
+  return mode === 'candidates'
+    ? `/dashboard/candidate-list-builder/${id}`
+    : `/dashboard/list-builder/${id}`;
+}
+
 type Props = {
-  /** compact = floating drawer strip */
   variant?: 'full' | 'compact';
+  /** Default agent mode */
+  defaultMode?: AgentMode;
 };
 
-export function AgentWorkbench({ variant = 'full' }: Props) {
-  const [jobs, setJobs] = useState<ListBuilderJobDto[]>([]);
+export function AgentWorkbench({
+  variant = 'full',
+  defaultMode = 'companies',
+}: Props) {
+  const [mode, setMode] = useState<AgentMode>(defaultMode);
+  const [jobs, setJobs] = useState<AgentJobDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [brief, setBrief] = useState('');
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [seedCsv, setSeedCsv] = useState('');
   const [showCsv, setShowCsv] = useState(false);
+  const [pdlConfigured, setPdlConfigured] = useState<boolean | null>(null);
 
   const jobsRef = useRef(jobs);
   jobsRef.current = jobs;
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
   const tickingRef = useRef(false);
 
   const load = useCallback(async () => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 12_000);
+    const m = modeRef.current;
     try {
-      const res = await fetch('/api/list-builder', {
+      const res = await fetch(apiBase(m), {
         credentials: 'include',
         signal: controller.signal,
       });
       const data = await res.json().catch(() => ({}));
+      if (modeRef.current !== m) return; // stale response after mode switch
       if (res.ok && Array.isArray(data.jobs)) setJobs(data.jobs);
+      if (m === 'candidates' && typeof data.pdlConfigured === 'boolean') {
+        setPdlConfigured(data.pdlConfigured);
+      }
     } catch {
       /* quiet */
     } finally {
@@ -133,11 +161,12 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
   }, []);
 
   useEffect(() => {
+    setLoading(true);
+    setJobs([]);
     void load();
-  }, [load]);
+  }, [load, mode]);
 
-  // Stable poll/tick loop — must NOT restart when `jobs` changes (that
-  // previously reset the counter and prevented ticks after the first batch).
+  // Stable poll/tick loop — restarts on mode change only
   useEffect(() => {
     let cancelled = false;
 
@@ -149,7 +178,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
       if (!runnable) return;
       tickingRef.current = true;
       try {
-        await fetch(`/api/list-builder/${runnable.id}`, {
+        await fetch(`${apiBase(modeRef.current)}/${runnable.id}`, {
           method: 'PATCH',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -170,9 +199,12 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
       void tickActive();
     }, 15_000);
 
-    // Kick soon after mount if something is already running
     const kick = setTimeout(() => {
-      if (jobsRef.current.some((j) => j.status === 'running' || j.status === 'queued')) {
+      if (
+        jobsRef.current.some(
+          (j) => j.status === 'running' || j.status === 'queued'
+        )
+      ) {
         void tickActive();
       }
     }, 3_000);
@@ -182,7 +214,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
       clearInterval(t);
       clearTimeout(kick);
     };
-  }, [load]);
+  }, [load, mode]);
 
   const action = async (
     jobId: string,
@@ -191,7 +223,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
   ) => {
     setBusyId(jobId);
     try {
-      const res = await fetch(`/api/list-builder/${jobId}`, {
+      const res = await fetch(`${apiBase(mode)}/${jobId}`, {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -215,22 +247,38 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
   };
 
   const startJob = async () => {
-    if (!brief.trim() && !seedCsv.trim()) {
+    if (mode === 'companies' && !brief.trim() && !seedCsv.trim()) {
       toast.error('Describe who you want to reach, or paste a CSV seed list');
       return;
     }
+    if (mode === 'candidates' && !brief.trim()) {
+      toast.error('Describe the candidates you want to source');
+      return;
+    }
+    if (mode === 'candidates' && pdlConfigured === false) {
+      toast.error(
+        'People Data Labs is not configured. Add PEOPLE_DATA_LABS_API_KEY in env.'
+      );
+      return;
+    }
+
     setBusyId('new');
     try {
-      const res = await fetch('/api/list-builder', {
+      const body: Record<string, unknown> = {
+        brief:
+          brief.trim() ||
+          (mode === 'companies' ? 'Seed list enrichment' : ''),
+        visibility,
+      };
+      if (mode === 'companies' && seedCsv.trim()) {
+        body.seedCsv = seedCsv.trim();
+      }
+
+      const res = await fetch(apiBase(mode), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          brief: brief.trim() || 'Seed list enrichment',
-          // Geography / size inferred from brief + server defaults (no UI fields)
-          visibility,
-          seedCsv: seedCsv.trim() || undefined,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -252,7 +300,8 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
     }
   };
 
-  const isCompact = variant === 'compact';
+  const isCompact = variant === 'full' ? false : true;
+  const isCandidates = mode === 'candidates';
 
   return (
     <div
@@ -263,9 +312,13 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
       }`}
     >
       {/* Hero header */}
-      <div className={`shrink-0 border-b border-white/10 ${isCompact ? 'px-3 py-3' : 'px-5 py-5'}`}>
+      <div
+        className={`shrink-0 border-b border-white/10 ${
+          isCompact ? 'px-3 py-3' : 'px-5 py-5'
+        }`}
+      >
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-200 ring-1 ring-violet-400/30">
               <Sparkles className="h-3 w-3" />
               Autonomous agent
@@ -275,18 +328,66 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                 isCompact ? 'text-sm' : 'text-lg'
               }`}
             >
-              Company List Builder
+              {isCandidates ? 'Candidate Search Agent' : 'Company List Builder'}
             </h2>
             {!isCompact && (
               <p className="mt-1 text-sm leading-relaxed text-slate-400">
-                Describe a market. Grok on Bedrock browses company sites and keeps
-                rows with a public{' '}
-                <span className="text-slate-200">email or phone</span>
-                {' '}(both preferred), while you keep chatting on the left.
+                {isCandidates ? (
+                  <>
+                    Describe a role and market. People Data Labs (AWS Data
+                    Exchange) pages through matching people — spend shows on{' '}
+                    <span className="text-slate-200">Usage</span>. Import into
+                    Trio candidates when ready.
+                  </>
+                ) : (
+                  <>
+                    Describe a market. Grok on Bedrock browses company sites and
+                    keeps rows with a public{' '}
+                    <span className="text-slate-200">email or phone</span> (both
+                    preferred), while you keep chatting on the left.
+                  </>
+                )}
               </p>
             )}
           </div>
         </div>
+
+        {/* Mode toggle */}
+        <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+          <button
+            type="button"
+            onClick={() => setMode('companies')}
+            className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition ${
+              mode === 'companies'
+                ? 'bg-violet-600 text-white shadow'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Building2 className="h-3.5 w-3.5" />
+            Companies
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('candidates')}
+            className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition ${
+              mode === 'candidates'
+                ? 'bg-violet-600 text-white shadow'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Users className="h-3.5 w-3.5" />
+            Candidates
+          </button>
+        </div>
+
+        {isCandidates && pdlConfigured === false && (
+          <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-100">
+            PDL key missing. Set{' '}
+            <code className="text-amber-50">PEOPLE_DATA_LABS_API_KEY</code> (or{' '}
+            <code className="text-amber-50">PDL_API_KEY</code>) from AWS Data
+            Exchange / PDL, then redeploy.
+          </p>
+        )}
 
         {/* Launch form */}
         <div className={`mt-4 space-y-2.5 ${isCompact ? 'mt-3' : ''}`}>
@@ -295,7 +396,11 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
             onChange={(e) => setBrief(e.target.value)}
             rows={isCompact ? 2 : 3}
             className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none ring-violet-500/0 transition focus:border-violet-400/40 focus:bg-white/[0.07] focus:ring-2 focus:ring-violet-500/30"
-            placeholder="e.g. Construction companies in Palm Beach County under 300 employees — HR or owners…"
+            placeholder={
+              isCandidates
+                ? 'e.g. 50 Finance Implementation Specialists in Florida with NetSuite…'
+                : 'e.g. Construction companies in Palm Beach County under 300 employees — HR or owners…'
+            }
           />
           <div>
             <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">
@@ -331,7 +436,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                 : 'Only you can see this list.'}
             </p>
           </div>
-          {!isCompact && (
+          {!isCompact && !isCandidates && (
             <button
               type="button"
               onClick={() => setShowCsv((v) => !v)}
@@ -341,7 +446,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
               {showCsv ? 'Hide CSV seed' : 'Optional: paste CSV seed list'}
             </button>
           )}
-          {showCsv && !isCompact && (
+          {showCsv && !isCompact && !isCandidates && (
             <textarea
               value={seedCsv}
               onChange={(e) => setSeedCsv(e.target.value)}
@@ -366,12 +471,14 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
             ) : (
               <>
                 <Sparkles className="mr-2 h-4 w-4" />
-                Launch agent
+                Launch {isCandidates ? 'candidate' : 'company'} agent
               </>
             )}
           </Button>
           <p className="text-center text-[10px] text-slate-500">
-            Runs until target usable leads (email or phone) · up to 2 hours · pause anytime
+            {isCandidates
+              ? 'Loops PDL person search until target · spend on Usage · pause anytime'
+              : 'Runs until target usable leads (email or phone) · up to 2 hours · pause anytime'}
           </p>
         </div>
       </div>
@@ -380,7 +487,7 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         <div className="mb-2 flex items-center justify-between px-1">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-            Active & recent
+            {isCandidates ? 'Candidate agents' : 'Active & recent'}
           </span>
           <button
             type="button"
@@ -399,7 +506,9 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
         ) : jobs.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-10 text-center">
             <Clock3 className="mx-auto h-8 w-8 text-slate-600" />
-            <p className="mt-3 text-sm font-medium text-slate-300">No agents yet</p>
+            <p className="mt-3 text-sm font-medium text-slate-300">
+              No agents yet
+            </p>
             <p className="mt-1 text-xs text-slate-500">
               Launch one above — it runs while you work.
             </p>
@@ -416,16 +525,20 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
               const partialFound =
                 j.progress?.partialFound ??
                 Math.max(0, found - completeFound);
-              // Progress bar: prefer kept/target; if still 0 kept, show research activity
               const keepPct = Math.min(100, Math.round((found / target) * 100));
               const researchHintPct =
                 found === 0 && researched > 0
-                  ? Math.min(35, Math.round((researched / Math.max(target * 2, 1)) * 100) + 4)
+                  ? Math.min(
+                      35,
+                      Math.round((researched / Math.max(target * 2, 1)) * 100) +
+                        4
+                    )
                   : 0;
               const pct = Math.max(keepPct, researchHintPct);
               const emptyStreak = j.progress?.emptyBatchStreak || 0;
               const isActive = ACTIVE.has(j.status);
               const isDone = DONE.has(j.status);
+              const cost = j.progress?.estimatedCostUsd;
 
               return (
                 <li
@@ -460,17 +573,24 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                           {j.isOwner === false ? ' · team' : ''}
                         </span>
                         <span className="text-[10px] font-medium text-slate-300">
-                          {found} kept · {researched} researched · target {target}
+                          {found} kept
+                          {researched > 0 ? ` · ${researched} scanned` : ''} ·
+                          target {target}
+                          {typeof cost === 'number' && cost > 0
+                            ? ` · ~$${cost.toFixed(2)}`
+                            : ''}
                         </span>
                       </div>
                       {(completeFound > 0 || partialFound > 0) && (
                         <p className="mt-0.5 text-[10px] text-slate-500">
                           {completeFound} complete
-                          {partialFound > 0 ? ` · ${partialFound} partial` : ''}
+                          {partialFound > 0
+                            ? ` · ${partialFound} partial`
+                            : ''}
                         </p>
                       )}
                       <p className="mt-1 line-clamp-2 text-sm font-medium leading-snug text-slate-100">
-                        {j.brief || 'List job'}
+                        {j.brief || 'Agent job'}
                       </p>
                       <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">
                         {j.geography}
@@ -495,16 +615,16 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                   <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                     {j.isOwner !== false &&
                       (j.status === 'running' || j.status === 'queued') && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 rounded-lg px-2 text-[11px] text-slate-300 hover:bg-white/10 hover:text-white"
-                        disabled={busyId === j.id}
-                        onClick={() => void action(j.id, 'pause')}
-                      >
-                        <Pause className="mr-1 h-3 w-3" /> Pause
-                      </Button>
-                    )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 rounded-lg px-2 text-[11px] text-slate-300 hover:bg-white/10 hover:text-white"
+                          disabled={busyId === j.id}
+                          onClick={() => void action(j.id, 'pause')}
+                        >
+                          <Pause className="mr-1 h-3 w-3" /> Pause
+                        </Button>
+                      )}
                     {j.isOwner !== false && j.status === 'paused' && (
                       <Button
                         size="sm"
@@ -541,12 +661,14 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
                         }
                         title="Toggle private / public sharing with your team"
                       >
-                        {j.visibility === 'public' ? 'Make private' : 'Share public'}
+                        {j.visibility === 'public'
+                          ? 'Make private'
+                          : 'Share public'}
                       </Button>
                     )}
                     {(isDone || found > 0 || j.status === 'cancelled') && (
                       <Link
-                        href={`/dashboard/list-builder/${j.id}`}
+                        href={resultsPath(mode, j.id)}
                         className="ml-auto inline-flex h-7 items-center gap-1 rounded-lg bg-white px-2.5 text-[11px] font-semibold text-slate-900 shadow-sm transition hover:bg-violet-100"
                       >
                         View results
@@ -563,3 +685,6 @@ export function AgentWorkbench({ variant = 'full' }: Props) {
     </div>
   );
 }
+
+/** @deprecated alias — prefer AgentJobDto */
+export type ListBuilderJobDto = AgentJobDto;
