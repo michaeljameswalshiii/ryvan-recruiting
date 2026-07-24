@@ -88,6 +88,101 @@ export function toPublicMember(profile: Profile) {
   };
 }
 
+/**
+ * The profiles Dynamo table also stores list-builder jobs, sequence defs,
+ * AI credentials, indexes, etc. (all keyed by tenant_id). Team UI / seat
+ * counts must only count real people.
+ */
+const NON_MEMBER_TYPES = new Set([
+  "list_builder",
+  "list_builder_index",
+  "list_builder_public_index",
+  "candidate_list_builder",
+  "candidate_list_builder_index",
+  "candidate_list_builder_public_index",
+  "sequence",
+  "sequence_definition",
+  "sequence_enrollment",
+  "sequence_index",
+  "ai_credentials",
+  "tool_audit",
+]);
+
+const NON_MEMBER_ID_PREFIXES = [
+  "lb-job#",
+  "lb-index#",
+  "lb-public#",
+  "clb-job#",
+  "clb-index#",
+  "clb-public#",
+  "seq-",
+  "seq#",
+  "sequence#",
+  "ai-creds#",
+  "ai_creds#",
+  "aicred#",
+];
+
+export function isUserProfile(item: unknown): item is Profile {
+  if (!item || typeof item !== "object") return false;
+  const p = item as Record<string, unknown>;
+  const id = String(p.id || "");
+  if (!id) return false;
+
+  // Explicit entity type on non-member rows
+  const type = p.type != null ? String(p.type) : "";
+  if (type && NON_MEMBER_TYPES.has(type)) return false;
+  // Real members rarely set type; if they do, only allow profile/user/member
+  if (type && !["profile", "user", "member", ""].includes(type)) {
+    // Unknown typed rows (jobs, indexes) are not people
+    if (
+      type.includes("list_builder") ||
+      type.includes("sequence") ||
+      type.includes("credential") ||
+      type.includes("index")
+    ) {
+      return false;
+    }
+  }
+
+  // Prefixed ids used by jobs/indexes co-stored in this table
+  if (NON_MEMBER_ID_PREFIXES.some((prefix) => id.startsWith(prefix))) {
+    return false;
+  }
+  // Composite keys like lb-job#tenant#uuid never belong to people
+  if (id.includes("#")) return false;
+
+  // Members always have an email
+  const email = String(p.email || "")
+    .trim()
+    .toLowerCase();
+  if (!email || !email.includes("@") || email.length < 5) return false;
+
+  // Job statuses that leaked into team UI (list-builder / sequences)
+  const status = String(p.status || "")
+    .trim()
+    .toLowerCase();
+  if (
+    status &&
+    ![
+      "active",
+      "invited",
+      "disabled",
+      // legacy blanks treated as active below
+    ].includes(status)
+  ) {
+    // awaiting_import, stopped, running, queued, paused, completed, failed, cancelled
+    return false;
+  }
+
+  return true;
+}
+
+/** Filter any mixed table scan/query down to real team members. */
+export function filterUserProfiles(items: unknown[]): Profile[] {
+  return items.filter(isUserProfile).map((p) => p as Profile);
+}
+
 export async function getProfileById(userId: string): Promise<Profile | null> {
   const cacheKey = `profile:${userId}`;
   const cached = await getCached<Profile>(cacheKey);
@@ -176,7 +271,8 @@ export async function getProfilesByTenant(
 ): Promise<Profile[]> {
   const cacheKey = `profiles:tenant:${tenantId}`;
   const cached = await getCached<Profile[]>(cacheKey);
-  if (cached) return cached;
+  // Re-filter: older cache entries may include list-builder jobs etc.
+  if (cached) return filterUserProfiles(cached);
 
   try {
     try {
@@ -188,8 +284,8 @@ export async function getProfilesByTenant(
           ExpressionAttributeValues: { ":tenant_id": { S: tenantId } },
         })
       );
-      const profiles = (response.Items || []).map(
-        (item) => unmarshall(item) as Profile
+      const profiles = filterUserProfiles(
+        (response.Items || []).map((item) => unmarshall(item))
       );
       await setCached(cacheKey, profiles, 300);
       return profiles;
@@ -204,8 +300,8 @@ export async function getProfilesByTenant(
         ExpressionAttributeValues: { ":tenant_id": { S: tenantId } },
       })
     );
-    const profiles = (scan.Items || []).map(
-      (item) => unmarshall(item) as Profile
+    const profiles = filterUserProfiles(
+      (scan.Items || []).map((item) => unmarshall(item))
     );
     await setCached(cacheKey, profiles, 300);
     return profiles;
@@ -217,7 +313,8 @@ export async function getProfilesByTenant(
 
 /** Seats that count against plan limit */
 export function countBillableSeats(profiles: Profile[]): number {
-  return profiles.filter((p) => {
+  // Defensive: callers may pass pre-filter rows from older caches
+  return filterUserProfiles(profiles).filter((p) => {
     const s = (p.status || "active").toLowerCase();
     return s === "active" || s === "invited";
   }).length;
