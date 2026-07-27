@@ -59,6 +59,22 @@ type ResearchRun = {
   notes?: string[];
   candidates: SourcedPerson[];
   error?: string;
+  usageLine?: string;
+  usageBreakdown?: {
+    llm?: {
+      inputTokens: number;
+      outputTokens: number;
+      estimatedUsd: number;
+      modelId?: string;
+    };
+    apollo?: {
+      results: number;
+      credits: number;
+      estimatedUsd: number;
+      note?: string;
+    };
+    totalEstimatedUsd: number;
+  };
 };
 
 export type AgentJobDto = {
@@ -389,14 +405,21 @@ export function AgentWorkbench({
         jobLocation: data.job?.location,
         notes: Array.isArray(data.notes) ? data.notes : [],
         candidates: people,
-        error: res.ok && people.length ? undefined : data.error || 'No candidates found',
+        error:
+          res.ok && people.length
+            ? undefined
+            : data.error || 'No candidates found',
+        usageLine:
+          typeof data.usageLine === 'string' ? data.usageLine : undefined,
+        usageBreakdown: data.usageBreakdown || undefined,
       };
       setResearchRuns((prev) => [run, ...prev].slice(0, 12));
       if (!res.ok || !people.length) {
         toast.error(data.error || 'No candidates found for this role');
       } else {
         toast.success(
-          `Found ${run.count} candidate(s) for ${data.job?.title || 'this role'} · ~$${cost.toFixed(4)}`
+          run.usageLine ||
+            `Found ${run.count} candidate(s) for ${data.job?.title || 'this role'} · ~$${cost.toFixed(4)}`
         );
       }
     } catch {
@@ -722,6 +745,63 @@ export function AgentWorkbench({
                         ~${run.estimatedCostUsd.toFixed(4)}
                       </span>
                     </div>
+                    {run.usageBreakdown && (
+                      <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                        <div className="rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-300">
+                            LLM
+                          </p>
+                          {run.usageBreakdown.llm ? (
+                            <p className="mt-0.5 text-[11px] text-slate-200">
+                              {(run.usageBreakdown.llm.inputTokens || 0) +
+                                (run.usageBreakdown.llm.outputTokens || 0)}{' '}
+                              tokens
+                              <span className="text-slate-500">
+                                {' '}
+                                ({run.usageBreakdown.llm.inputTokens || 0} in /{' '}
+                                {run.usageBreakdown.llm.outputTokens || 0} out)
+                              </span>
+                              <br />
+                              <span className="font-medium text-emerald-200">
+                                $
+                                {run.usageBreakdown.llm.estimatedUsd.toFixed(4)}
+                              </span>
+                            </p>
+                          ) : (
+                            <p className="mt-0.5 text-[11px] text-slate-500">
+                              No LLM calls this run
+                            </p>
+                          )}
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-300">
+                            Apollo
+                          </p>
+                          {run.usageBreakdown.apollo ? (
+                            <p className="mt-0.5 text-[11px] text-slate-200">
+                              {run.usageBreakdown.apollo.results} results ·{' '}
+                              {run.usageBreakdown.apollo.credits} credits
+                              <br />
+                              <span className="font-medium text-emerald-200">
+                                $
+                                {run.usageBreakdown.apollo.estimatedUsd.toFixed(
+                                  4
+                                )}
+                              </span>
+                              {run.usageBreakdown.apollo.note && (
+                                <span className="block text-[10px] text-slate-500">
+                                  {run.usageBreakdown.apollo.note}
+                                </span>
+                              )}
+                            </p>
+                          ) : (
+                            <p className="mt-0.5 text-[11px] text-slate-500">
+                              No Apollo search this run
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     {hasLlmOnly && (
                       <p className="mt-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-2 text-[10px] leading-relaxed text-amber-100/90">
                         <strong className="text-amber-50">LLM leads ≠ open-to-work.</strong>{' '}

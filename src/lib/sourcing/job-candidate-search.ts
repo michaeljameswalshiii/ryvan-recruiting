@@ -18,11 +18,21 @@ import {
   searchPeople as pdlSearchPeople,
   type PdlNormalizedPerson,
 } from '@/lib/pdl/client';
-import { logApolloUsage, logPdlUsage } from '@/lib/aws/athena-bedrock';
+import {
+  logApolloUsage,
+  logPdlUsage,
+  logCombinedUsageTurn,
+} from '@/lib/aws/athena-bedrock';
 import {
   llmSourceCandidates,
   looksLikePersonName,
 } from '@/lib/sourcing/llm-candidate-source';
+import {
+  type CostBreakdown,
+  buildApolloSearchSlice,
+  formatBreakdownLine,
+  sumBreakdown,
+} from '@/lib/usage/cost-breakdown';
 
 export type SourcedCandidate = {
   id: string;
@@ -56,6 +66,9 @@ export type SourceCandidatesResult = {
   candidates: SourcedCandidate[];
   estimatedCostUsd: number;
   costs: Array<{ engine: string; estimatedCostUsd: number; count: number }>;
+  /** Side-by-side LLM tokens/$ and Apollo results/credits */
+  usageBreakdown?: CostBreakdown;
+  usageLine?: string;
   notes: string[];
   error?: string;
 };
@@ -274,6 +287,12 @@ export async function sourceCandidatesForJob(params: {
   const notes: string[] = [];
   const costs: SourceCandidatesResult['costs'] = [];
   let estimatedCostUsd = 0;
+  let apolloSlice: ReturnType<typeof buildApolloSearchSlice> | null = null;
+  let llmInputTokens = 0;
+  let llmOutputTokens = 0;
+  let llmUsd = 0;
+  let llmModelId: string | undefined;
+  const started = Date.now();
   const limit = Math.min(Math.max(params.limit || 15, 5), 30);
 
   const job = await resolveJobContext({
@@ -351,22 +370,30 @@ export async function sourceCandidatesForJob(params: {
         for (let i = 0; i < apolloRes.people.length; i++) {
           add(mapApollo(apolloRes.people[i], i));
         }
-        const cost = apolloRes.people.length * 0.01;
-        estimatedCostUsd += cost;
+        apolloSlice = buildApolloSearchSlice({
+          results: apolloRes.people.length,
+          endpoint: 'mixed_people/api_search',
+        });
+        estimatedCostUsd += apolloSlice.estimatedUsd;
         costs.push({
           engine: 'apollo',
-          estimatedCostUsd: cost,
+          estimatedCostUsd: apolloSlice.estimatedUsd,
           count: apolloRes.people.length,
         });
         void logApolloUsage({
           modelId: 'apollo-source-for-job',
           resultsCount: apolloRes.people.length,
-          estimatedCost: cost,
+          estimatedCost: apolloSlice.estimatedUsd,
+          credits: apolloSlice.credits,
+          endpoint: apolloSlice.endpoint,
           queryPreview: job.title,
           tenantId: params.tenantId || undefined,
           userId: params.userId || undefined,
+          surface: 'fill-job',
         }).catch(() => {});
-        notes.push(`Apollo: ${apolloRes.people.length} people`);
+        notes.push(
+          `Apollo: ${apolloRes.people.length} people · ${apolloSlice.credits} credits · $${apolloSlice.estimatedUsd.toFixed(4)}`
+        );
       }
     } else {
       notes.push(
@@ -429,13 +456,86 @@ export async function sourceCandidatesForJob(params: {
       for (const c of llm.costs) {
         costs.push(c);
         estimatedCostUsd += c.estimatedCostUsd;
+        // Treat nova-grounding / agentcore+llm / llm-fallback as LLM-side spend
+        if (
+          c.engine.includes('nova') ||
+          c.engine.includes('llm') ||
+          c.engine.includes('agentcore')
+        ) {
+          llmUsd += c.estimatedCostUsd;
+        }
+      }
+      if (llm.tokenUsage) {
+        llmInputTokens += llm.tokenUsage.inputTokens || 0;
+        llmOutputTokens += llm.tokenUsage.outputTokens || 0;
+        llmModelId = llm.tokenUsage.modelId || llmModelId;
       }
       for (const p of llm.candidates) add(p);
-      notes.push(`LLM sourcing: ${llm.candidates.length} person-shaped results`);
+      notes.push(
+        `LLM sourcing: ${llm.candidates.length} people · ~$${llmUsd.toFixed(4)}`
+      );
     } catch (err: any) {
       notes.push(`LLM sourcing error: ${err?.message || err}`);
     }
   }
+
+  const usageBreakdown = sumBreakdown({
+    llm:
+      llmUsd > 0 || llmInputTokens > 0
+        ? {
+            inputTokens: llmInputTokens,
+            outputTokens: llmOutputTokens,
+            estimatedUsd: llmUsd,
+            modelId: llmModelId,
+          }
+        : null,
+    apollo: apolloSlice,
+    engines: costs
+      .filter((c) => c.engine !== 'apollo')
+      .map((c) => ({
+        engine: c.engine,
+        results: c.count,
+        estimatedUsd: c.estimatedCostUsd,
+      })),
+  });
+  // Avoid double-counting engines already in llmUsd
+  usageBreakdown.totalEstimatedUsd = estimatedCostUsd;
+  const usageLine = formatBreakdownLine(usageBreakdown);
+
+  void logCombinedUsageTurn({
+    queryPreview: `Fill job: ${job.title}`.slice(0, 200),
+    surface: 'fill-job',
+    tenantId: params.tenantId,
+    userId: params.userId,
+    latencyMs: Date.now() - started,
+    llm:
+      llmUsd > 0 || llmInputTokens > 0
+        ? {
+            inputTokens: llmInputTokens,
+            outputTokens: llmOutputTokens,
+            estimatedUsd: llmUsd,
+            modelId: llmModelId,
+          }
+        : null,
+    apollo: apolloSlice
+      ? {
+          results: apolloSlice.results,
+          credits: apolloSlice.credits,
+          estimatedUsd: apolloSlice.estimatedUsd,
+          endpoint: apolloSlice.endpoint,
+        }
+      : null,
+    toolsUsed: costs.map((c) => c.engine),
+    extraUsd: costs
+      .filter(
+        (c) =>
+          !c.engine.includes('apollo') &&
+          !c.engine.includes('nova') &&
+          !c.engine.includes('llm') &&
+          !c.engine.includes('agentcore')
+      )
+      .reduce((s, c) => s + c.estimatedCostUsd, 0),
+  }).catch(() => {});
 
   if (candidates.length === 0) {
     return {
@@ -444,6 +544,8 @@ export async function sourceCandidatesForJob(params: {
       candidates: [],
       estimatedCostUsd,
       costs,
+      usageBreakdown,
+      usageLine,
       notes,
       error:
         'No candidates found. Update the company Apollo key in Settings, enable PDL, or retry LLM sourcing (Bedrock Nova).',
@@ -463,6 +565,8 @@ export async function sourceCandidatesForJob(params: {
     candidates: candidates.slice(0, limit),
     estimatedCostUsd,
     costs,
+    usageBreakdown,
+    usageLine,
     notes,
   };
 }

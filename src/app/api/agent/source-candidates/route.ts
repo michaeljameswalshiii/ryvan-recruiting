@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     message:
       'Paste a careers job URL or role brief. We extract the req and find people via Apollo/PDL or LLM + Nova web grounding (person-shaped results).',
     costNote:
-      'Apollo ~$0.01/result · PDL ~$0.03/person · Nova grounding ~$0.01/call · AgentCore ~$0.007/query',
+      'LLM: tokens + $ · Apollo People Search: results + 0 credits (rate limits apply) · PDL/AgentCore when used',
   });
 }
 
@@ -105,6 +105,8 @@ export async function POST(request: NextRequest) {
           notes: result.notes,
           estimatedCostUsd: result.estimatedCostUsd,
           costs: result.costs,
+          usageBreakdown: result.usageBreakdown,
+          usageLine: result.usageLine,
         },
         { status: result.job ? 502 : 400 }
       );
@@ -119,7 +121,11 @@ export async function POST(request: NextRequest) {
       estimatedCostUsd: result.estimatedCostUsd,
       estimatedToolCostUsd: result.estimatedCostUsd,
       costs: result.costs,
-      message: `Found ${result.candidates.length} candidate(s) for ${result.job?.title || 'this role'}. ~$${result.estimatedCostUsd.toFixed(4)} est.`,
+      usageBreakdown: result.usageBreakdown,
+      usageLine: result.usageLine,
+      message:
+        result.usageLine ||
+        `Found ${result.candidates.length} candidate(s) for ${result.job?.title || 'this role'}. ~$${result.estimatedCostUsd.toFixed(4)} est.`,
     });
   } catch (err: any) {
     console.error('[agent/source-candidates]', err);

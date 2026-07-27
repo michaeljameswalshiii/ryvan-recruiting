@@ -42,6 +42,11 @@ export type LlmSourceResult = {
   estimatedCostUsd: number;
   notes: string[];
   costs: Array<{ engine: string; estimatedCostUsd: number; count: number }>;
+  tokenUsage?: {
+    inputTokens: number;
+    outputTokens: number;
+    modelId?: string;
+  };
 };
 
 /** Reject article titles / how-tos masquerading as people */
@@ -131,6 +136,9 @@ async function novaPeopleGrounding(params: {
   candidates: SourcedCandidate[];
   cost: number;
   note: string;
+  inputTokens: number;
+  outputTokens: number;
+  modelId?: string;
 }> {
   const job = params.job;
   const system = `You are a recruiting researcher with live web grounding.
@@ -216,6 +224,9 @@ Return the JSON array only.`;
           candidates: people,
           cost,
           note: `Nova grounding: ${people.length} people (${modelId})`,
+          inputTokens,
+          outputTokens,
+          modelId,
         };
       }
       lastErr = `Nova returned no parseable people (text ${text.length} chars)`;
@@ -224,7 +235,13 @@ Return the JSON array only.`;
       console.warn('[llm-candidate-source] nova', modelId, lastErr);
     }
   }
-  return { candidates: [], cost: 0, note: `Nova grounding: ${lastErr || 'no results'}` };
+  return {
+    candidates: [],
+    cost: 0,
+    note: `Nova grounding: ${lastErr || 'no results'}`,
+    inputTokens: 0,
+    outputTokens: 0,
+  };
 }
 
 async function agentCoreThenExtract(params: {
@@ -341,6 +358,9 @@ export async function llmSourceCandidates(params: {
   const notes: string[] = [];
   const costs: LlmSourceResult['costs'] = [];
   let estimatedCostUsd = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let modelId: string | undefined;
   const all: SourcedCandidate[] = [];
   const seen = new Set<string>();
 
@@ -368,6 +388,9 @@ export async function llmSourceCandidates(params: {
     userId: params.userId,
   });
   notes.push(nova.note);
+  inputTokens += nova.inputTokens || 0;
+  outputTokens += nova.outputTokens || 0;
+  if (nova.modelId) modelId = nova.modelId;
   if (nova.cost > 0) {
     costs.push({
       engine: 'nova-grounding',
@@ -447,5 +470,10 @@ Desc: ${(params.job.description || '').slice(0, 800)}`;
     estimatedCostUsd,
     notes,
     costs,
+    tokenUsage: {
+      inputTokens,
+      outputTokens,
+      modelId,
+    },
   };
 }

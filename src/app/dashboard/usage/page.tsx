@@ -81,8 +81,9 @@ export default async function UsageDashboardPage() {
         <div>
           <h1 className="text-3xl font-bold">AI Usage Dashboard</h1>
           <p className="text-muted-foreground">
-            Track Bedrock / Claude / OpenAI / Gemini / Grok usage, tokens, and estimated costs.
-            Costs are estimates from published list rates (not your AWS invoice).
+            Track LLM tokens/$ and Apollo results/credits side by side. LLM costs
+            use published list rates; Apollo People Search is typically 0 credits
+            (rate limits still apply). Not your AWS/Apollo invoice.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -286,14 +287,22 @@ export default async function UsageDashboardPage() {
       <Card>
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Last 20 AI calls · times shown in Eastern (ET)</CardDescription>
+          <CardDescription>
+            Last 20 calls · LLM tokens/$ and Apollo results/credits when present ·
+            times in Eastern (ET)
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {recentCalls.length === 0 ? (
             <p className="text-sm text-muted-foreground">No recent activity</p>
           ) : (
             <div className="space-y-4">
-              {recentCalls.map((call) => (
+              {recentCalls.map((call) => {
+                const hasApollo =
+                  call.apolloResults != null || call.apolloCredits != null;
+                const hasLlm = (call.inputTokens || 0) + (call.outputTokens || 0) > 0
+                  || (call.llmCostUsd != null && call.llmCostUsd > 0);
+                return (
                 <div key={call.id} className="flex items-start sm:items-center justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0">
                     <Clock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -309,19 +318,68 @@ export default async function UsageDashboardPage() {
                         <span title={call.modelId || undefined}>
                           {formatModelDisplayName(call.modelId || '')}
                         </span>
+                        {call.provider && (
+                          <>
+                            {' · '}
+                            <span className="uppercase tracking-wide text-[10px] font-semibold text-slate-500">
+                              {call.provider}
+                            </span>
+                          </>
+                        )}
+                        {call.surface && (
+                          <>
+                            {' · '}
+                            <span className="text-slate-500">{call.surface}</span>
+                          </>
+                        )}
                       </p>
+                      {(hasLlm || hasApollo || call.costBreakdownLine) && (
+                        <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                          {call.costBreakdownLine || (
+                            <>
+                              {hasLlm && (
+                                <span className="mr-2">
+                                  LLM:{' '}
+                                  {formatNumber(
+                                    (call.inputTokens || 0) +
+                                      (call.outputTokens || 0)
+                                  )}{' '}
+                                  tok
+                                  {call.llmCostUsd != null
+                                    ? ` · $${call.llmCostUsd.toFixed(4)}`
+                                    : ''}
+                                </span>
+                              )}
+                              {hasApollo && (
+                                <span>
+                                  Apollo: {call.apolloResults ?? 0} results ·{' '}
+                                  {call.apolloCredits ?? 0} cr
+                                  {call.apolloCostUsd != null
+                                    ? ` · $${call.apolloCostUsd.toFixed(4)}`
+                                    : ''}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-sm">
-                      {formatNumber(call.inputTokens + call.outputTokens)} tokens
+                      {hasLlm
+                        ? `${formatNumber(call.inputTokens + call.outputTokens)} tokens`
+                        : hasApollo
+                          ? `${call.apolloResults ?? 0} results`
+                          : formatNumber(call.inputTokens + call.outputTokens)}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {formatCurrency(call.estimatedCost)}
                     </p>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

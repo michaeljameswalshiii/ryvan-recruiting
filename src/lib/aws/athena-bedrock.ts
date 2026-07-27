@@ -98,6 +98,20 @@ export interface BedrockUsageRecord {
   toolsUsed: string[];
   latencyMs: number;
   timestamp: string;
+  /** bedrock | apollo | pdl | agentcore | combined */
+  provider?: string;
+  /** Apollo people rows returned */
+  apolloResults?: number;
+  /** Apollo credits consumed (0 for People API Search) */
+  apolloCredits?: number;
+  apolloEndpoint?: string;
+  /** USD slice for LLM only */
+  llmCostUsd?: number;
+  /** USD slice for Apollo only */
+  apolloCostUsd?: number;
+  /** Human-readable multi-engine line */
+  costBreakdownLine?: string;
+  surface?: string;
 }
 
 export interface UsageSummary {
@@ -136,6 +150,13 @@ export interface UsageDetail {
   userId?: string;
   userEmail?: string;
   queryPreview: string;
+  provider?: string;
+  apolloResults?: number;
+  apolloCredits?: number;
+  llmCostUsd?: number;
+  apolloCostUsd?: number;
+  costBreakdownLine?: string;
+  surface?: string;
 }
 
 export interface FullUsageReport {
@@ -400,6 +421,13 @@ export async function logBedrockUsage(params: {
    * Used for third-party APIs (Apollo, People Data Labs) billed per result/credit.
    */
   estimatedCostUsd?: number | null;
+  apolloResults?: number;
+  apolloCredits?: number;
+  apolloEndpoint?: string;
+  llmCostUsd?: number | null;
+  apolloCostUsd?: number | null;
+  costBreakdownLine?: string;
+  surface?: string;
 }): Promise<{ ok: boolean; tenantId?: string; error?: string }> {
   try {
     const session = await getSession().catch(() => null);
@@ -425,15 +453,28 @@ export async function logBedrockUsage(params: {
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID().slice(0, 8)
         : Math.random().toString(36).slice(2, 10);
+    const tokenCost = calculateCost(
+      params.modelId,
+      params.inputTokens,
+      params.outputTokens
+    );
     const estimatedCost =
       params.estimatedCostUsd != null &&
       Number.isFinite(Number(params.estimatedCostUsd))
         ? Math.max(0, Number(params.estimatedCostUsd))
-        : calculateCost(
-            params.modelId,
-            params.inputTokens,
-            params.outputTokens
-          );
+        : tokenCost;
+
+    const llmCostUsd =
+      params.llmCostUsd != null && Number.isFinite(Number(params.llmCostUsd))
+        ? Math.max(0, Number(params.llmCostUsd))
+        : params.inputTokens || params.outputTokens
+          ? tokenCost
+          : undefined;
+    const apolloCostUsd =
+      params.apolloCostUsd != null &&
+      Number.isFinite(Number(params.apolloCostUsd))
+        ? Math.max(0, Number(params.apolloCostUsd))
+        : undefined;
 
     const record: BedrockUsageRecord = {
       PK: `TENANT#${tenantId}`,
@@ -450,6 +491,14 @@ export async function logBedrockUsage(params: {
       toolsUsed: params.toolsUsed || [],
       latencyMs: params.latencyMs || 0,
       timestamp,
+      provider: params.provider,
+      apolloResults: params.apolloResults,
+      apolloCredits: params.apolloCredits,
+      apolloEndpoint: params.apolloEndpoint,
+      llmCostUsd,
+      apolloCostUsd,
+      costBreakdownLine: params.costBreakdownLine,
+      surface: params.surface,
     };
 
     await putItem(bedrockUsageTable, record);
@@ -460,7 +509,8 @@ export async function logBedrockUsage(params: {
       params.modelId,
       params.inputTokens,
       params.outputTokens,
-      `$${estimatedCost.toFixed(4)}`
+      `$${estimatedCost.toFixed(4)}`,
+      params.costBreakdownLine || ''
     );
     return { ok: true, tenantId };
   } catch (error) {
@@ -484,18 +534,38 @@ export async function logApolloUsage(params: {
   tenantId?: string;
   userId?: string;
   userEmail?: string;
+  /** Apollo credits (People Search = 0) */
+  credits?: number;
+  endpoint?: string;
+  latencyMs?: number;
+  surface?: string;
 }): Promise<{ ok: boolean; tenantId?: string; error?: string }> {
-  // Reuse main logger so Apollo rows share the same SK scheme (USAGE#iso#id)
-  // and land in the same dashboard date queries.
+  const { buildApolloSearchSlice, formatBreakdownLine, sumBreakdown } =
+    await import('@/lib/usage/cost-breakdown');
+  const slice = buildApolloSearchSlice({
+    results: params.resultsCount || 0,
+    credits: params.credits,
+    endpoint: params.endpoint,
+  });
+  // Prefer explicit estimatedCost when caller set a non-search fee; else slice
+  const apolloUsd =
+    params.estimatedCost != null &&
+    Number.isFinite(params.estimatedCost) &&
+    params.estimatedCost > 0
+      ? params.estimatedCost
+      : slice.estimatedUsd;
+  const breakdown = sumBreakdown({
+    apollo: { ...slice, estimatedUsd: apolloUsd },
+  });
   const session = await getSession().catch(() => null);
   return logBedrockUsage({
-    modelId: params.modelId || 'apollo-search',
+    modelId: params.modelId || 'apollo-people-search',
     inputTokens: 0,
-    // Synthetic tokens for “results” column on usage UI; cost uses estimatedCostUsd
-    outputTokens: Math.max(1, (params.resultsCount || 0) * 100),
+    // Surface result count in the tokens column for volume (not LLM tokens)
+    outputTokens: Math.max(0, params.resultsCount || 0),
     queryPreview: params.queryPreview || '',
-    toolsUsed: ['apollo'],
-    latencyMs: 0,
+    toolsUsed: ['apollo', 'people-search'],
+    latencyMs: params.latencyMs || 0,
     tenantId:
       params.tenantId ||
       session?.tenantId ||
@@ -512,10 +582,90 @@ export async function logApolloUsage(params: {
       (await getSessionUserEmail()) ||
       'apollo@system',
     provider: 'apollo',
-    estimatedCostUsd:
-      params.estimatedCost != null && Number.isFinite(params.estimatedCost)
-        ? params.estimatedCost
-        : undefined,
+    estimatedCostUsd: apolloUsd,
+    apolloResults: slice.results,
+    apolloCredits: slice.credits,
+    apolloEndpoint: slice.endpoint,
+    apolloCostUsd: apolloUsd,
+    costBreakdownLine: formatBreakdownLine(breakdown),
+    surface: params.surface,
+  });
+}
+
+/**
+ * Log a multi-engine turn (e.g. Fill job): LLM tokens + Apollo results/credits.
+ */
+export async function logCombinedUsageTurn(params: {
+  queryPreview: string;
+  surface: string;
+  tenantId?: string | null;
+  userId?: string | null;
+  userEmail?: string | null;
+  latencyMs?: number;
+  llm?: {
+    inputTokens: number;
+    outputTokens: number;
+    estimatedUsd: number;
+    modelId?: string;
+  } | null;
+  apollo?: {
+    results: number;
+    credits: number;
+    estimatedUsd: number;
+    endpoint?: string;
+  } | null;
+  toolsUsed?: string[];
+  extraUsd?: number;
+}): Promise<{ ok: boolean; tenantId?: string; error?: string }> {
+  const { formatBreakdownLine, sumBreakdown } = await import(
+    '@/lib/usage/cost-breakdown'
+  );
+  const breakdown = sumBreakdown({
+    llm: params.llm
+      ? {
+          inputTokens: params.llm.inputTokens,
+          outputTokens: params.llm.outputTokens,
+          estimatedUsd: params.llm.estimatedUsd,
+          modelId: params.llm.modelId,
+        }
+      : null,
+    apollo: params.apollo
+      ? {
+          results: params.apollo.results,
+          credits: params.apollo.credits,
+          estimatedUsd: params.apollo.estimatedUsd,
+          endpoint: params.apollo.endpoint,
+        }
+      : null,
+  });
+  const total =
+    breakdown.totalEstimatedUsd + (Number(params.extraUsd) || 0);
+  const tools = new Set(params.toolsUsed || []);
+  if (params.llm) tools.add('llm');
+  if (params.apollo) tools.add('apollo');
+
+  return logBedrockUsage({
+    modelId: params.llm?.modelId || 'combined-turn',
+    inputTokens: params.llm?.inputTokens || 0,
+    outputTokens: params.llm?.outputTokens || 0,
+    queryPreview: params.queryPreview,
+    toolsUsed: Array.from(tools),
+    latencyMs: params.latencyMs || 0,
+    tenantId: params.tenantId,
+    userId: params.userId,
+    userEmail: params.userEmail,
+    provider: 'combined',
+    estimatedCostUsd: total,
+    apolloResults: params.apollo?.results,
+    apolloCredits: params.apollo?.credits,
+    apolloEndpoint: params.apollo?.endpoint,
+    llmCostUsd: params.llm?.estimatedUsd,
+    apolloCostUsd: params.apollo?.estimatedUsd,
+    costBreakdownLine: formatBreakdownLine({
+      ...breakdown,
+      totalEstimatedUsd: total,
+    }),
+    surface: params.surface,
   });
 }
 
@@ -784,6 +934,13 @@ export async function getRecentCalls(
       userId: record.userId,
       userEmail: record.userEmail,
       queryPreview: record.queryPreview,
+      provider: record.provider,
+      apolloResults: record.apolloResults,
+      apolloCredits: record.apolloCredits,
+      llmCostUsd: record.llmCostUsd,
+      apolloCostUsd: record.apolloCostUsd,
+      costBreakdownLine: record.costBreakdownLine,
+      surface: record.surface,
     }));
   } catch (error) {
     console.error('[USAGE] getRecentCalls error:', error);

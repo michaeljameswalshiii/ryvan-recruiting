@@ -2741,6 +2741,32 @@ ${pageContext}`
       (sum, e) => sum + (Number(e.estimatedCostUsd) || 0),
       0
     );
+    const llmCostUsd = typeof cost === "number" ? cost : 0;
+    const apolloSpend = toolSpendAcc.filter((e) =>
+      String(e.tool || "").toLowerCase().includes("apollo")
+    );
+    const apolloUsd = apolloSpend.reduce(
+      (s, e) => s + (Number(e.estimatedCostUsd) || 0),
+      0
+    );
+    const apolloResultsFromTools = apolloSpend.reduce(
+      (s, e) => s + (Number(e.queries) || 0),
+      0
+    );
+    const totalUsd = llmCostUsd + estimatedToolCostUsd;
+    const costBreakdownLine = [
+      `LLM ${(promptTokens || 0) + (completionTokens || 0)} tok · $${llmCostUsd.toFixed(4)}`,
+      apolloSpend.length
+        ? `Apollo tools · $${apolloUsd.toFixed(4)}`
+        : null,
+      estimatedToolCostUsd > apolloUsd
+        ? `Other tools · $${(estimatedToolCostUsd - apolloUsd).toFixed(4)}`
+        : null,
+      `Total $${totalUsd.toFixed(4)}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
     const usageLog = await logBedrockUsage({
       modelId: `${provider}:${usedModel}`,
       inputTokens: promptTokens,
@@ -2752,7 +2778,14 @@ ${pageContext}`
       latencyMs,
       tenantId,
       userId,
-      provider,
+      provider: estimatedToolCostUsd > 0 ? "combined" : provider,
+      estimatedCostUsd: totalUsd,
+      llmCostUsd,
+      apolloCostUsd: apolloUsd > 0 ? apolloUsd : undefined,
+      apolloResults: apolloResultsFromTools || undefined,
+      apolloCredits: apolloSpend.length ? 0 : undefined,
+      costBreakdownLine,
+      surface: generalMode ? "general-ai" : "ai-assistant",
     });
     if (!usageLog.ok) {
       console.error('[USAGE] log failed:', usageLog.error);
@@ -2788,8 +2821,26 @@ ${pageContext}`
       estimatedToolCostUsd,
       toolSpend: toolSpendAcc,
       /** Convenience: model + tools */
-      estimatedTotalCostUsd:
-        (typeof cost === "number" ? cost : 0) + estimatedToolCostUsd,
+      estimatedTotalCostUsd: totalUsd,
+      usageBreakdown: {
+        llm: {
+          inputTokens: promptTokens,
+          outputTokens: completionTokens,
+          estimatedUsd: llmCostUsd,
+          modelId: usedModel,
+        },
+        apollo:
+          apolloSpend.length > 0
+            ? {
+                results: apolloResultsFromTools,
+                credits: 0,
+                estimatedUsd: apolloUsd,
+                note: "Apollo tool spend this turn (People Search = 0 credits)",
+              }
+            : undefined,
+        totalEstimatedUsd: totalUsd,
+      },
+      usageLine: costBreakdownLine,
     });
     
     return addRateLimitHeaders(response, rateLimitResult);
