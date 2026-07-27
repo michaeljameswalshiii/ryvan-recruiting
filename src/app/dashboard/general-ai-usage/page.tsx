@@ -20,6 +20,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Columns2,
+  History,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -30,6 +31,16 @@ import {
   parseAiFetchResponse,
 } from '@/lib/ai/parse-response';
 import { AgentWorkbench } from '@/components/ai/AgentWorkbench';
+import { ChatHistoryPanel } from '@/components/ai/ChatHistoryPanel';
+import {
+  type ChatHistoryThread,
+  makeThreadId,
+  listChatHistory,
+  saveChatThread,
+  deleteChatThread,
+  clearChatHistory,
+  formatThreadWhen,
+} from '@/lib/ai/chat-history';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -190,7 +201,8 @@ function modelBadgeClass(label?: string): string {
   return 'border-slate-200 bg-slate-50 text-slate-700';
 }
 
-const STORAGE_KEY = 'general-ai-usage-messages-v1';
+/** Legacy key — cleared on mount so page visits always start a new chat */
+const LEGACY_SESSION_KEY = 'general-ai-usage-messages-v1';
 const MAX_HISTORY_TURNS = 24;
 
 const SUGGESTIONS = [
@@ -267,6 +279,15 @@ export default function GeneralAiUsagePage() {
   } | null>(null);
   const [platformModel, setPlatformModel] = useState<PlatformModel>('auto');
 
+  // Conversation history — page entry always starts a fresh chat
+  const [threadId, setThreadId] = useState(() => makeThreadId());
+  const [threadCreatedAt, setThreadCreatedAt] = useState(() => nowIso());
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyThreads, setHistoryThreads] = useState<ChatHistoryThread[]>(
+    []
+  );
+  const [historyUserId, setHistoryUserId] = useState<string | null>(null);
+
   // Right agent panel size (persisted)
   type AgentPanelSize = 'collapsed' | 'sm' | 'md' | 'lg';
   const PANEL_KEY = 'trio-agent-panel-size-v1';
@@ -275,6 +296,18 @@ export default function GeneralAiUsagePage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const threadIdRef = useRef(threadId);
+  threadIdRef.current = threadId;
+  const threadCreatedAtRef = useRef(threadCreatedAt);
+  threadCreatedAtRef.current = threadCreatedAt;
+  const historyUserIdRef = useRef(historyUserId);
+  historyUserIdRef.current = historyUserId;
+
+  const refreshHistoryList = useCallback(() => {
+    setHistoryThreads(listChatHistory(historyUserIdRef.current));
+  }, []);
 
   useEffect(() => {
     try {
@@ -287,48 +320,74 @@ export default function GeneralAiUsagePage() {
     }
   }, []);
 
-  // Restore session chat
+  // Drop legacy auto-restore; scope history by user when session is known
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Message[];
-        if (Array.isArray(parsed) && parsed.length) {
-          setMessages(parsed);
-        }
-      }
+      sessionStorage.removeItem(LEGACY_SESSION_KEY);
     } catch {
       /* ignore */
     }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const uid =
+          data?.user?.id ||
+          data?.userId ||
+          data?.user?.userId ||
+          data?.session?.userId ||
+          null;
+        if (uid) setHistoryUserId(String(uid));
+      } catch {
+        /* anon key */
+      } finally {
+        if (!cancelled) {
+          setHistoryThreads(listChatHistory(historyUserIdRef.current));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Persist (drop base64 payloads — too large for sessionStorage)
   useEffect(() => {
-    try {
-      if (messages.length === 0) {
-        sessionStorage.removeItem(STORAGE_KEY);
-      } else {
-        const slim = messages.map((m) => {
-          if (!m.generatedFiles?.length) return m;
-          const { generatedFiles: _g, ...rest } = m;
-          return {
-            ...rest,
-            // Keep names so UI can show "file was generated" without re-download
-            generatedFiles: m.generatedFiles.map((f) => ({
-              fileName: f.fileName,
-              mimeType: f.mimeType,
-              contentBase64: '',
-              sizeBytes: f.sizeBytes,
-              format: f.format,
-            })),
-          };
-        });
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(slim));
-      }
-    } catch {
-      /* ignore quota */
-    }
-  }, [messages]);
+    refreshHistoryList();
+  }, [historyUserId, refreshHistoryList]);
+
+  const persistCurrentThread = useCallback(() => {
+    const msgs = messagesRef.current;
+    if (!msgs.length) return;
+    saveChatThread({
+      threadId: threadIdRef.current,
+      messages: msgs as unknown as Record<string, unknown>[],
+      userId: historyUserIdRef.current,
+      surface: 'general',
+      createdAt: threadCreatedAtRef.current,
+    });
+    refreshHistoryList();
+  }, [refreshHistoryList]);
+
+  useEffect(() => {
+    if (messages.length === 0) return;
+    persistCurrentThread();
+  }, [messages, persistCurrentThread]);
+
+  useEffect(() => {
+    const onLeave = () => persistCurrentThread();
+    window.addEventListener('pagehide', onLeave);
+    window.addEventListener('beforeunload', onLeave);
+    return () => {
+      persistCurrentThread();
+      window.removeEventListener('pagehide', onLeave);
+      window.removeEventListener('beforeunload', onLeave);
+    };
+  }, [persistCurrentThread]);
 
   // Auto-scroll
   useEffect(() => {
@@ -337,18 +396,75 @@ export default function GeneralAiUsagePage() {
 
   const startNewChat = useCallback(() => {
     if (isLoading) return;
+    persistCurrentThread();
     setMessages([]);
     setInput('');
     setPendingFiles([]);
     setLastMeta(null);
-    try {
-      sessionStorage.removeItem(STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
-    toast.success('New chat started');
+    setThreadId(makeThreadId());
+    setThreadCreatedAt(nowIso());
+    toast.success('New chat started — prior chat is in History');
     textareaRef.current?.focus();
-  }, [isLoading]);
+  }, [isLoading, persistCurrentThread]);
+
+  const openHistoryThread = useCallback(
+    (thread: ChatHistoryThread) => {
+      if (isLoading) {
+        toast.message('Wait for the current reply to finish');
+        return;
+      }
+      persistCurrentThread();
+      setThreadId(thread.id);
+      setThreadCreatedAt(thread.createdAt);
+      setMessages(
+        thread.messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          displayContent: m.displayContent,
+          timestamp: m.timestamp,
+          attachments: m.attachments,
+          toolsUsed: m.toolsUsed,
+          model: m.model,
+          modelLabel: m.modelLabel,
+          cost: m.cost,
+          estimatedToolCostUsd: m.estimatedToolCostUsd,
+          estimatedTotalCostUsd: m.estimatedTotalCostUsd,
+          generatedFiles: m.generatedFiles?.map((f) => ({
+            fileName: f.fileName,
+            mimeType: f.mimeType || 'application/octet-stream',
+            contentBase64: '',
+            sizeBytes: f.sizeBytes,
+            format: f.format,
+          })),
+        }))
+      );
+      setLastMeta(null);
+      setHistoryOpen(false);
+      toast.success('Opened conversation from history');
+    },
+    [isLoading, persistCurrentThread]
+  );
+
+  const handleDeleteHistory = useCallback(
+    (id: string) => {
+      deleteChatThread(id, historyUserId);
+      if (id === threadId) {
+        setMessages([]);
+        setThreadId(makeThreadId());
+        setThreadCreatedAt(nowIso());
+      }
+      refreshHistoryList();
+      toast.success('Conversation deleted');
+    },
+    [historyUserId, threadId, refreshHistoryList]
+  );
+
+  const handleClearHistory = useCallback(() => {
+    clearChatHistory(historyUserId);
+    refreshHistoryList();
+    toast.success('All chat history cleared');
+  }, [historyUserId, refreshHistoryList]);
 
   const copyMessage = async (id: string, content: string) => {
     try {
@@ -636,7 +752,8 @@ export default function GeneralAiUsagePage() {
             </span>
           </div>
           <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
-            Instant help — notes, research, CRM updates. Long list builds run on the right.
+            Instant help — notes, research, CRM updates. Leaving this page
+            starts a new chat next visit; open History for past threads.
           </p>
           {/* Model strategy — default Most Efficient, optional lock */}
           <div className="mt-2.5 inline-flex flex-wrap rounded-xl border border-orange-200 bg-orange-50/50 p-1 shadow-sm gap-0.5">
@@ -664,22 +781,69 @@ export default function GeneralAiUsagePage() {
             ))}
           </div>
         </div>
-        <div className="flex flex-shrink-0 items-center gap-2">
-          {messages.length > 0 && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={startNewChat}
-              disabled={isLoading}
-              className="gap-1.5"
-            >
-              <Plus className="h-4 w-4" />
-              New chat
-            </Button>
-          )}
+        <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              refreshHistoryList();
+              setHistoryOpen(true);
+            }}
+            className="gap-1.5"
+            title="Past conversations with date & time"
+          >
+            <History className="h-4 w-4" />
+            History
+            {historyThreads.length > 0 && (
+              <span className="ml-0.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                {historyThreads.length}
+              </span>
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={startNewChat}
+            disabled={isLoading}
+            className="gap-1.5"
+          >
+            <Plus className="h-4 w-4" />
+            New chat
+          </Button>
         </div>
       </header>
+
+      {/* Most-recent history spotlight (when starting fresh) */}
+      {isEmpty && historyThreads[0] && (
+        <div className="flex-shrink-0 border-b border-emerald-100 bg-emerald-50/60 px-4 py-2.5 sm:px-6">
+          <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                Most recent conversation
+              </p>
+              <p className="truncate text-sm font-medium text-slate-900">
+                {historyThreads[0].title}
+              </p>
+              <p className="text-[11px] text-slate-500">
+                {formatThreadWhen(historyThreads[0].updatedAt).absolute}
+                {' · '}
+                {historyThreads[0].messages.length} messages
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="shrink-0 border-emerald-200 bg-white text-emerald-900 hover:bg-emerald-50"
+              onClick={() => openHistoryThread(historyThreads[0])}
+            >
+              Continue
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Messages / empty */}
       <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
@@ -694,9 +858,8 @@ export default function GeneralAiUsagePage() {
               </h2>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-500">
                 Ask anything, attach documents for analysis, or request
-                revisions in the same thread. Defaults to Most Efficient (Nova
-                Lite / Haiku / Grok 4.3 preferred for tools). CRM tools and
-                website fetch when needed.
+                revisions in the same thread. Each visit starts a new chat;
+                use History for prior conversations with date and time.
               </p>
 
               <div className="mt-8 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
@@ -1134,6 +1297,16 @@ export default function GeneralAiUsagePage() {
           </div>
         )}
       </aside>
+
+      <ChatHistoryPanel
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        threads={historyThreads}
+        activeThreadId={threadId}
+        onSelect={openHistoryThread}
+        onDelete={handleDeleteHistory}
+        onClearAll={handleClearHistory}
+      />
     </div>
   );
 }
