@@ -5,7 +5,9 @@
 
 import fs from 'fs';
 import path from 'path';
+import zlib from 'zlib';
 import { pathToFileURL } from 'url';
+import { createRequire } from 'module';
 import mammoth from 'mammoth';
 import {
   extractNameFromFilename,
@@ -13,6 +15,15 @@ import {
   textFromPdfItems,
   type StructuredParsedResume,
 } from '@/lib/candidates/resume-text-parser';
+
+function nodeRequire(id: string): any {
+  try {
+    return createRequire(import.meta.url)(id);
+  } catch {
+    // Bundled serverless fallback: resolve from project root node_modules
+    return createRequire(path.join(process.cwd(), 'package.json'))(id);
+  }
+}
 
 /** Real email shapes only (avoid binary noise). */
 const BINARY_EMAIL_RE =
@@ -113,67 +124,230 @@ function resolvePdfWorkerSrc(): string {
   return 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf.worker.min.mjs';
 }
 
-async function extractPdfText(
-  buffer: Buffer
-): Promise<{ text: string; method: string }> {
-  // Prefer legacy build for Node/serverless. Worker src must be set (pdfjs v4+);
-  // never pin an old CDN worker major that doesn't match the installed package.
-  const importCandidates = [
-    'pdfjs-dist/legacy/build/pdf.mjs',
-    'pdfjs-dist',
-  ] as const;
+/**
+ * Load pdfjs in a way that works on Vercel serverless.
+ * Dynamic `import(variable)` is stripped from the bundle → MODULE_NOT_FOUND.
+ * Use static import paths + createRequire fallback.
+ */
+async function loadPdfJs(): Promise<any> {
+  const errors: string[] = [];
 
-  const workerSrc = resolvePdfWorkerSrc();
-  let lastError: unknown;
-
-  for (const modPath of importCandidates) {
+  // 1) Static ESM imports (bundler can see these)
+  const staticAttempts: Array<() => Promise<any>> = [
+    () => import('pdfjs-dist/legacy/build/pdf.mjs'),
+    () => import('pdfjs-dist/build/pdf.mjs'),
+    () => import('pdfjs-dist'),
+  ];
+  for (const attempt of staticAttempts) {
     try {
-      const pdfjsLib: any = await import(modPath);
-      const getDocument = pdfjsLib.getDocument || pdfjsLib.default?.getDocument;
-      if (!getDocument) continue;
-
-      if (pdfjsLib.GlobalWorkerOptions) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      }
-
-      const loadingTask = getDocument({
-        data: new Uint8Array(buffer),
-        useSystemFonts: true,
-        isEvalSupported: false,
-        disableFontFace: true,
-      });
-      const pdf = await loadingTask.promise;
-      let full = '';
-
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        const items = textContent.items as Array<{
-          str?: string;
-          transform?: number[];
-          width?: number;
-          hasEOL?: boolean;
-        }>;
-        const pageText = textFromPdfItems(items);
-        const fallback = items
-          .map((i) => i.str || '')
-          .join(' ')
-          .replace(/[ \t]+/g, ' ')
-          .trim();
-        full += (pageText || fallback) + '\n';
-      }
-
-      if (full.trim().length > 20) {
-        return { text: full, method: `pdfjs:${modPath}` };
-      }
+      const mod = await attempt();
+      if (mod?.getDocument || mod?.default?.getDocument) return mod;
     } catch (e) {
-      lastError = e;
-      console.warn(`[resume-extract] pdfjs failed (${modPath}):`, e);
+      errors.push(e instanceof Error ? e.message : String(e));
     }
   }
 
+  // 2) createRequire from node_modules (serverExternalPackages path)
+  const requirePaths = [
+    'pdfjs-dist/legacy/build/pdf.mjs',
+    'pdfjs-dist/build/pdf.mjs',
+    'pdfjs-dist',
+  ];
+  for (const p of requirePaths) {
+    try {
+      const mod = nodeRequire(p);
+      if (mod?.getDocument || mod?.default?.getDocument) return mod;
+    } catch (e) {
+      errors.push(`${p}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  throw new Error(`pdfjs-dist unavailable: ${errors.slice(0, 3).join(' | ')}`);
+}
+
+/**
+ * Inflate FlateDecode streams and pull literal text / TJ operators.
+ * Used when pdfjs cannot load on the serverless runtime.
+ */
+function extractTextFromCompressedStreams(buffer: Buffer): string {
+  const chunks: string[] = [];
+  const latin = buffer.toString('binary');
+  // stream\n ... endstream
+  const re = /stream\r?\n([\s\S]*?)endstream/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(latin)) !== null) {
+    const raw = Buffer.from(m[1], 'binary');
+    // Trim possible leading newline already handled; try inflate
+    const candidates = [raw, raw.subarray(0, Math.max(0, raw.length - 1))];
+    for (const c of candidates) {
+      try {
+        const inflated = zlib.inflateSync(c);
+        const s = inflated.toString('utf8');
+        // Keep streams that look like PDF content or plain text
+        if (s.length < 8) continue;
+        if (
+          /BT\b|Tj|TJ|Tf|@|\(\d{3}\)|\d{3}[-.\s]\d{3}/.test(s) ||
+          /[A-Za-z]{4,}/.test(s)
+        ) {
+          chunks.push(s);
+        }
+        break;
+      } catch {
+        try {
+          const inflated = zlib.unzipSync(c);
+          const s = inflated.toString('utf8');
+          if (s.length >= 8) chunks.push(s);
+          break;
+        } catch {
+          /* next */
+        }
+      }
+    }
+    if (chunks.join('').length > 50_000) break;
+  }
+
+  if (!chunks.length) return '';
+
+  // Decode common PDF string operators: (Hello) Tj  /  [(H)(e)(l)(l)(o)] TJ
+  const joined = chunks.join('\n');
+  const pieces: string[] = [];
+
+  // Literal strings: (text) Tj or (text) '
+  const litRe = /\((?:\\.|[^\\)])*\)\s*(?:Tj|'|")/g;
+  let lm: RegExpExecArray | null;
+  while ((lm = litRe.exec(joined)) !== null) {
+    const inner = lm[0]
+      .replace(/\)\s*(?:Tj|'|")\s*$/, '')
+      .replace(/^\(/, '')
+      .replace(/\\([nrtbf()\\])/g, (_, ch) => {
+        const map: Record<string, string> = {
+          n: '\n',
+          r: '\r',
+          t: '\t',
+          b: '\b',
+          f: '\f',
+          '(': '(',
+          ')': ')',
+          '\\': '\\',
+        };
+        return map[ch] ?? ch;
+      })
+      .replace(/\\\d{1,3}/g, '');
+    if (inner.trim()) pieces.push(inner);
+  }
+
+  // Array form: [(a)(b)] TJ
+  const arrRe = /\[((?:[^\[\]]|\[[^\]]*\])*)\]\s*TJ/g;
+  let am: RegExpExecArray | null;
+  while ((am = arrRe.exec(joined)) !== null) {
+    const body = am[1];
+    const parts = body.match(/\((?:\\.|[^\\)])*\)/g) || [];
+    let line = '';
+    for (const p of parts) {
+      line += p
+        .slice(1, -1)
+        .replace(/\\([nrtbf()\\])/g, (_, ch) => {
+          const map: Record<string, string> = {
+            n: '\n',
+            r: '\r',
+            t: '\t',
+            b: '\b',
+            f: '\f',
+            '(': '(',
+            ')': ')',
+            '\\': '\\',
+          };
+          return map[ch] ?? ch;
+        });
+    }
+    if (line.trim()) pieces.push(line);
+  }
+
+  // Also keep raw emails/phones visible in inflated streams
+  const contact = scrapeContactFromBinary(Buffer.from(joined, 'utf8'));
+  if (contact) pieces.push(contact);
+
+  // Spaced-glyph emails may appear as separate (J)(c)(a)... strings — join consecutive single chars
+  let text = pieces.join('\n');
+  // Collapse lines that are single-character runs already handled by parser
+  if (!text.trim() && /@/.test(joined)) {
+    // Pull plain @ emails from inflated content
+    const emails = joined.match(
+      /[A-Za-z0-9][A-Za-z0-9._%+-]{0,64}@[A-Za-z0-9][A-Za-z0-9.-]{0,64}\.[A-Za-z]{2,24}/g
+    );
+    if (emails?.length) text = emails.join('\n');
+  }
+
+  return text.trim();
+}
+
+async function extractPdfText(
+  buffer: Buffer
+): Promise<{ text: string; method: string }> {
+  let lastError: unknown;
+
+  // --- pdfjs (preferred) ---
+  try {
+    const pdfjsLib: any = await loadPdfJs();
+    const getDocument = pdfjsLib.getDocument || pdfjsLib.default?.getDocument;
+    if (!getDocument) throw new Error('getDocument missing');
+
+    if (pdfjsLib.GlobalWorkerOptions) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = resolvePdfWorkerSrc();
+    }
+
+    const loadingTask = getDocument({
+      data: new Uint8Array(buffer),
+      useSystemFonts: true,
+      isEvalSupported: false,
+      disableFontFace: true,
+      // Serverless-friendly: avoid worker thread issues on Vercel
+      useWorkerFetch: false,
+      isOffscreenCanvasSupported: false,
+      disableAutoFetch: true,
+      disableStream: true,
+    });
+    const pdf = await loadingTask.promise;
+    let full = '';
+
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      const items = textContent.items as Array<{
+        str?: string;
+        transform?: number[];
+        width?: number;
+        hasEOL?: boolean;
+      }>;
+      const pageText = textFromPdfItems(items);
+      const fallback = items
+        .map((i) => i.str || '')
+        .join(' ')
+        .replace(/[ \t]+/g, ' ')
+        .trim();
+      full += (pageText || fallback) + '\n';
+    }
+
+    if (full.trim().length > 20) {
+      return { text: full, method: 'pdfjs' };
+    }
+  } catch (e) {
+    lastError = e;
+    console.warn('[resume-extract] pdfjs failed:', e);
+  }
+
+  // --- Inflate FlateDecode streams (no pdfjs) ---
+  try {
+    const streamText = extractTextFromCompressedStreams(buffer);
+    if (streamText.length > 20) {
+      return { text: streamText, method: 'pdf-streams' };
+    }
+  } catch (e) {
+    console.warn('[resume-extract] stream inflate failed:', e);
+  }
+
   if (lastError) {
-    console.warn('[resume-extract] all pdfjs paths failed:', lastError);
+    console.warn('[resume-extract] pdfjs last error:', lastError);
   }
 
   // Last resort: only real contact tokens — never invent phones from font tables.

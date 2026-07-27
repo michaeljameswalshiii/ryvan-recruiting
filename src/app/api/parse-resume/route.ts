@@ -229,6 +229,10 @@ export async function POST(req: NextRequest) {
     console.log(
       'parse-resume: final name =',
       finalResume.name,
+      'email =',
+      finalResume.email ? 'yes' : 'no',
+      'phone =',
+      finalResume.phone ? 'yes' : 'no',
       'title =',
       finalResume.title,
       'skills =',
