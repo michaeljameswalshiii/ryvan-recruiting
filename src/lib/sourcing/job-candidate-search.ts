@@ -83,6 +83,12 @@ export type SourceCandidatesResult = {
   /** What the LLM told Apollo to search */
   apolloPlan?: ApolloSearchPlan;
   apolloPlanSource?: 'llm' | 'heuristic';
+  /** tenant = company BYOK, platform = env key, none = missing */
+  apolloKeySource?: 'tenant' | 'platform' | 'explicit' | 'none';
+  /** Last Apollo HTTP status when search failed or ran */
+  apolloHttpStatus?: number;
+  /** Filters sent on last Apollo call (no secrets) */
+  apolloRequest?: Record<string, unknown>;
   notes: string[];
   error?: string;
 };
@@ -623,6 +629,11 @@ export async function sourceCandidatesForJob(params: {
   ];
   // seniorities reserved in plan for notes/UI; not forced on search (too many false zeros)
 
+  let apolloKeySource: SourceCandidatesResult['apolloKeySource'];
+  let apolloHttpStatus: number | undefined;
+  let apolloRequest: Record<string, unknown> | undefined;
+  let apolloAuthError: string | undefined;
+
   try {
     if (await resolveApolloConfigured(apolloAuth)) {
       let passIdx = 0;
@@ -636,8 +647,8 @@ export async function sourceCandidatesForJob(params: {
           // Prefer structured filters; avoid stuffing long JD text into q_keywords
           q: pass.titles[0],
           titles: pass.titles,
-          locations: pass.locations,
-          // Only send keywords when this pass intends them — never dump full skill list
+          // Always pass locations array (even empty) so client does not invent locations
+          locations: pass.locations || [],
           keywords: pass.keywords,
           seniorities: pass.seniorities,
           per_page: limit,
@@ -645,8 +656,24 @@ export async function sourceCandidatesForJob(params: {
           auth: apolloAuth,
         });
 
+        if (apolloRes.keySource) apolloKeySource = apolloRes.keySource;
+        if (apolloRes.httpStatus) apolloHttpStatus = apolloRes.httpStatus;
+        if (apolloRes.requestBody) apolloRequest = apolloRes.requestBody;
+
         if (apolloRes.error && !apolloRes.people.length) {
           lastApolloError = apolloRes.error;
+          // Auth failures won't improve on later passes — stop early
+          if (
+            apolloRes.httpStatus === 401 ||
+            apolloRes.httpStatus === 403
+          ) {
+            apolloAuthError = apolloRes.error;
+            notes.unshift(`Apollo AUTH: ${apolloRes.error}`);
+            notes.push(
+              `Key source: ${apolloRes.keySource || 'unknown'} · HTTP ${apolloRes.httpStatus}`
+            );
+            break;
+          }
           notes.push(`Apollo ${pass.label}: ${apolloRes.error}`);
           continue;
         }
@@ -685,25 +712,29 @@ export async function sourceCandidatesForJob(params: {
         }).catch(() => {});
 
         notes.push(
-          `Apollo ${pass.label}: ${apolloRes.people.length} returned · +${added} new`
+          `Apollo ${pass.label}: ${apolloRes.people.length} returned · +${added} new · key=${apolloRes.keySource || '?'}`
         );
         passIdx++;
 
-        // If first (broad) pass already filled the list, skip tighter/alt passes
         if (passIdx === 1 && candidates.length >= Math.min(5, limit)) break;
       }
 
-      if (!candidates.length && lastApolloError) {
-        notes.push(`Apollo had no people after broaden passes: ${lastApolloError}`);
+      if (apolloAuthError) {
+        // already noted
+      } else if (!candidates.length && lastApolloError) {
+        notes.push(
+          `Apollo had no people after broaden passes: ${lastApolloError}`
+        );
       } else if (!candidates.filter((c) => c.source === 'apollo').length) {
         notes.push(
-          'Apollo returned 0 people even after broader filters (titles+location). Try Anywhere, or a shorter title list.'
+          'Apollo returned 0 people with a working key. Filters may still be too narrow — try a simpler title like "Operations Manager".'
         );
       }
     } else {
-      notes.push(
-        'Apollo not configured — add company key in Settings or platform APOLLO_API_KEY'
-      );
+      apolloKeySource = 'none';
+      apolloAuthError =
+        'Apollo not configured — add a company master key in Settings → Integrations (People API Search access).';
+      notes.push(apolloAuthError);
     }
   } catch (err: any) {
     notes.push(`Apollo error: ${err?.message || err}`);
@@ -748,12 +779,16 @@ export async function sourceCandidatesForJob(params: {
   }
 
   // --- 3) Web-grounded discovery ONLY if Apollo/PDL still empty
-  // LLM-suggested /in/ URLs often 404 — strip direct profile links; UI uses Find on LinkedIn.
+  // Skip when Apollo auth is broken — fix the key first; web hints mislead.
   const dbCount = candidates.filter(
     (c) => c.source === 'apollo' || c.source === 'pdl'
   ).length;
 
-  if (dbCount >= Math.min(5, limit)) {
+  if (apolloAuthError) {
+    notes.push(
+      'Skipped web/LLM people discovery until Apollo key works (Settings → Integrations)'
+    );
+  } else if (dbCount >= Math.min(5, limit)) {
     notes.push(
       'Using database matches only (Apollo/PDL) — no invented profiles'
     );
@@ -904,9 +939,13 @@ export async function sourceCandidatesForJob(params: {
       usageLine,
       apolloPlan: plan,
       apolloPlanSource: planResult.source,
+      apolloKeySource,
+      apolloHttpStatus,
+      apolloRequest,
       notes,
       error:
-        'No real candidates found. Use a careers job URL or a clear title (e.g. "Operations Manager"). Soft-skill JD text alone is not enough. Apollo returned no matches for this filter — try Anywhere or a different location.',
+        apolloAuthError ||
+        'No real candidates found. Check notes for Apollo key/auth errors. With a valid master key, titles like "Director of Operations" should return people.',
     };
   }
 
@@ -933,6 +972,9 @@ export async function sourceCandidatesForJob(params: {
     usageLine,
     apolloPlan: plan,
     apolloPlanSource: planResult.source,
+    apolloKeySource,
+    apolloHttpStatus,
+    apolloRequest,
     notes,
   };
 }

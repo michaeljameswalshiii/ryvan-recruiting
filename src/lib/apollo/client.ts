@@ -148,17 +148,27 @@ export function isApolloConfigured(): boolean {
   return getEnvApiKey().length > 10;
 }
 
+export type ApolloKeySource = 'explicit' | 'tenant' | 'platform' | 'none';
+
 /** Sync env-only check; prefer resolveApolloConfigured for tenant-aware checks */
 export async function resolveApolloConfigured(
   auth?: ApolloAuthContext
 ): Promise<boolean> {
-  const key = await resolveApiKey(auth);
-  return key.length > 10;
+  const { apiKey } = await resolveApiKeyDetailed(auth);
+  return apiKey.length > 10;
 }
 
 async function resolveApiKey(auth?: ApolloAuthContext): Promise<string> {
+  const { apiKey } = await resolveApiKeyDetailed(auth);
+  return apiKey;
+}
+
+/** Resolve key + where it came from (never logs the key). */
+export async function resolveApiKeyDetailed(
+  auth?: ApolloAuthContext
+): Promise<{ apiKey: string; source: ApolloKeySource; tenantId?: string }> {
   if (auth?.apiKey && auth.apiKey.trim().length > 10) {
-    return auth.apiKey.trim();
+    return { apiKey: auth.apiKey.trim(), source: 'explicit' };
   }
   if (auth?.tenantId) {
     try {
@@ -166,12 +176,30 @@ async function resolveApiKey(auth?: ApolloAuthContext): Promise<string> {
         '@/lib/db/repositories/tenant-apollo-credentials-repository'
       );
       const resolved = await resolveApolloApiKey(auth.tenantId);
-      if (resolved?.apiKey) return resolved.apiKey;
+      if (resolved?.apiKey) {
+        return {
+          apiKey: resolved.apiKey,
+          source: resolved.source,
+          tenantId: auth.tenantId,
+        };
+      }
     } catch (err) {
       console.warn('[apollo] tenant key resolve failed', err);
     }
   }
-  return getEnvApiKey();
+  const env = getEnvApiKey();
+  if (env.length > 10) {
+    return {
+      apiKey: env,
+      source: 'platform',
+      tenantId: auth?.tenantId || undefined,
+    };
+  }
+  return {
+    apiKey: '',
+    source: 'none',
+    tenantId: auth?.tenantId || undefined,
+  };
 }
 
 function headersFor(key: string): HeadersInit {
@@ -398,8 +426,30 @@ export function heuristicParseQuery(q: string): {
 
 export async function searchPeople(
   input: PeopleSearchInput
-): Promise<{ people: ApolloPerson[]; total: number; error?: string; raw?: any }> {
+): Promise<{
+  people: ApolloPerson[];
+  total: number;
+  error?: string;
+  raw?: any;
+  keySource?: ApolloKeySource;
+  httpStatus?: number;
+  /** Filters actually sent (for debug / UI) */
+  requestBody?: Record<string, unknown>;
+}> {
+  const keyInfo = await resolveApiKeyDetailed(input.auth);
+  if (keyInfo.apiKey.length <= 10) {
+    return {
+      people: [],
+      total: 0,
+      error:
+        'Apollo API key is not configured. Add a company Apollo master key in Settings → Integrations.',
+      keySource: 'none',
+    };
+  }
+
   const heuristic = heuristicParseQuery(input.q || '');
+  // Prefer explicit structured filters — do NOT let free-text heuristic
+  // invent locations when caller intentionally passed empty locations.
   const titles = asStringArray(input.titles).length
     ? asStringArray(input.titles)
     : heuristic.titles;
@@ -407,8 +457,14 @@ export async function searchPeople(
     input.personLocations?.length ? input.personLocations : input.locations
   );
   const orgLocations = asStringArray(input.organizationLocations);
-  const locations =
-    personLocations.length > 0
+  // Only fall back to heuristic locations when caller did not pass locations at all
+  const callerPassedLocations =
+    input.personLocations != null || input.locations != null;
+  const locations = callerPassedLocations
+    ? personLocations.length > 0
+      ? personLocations
+      : orgLocations
+    : personLocations.length > 0
       ? personLocations
       : orgLocations.length > 0
         ? orgLocations
@@ -436,24 +492,19 @@ export async function searchPeople(
   }
 
   // q_keywords: free-text AND-style filter — keep SHORT.
-  // Long skill dumps ("Swiss machining wire EDM stamping…") zero out good title matches.
   // Prefer person_titles + person_locations; only add light keywords when provided.
   if (keywords.length > 0) {
-    // Cap to 2 short tokens/phrases so we don't over-constrain
     body.q_keywords = keywords
       .map((k) => String(k).trim())
       .filter((k) => k.length >= 2 && k.length <= 40)
       .slice(0, 2)
       .join(' ');
   } else if (!titles.length && input.q) {
-    // Free-text only when we lack structured titles
     body.q_keywords = String(input.q).trim().slice(0, 80);
   }
 
-  // Fallback: if we only have free text, still send it
   if (!titles.length && !locations.length && input.q) {
     body.q_keywords = String(input.q).trim().slice(0, 80);
-    // Also try person_titles from full query for better recall
     body.person_titles = [input.q.replace(/\bin\s+.+$/i, '').trim()]
       .filter(Boolean)
       .slice(0, 1);
@@ -462,10 +513,29 @@ export async function searchPeople(
   const result = await apolloFetch(
     '/mixed_people/api_search',
     body,
-    input.auth
+    // Pass resolved key so we don't re-resolve differently
+    { apiKey: keyInfo.apiKey }
   );
   if (!result.ok) {
-    return { people: [], total: 0, error: result.error, raw: result.data };
+    let error = result.error || `Apollo error ${result.status}`;
+    if (result.status === 401) {
+      error =
+        keyInfo.source === 'tenant'
+          ? 'Company Apollo key rejected (401 Invalid API key). Re-save a master key with People API Search in Settings → Integrations.'
+          : 'Platform Apollo key is invalid (401). Add/update the company Apollo master key in Settings → Integrations.';
+    } else if (result.status === 403) {
+      error =
+        'Apollo 403 — key needs master access to People API Search (mixed_people/api_search). Create a master key in Apollo → Settings → API.';
+    }
+    return {
+      people: [],
+      total: 0,
+      error,
+      raw: result.data,
+      keySource: keyInfo.source,
+      httpStatus: result.status,
+      requestBody: body,
+    };
   }
 
   const peopleRaw =
@@ -480,7 +550,14 @@ export async function searchPeople(
     result.data?.total ||
     people.length;
 
-  return { people, total, raw: result.data };
+  return {
+    people,
+    total,
+    raw: result.data,
+    keySource: keyInfo.source,
+    httpStatus: result.status,
+    requestBody: body,
+  };
 }
 
 export async function searchCompanies(

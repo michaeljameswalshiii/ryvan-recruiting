@@ -233,9 +233,19 @@ export function AgentWorkbench({
   );
   const [sourceEngines, setSourceEngines] = useState<{
     apollo?: boolean;
+    apolloKeyPresent?: boolean;
     pdl?: boolean;
     agentcoreWeb?: boolean;
+    llm?: boolean;
   }>({});
+  const [apolloStatus, setApolloStatus] = useState<{
+    keySource?: string;
+    tenantHasKey?: boolean;
+    tenantKeyHint?: string;
+    probeOk?: boolean;
+    probeError?: string;
+    probePeople?: number;
+  } | null>(null);
   const [researchRuns, setResearchRuns] = useState<ResearchRun[]>([]);
   const [researching, setResearching] = useState(false);
   /** Fill-job location: '' = use job default; 'any' = worldwide; else override */
@@ -375,6 +385,16 @@ export function AgentWorkbench({
         if (cancelled) return;
         setSourceConfigured(!!data.configured);
         setSourceEngines(data.engines || {});
+        if (data.apollo) {
+          setApolloStatus({
+            keySource: data.apollo.keySource,
+            tenantHasKey: data.apollo.tenantHasKey,
+            tenantKeyHint: data.apollo.tenantKeyHint,
+            probeOk: data.apollo.probe?.ok,
+            probeError: data.apollo.probe?.error,
+            probePeople: data.apollo.probe?.people,
+          });
+        }
       } catch {
         if (!cancelled) setSourceConfigured(false);
       }
@@ -453,7 +473,15 @@ export function AgentWorkbench({
       };
       setResearchRuns((prev) => [run, ...prev].slice(0, 12));
       if (!res.ok || !people.length) {
-        toast.error(data.error || 'No candidates found for this role');
+        const authHint =
+          data.apolloHttpStatus === 401 || data.apolloHttpStatus === 403
+            ? ` (Apollo ${data.apolloHttpStatus}, key=${data.apolloKeySource || '?'})`
+            : data.apolloKeySource
+              ? ` (Apollo key=${data.apolloKeySource})`
+              : '';
+        toast.error(
+          (data.error || 'No candidates found for this role') + authHint
+        );
       } else {
         toast.success(
           run.usageLine ||
@@ -605,25 +633,44 @@ export function AgentWorkbench({
           </button>
         </div>
 
-        {isResearch && sourceConfigured === false && (
-          <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-100">
-            No people database ready. Add a{' '}
-            <strong className="text-amber-50">company Apollo key</strong> in
-            Settings (or enable PDL) so we can find candidates for the posting.
+        {isResearch && apolloStatus?.probeOk === false && (
+          <p className="mt-2 rounded-lg border border-rose-500/35 bg-rose-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-rose-100">
+            <strong className="text-rose-50">Apollo key not working.</strong>{' '}
+            {apolloStatus.probeError ||
+              'People Search returned an auth error.'}{' '}
+            Key source: <code className="text-rose-50">{apolloStatus.keySource || '—'}</code>
+            {apolloStatus.tenantHasKey
+              ? ` · company key ${apolloStatus.tenantKeyHint || 'saved'}`
+              : ' · no company key saved'}
+            . Open <strong className="text-rose-50">Settings → Integrations</strong> and
+            re-save a <strong className="text-rose-50">master</strong> Apollo API key
+            with People API Search. The LLM plan is fine — without a valid key Apollo
+            returns 0 people.
           </p>
         )}
 
-        {isResearch && sourceConfigured && (
+        {isResearch && apolloStatus?.probeOk && (
           <p className="mt-2 rounded-lg border border-sky-500/25 bg-sky-500/10 px-2.5 py-2 text-[11px] text-sky-100">
-            Ready · engines:{' '}
+            Apollo OK · key={apolloStatus.keySource}
+            {typeof apolloStatus.probePeople === 'number'
+              ? ` · probe ${apolloStatus.probePeople} people`
+              : ''}
+            {' · '}
             {[
-              sourceEngines.apollo && 'Apollo',
               sourceEngines.pdl && 'PDL',
               sourceEngines.agentcoreWeb && 'Web hints',
             ]
               .filter(Boolean)
-              .join(' · ') || '…'}
+              .join(' · ') || 'ready'}
             {' · '}session ~${researchSpend.toFixed(4)}
+          </p>
+        )}
+
+        {isResearch && sourceConfigured === false && !apolloStatus && (
+          <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-100">
+            No people database ready. Add a{' '}
+            <strong className="text-amber-50">company Apollo key</strong> in
+            Settings (or enable PDL) so we can find candidates for the posting.
           </p>
         )}
 
@@ -950,9 +997,20 @@ export function AgentWorkbench({
                       </p>
                     )}
                     {run.notes && run.notes.length > 0 && (
-                      <p className="mt-1 text-[10px] text-slate-500 line-clamp-2">
-                        {run.notes.slice(0, 3).join(' · ')}
-                      </p>
+                      <div className="mt-1.5 space-y-0.5">
+                        {run.notes.slice(0, 8).map((n, ni) => (
+                          <p
+                            key={ni}
+                            className={`text-[10px] leading-snug ${
+                              /AUTH|401|403|Invalid|not configured/i.test(n)
+                                ? 'text-rose-300'
+                                : 'text-slate-500'
+                            }`}
+                          >
+                            {n}
+                          </p>
+                        ))}
+                      </div>
                     )}
                     <ul className="mt-2 space-y-2">
                       {run.candidates.slice(0, 12).map((c, i) => {

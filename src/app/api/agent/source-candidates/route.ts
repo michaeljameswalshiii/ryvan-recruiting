@@ -13,12 +13,16 @@ import {
   getSessionUserId,
 } from '@/lib/server-auth';
 import { sourceCandidatesForJob } from '@/lib/sourcing/job-candidate-search';
-import { resolveApolloConfigured } from '@/lib/apollo/client';
+import {
+  resolveApolloConfigured,
+  resolveApiKeyDetailed,
+  searchPeople as apolloSearchPeople,
+} from '@/lib/apollo/client';
 import { isPdlConfigured } from '@/lib/pdl/client';
 import {
   agentCoreWebSearchStatus,
-  isAgentCoreWebSearchConfigured,
 } from '@/lib/agentcore/web-search';
+import { getTenantApolloPublic } from '@/lib/db/repositories/tenant-apollo-credentials-repository';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,22 +33,66 @@ export async function GET(request: NextRequest) {
     session?.tenantId ||
     (await getSessionTenantId().catch(() => null));
 
-  const apollo = await resolveApolloConfigured(
-    tenantId ? { tenantId } : undefined
-  );
+  const auth = tenantId ? { tenantId } : undefined;
+  const apollo = await resolveApolloConfigured(auth);
+  const keyInfo = await resolveApiKeyDetailed(auth);
+  const tenantApollo = tenantId
+    ? await getTenantApolloPublic(tenantId)
+    : null;
   const web = agentCoreWebSearchStatus();
 
+  // Live probe (1 person) so UI can show 401 vs healthy — search is 0 credits
+  let apolloProbe: {
+    ok: boolean;
+    status?: number;
+    people?: number;
+    error?: string;
+    keySource?: string;
+  } = { ok: false };
+  if (keyInfo.apiKey.length > 10) {
+    const probe = await apolloSearchPeople({
+      titles: ['software engineer'],
+      locations: [],
+      per_page: 1,
+      page: 1,
+      auth,
+    });
+    apolloProbe = {
+      ok: !probe.error && (probe.people?.length || 0) >= 0 && !probe.error,
+      status: probe.httpStatus,
+      people: probe.people?.length || 0,
+      error: probe.error,
+      keySource: probe.keySource,
+    };
+    // ok if no error (even 0 people would be weird for software engineer)
+    apolloProbe.ok = !probe.error;
+  } else {
+    apolloProbe = {
+      ok: false,
+      error: 'No Apollo key resolved',
+      keySource: 'none',
+    };
+  }
+
   return NextResponse.json({
-    // LLM path always available when Bedrock credentials work
     configured: true,
     engines: {
-      apollo,
+      apollo: apollo && apolloProbe.ok,
+      apolloKeyPresent: apollo,
       pdl: isPdlConfigured(),
       agentcoreWeb: web.configured,
       llm: true,
     },
+    apollo: {
+      keySource: keyInfo.source,
+      tenantId: tenantId || null,
+      tenantHasKey: tenantApollo?.hasKey || false,
+      tenantKeyHint: tenantApollo?.keyHint,
+      lastValidatedOk: tenantApollo?.lastValidatedOk,
+      probe: apolloProbe,
+    },
     message:
-      'Paste a careers job URL or role brief. LLM reviews the JD → structured Apollo filters (titles, locations, keywords), then Apollo/PDL return real people. No invented profiles.',
+      'Paste a careers job URL or role brief. LLM reviews the JD → structured Apollo filters, then Apollo returns real people. Requires a master API key with People Search.',
     costNote:
       'LLM plan: tokens + $ · Apollo People Search: results + 0 credits (rate limits apply) · PDL/AgentCore when used',
   });
@@ -120,8 +168,18 @@ export async function POST(request: NextRequest) {
           usageLine: result.usageLine,
           apolloPlan: result.apolloPlan,
           apolloPlanSource: result.apolloPlanSource,
+          apolloKeySource: result.apolloKeySource,
+          apolloHttpStatus: result.apolloHttpStatus,
+          apolloRequest: result.apolloRequest,
         },
-        { status: result.job ? 502 : 400 }
+        {
+          status:
+            result.apolloHttpStatus === 401 || result.apolloHttpStatus === 403
+              ? 502
+              : result.job
+                ? 502
+                : 400,
+        }
       );
     }
 
@@ -138,6 +196,9 @@ export async function POST(request: NextRequest) {
       usageLine: result.usageLine,
       apolloPlan: result.apolloPlan,
       apolloPlanSource: result.apolloPlanSource,
+      apolloKeySource: result.apolloKeySource,
+      apolloHttpStatus: result.apolloHttpStatus,
+      apolloRequest: result.apolloRequest,
       message:
         result.usageLine ||
         `Found ${result.candidates.length} candidate(s) for ${result.job?.title || 'this role'}. ~$${result.estimatedCostUsd.toFixed(4)} est.`,
