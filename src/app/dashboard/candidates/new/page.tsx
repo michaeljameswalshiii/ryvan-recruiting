@@ -305,7 +305,7 @@ export default function NewCandidatePage() {
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
         <Link href="/dashboard/candidates">
           <Button variant="ghost" size="icon">
@@ -320,137 +320,146 @@ export default function NewCandidatePage() {
         </div>
       </div>
 
-      {/* Resume upload — click or drag-and-drop */}
-      <Card className="mb-8 border-2 border-blue-200 bg-blue-50/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-blue-950">
-            <Upload className="h-5 w-5" />
-            Upload Resume (auto-fills form)
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Drag and drop a PDF or Word document, or choose a file. Parsing fills name, email,
-            phone, title, location, LinkedIn, skills, and summary below.
-          </p>
-
-          <input
-            ref={fileInputRef}
-            id="resume-file-input"
-            type="file"
-            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            className="hidden"
-            disabled={parsing}
-            onChange={(e) => handleResumeFile(e.target.files?.[0])}
-          />
-
-          <div
-            role="button"
-            tabIndex={0}
-            aria-label="Upload resume by clicking or dragging a file"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                if (!parsing) fileInputRef.current?.click();
-              }
-            }}
-            onClick={() => {
-              if (!parsing) fileInputRef.current?.click();
-            }}
-            onDragEnter={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              dragDepthRef.current += 1;
-              setDragActive(true);
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-              setDragActive(true);
-            }}
-            onDragLeave={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-              if (dragDepthRef.current === 0) setDragActive(false);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              dragDepthRef.current = 0;
-              setDragActive(false);
-              if (parsing) return;
-              const file = e.dataTransfer.files?.[0];
-              if (file) void handleResumeFile(file);
-            }}
-            className={`rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors cursor-pointer ${
-              dragActive
-                ? 'border-blue-500 bg-blue-100/80 ring-2 ring-blue-200'
-                : 'border-blue-300 bg-white/70 hover:border-blue-400 hover:bg-blue-50/80'
-            } ${parsing ? 'pointer-events-none opacity-70' : ''}`}
-          >
-            {parsing ? (
-              <div className="flex flex-col items-center gap-2 text-blue-900">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                <p className="font-medium">Parsing resume…</p>
-                {resumeFileName && (
-                  <p className="text-sm text-muted-foreground">{resumeFileName}</p>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-3">
-                <div
-                  className={`rounded-full p-3 ${
-                    dragActive ? 'bg-blue-200' : 'bg-blue-100'
-                  }`}
-                >
-                  <Upload className="h-7 w-7 text-blue-700" />
-                </div>
-                <div>
-                  <p className="font-medium text-blue-950">
-                    {dragActive
-                      ? 'Drop resume to upload'
-                      : 'Drag & drop resume here'}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    PDF, DOC, or DOCX — or click to browse
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  disabled={parsing}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    fileInputRef.current?.click();
-                  }}
-                  className="bg-blue-600 hover:bg-blue-700 mt-1"
-                >
-                  <Upload className="mr-2 h-4 w-4" />
-                  Choose Resume File
-                </Button>
-                {resumeFileName && (
-                  <p className="text-sm text-muted-foreground">
-                    File: {resumeFileName}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {parsedFromResume && (
-            <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
-              <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium">Resume data applied — review the form and click Create.</p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       <form onSubmit={handleSubmit}>
-        <div className="space-y-6">
+        {/*
+          2×2 layout (desktop):
+          [ Upload Resume ] [ Basic Information ]
+          [ Pipeline      ] [ Additional         ]
+        */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Top-left: Resume upload first */}
+          <Card className="border-2 border-blue-200 bg-blue-50/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-blue-950">
+                <Upload className="h-5 w-5" />
+                Upload Resume (auto-fills form)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Drag and drop a PDF or Word document, or choose a file. Parsing
+                fills name, email, phone, title, location, LinkedIn, skills, and
+                summary.
+              </p>
+
+              <input
+                ref={fileInputRef}
+                id="resume-file-input"
+                type="file"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
+                disabled={parsing}
+                onChange={(e) => handleResumeFile(e.target.files?.[0])}
+              />
+
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label="Upload resume by clicking or dragging a file"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (!parsing) fileInputRef.current?.click();
+                  }
+                }}
+                onClick={() => {
+                  if (!parsing) fileInputRef.current?.click();
+                }}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  dragDepthRef.current += 1;
+                  setDragActive(true);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+                  setDragActive(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+                  if (dragDepthRef.current === 0) setDragActive(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  dragDepthRef.current = 0;
+                  setDragActive(false);
+                  if (parsing) return;
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) void handleResumeFile(file);
+                }}
+                className={`rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors cursor-pointer ${
+                  dragActive
+                    ? 'border-blue-500 bg-blue-100/80 ring-2 ring-blue-200'
+                    : 'border-blue-300 bg-white/70 hover:border-blue-400 hover:bg-blue-50/80'
+                } ${parsing ? 'pointer-events-none opacity-70' : ''}`}
+              >
+                {parsing ? (
+                  <div className="flex flex-col items-center gap-2 text-blue-900">
+                    <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                    <p className="font-medium">Parsing resume…</p>
+                    {resumeFileName && (
+                      <p className="text-sm text-muted-foreground">
+                        {resumeFileName}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-3">
+                    <div
+                      className={`rounded-full p-3 ${
+                        dragActive ? 'bg-blue-200' : 'bg-blue-100'
+                      }`}
+                    >
+                      <Upload className="h-7 w-7 text-blue-700" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-blue-950">
+                        {dragActive
+                          ? 'Drop resume to upload'
+                          : 'Drag & drop resume here'}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        PDF, DOC, or DOCX — or click to browse
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      disabled={parsing}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                      className="mt-1 bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      Choose Resume File
+                    </Button>
+                    {resumeFileName && (
+                      <p className="text-sm text-muted-foreground">
+                        File: {resumeFileName}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {parsedFromResume && (
+                <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+                  <p className="font-medium">
+                    Resume data applied — review the form and click Create.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Top-right: Basic Information */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -459,8 +468,8 @@ export default function NewCandidatePage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="md:col-span-2">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
                   <Label htmlFor="name">
                     Name <span className="text-destructive">*</span>
                   </Label>
@@ -490,6 +499,7 @@ export default function NewCandidatePage() {
                     value={formData.location}
                     onChange={(e) => handleChange('location', e.target.value)}
                     className="mt-1"
+                    placeholder="Boca Raton, FL"
                   />
                 </div>
                 <div>
@@ -516,6 +526,7 @@ export default function NewCandidatePage() {
             </CardContent>
           </Card>
 
+          {/* Bottom-left: Pipeline (unchanged content) */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -524,7 +535,7 @@ export default function NewCandidatePage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="status">Status</Label>
                   <select
@@ -559,6 +570,7 @@ export default function NewCandidatePage() {
             </CardContent>
           </Card>
 
+          {/* Bottom-right: Additional (unchanged content) */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -606,27 +618,27 @@ export default function NewCandidatePage() {
               </div>
             </CardContent>
           </Card>
+        </div>
 
-          <div className="flex justify-end gap-3">
-            <Link href="/dashboard/candidates">
-              <Button variant="outline" type="button">
-                Cancel
-              </Button>
-            </Link>
-            <Button type="submit" disabled={loading || parsing}>
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Candidate
-                </>
-              )}
+        <div className="mt-6 flex justify-end gap-3">
+          <Link href="/dashboard/candidates">
+            <Button variant="outline" type="button">
+              Cancel
             </Button>
-          </div>
+          </Link>
+          <Button type="submit" disabled={loading || parsing}>
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Plus className="mr-2 h-4 w-4" />
+                Create Candidate
+              </>
+            )}
+          </Button>
         </div>
       </form>
     </div>
