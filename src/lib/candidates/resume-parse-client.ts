@@ -48,62 +48,134 @@ export function skillsToString(skills: unknown): string {
   return '';
 }
 
-function formatExperienceNotes(
-  experience: ParsedResumeFields['experience']
-): string {
-  if (!experience?.length) return '';
-  const lines = experience.slice(0, 8).map((e) => {
-    const head = [e.title, e.company].filter(Boolean).join(' @ ');
-    const dates = e.dates ? ` (${e.dates})` : '';
-    const desc = e.description
-      ? `\n  ${e.description.split('\n').slice(0, 3).join('\n  ')}`
-      : '';
-    return `• ${head || 'Role'}${dates}${desc}`;
-  });
-  return `Experience:\n${lines.join('\n')}`;
+const ATS_SUMMARY_MAX_WORDS = 20;
+
+function wordCount(s: string): number {
+  return (s || '').trim().split(/\s+/).filter(Boolean).length;
 }
 
-function formatEducationNotes(
-  education: ParsedResumeFields['education']
-): string {
-  if (!education?.length) return '';
-  const lines = education.slice(0, 5).map((e) => {
-    const head = [e.degree, e.field, e.school].filter(Boolean).join(' — ');
-    const dates = e.dates ? ` (${e.dates})` : '';
-    return `• ${head || 'Education'}${dates}`;
-  });
-  return `Education:\n${lines.join('\n')}`;
+function ensureSentenceEnd(s: string): string {
+  const t = (s || '').trim().replace(/[,;:\-–—]\s*$/, '');
+  if (!t) return '';
+  if (/[.!?]$/.test(t)) return t;
+  return `${t}.`;
+}
+
+/**
+ * Build a short ATS-friendly professional summary (target ≤20 words).
+ * Prefer objective/summary text; otherwise title + top skills.
+ */
+export function buildAtsFriendlySummary(parsed: {
+  summary?: string;
+  professionalSummary?: string;
+  title?: string;
+  skills?: string[] | string;
+  experience?: Array<{ title?: string; company?: string; description?: string }>;
+}): string {
+  const raw = (
+    (typeof parsed.summary === 'string' && parsed.summary) ||
+    (typeof parsed.professionalSummary === 'string' &&
+      parsed.professionalSummary) ||
+    ''
+  )
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const title = (
+    parsed.title ||
+    parsed.experience?.[0]?.title ||
+    ''
+  ).trim();
+
+  const skillsArr = Array.isArray(parsed.skills)
+    ? parsed.skills.map(String).filter(Boolean)
+    : skillsToString(parsed.skills)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+  // Already short enough — keep as-is
+  if (raw && wordCount(raw) <= ATS_SUMMARY_MAX_WORDS) {
+    return ensureSentenceEnd(raw);
+  }
+
+  // First sentence, capped at 20 words
+  if (raw) {
+    const first = (raw.split(/(?<=[.!?])\s+/)[0] || raw).replace(/[.!?]+$/, '');
+    const words = first.split(/\s+/).filter(Boolean);
+    if (words.length > 0) {
+      const clipped = words.slice(0, ATS_SUMMARY_MAX_WORDS).join(' ');
+      return ensureSentenceEnd(clipped);
+    }
+  }
+
+  // Synthesize from title + skills (ATS keyword style)
+  const yearsMatch =
+    raw.match(/(\d+)\+?\s*years?/i) ||
+    (parsed.experience || [])
+      .map((e) => e.description || '')
+      .join(' ')
+      .match(/(\d+)\+?\s*years?/i);
+  const years = yearsMatch ? yearsMatch[0].replace(/\s+/g, ' ') : '';
+
+  const skillBits = skillsArr
+    .slice(0, 4)
+    .map((s) => s.replace(/\s+/g, ' ').trim())
+    .filter((s) => s.length >= 2 && s.length <= 32);
+
+  const parts: string[] = [];
+  if (years && title) {
+    parts.push(`${years} as ${title}`);
+  } else if (title) {
+    parts.push(title);
+  } else if (years) {
+    parts.push(`${years} professional experience`);
+  }
+
+  if (skillBits.length) {
+    parts.push(
+      parts.length
+        ? `with expertise in ${skillBits.join(', ')}`
+        : skillBits.join(', ')
+    );
+  }
+
+  let built = parts.join(' ').replace(/\s+/g, ' ').trim();
+  if (!built) return '';
+
+  const words = built.split(/\s+/);
+  if (words.length > ATS_SUMMARY_MAX_WORDS) {
+    built = words.slice(0, ATS_SUMMARY_MAX_WORDS).join(' ');
+  }
+  return ensureSentenceEnd(built);
 }
 
 /**
  * Map API parse-resume result into candidate create/edit form fields.
- * Prefer structured profile fields; put a readable digest in notes.
+ * Summary is kept short (ATS-friendly, ~20 words). Notes are not filled.
  */
 export function mapParsedResumeToForm(
   parsed: any,
   extras?: { resumeUrl?: string; fileName?: string }
 ) {
   const skills = skillsToString(parsed?.skills);
-  const summary =
-    typeof parsed?.summary === 'string'
-      ? parsed.summary
-      : typeof parsed?.professionalSummary === 'string'
-        ? parsed.professionalSummary
-        : '';
-
   const experience = Array.isArray(parsed?.experience) ? parsed.experience : [];
   const education = Array.isArray(parsed?.education) ? parsed.education : [];
   const certifications = Array.isArray(parsed?.certifications)
     ? parsed.certifications.map(String).filter(Boolean)
     : [];
 
-  const notesParts = [
-    summary ? `Summary:\n${summary}` : '',
-    skills ? `Skills: ${skills}` : '',
-    formatExperienceNotes(experience),
-    formatEducationNotes(education),
-    certifications.length ? `Certifications: ${certifications.join(', ')}` : '',
-  ].filter(Boolean);
+  const summary = buildAtsFriendlySummary({
+    summary:
+      typeof parsed?.summary === 'string'
+        ? parsed.summary
+        : typeof parsed?.professionalSummary === 'string'
+          ? parsed.professionalSummary
+          : '',
+    title: parsed?.title || '',
+    skills: parsed?.skills || skills,
+    experience,
+  });
 
   const name = parsed?.name || parsed?.fullName || '';
   const linkedin =
@@ -118,7 +190,8 @@ export function mapParsedResumeToForm(
     linkedin_url: linkedin,
     summary,
     skills,
-    notes: notesParts.join('\n\n').slice(0, 2000),
+    // Do not auto-fill notes from resume dump
+    notes: '',
     salary_requirements:
       parsed?.salaryRequirements || parsed?.salary_requirements || '',
     experience,
@@ -155,7 +228,8 @@ export function mergeFormWithParsed(
     linkedin_url: pick('linkedin_url'),
     summary: pick('summary'),
     skills: pick('skills'),
-    notes: pick('notes'),
+    // Keep prior notes only if user already typed something; never force resume dump
+    notes: prev.notes || '',
     salary_requirements: pick('salary_requirements'),
     resume_url: pick('resume_url') || prev.resume_url,
     source: mapped.source || prev.source || 'resume',

@@ -52,7 +52,6 @@ const emptyForm = {
   title: '',
   status: 'sourced',
   source: 'manual',
-  notes: '',
   linkedin_url: '',
   resume_url: '',
   summary: '',
@@ -225,7 +224,6 @@ export default function NewCandidatePage() {
         title: formData.title || undefined,
         status: formData.status,
         source: formData.source,
-        notes: formData.notes || undefined,
         linkedin_url: formData.linkedin_url || undefined,
         resume_url: formData.resume_url || undefined,
         summary: formData.summary || undefined,
@@ -604,17 +602,13 @@ export default function NewCandidatePage() {
                   id="summary"
                   value={formData.summary}
                   onChange={(e) => handleChange('summary', e.target.value)}
-                  className="mt-1 min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="mt-1 min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="Short ATS-friendly blurb (~20 words). Filled from resume when uploaded."
+                  rows={3}
                 />
-              </div>
-              <div>
-                <Label htmlFor="notes">Notes</Label>
-                <textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => handleChange('notes', e.target.value)}
-                  className="mt-1 min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Keep it under ~20 words for ATS (role + strengths + keywords).
+                </p>
               </div>
             </CardContent>
           </Card>
