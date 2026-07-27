@@ -619,6 +619,51 @@ export function AgentWorkbench({
                 : 'e.g. Construction companies in Palm Beach County under 300 employees — HR or owners…'
             }
           />
+          {isResearch && (
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                Location (optional)
+              </label>
+              <div className="grid grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+                {(
+                  [
+                    { id: 'job' as const, label: 'From job' },
+                    { id: 'any' as const, label: 'Anywhere' },
+                    { id: 'custom' as const, label: 'Custom' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setFillLocationMode(opt.id)}
+                    className={`rounded-md px-1.5 py-1.5 text-[11px] font-medium transition ${
+                      fillLocationMode === opt.id
+                        ? 'bg-sky-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {fillLocationMode === 'custom' && (
+                <input
+                  type="text"
+                  value={fillLocation}
+                  onChange={(e) => setFillLocation(e.target.value)}
+                  placeholder="e.g. Miami, FL · Remote · Texas"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 outline-none focus:border-sky-400/40"
+                />
+              )}
+              <p className="text-[10px] text-slate-500">
+                {fillLocationMode === 'job'
+                  ? 'Uses the job’s location when available.'
+                  : fillLocationMode === 'any'
+                    ? 'No location filter — broader search.'
+                    : 'Apollo person location filter for this run only.'}
+              </p>
+            </div>
+          )}
           {!isResearch && (
             <div>
               <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">
