@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
   },
   // Keep pdfjs (and canvas optional peer) resolvable at runtime on Vercel
   // so resume parsing does not hit MODULE_NOT_FOUND for dynamic imports.
-  serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas", "mammoth"],
+  serverExternalPackages: ["pdfjs-dist", "unpdf", "@napi-rs/canvas", "mammoth"],
   typescript: {
     ignoreBuildErrors: true,
   },

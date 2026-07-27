@@ -125,14 +125,149 @@ function resolvePdfWorkerSrc(): string {
 }
 
 /**
+ * pdfjs-dist expects browser DOM APIs. Vercel Node has none → "DOMMatrix is not defined".
+ * Minimal stubs are enough for text extraction (not canvas rendering).
+ */
+function ensureDomPolyfillsForPdfJs(): void {
+  const g = globalThis as any;
+
+  // pdfjs / unpdf may call Math.sumPrecise (newer JS); Node 22 may lack it
+  if (typeof (Math as any).sumPrecise !== 'function') {
+    (Math as any).sumPrecise = (values: number[]) =>
+      (values || []).reduce((a, b) => a + (Number(b) || 0), 0);
+  }
+
+  if (typeof g.DOMMatrix === 'undefined') {
+    g.DOMMatrix = class DOMMatrix {
+      a = 1;
+      b = 0;
+      c = 0;
+      d = 1;
+      e = 0;
+      f = 0;
+      m11 = 1;
+      m12 = 0;
+      m21 = 0;
+      m22 = 1;
+      m41 = 0;
+      m42 = 0;
+      constructor(init?: number[] | string) {
+        if (Array.isArray(init) && init.length >= 6) {
+          this.a = init[0];
+          this.b = init[1];
+          this.c = init[2];
+          this.d = init[3];
+          this.e = init[4];
+          this.f = init[5];
+          this.m11 = this.a;
+          this.m12 = this.b;
+          this.m21 = this.c;
+          this.m22 = this.d;
+          this.m41 = this.e;
+          this.m42 = this.f;
+        }
+      }
+      multiplySelf() {
+        return this;
+      }
+      preMultiplySelf() {
+        return this;
+      }
+      translateSelf(tx = 0, ty = 0) {
+        this.e += tx;
+        this.f += ty;
+        this.m41 = this.e;
+        this.m42 = this.f;
+        return this;
+      }
+      scaleSelf() {
+        return this;
+      }
+      rotateSelf() {
+        return this;
+      }
+      invertSelf() {
+        return this;
+      }
+      setMatrixValue() {
+        return this;
+      }
+      transformPoint(p: { x?: number; y?: number } = {}) {
+        return { x: p.x || 0, y: p.y || 0, w: 1, z: 0 };
+      }
+    };
+  }
+
+  if (typeof g.ImageData === 'undefined') {
+    g.ImageData = class ImageData {
+      data: Uint8ClampedArray;
+      width: number;
+      height: number;
+      colorSpace = 'srgb';
+      constructor(
+        swOrData: number | Uint8ClampedArray,
+        shOrWidth?: number,
+        height?: number
+      ) {
+        if (typeof swOrData === 'number') {
+          this.width = swOrData;
+          this.height = shOrWidth || 0;
+          this.data = new Uint8ClampedArray(this.width * this.height * 4);
+        } else {
+          this.data = swOrData;
+          this.width = shOrWidth || 0;
+          this.height = height || 0;
+        }
+      }
+    };
+  }
+
+  if (typeof g.Path2D === 'undefined') {
+    g.Path2D = class Path2D {
+      constructor(_path?: unknown) {}
+      addPath() {}
+      closePath() {}
+      moveTo() {}
+      lineTo() {}
+      bezierCurveTo() {}
+      quadraticCurveTo() {}
+      arc() {}
+      arcTo() {}
+      ellipse() {}
+      rect() {}
+      roundRect() {}
+    };
+  }
+
+  // Some pdfjs builds check for these
+  if (typeof g.OffscreenCanvas === 'undefined') {
+    g.OffscreenCanvas = class OffscreenCanvas {
+      width: number;
+      height: number;
+      constructor(w = 0, h = 0) {
+        this.width = w;
+        this.height = h;
+      }
+      getContext() {
+        return null;
+      }
+      convertToBlob() {
+        return Promise.resolve(new Blob());
+      }
+    };
+  }
+}
+
+/**
  * Load pdfjs in a way that works on Vercel serverless.
  * Dynamic `import(variable)` is stripped from the bundle → MODULE_NOT_FOUND.
- * Use static import paths + createRequire fallback.
+ * Use static import paths + createRequire fallback. Always polyfill DOM first.
  */
 async function loadPdfJs(): Promise<any> {
+  ensureDomPolyfillsForPdfJs();
   const errors: string[] = [];
 
-  // 1) Static ESM imports (bundler can see these)
+  // Prefer legacy build in Node (pdfjs warns otherwise)
   const staticAttempts: Array<() => Promise<any>> = [
     () => import('pdfjs-dist/legacy/build/pdf.mjs'),
     () => import('pdfjs-dist/build/pdf.mjs'),
@@ -147,7 +282,6 @@ async function loadPdfJs(): Promise<any> {
     }
   }
 
-  // 2) createRequire from node_modules (serverExternalPackages path)
   const requirePaths = [
     'pdfjs-dist/legacy/build/pdf.mjs',
     'pdfjs-dist/build/pdf.mjs',
@@ -163,6 +297,33 @@ async function loadPdfJs(): Promise<any> {
   }
 
   throw new Error(`pdfjs-dist unavailable: ${errors.slice(0, 3).join(' | ')}`);
+}
+
+/** Serverless-first text extract via unpdf (ships its own pdfjs build). */
+async function extractWithUnpdf(
+  buffer: Buffer
+): Promise<{ text: string; method: string } | null> {
+  try {
+    ensureDomPolyfillsForPdfJs();
+    const unpdf = await import('unpdf');
+    const getDocumentProxy =
+      unpdf.getDocumentProxy || (unpdf as any).default?.getDocumentProxy;
+    const extractText =
+      unpdf.extractText || (unpdf as any).default?.extractText;
+    if (!getDocumentProxy || !extractText) return null;
+
+    const pdf = await getDocumentProxy(new Uint8Array(buffer));
+    const result = await extractText(pdf, { mergePages: true });
+    const text = Array.isArray(result.text)
+      ? result.text.join('\n')
+      : String(result.text || '');
+    if (text.trim().length > 20) {
+      return { text, method: 'unpdf' };
+    }
+  } catch (e) {
+    console.warn('[resume-extract] unpdf failed:', e);
+  }
+  return null;
 }
 
 /**
@@ -286,14 +447,24 @@ async function extractPdfText(
 ): Promise<{ text: string; method: string }> {
   let lastError: unknown;
 
-  // --- pdfjs (preferred) ---
+  // --- 1) unpdf (serverless-oriented pdfjs build) ---
+  const unpdfResult = await extractWithUnpdf(buffer);
+  if (unpdfResult) return unpdfResult;
+
+  // --- 2) pdfjs-dist with DOM polyfills ---
   try {
+    ensureDomPolyfillsForPdfJs();
     const pdfjsLib: any = await loadPdfJs();
     const getDocument = pdfjsLib.getDocument || pdfjsLib.default?.getDocument;
     if (!getDocument) throw new Error('getDocument missing');
 
     if (pdfjsLib.GlobalWorkerOptions) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = resolvePdfWorkerSrc();
+      // Data URL empty worker avoids fetch/worker issues on Vercel
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = resolvePdfWorkerSrc();
+      } catch {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+      }
     }
 
     const loadingTask = getDocument({
@@ -301,7 +472,6 @@ async function extractPdfText(
       useSystemFonts: true,
       isEvalSupported: false,
       disableFontFace: true,
-      // Serverless-friendly: avoid worker thread issues on Vercel
       useWorkerFetch: false,
       isOffscreenCanvasSupported: false,
       disableAutoFetch: true,
@@ -336,11 +506,21 @@ async function extractPdfText(
     console.warn('[resume-extract] pdfjs failed:', e);
   }
 
-  // --- Inflate FlateDecode streams (no pdfjs) ---
+  // --- 3) Inflate FlateDecode streams (only helps non-custom-encoded PDFs) ---
   try {
     const streamText = extractTextFromCompressedStreams(buffer);
     if (streamText.length > 20) {
-      return { text: streamText, method: 'pdf-streams' };
+      // Prefer stream text only if it has contact-like signals; custom fonts
+      // produce garbage that looks long but has no real email/phone.
+      const hasContact =
+        /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(streamText) ||
+        /\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(streamText);
+      if (hasContact) {
+        return { text: streamText, method: 'pdf-streams' };
+      }
+      console.warn(
+        '[resume-extract] pdf-streams text lacks contact tokens (likely custom font encoding), skipping'
+      );
     }
   } catch (e) {
     console.warn('[resume-extract] stream inflate failed:', e);
