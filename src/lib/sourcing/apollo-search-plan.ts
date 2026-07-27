@@ -6,6 +6,7 @@
  */
 
 import { completeJson } from '@/lib/list-builder/llm-json';
+
 /** Minimal job fields needed for planning (avoid circular runtime import) */
 export type JobPlanInput = {
   title: string;
@@ -14,6 +15,48 @@ export type JobPlanInput = {
   description?: string;
   keywords: string[];
 };
+
+/** True if string looks like a real place Apollo can filter on (not JD prose). */
+export function isValidPersonLocation(loc: string | undefined | null): boolean {
+  const s = (loc || '').trim();
+  if (s.length < 2 || s.length > 60) return false;
+  // Mid-sentence JD fragments (e.g. "dustries where quality" from "industries")
+  if (
+    /^(dustries|dustry|cluding|vironment|tegrity|paced|manufacturing)\b/i.test(
+      s
+    )
+  ) {
+    return false;
+  }
+  if (
+    /\b(where|quality|ability|integrity|commitment|thrive|fast-paced|environment|priorities|processes|people and|competing|humility|accountability|demonstrated|requirements|responsibilities|experience|years of)\b/i.test(
+      s
+    )
+  ) {
+    return false;
+  }
+  if (/^(remote|united states|usa|u\.s\.a?\.?|north america)$/i.test(s)) {
+    return true;
+  }
+  if (
+    /\b(Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode Island|South Carolina|South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming|District of Columbia|Puerto Rico)\b/i.test(
+      s
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(Miami|Tampa|Orlando|Jacksonville|Atlanta|Dallas|Houston|Austin|Chicago|Boston|Seattle|Denver|Phoenix|Charlotte|Nashville|Raleigh|Fort Lauderdale|West Palm Beach|Palm Beach|Boca Raton)\b/i.test(
+      s
+    )
+  ) {
+    return true;
+  }
+  // City, ST
+  if (/^[A-Za-z .'-]{2,40},\s*[A-Z]{2}\b/.test(s)) return true;
+  if (/^[a-z]/.test(s)) return false;
+  return false;
+}
 
 export type ApolloSearchPlan = {
   /** Primary + alternate job titles for person_titles */
@@ -64,12 +107,12 @@ function normalizePlan(raw: unknown, fallback: ApolloSearchPlan): ApolloSearchPl
     6
   ).map((s) => s.toLowerCase().replace(/\s+/g, '_'));
 
+  const cleanLocs = personLocations.filter(isValidPersonLocation);
+  const fallbackLocs = fallback.personLocations.filter(isValidPersonLocation);
+
   return {
     titles: titles.length ? titles : fallback.titles,
-    personLocations:
-      personLocations.length > 0
-        ? personLocations
-        : fallback.personLocations,
+    personLocations: cleanLocs.length > 0 ? cleanLocs : fallbackLocs,
     keywords: keywords.length ? keywords : fallback.keywords,
     seniorities: seniorities.length ? seniorities : fallback.seniorities,
     rationale:
@@ -96,8 +139,9 @@ export function heuristicApolloPlan(
   if (locationOverride === '') {
     personLocations = [];
   } else if (locationOverride != null && String(locationOverride).trim()) {
-    personLocations = [String(locationOverride).trim()];
-  } else if (job.location) {
+    const o = String(locationOverride).trim();
+    personLocations = isValidPersonLocation(o) ? [o] : [];
+  } else if (job.location && isValidPersonLocation(job.location)) {
     personLocations = [job.location];
   }
 
@@ -105,8 +149,8 @@ export function heuristicApolloPlan(
     (t) =>
       t &&
       t !== 'Open role' &&
-      t.length <= 80 &&
-      !/demonstrated|ability to|integrity|commitment/i.test(t)
+      t.length <= 70 &&
+      !/demonstrated|ability to|integrity|commitment|to lead a highly/i.test(t)
   );
 
   return {
@@ -154,12 +198,13 @@ Schema:
 Rules:
 - titles: 1–6 REAL job titles people would put on LinkedIn (not soft skills, not company culture).
   Include close variants (e.g. "ERP Implementation Specialist", "Finance Systems Implementation Manager").
-- personLocations: only if geography is specified or implied. Use Apollo-friendly places
-  (e.g. "Florida", "Miami, Florida", "United States"). Empty array if role is clearly worldwide/unspecified
-  and no override. If user forces a location, put only that location.
+- personLocations: ONLY real geographies (Florida, Miami, FL, Remote, United States).
+  NEVER use JD prose fragments ("industries where quality", "fast-paced environment",
+  "dustries where…"). Empty array [] if no clear place.
 - keywords: hard skills, tools, industries (NetSuite, SAP, manufacturing) — NOT soft skills
-  like "integrity" or "fast-paced".
+  like "integrity" or "fast-paced". Prefer 3–6 short terms; do not dump the whole JD.
 - seniorities: only if clear (entry, senior, manager, director, vp, c_suite, founder). Else [].
+- titles must be short LinkedIn titles ("Director of Operations") — not "Director of Operations to lead…".
 - Never invent candidate names. You only design the search.`;
 
   const locNote =

@@ -37,8 +37,11 @@ import { filterAndRankByQuality } from '@/lib/sourcing/profile-quality';
 import {
   buildApolloSearchPlan,
   formatPlanForNotes,
+  isValidPersonLocation,
   type ApolloSearchPlan,
 } from '@/lib/sourcing/apollo-search-plan';
+
+export { isValidPersonLocation };
 
 export type SourcedCandidate = {
   id: string;
@@ -89,53 +92,101 @@ export function extractTitleFromBrief(input: string): string {
   const text = (input || '').replace(/\s+/g, ' ').trim();
   if (!text) return 'Open role';
 
-  // Explicit patterns
+  // Explicit labeled title
+  const labeled = text.match(
+    /(?:job\s*title|title|position|role)\s*[:\-–—]\s*([^\n.|]{4,80})/i
+  );
+  if (labeled?.[1]) {
+    const t = cleanTitleCandidate(labeled[1]);
+    if (t) return t;
+  }
+
+  // "Director of Operations" style — stop before "to lead / responsible / with"
+  const roleOf = text.match(
+    /\b((?:Senior|Jr\.?|Junior|Lead|Staff|Principal|Director|VP|Vice President|Head|Manager)?\s*(?:of\s+)?(?:Operations|Manufacturing|Engineering|Finance|Sales|Marketing|Product|Human Resources|HR|Quality|Supply Chain|Plant|Production)(?:\s+(?:Manager|Director|Lead|Engineer|Specialist))?)\b/i
+  );
+  if (roleOf?.[1]) {
+    const t = cleanTitleCandidate(roleOf[1]);
+    if (t) return t;
+  }
+
   const patterns = [
-    /(?:job\s*title|title|position|role)\s*[:\-–—]\s*([^\n.|]{4,80})/i,
-    /\b((?:Senior|Jr\.?|Junior|Lead|Staff|Principal|Director|VP|Vice President|Head|Manager|Specialist|Engineer|Analyst|Consultant|Coordinator|Supervisor|Controller)\s+[A-Za-z0-9 /&-]{2,50})\b/,
+    /\b((?:Senior|Jr\.?|Junior|Lead|Staff|Principal|Director|VP|Vice President|Head|Manager|Specialist|Engineer|Analyst|Consultant|Coordinator|Supervisor|Controller)\s+[A-Za-z0-9 /&-]{2,40}?)\s*(?=\s+(?:to|who|with|for|in\s+a|responsible|looking|seeking|,|\.|$))/i,
     /\b([A-Za-z][A-Za-z0-9 /&-]{2,40}\s+(?:Specialist|Manager|Director|Engineer|Analyst|Consultant|Coordinator|Supervisor|Controller|Lead))\b/i,
   ];
   for (const re of patterns) {
     const m = text.match(re);
     if (m?.[1]) {
-      const t = m[1].trim().replace(/\s+/g, ' ');
-      // Reject soft-skill openers
-      if (
-        !/^(demonstrated|ability|high level|integrity|commitment|thrive|fast-paced)/i.test(
-          t
-        )
-      ) {
-        return t.slice(0, 80);
-      }
+      const t = cleanTitleCandidate(m[1]);
+      if (t) return t;
     }
   }
 
   // First short line if it looks like a title
   const firstLine = (input.split(/\n/)[0] || '').trim();
+  const cleanedFirst = cleanTitleCandidate(firstLine);
   if (
-    firstLine.length >= 4 &&
-    firstLine.length <= 60 &&
-    !/demonstrated|ability to|integrity|commitment|performance-driven/i.test(
-      firstLine
-    )
+    cleanedFirst &&
+    cleanedFirst.length >= 4 &&
+    cleanedFirst.length <= 60
   ) {
-    return firstLine;
+    return cleanedFirst;
   }
 
   return 'Open role';
 }
 
-export function extractLocationFromBrief(input: string): string | undefined {
-  const m = input.match(
-    /\b(?:location|based in|in)\s*[:\-]?\s*([A-Za-z .]{2,40}(?:,\s*[A-Z]{2})?)\b/i
-  );
-  if (m?.[1] && !/fast-paced|environment|integrity/i.test(m[1])) {
-    return m[1].trim();
+function cleanTitleCandidate(raw: string): string | null {
+  let t = (raw || '').trim().replace(/\s+/g, ' ');
+  // Cut trailing JD glue
+  t = t
+    .replace(
+      /\s+(to lead|to oversee|to manage|who will|responsible for|with multiple|in a highly|looking for).*$/i,
+      ''
+    )
+    .trim();
+  if (t.length < 3 || t.length > 70) return null;
+  if (
+    /^(demonstrated|ability|high level|integrity|commitment|thrive|fast-paced)/i.test(
+      t
+    )
+  ) {
+    return null;
   }
-  const state = input.match(
-    /\b(Florida|Texas|California|New York|Remote|Miami|Tampa|Orlando|Jacksonville)\b/i
+  return t.slice(0, 70);
+}
+
+/**
+ * Extract a real geography from a pasted JD.
+ * Never use bare "in …" — that matches the "in" inside "industries" → "dustries where quality".
+ */
+export function extractLocationFromBrief(input: string): string | undefined {
+  const text = input || '';
+
+  // Explicit Location: lines
+  const labeled = text.match(
+    /(?:^|\n)\s*(?:location|job\s*location|work\s*location|based\s*(?:in|out of)?)\s*[:\-–—]\s*([^\n|]{2,50})/i
   );
-  return state?.[1];
+  if (labeled?.[1]) {
+    const cand = labeled[1].trim().replace(/\s+/g, ' ').slice(0, 50);
+    if (isValidPersonLocation(cand)) return cand;
+  }
+
+  // "based in Florida" / "located in Miami, FL"
+  const based = text.match(
+    /\b(?:based|located|office)\s+in\s+([A-Za-z .'-]{2,40}(?:,\s*[A-Z]{2})?)\b/i
+  );
+  if (based?.[1] && isValidPersonLocation(based[1].trim())) {
+    return based[1].trim();
+  }
+
+  // Known states / major FL cities (and common remotes)
+  const known = text.match(
+    /\b(Remote|Florida|Texas|California|New York|Georgia|North Carolina|South Carolina|Miami(?:[ -]?Dade)?|Tampa(?: Bay)?|Orlando|Jacksonville|Fort Lauderdale|West Palm Beach|Palm Beach|Boca Raton|Atlanta|Dallas|Houston|Austin|Chicago|Boston|Seattle|Denver|Phoenix)\b/i
+  );
+  if (known?.[1]) return known[1];
+
+  return undefined;
 }
 
 /** Parse Trio careers URL: /careers/{slug}/{jobId} */
@@ -390,16 +441,28 @@ export async function sourceCandidatesForJob(params: {
   }
 
   // Location choice: explicit override > job location > none
+  // Reject JD prose mistaken as places (e.g. "dustries where quality")
   let searchLocation: string | undefined;
   if (params.location === '') {
     searchLocation = undefined;
     notes.push('Location filter: off (worldwide)');
   } else if (params.location != null && String(params.location).trim()) {
-    searchLocation = String(params.location).trim();
-    notes.push(`Location filter: ${searchLocation}`);
-  } else if (job.location) {
+    const raw = String(params.location).trim();
+    if (isValidPersonLocation(raw)) {
+      searchLocation = raw;
+      notes.push(`Location filter: ${searchLocation}`);
+    } else {
+      notes.push(
+        `Ignored invalid location "${raw.slice(0, 40)}" — not a real place`
+      );
+    }
+  } else if (job.location && isValidPersonLocation(job.location)) {
     searchLocation = job.location;
     notes.push(`Location filter: ${searchLocation} (from job)`);
+  } else if (job.location) {
+    notes.push(
+      `Ignored bogus job location "${job.location.slice(0, 40)}" (JD prose, not a place)`
+    );
   } else {
     notes.push('Location filter: none');
   }
@@ -459,6 +522,12 @@ export async function sourceCandidatesForJob(params: {
     plan = { ...plan, personLocations: [] };
   } else if (searchLocation) {
     plan = { ...plan, personLocations: [searchLocation] };
+  } else {
+    // Drop any LLM locations that are JD prose
+    plan = {
+      ...plan,
+      personLocations: plan.personLocations.filter(isValidPersonLocation),
+    };
   }
 
   notes.push(formatPlanForNotes(plan, planResult.source));
