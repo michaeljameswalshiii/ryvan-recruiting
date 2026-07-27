@@ -421,52 +421,31 @@ export async function llmSourceCandidates(params: {
     addAll(ac.candidates);
   }
 
-  // 3) Pure LLM knowledge fallback — labeled as unverified role-fit leads only.
-  // Never claim these people are "looking for jobs".
-  if (all.length < 4) {
-    const system = `You are a recruiting research assistant. Suggest plausible professionals who
-MATCH the skills/title of this req based on common public career patterns.
-Return ONLY JSON array:
-[{"name":"First Last","title":"...","company":"...","location":"...","linkedin_url":"","why":"..."}]
-CRITICAL RULES:
-- These are ROLE-FIT LEADS to investigate, NOT people known to be job-seeking.
-- Prefer empty linkedin_url unless you are highly confident a public profile exists.
-- No fake emails or phones. No article titles. Max ${need} people.
-- In "why", say they are a skill/title fit to verify — never say "open to work" or "actively looking".`;
-    const user = `Role: ${params.job.title}
-Location: ${params.job.location || 'Remote / US'}
-Skills/keywords: ${params.job.keywords.slice(0, 12).join(', ')}
-Hiring company context: ${params.job.companyName || 'n/a'}
-Desc: ${(params.job.description || '').slice(0, 800)}`;
+  // Pure LLM "invent names" fallback is intentionally DISABLED.
+  // Invented people (James Richardson @ Advanced Metal Fabrication, etc.)
+  // fail LinkedIn search and waste recruiter time. Only keep people from
+  // grounded web/Nova extracts that include a real profile or employer signal.
 
-    const { data, error } = await completeJson<unknown>(system, user, {
-      tenantId: params.tenantId || undefined,
-      userId: params.userId || undefined,
-      purpose: 'source-candidates-llm-fallback',
-      queryPreview: params.job.title,
-    });
-    const people = parsePeopleJson(data, 'llm');
-    for (const p of people) {
-      p.snippet =
-        p.snippet ||
-        'Unverified LLM role-fit lead — not confirmed open to work. Search LinkedIn before outreach.';
+  // Keep only candidates with a LinkedIn /in/ URL or a non-placeholder company
+  const verified = all.filter((c) => {
+    const li = (c.linkedinUrl || c.url || '').toLowerCase();
+    if (/linkedin\.com\/in\/[a-z0-9_-]{3,}/i.test(li)) return true;
+    const co = (c.company || '').trim();
+    if (co.length >= 3 && !/fabrication inc|components manufacturing|precision dynamics/i.test(co)) {
+      // still weak without Apollo — require linkedin for web path
+      return false;
     }
+    return false;
+  });
+
+  if (all.length && !verified.length) {
     notes.push(
-      error
-        ? `LLM fallback: ${error}`
-        : `LLM fallback: ${people.length} unverified role-fit leads (not open-to-work)`
+      `Dropped ${all.length} web/LLM names without verifiable LinkedIn profile URLs`
     );
-    estimatedCostUsd += 0.005;
-    costs.push({
-      engine: 'llm-fallback',
-      estimatedCostUsd: 0.005,
-      count: people.length,
-    });
-    addAll(people);
   }
 
   return {
-    candidates: all.slice(0, need),
+    candidates: verified.slice(0, need),
     estimatedCostUsd,
     notes,
     costs,

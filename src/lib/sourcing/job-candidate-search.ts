@@ -76,6 +76,60 @@ export type SourceCandidatesResult = {
   error?: string;
 };
 
+/** Pull a job-title-like phrase from a pasted JD / brief (not soft-skill paragraphs). */
+export function extractTitleFromBrief(input: string): string {
+  const text = (input || '').replace(/\s+/g, ' ').trim();
+  if (!text) return 'Open role';
+
+  // Explicit patterns
+  const patterns = [
+    /(?:job\s*title|title|position|role)\s*[:\-–—]\s*([^\n.|]{4,80})/i,
+    /\b((?:Senior|Jr\.?|Junior|Lead|Staff|Principal|Director|VP|Vice President|Head|Manager|Specialist|Engineer|Analyst|Consultant|Coordinator|Supervisor|Controller)\s+[A-Za-z0-9 /&-]{2,50})\b/,
+    /\b([A-Za-z][A-Za-z0-9 /&-]{2,40}\s+(?:Specialist|Manager|Director|Engineer|Analyst|Consultant|Coordinator|Supervisor|Controller|Lead))\b/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m?.[1]) {
+      const t = m[1].trim().replace(/\s+/g, ' ');
+      // Reject soft-skill openers
+      if (
+        !/^(demonstrated|ability|high level|integrity|commitment|thrive|fast-paced)/i.test(
+          t
+        )
+      ) {
+        return t.slice(0, 80);
+      }
+    }
+  }
+
+  // First short line if it looks like a title
+  const firstLine = (input.split(/\n/)[0] || '').trim();
+  if (
+    firstLine.length >= 4 &&
+    firstLine.length <= 60 &&
+    !/demonstrated|ability to|integrity|commitment|performance-driven/i.test(
+      firstLine
+    )
+  ) {
+    return firstLine;
+  }
+
+  return 'Open role';
+}
+
+export function extractLocationFromBrief(input: string): string | undefined {
+  const m = input.match(
+    /\b(?:location|based in|in)\s*[:\-]?\s*([A-Za-z .]{2,40}(?:,\s*[A-Z]{2})?)\b/i
+  );
+  if (m?.[1] && !/fast-paced|environment|integrity/i.test(m[1])) {
+    return m[1].trim();
+  }
+  const state = input.match(
+    /\b(Florida|Texas|California|New York|Remote|Miami|Tampa|Orlando|Jacksonville)\b/i
+  );
+  return state?.[1];
+}
+
 /** Parse Trio careers URL: /careers/{slug}/{jobId} */
 export function parseCareersJobUrl(input: string): {
   tenantSlug: string;
@@ -215,12 +269,13 @@ export async function resolveJobContext(params: {
     }
   }
 
-  // 3) Free-text brief (not a URL)
+  // 3) Free-text brief (not a URL) — extract a real job title, not soft-skill prose
   if (input && !input.includes('http') && !input.includes('/careers/')) {
-    const titleGuess =
-      input.split(/[–—\-|]/)[0]?.trim().slice(0, 80) || input.slice(0, 80);
+    const titleGuess = extractTitleFromBrief(input);
+    const locGuess = extractLocationFromBrief(input);
     return {
       title: titleGuess,
+      location: locGuess,
       description: input,
       keywords: extractKeywordsFromDescription(input, titleGuess),
       source: 'brief',
@@ -470,21 +525,29 @@ export async function sourceCandidatesForJob(params: {
     notes.push('PDL not configured (optional)');
   }
 
-  // --- 3) LLM only if Apollo/PDL did not yield enough *quality* people
-  // (reduces fake/hallucinated LinkedIn-looking profiles)
-  const preferSkipLlm =
-    params.preferApolloOnlyWhenEnough !== false &&
-    candidates.filter((c) => c.source === 'apollo' || c.source === 'pdl')
-      .length >= Math.min(6, limit);
+  // --- 3) Optional web-grounded discovery ONLY if Apollo/PDL empty
+  // Never invent people. Only profiles with verifiable LinkedIn /in/ URLs.
+  const apolloCount = candidates.filter((c) => c.source === 'apollo').length;
+  const dbCount = candidates.filter(
+    (c) => c.source === 'apollo' || c.source === 'pdl'
+  ).length;
 
-  if (preferSkipLlm) {
+  // When Apollo is configured and returned people, do not run LLM invent path
+  if (dbCount >= Math.min(5, limit)) {
     notes.push(
-      'Skipped LLM path — enough database matches (reduces fake profiles)'
+      'Using database matches only (Apollo/PDL) — no invented profiles'
     );
-  } else if (candidates.length < Math.min(8, limit)) {
+  } else if (dbCount === 0) {
+    notes.push(
+      'No Apollo/PDL people yet — trying web grounding (LinkedIn URLs required; no invented names)'
+    );
     try {
       const jobForLlm = {
         ...job,
+        title:
+          job.title === 'Open role' || job.title.length > 70
+            ? extractTitleFromBrief(params.input || job.description || '')
+            : job.title,
         location: searchLocation || job.location,
       };
       const llm = await llmSourceCandidates({
@@ -497,7 +560,6 @@ export async function sourceCandidatesForJob(params: {
       for (const c of llm.costs) {
         costs.push(c);
         estimatedCostUsd += c.estimatedCostUsd;
-        // Treat nova-grounding / agentcore+llm / llm-fallback as LLM-side spend
         if (
           c.engine.includes('nova') ||
           c.engine.includes('llm') ||
@@ -513,10 +575,78 @@ export async function sourceCandidatesForJob(params: {
       }
       for (const p of llm.candidates) add(p);
       notes.push(
-        `LLM sourcing: ${llm.candidates.length} people · ~$${llmUsd.toFixed(4)}`
+        `Web-grounded verified profiles: ${llm.candidates.length} · ~$${llmUsd.toFixed(4)}`
       );
     } catch (err: any) {
-      notes.push(`LLM sourcing error: ${err?.message || err}`);
+      notes.push(`Web grounding error: ${err?.message || err}`);
+    }
+  } else {
+    notes.push(
+      `Kept ${dbCount} database match(es); skipped inventing extra LLM names`
+    );
+  }
+
+  // Re-run Apollo with cleaner title if first pass was soft-skill prose
+  if (
+    apolloCount === 0 &&
+    (await resolveApolloConfigured(apolloAuth)) &&
+    (job.title === 'Open role' ||
+      /demonstrated|ability|integrity|commitment/i.test(job.title) ||
+      job.title.length > 70)
+  ) {
+    const cleanTitle = extractTitleFromBrief(
+      params.input || job.description || ''
+    );
+    if (cleanTitle && cleanTitle !== 'Open role') {
+      notes.push(`Retrying Apollo with extracted title: ${cleanTitle}`);
+      try {
+        const apolloRes2 = await apolloSearchPeople({
+          q: [cleanTitle, searchLocation || '', keywords.slice(0, 3).join(' ')]
+            .filter(Boolean)
+            .join(' '),
+          titles: [cleanTitle],
+          locations,
+          keywords: keywords.slice(0, 6),
+          per_page: limit,
+          page: 1,
+          auth: apolloAuth,
+        });
+        if (apolloRes2.people?.length) {
+          for (let i = 0; i < apolloRes2.people.length; i++) {
+            add(mapApollo(apolloRes2.people[i], i));
+          }
+          apolloSlice = buildApolloSearchSlice({
+            results: apolloRes2.people.length,
+            endpoint: 'mixed_people/api_search',
+          });
+          estimatedCostUsd += apolloSlice.estimatedUsd;
+          costs.push({
+            engine: 'apollo-retry',
+            estimatedCostUsd: apolloSlice.estimatedUsd,
+            count: apolloRes2.people.length,
+          });
+          void logApolloUsage({
+            modelId: 'apollo-source-for-job-retry',
+            resultsCount: apolloRes2.people.length,
+            estimatedCost: apolloSlice.estimatedUsd,
+            credits: apolloSlice.credits,
+            endpoint: apolloSlice.endpoint,
+            queryPreview: cleanTitle,
+            tenantId: params.tenantId || undefined,
+            userId: params.userId || undefined,
+            surface: 'fill-job',
+          }).catch(() => {});
+          notes.push(
+            `Apollo retry: ${apolloRes2.people.length} people for "${cleanTitle}"`
+          );
+        } else if (apolloRes2.error) {
+          notes.push(`Apollo retry: ${apolloRes2.error}`);
+        } else {
+          notes.push('Apollo retry: 0 people');
+        }
+      } catch (err: any) {
+        notes.push(`Apollo retry error: ${err?.message || err}`);
+      }
     }
   }
 
@@ -604,7 +734,7 @@ export async function sourceCandidatesForJob(params: {
       usageLine,
       notes,
       error:
-        'No quality candidates found. Try another location, broaden location (leave blank), or check Apollo results.',
+        'No real candidates found. Use a careers job URL or a clear title (e.g. "Operations Manager"). Soft-skill JD text alone is not enough. Apollo returned no matches for this filter — try Anywhere or a different location.',
     };
   }
 

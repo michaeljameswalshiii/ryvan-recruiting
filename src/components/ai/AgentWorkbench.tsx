@@ -615,7 +615,7 @@ export function AgentWorkbench({
             className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none ring-violet-500/0 transition focus:border-violet-400/40 focus:bg-white/[0.07] focus:ring-2 focus:ring-violet-500/30"
             placeholder={
               isResearch
-                ? 'Paste careers job URL, e.g. https://…/careers/ryvan/{jobId} — or: Account Executive, San Francisco, SaaS…'
+                ? 'Best: careers job URL. Or a clear title e.g. Operations Manager Florida manufacturing (not soft-skill paragraphs alone)'
                 : 'e.g. Construction companies in Palm Beach County under 300 employees — HR or owners…'
             }
           />
