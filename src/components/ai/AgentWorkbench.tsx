@@ -707,12 +707,8 @@ export function AgentWorkbench({
                     )}
                     <ul className="mt-2 space-y-2">
                       {run.candidates.slice(0, 12).map((c, i) => {
-                        const liSearch = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(
-                          [c.name, c.title, c.company].filter(Boolean).join(' ')
-                        )}`;
-                        const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(
-                          `"${c.name}" ${c.company || ''} ${c.title || ''} LinkedIn`
-                        )}`;
+                        const liSearch = linkedInPeopleSearchUrl(c);
+                        const googleSearch = googlePersonSearchUrl(c);
                         const isLlm = c.source === 'llm' || c.source === 'web';
                         return (
                         <li
