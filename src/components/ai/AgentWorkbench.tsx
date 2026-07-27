@@ -140,6 +140,44 @@ function resultsPath(_mode: AgentMode, id: string): string {
   return `/dashboard/list-builder/${id}`;
 }
 
+/**
+ * LinkedIn people search deep link.
+ * Long "name + full title + company" keyword strings often return 0 hits.
+ * Prefer quoted name (+ short company); never dump the full job title.
+ */
+function linkedInPeopleSearchUrl(person: {
+  name?: string;
+  title?: string;
+  company?: string;
+}): string {
+  const name = (person.name || '').trim();
+  if (!name) {
+    return 'https://www.linkedin.com/search/results/people/';
+  }
+  const company = (person.company || '')
+    .replace(/\b(inc\.?|llc|ltd|corp\.?|co\.)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 48);
+  const keywords = company ? `"${name}" ${company}` : `"${name}"`;
+  const params = new URLSearchParams({
+    keywords,
+    origin: 'GLOBAL_SEARCH_HEADER',
+  });
+  return `https://www.linkedin.com/search/results/people/?${params.toString()}`;
+}
+
+function googlePersonSearchUrl(person: {
+  name?: string;
+  title?: string;
+  company?: string;
+}): string {
+  const name = (person.name || '').trim();
+  const company = (person.company || '').trim();
+  const q = [`"${name}"`, company, 'LinkedIn'].filter(Boolean).join(' ');
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+}
+
 type Props = {
   variant?: 'full' | 'compact';
   /** Default agent mode */
