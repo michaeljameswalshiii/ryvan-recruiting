@@ -435,18 +435,28 @@ export async function searchPeople(
     body.currently_using_any_of_technology_uids = technologies;
   }
 
-  // q_keywords is the free-text filter on people search
-  const kw =
-    keywords.length > 0
-      ? keywords.join(' ')
-      : (input.q || '').trim();
-  if (kw) body.q_keywords = kw;
+  // q_keywords: free-text AND-style filter — keep SHORT.
+  // Long skill dumps ("Swiss machining wire EDM stamping…") zero out good title matches.
+  // Prefer person_titles + person_locations; only add light keywords when provided.
+  if (keywords.length > 0) {
+    // Cap to 2 short tokens/phrases so we don't over-constrain
+    body.q_keywords = keywords
+      .map((k) => String(k).trim())
+      .filter((k) => k.length >= 2 && k.length <= 40)
+      .slice(0, 2)
+      .join(' ');
+  } else if (!titles.length && input.q) {
+    // Free-text only when we lack structured titles
+    body.q_keywords = String(input.q).trim().slice(0, 80);
+  }
 
   // Fallback: if we only have free text, still send it
   if (!titles.length && !locations.length && input.q) {
-    body.q_keywords = input.q;
+    body.q_keywords = String(input.q).trim().slice(0, 80);
     // Also try person_titles from full query for better recall
-    body.person_titles = [input.q.replace(/\bin\s+.+$/i, '').trim()].filter(Boolean);
+    body.person_titles = [input.q.replace(/\bin\s+.+$/i, '').trim()]
+      .filter(Boolean)
+      .slice(0, 1);
   }
 
   const result = await apolloFetch(

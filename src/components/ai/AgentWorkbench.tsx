@@ -1013,7 +1013,8 @@ export function AgentWorkbench({
                                   {c.email}
                                 </a>
                               )}
-                              {c.linkedinUrl ? (
+                              {/* LLM/web /in/ URLs often 404 — only trust direct profile from Apollo/PDL */}
+                              {c.linkedinUrl && !isLlm ? (
                                 <a
                                   href={c.linkedinUrl}
                                   target="_blank"

@@ -477,114 +477,155 @@ export async function sourceCandidatesForJob(params: {
     : job.keywords.slice(0, 8);
   const seniorities = plan.seniorities || [];
 
-  // --- 1) Apollo with LLM plan ---
+  /**
+   * Short keywords only — long multi-skill q_keywords AND'd with title+location
+   * routinely returns 0 people (e.g. "Swiss machining wire EDM" on a Dir Ops).
+   */
+  const lightKeywords = keywords
+    .map((k) => k.trim())
+    .filter((k) => k.length >= 3 && k.length <= 40)
+    .filter((k) => !/\s{2,}/.test(k))
+    .slice(0, 2);
+
+  // --- 1) Apollo: progressive passes (search = 0 credits each) ---
+  // Tight LLM plan (titles+loc+many keywords+seniority) often zeros out.
+  // Broaden until we have people, then stop.
   const apolloAuth = params.tenantId
     ? { tenantId: params.tenantId }
     : undefined;
+
+  type ApolloPass = {
+    label: string;
+    titles: string[];
+    locations: string[];
+    keywords?: string[];
+    seniorities?: string[];
+  };
+
+  // Broad → slightly alternate → geography broaden.
+  // Never start with keywords+seniority: they AND with titles and often return 0.
+  const apolloPasses: ApolloPass[] = [
+    {
+      label: 'titles+location',
+      titles: titles.slice(0, 5),
+      locations,
+    },
+    ...(titles.length > 1
+      ? [
+          {
+            label: 'alt-titles+location',
+            titles: titles.slice(1, 5),
+            locations,
+          } satisfies ApolloPass,
+        ]
+      : []),
+    // Simpler title set (first 2 only) — sometimes long title lists over-narrow Apollo
+    {
+      label: 'primary-title+location',
+      titles: titles.slice(0, 2),
+      locations,
+    },
+    // Geography broaden when state/city is empty
+    ...(locations.length &&
+    !locations.some((l) => /united states|usa|u\.s\./i.test(l))
+      ? [
+          {
+            label: 'titles+US',
+            titles: titles.slice(0, 3),
+            locations: ['United States'],
+          } satisfies ApolloPass,
+        ]
+      : []),
+    // Light industry kw ONLY if still thin (subset of prior — may still help different Apollo ranking)
+    ...(lightKeywords.length
+      ? [
+          {
+            label: 'titles+location+kw',
+            titles: titles.slice(0, 3),
+            locations,
+            keywords: lightKeywords.slice(0, 1),
+          } satisfies ApolloPass,
+        ]
+      : []),
+  ];
+  // seniorities reserved in plan for notes/UI; not forced on search (too many false zeros)
+
   try {
     if (await resolveApolloConfigured(apolloAuth)) {
-      // Primary: top titles together
-      const apolloRes = await apolloSearchPeople({
-        q:
-          plan.query ||
-          [titles[0], locations[0], keywords.slice(0, 4).join(' ')]
-            .filter(Boolean)
-            .join(' '),
-        titles: titles.slice(0, 5),
-        locations,
-        keywords: keywords.slice(0, 8),
-        seniorities: seniorities.length ? seniorities : undefined,
-        per_page: limit,
-        page: 1,
-        auth: apolloAuth,
-      });
-      if (apolloRes.error && !apolloRes.people.length) {
-        notes.push(`Apollo: ${apolloRes.error}`);
-      } else {
-        for (let i = 0; i < apolloRes.people.length; i++) {
-          add(mapApollo(apolloRes.people[i], i));
-        }
-        apolloSlice = buildApolloSearchSlice({
-          results: apolloRes.people.length,
-          endpoint: 'mixed_people/api_search',
-        });
-        estimatedCostUsd += apolloSlice.estimatedUsd;
-        costs.push({
-          engine: 'apollo',
-          estimatedCostUsd: apolloSlice.estimatedUsd,
-          count: apolloRes.people.length,
-        });
-        void logApolloUsage({
-          modelId: 'apollo-source-for-job',
-          resultsCount: apolloRes.people.length,
-          estimatedCost: apolloSlice.estimatedUsd,
-          credits: apolloSlice.credits,
-          endpoint: apolloSlice.endpoint,
-          queryPreview: titles[0] || job.title,
-          tenantId: params.tenantId || undefined,
-          userId: params.userId || undefined,
-          surface: 'fill-job',
-        }).catch(() => {});
-        notes.push(
-          `Apollo: ${apolloRes.people.length} people · ${apolloSlice.credits} credits · $${apolloSlice.estimatedUsd.toFixed(4)}`
-        );
-      }
+      let passIdx = 0;
+      let lastApolloError: string | undefined;
 
-      // Secondary pass: alternate titles if thin
-      if (
-        candidates.length < Math.min(5, limit) &&
-        titles.length > 1
-      ) {
-        const altTitles = titles.slice(1, 4);
-        const apolloAlt = await apolloSearchPeople({
-          q: altTitles[0],
-          titles: altTitles,
-          locations,
-          keywords: keywords.slice(0, 6),
-          seniorities: seniorities.length ? seniorities : undefined,
+      for (const pass of apolloPasses) {
+        if (candidates.length >= Math.min(8, limit)) break;
+        if (!pass.titles.length) continue;
+
+        const apolloRes = await apolloSearchPeople({
+          // Prefer structured filters; avoid stuffing long JD text into q_keywords
+          q: pass.titles[0],
+          titles: pass.titles,
+          locations: pass.locations,
+          // Only send keywords when this pass intends them — never dump full skill list
+          keywords: pass.keywords,
+          seniorities: pass.seniorities,
           per_page: limit,
           page: 1,
           auth: apolloAuth,
         });
-        if (apolloAlt.people?.length) {
-          const before = candidates.length;
-          for (let i = 0; i < apolloAlt.people.length; i++) {
-            add(mapApollo(apolloAlt.people[i], i + 100));
-          }
-          const added = candidates.length - before;
-          if (added > 0) {
-            notes.push(
-              `Apollo alt titles (${altTitles.join(', ')}): +${added} people`
-            );
-            const slice2 = buildApolloSearchSlice({
-              results: apolloAlt.people.length,
-              endpoint: 'mixed_people/api_search',
-            });
-            estimatedCostUsd += slice2.estimatedUsd;
-            costs.push({
-              engine: 'apollo-alt',
-              estimatedCostUsd: slice2.estimatedUsd,
-              count: apolloAlt.people.length,
-            });
-            if (!apolloSlice) apolloSlice = slice2;
-            else
-              apolloSlice = {
-                ...apolloSlice,
-                results: apolloSlice.results + slice2.results,
-              };
-            void logApolloUsage({
-              modelId: 'apollo-source-for-job-alt',
-              resultsCount: apolloAlt.people.length,
-              estimatedCost: slice2.estimatedUsd,
-              credits: slice2.credits,
-              endpoint: slice2.endpoint,
-              queryPreview: altTitles.join(', '),
-              tenantId: params.tenantId || undefined,
-              userId: params.userId || undefined,
-              surface: 'fill-job',
-            }).catch(() => {});
-          }
+
+        if (apolloRes.error && !apolloRes.people.length) {
+          lastApolloError = apolloRes.error;
+          notes.push(`Apollo ${pass.label}: ${apolloRes.error}`);
+          continue;
         }
+
+        const before = candidates.length;
+        for (let i = 0; i < apolloRes.people.length; i++) {
+          add(mapApollo(apolloRes.people[i], passIdx * 100 + i));
+        }
+        const added = candidates.length - before;
+        const slice = buildApolloSearchSlice({
+          results: apolloRes.people.length,
+          endpoint: 'mixed_people/api_search',
+        });
+        estimatedCostUsd += slice.estimatedUsd;
+        costs.push({
+          engine: passIdx === 0 ? 'apollo' : `apollo-${pass.label}`,
+          estimatedCostUsd: slice.estimatedUsd,
+          count: apolloRes.people.length,
+        });
+        if (!apolloSlice) apolloSlice = slice;
+        else
+          apolloSlice = {
+            ...apolloSlice,
+            results: apolloSlice.results + slice.results,
+          };
+        void logApolloUsage({
+          modelId: `apollo-source-for-job-${pass.label}`,
+          resultsCount: apolloRes.people.length,
+          estimatedCost: slice.estimatedUsd,
+          credits: slice.credits,
+          endpoint: slice.endpoint,
+          queryPreview: `${pass.titles[0]} | ${pass.label}`,
+          tenantId: params.tenantId || undefined,
+          userId: params.userId || undefined,
+          surface: 'fill-job',
+        }).catch(() => {});
+
+        notes.push(
+          `Apollo ${pass.label}: ${apolloRes.people.length} returned · +${added} new`
+        );
+        passIdx++;
+
+        // If first (broad) pass already filled the list, skip tighter/alt passes
+        if (passIdx === 1 && candidates.length >= Math.min(5, limit)) break;
+      }
+
+      if (!candidates.length && lastApolloError) {
+        notes.push(`Apollo had no people after broaden passes: ${lastApolloError}`);
+      } else if (!candidates.filter((c) => c.source === 'apollo').length) {
+        notes.push(
+          'Apollo returned 0 people even after broader filters (titles+location). Try Anywhere, or a shorter title list.'
+        );
       }
     } else {
       notes.push(
@@ -633,27 +674,29 @@ export async function sourceCandidatesForJob(params: {
     notes.push('PDL not configured (optional)');
   }
 
-  // --- 3) Optional web-grounded discovery ONLY if Apollo/PDL empty
-  // Never invent people. Only profiles with verifiable LinkedIn /in/ URLs.
+  // --- 3) Web-grounded discovery ONLY if Apollo/PDL still empty
+  // LLM-suggested /in/ URLs often 404 — strip direct profile links; UI uses Find on LinkedIn.
   const dbCount = candidates.filter(
     (c) => c.source === 'apollo' || c.source === 'pdl'
   ).length;
 
-  // When Apollo is configured and returned people, do not run LLM invent path
   if (dbCount >= Math.min(5, limit)) {
     notes.push(
       'Using database matches only (Apollo/PDL) — no invented profiles'
     );
   } else if (dbCount === 0) {
     notes.push(
-      'No Apollo/PDL people yet — trying web grounding (LinkedIn URLs required; no invented names)'
+      'No Apollo/PDL people yet — optional web hints (no invented names; LinkedIn links are search-only)'
     );
     try {
       const jobForLlm = {
         ...job,
         title:
-          job.title === 'Open role' || job.title.length > 70
-            ? extractTitleFromBrief(params.input || job.description || '')
+          job.title === 'Open role' ||
+          job.title.length > 70 ||
+          /to lead a highly/i.test(job.title)
+            ? titles[0] ||
+              extractTitleFromBrief(params.input || job.description || '')
             : job.title,
         location: searchLocation || job.location,
       };
@@ -680,9 +723,20 @@ export async function sourceCandidatesForJob(params: {
         llmOutputTokens += llm.tokenUsage.outputTokens || 0;
         llmModelId = llm.tokenUsage.modelId || llmModelId;
       }
-      for (const p of llm.candidates) add(p);
+      for (const p of llm.candidates) {
+        // Never surface raw /in/ URLs from LLM/web — they frequently 404.
+        // Keep name/title/company so "Find on LinkedIn" + Google work.
+        add({
+          ...p,
+          linkedinUrl: undefined,
+          url: undefined,
+          snippet:
+            p.snippet ||
+            'Web hint only — open Find on LinkedIn / Google to verify before outreach',
+        });
+      }
       notes.push(
-        `Web-grounded verified profiles: ${llm.candidates.length} · ~$${llmUsd.toFixed(4)}`
+        `Web hints (unverified): ${llm.candidates.length} · ~$${llmUsd.toFixed(4)} — use Find on LinkedIn, not Profile`
       );
     } catch (err: any) {
       notes.push(`Web grounding error: ${err?.message || err}`);
