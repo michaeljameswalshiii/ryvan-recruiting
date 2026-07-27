@@ -163,12 +163,16 @@ function cleanTitleCandidate(raw: string): string | null {
 export function extractLocationFromBrief(input: string): string | undefined {
   const text = input || '';
 
-  // Explicit Location: lines
+  // Explicit Location: / Job location: (anywhere in text)
   const labeled = text.match(
-    /(?:^|\n)\s*(?:location|job\s*location|work\s*location|based\s*(?:in|out of)?)\s*[:\-–—]\s*([^\n|]{2,50})/i
+    /\b(?:job\s*location|work\s*location|location)\s*[:\-–—]\s*([A-Za-z0-9 .,'-]{2,50})/i
   );
   if (labeled?.[1]) {
-    const cand = labeled[1].trim().replace(/\s+/g, ' ').slice(0, 50);
+    const cand = labeled[1]
+      .trim()
+      .replace(/[.;].*$/, '')
+      .replace(/\s+/g, ' ')
+      .slice(0, 50);
     if (isValidPersonLocation(cand)) return cand;
   }
 
