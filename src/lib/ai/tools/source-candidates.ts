@@ -63,6 +63,8 @@ export async function executeSourceCandidates(
         job: result.job,
         notes: result.notes,
         estimatedCostUsd: result.estimatedCostUsd,
+        apolloPlan: result.apolloPlan,
+        apolloPlanSource: result.apolloPlanSource,
       },
     };
   }
@@ -76,6 +78,8 @@ export async function executeSourceCandidates(
       notes: result.notes,
       estimatedCostUsd: result.estimatedCostUsd,
       costs: result.costs,
+      apolloPlan: result.apolloPlan,
+      apolloPlanSource: result.apolloPlanSource,
     },
     metadata: { estimatedCostUsd: result.estimatedCostUsd },
   };

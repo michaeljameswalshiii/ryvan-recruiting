@@ -34,6 +34,11 @@ import {
   sumBreakdown,
 } from '@/lib/usage/cost-breakdown';
 import { filterAndRankByQuality } from '@/lib/sourcing/profile-quality';
+import {
+  buildApolloSearchPlan,
+  formatPlanForNotes,
+  type ApolloSearchPlan,
+} from '@/lib/sourcing/apollo-search-plan';
 
 export type SourcedCandidate = {
   id: string;
@@ -72,6 +77,9 @@ export type SourceCandidatesResult = {
   /** Side-by-side LLM tokens/$ and Apollo results/credits */
   usageBreakdown?: CostBreakdown;
   usageLine?: string;
+  /** What the LLM told Apollo to search */
+  apolloPlan?: ApolloSearchPlan;
+  apolloPlanSource?: 'llm' | 'heuristic';
   notes: string[];
   error?: string;
 };
@@ -426,23 +434,66 @@ export async function sourceCandidatesForJob(params: {
     candidates.push(c);
   };
 
-  const titles = [job.title].filter(Boolean);
-  const locations = searchLocation ? [searchLocation] : [];
-  const keywords = job.keywords.slice(0, 8);
+  // --- 0) LLM reviews full JD → structured Apollo filters (not people) ---
+  const planResult = await buildApolloSearchPlan({
+    job,
+    rawInput: params.input,
+    locationOverride:
+      params.location === undefined
+        ? undefined
+        : params.location === ''
+          ? ''
+          : params.location,
+    tenantId: params.tenantId,
+    userId: params.userId,
+  });
+  // Small LLM cost for planning (Haiku logged separately in completeJson)
+  llmUsd += 0.003;
+  llmInputTokens += 800;
+  llmOutputTokens += 200;
+  llmModelId = llmModelId || 'apollo-search-plan';
 
-  // --- 1) Apollo (tenant BYOK or platform) ---
+  let plan = planResult.plan;
+  // User location still wins over plan if explicitly set above
+  if (params.location === '') {
+    plan = { ...plan, personLocations: [] };
+  } else if (searchLocation) {
+    plan = { ...plan, personLocations: [searchLocation] };
+  }
+
+  notes.push(formatPlanForNotes(plan, planResult.source));
+  if (planResult.error && planResult.source === 'heuristic') {
+    notes.push(`Plan LLM fallback: ${planResult.error}`);
+  }
+
+  const titles = plan.titles.length ? plan.titles : [job.title].filter(Boolean);
+  const locations = plan.personLocations.length
+    ? plan.personLocations
+    : searchLocation
+      ? [searchLocation]
+      : [];
+  const keywords = plan.keywords.length
+    ? plan.keywords
+    : job.keywords.slice(0, 8);
+  const seniorities = plan.seniorities || [];
+
+  // --- 1) Apollo with LLM plan ---
   const apolloAuth = params.tenantId
     ? { tenantId: params.tenantId }
     : undefined;
   try {
     if (await resolveApolloConfigured(apolloAuth)) {
+      // Primary: top titles together
       const apolloRes = await apolloSearchPeople({
-        q: [job.title, job.location, keywords.slice(0, 4).join(' ')]
-          .filter(Boolean)
-          .join(' '),
-        titles,
+        q:
+          plan.query ||
+          [titles[0], locations[0], keywords.slice(0, 4).join(' ')]
+            .filter(Boolean)
+            .join(' '),
+        titles: titles.slice(0, 5),
         locations,
-        keywords: keywords.slice(0, 6),
+        keywords: keywords.slice(0, 8),
+        seniorities: seniorities.length ? seniorities : undefined,
         per_page: limit,
         page: 1,
         auth: apolloAuth,
@@ -469,7 +520,7 @@ export async function sourceCandidatesForJob(params: {
           estimatedCost: apolloSlice.estimatedUsd,
           credits: apolloSlice.credits,
           endpoint: apolloSlice.endpoint,
-          queryPreview: job.title,
+          queryPreview: titles[0] || job.title,
           tenantId: params.tenantId || undefined,
           userId: params.userId || undefined,
           surface: 'fill-job',
@@ -477,6 +528,63 @@ export async function sourceCandidatesForJob(params: {
         notes.push(
           `Apollo: ${apolloRes.people.length} people · ${apolloSlice.credits} credits · $${apolloSlice.estimatedUsd.toFixed(4)}`
         );
+      }
+
+      // Secondary pass: alternate titles if thin
+      if (
+        candidates.length < Math.min(5, limit) &&
+        titles.length > 1
+      ) {
+        const altTitles = titles.slice(1, 4);
+        const apolloAlt = await apolloSearchPeople({
+          q: altTitles[0],
+          titles: altTitles,
+          locations,
+          keywords: keywords.slice(0, 6),
+          seniorities: seniorities.length ? seniorities : undefined,
+          per_page: limit,
+          page: 1,
+          auth: apolloAuth,
+        });
+        if (apolloAlt.people?.length) {
+          const before = candidates.length;
+          for (let i = 0; i < apolloAlt.people.length; i++) {
+            add(mapApollo(apolloAlt.people[i], i + 100));
+          }
+          const added = candidates.length - before;
+          if (added > 0) {
+            notes.push(
+              `Apollo alt titles (${altTitles.join(', ')}): +${added} people`
+            );
+            const slice2 = buildApolloSearchSlice({
+              results: apolloAlt.people.length,
+              endpoint: 'mixed_people/api_search',
+            });
+            estimatedCostUsd += slice2.estimatedUsd;
+            costs.push({
+              engine: 'apollo-alt',
+              estimatedCostUsd: slice2.estimatedUsd,
+              count: apolloAlt.people.length,
+            });
+            if (!apolloSlice) apolloSlice = slice2;
+            else
+              apolloSlice = {
+                ...apolloSlice,
+                results: apolloSlice.results + slice2.results,
+              };
+            void logApolloUsage({
+              modelId: 'apollo-source-for-job-alt',
+              resultsCount: apolloAlt.people.length,
+              estimatedCost: slice2.estimatedUsd,
+              credits: slice2.credits,
+              endpoint: slice2.endpoint,
+              queryPreview: altTitles.join(', '),
+              tenantId: params.tenantId || undefined,
+              userId: params.userId || undefined,
+              surface: 'fill-job',
+            }).catch(() => {});
+          }
+        }
       }
     } else {
       notes.push(
@@ -527,7 +635,6 @@ export async function sourceCandidatesForJob(params: {
 
   // --- 3) Optional web-grounded discovery ONLY if Apollo/PDL empty
   // Never invent people. Only profiles with verifiable LinkedIn /in/ URLs.
-  const apolloCount = candidates.filter((c) => c.source === 'apollo').length;
   const dbCount = candidates.filter(
     (c) => c.source === 'apollo' || c.source === 'pdl'
   ).length;
@@ -584,70 +691,6 @@ export async function sourceCandidatesForJob(params: {
     notes.push(
       `Kept ${dbCount} database match(es); skipped inventing extra LLM names`
     );
-  }
-
-  // Re-run Apollo with cleaner title if first pass was soft-skill prose
-  if (
-    apolloCount === 0 &&
-    (await resolveApolloConfigured(apolloAuth)) &&
-    (job.title === 'Open role' ||
-      /demonstrated|ability|integrity|commitment/i.test(job.title) ||
-      job.title.length > 70)
-  ) {
-    const cleanTitle = extractTitleFromBrief(
-      params.input || job.description || ''
-    );
-    if (cleanTitle && cleanTitle !== 'Open role') {
-      notes.push(`Retrying Apollo with extracted title: ${cleanTitle}`);
-      try {
-        const apolloRes2 = await apolloSearchPeople({
-          q: [cleanTitle, searchLocation || '', keywords.slice(0, 3).join(' ')]
-            .filter(Boolean)
-            .join(' '),
-          titles: [cleanTitle],
-          locations,
-          keywords: keywords.slice(0, 6),
-          per_page: limit,
-          page: 1,
-          auth: apolloAuth,
-        });
-        if (apolloRes2.people?.length) {
-          for (let i = 0; i < apolloRes2.people.length; i++) {
-            add(mapApollo(apolloRes2.people[i], i));
-          }
-          apolloSlice = buildApolloSearchSlice({
-            results: apolloRes2.people.length,
-            endpoint: 'mixed_people/api_search',
-          });
-          estimatedCostUsd += apolloSlice.estimatedUsd;
-          costs.push({
-            engine: 'apollo-retry',
-            estimatedCostUsd: apolloSlice.estimatedUsd,
-            count: apolloRes2.people.length,
-          });
-          void logApolloUsage({
-            modelId: 'apollo-source-for-job-retry',
-            resultsCount: apolloRes2.people.length,
-            estimatedCost: apolloSlice.estimatedUsd,
-            credits: apolloSlice.credits,
-            endpoint: apolloSlice.endpoint,
-            queryPreview: cleanTitle,
-            tenantId: params.tenantId || undefined,
-            userId: params.userId || undefined,
-            surface: 'fill-job',
-          }).catch(() => {});
-          notes.push(
-            `Apollo retry: ${apolloRes2.people.length} people for "${cleanTitle}"`
-          );
-        } else if (apolloRes2.error) {
-          notes.push(`Apollo retry: ${apolloRes2.error}`);
-        } else {
-          notes.push('Apollo retry: 0 people');
-        }
-      } catch (err: any) {
-        notes.push(`Apollo retry error: ${err?.message || err}`);
-      }
-    }
   }
 
   const usageBreakdown = sumBreakdown({
@@ -732,6 +775,8 @@ export async function sourceCandidatesForJob(params: {
       costs,
       usageBreakdown,
       usageLine,
+      apolloPlan: plan,
+      apolloPlanSource: planResult.source,
       notes,
       error:
         'No real candidates found. Use a careers job URL or a clear title (e.g. "Operations Manager"). Soft-skill JD text alone is not enough. Apollo returned no matches for this filter — try Anywhere or a different location.',
@@ -759,6 +804,8 @@ export async function sourceCandidatesForJob(params: {
     costs,
     usageBreakdown,
     usageLine,
+    apolloPlan: plan,
+    apolloPlanSource: planResult.source,
     notes,
   };
 }

@@ -50,6 +50,15 @@ type SourcedPerson = {
   qualityFlags?: string[];
 };
 
+type ApolloSearchPlanDto = {
+  titles?: string[];
+  personLocations?: string[];
+  keywords?: string[];
+  seniorities?: string[];
+  rationale?: string;
+  query?: string;
+};
+
 type ResearchRun = {
   id: string;
   query: string;
@@ -62,6 +71,9 @@ type ResearchRun = {
   candidates: SourcedPerson[];
   error?: string;
   usageLine?: string;
+  /** LLM-built Apollo filters used for this run */
+  apolloPlan?: ApolloSearchPlanDto;
+  apolloPlanSource?: 'llm' | 'heuristic';
   usageBreakdown?: {
     llm?: {
       inputTokens: number;
@@ -429,6 +441,15 @@ export function AgentWorkbench({
         usageLine:
           typeof data.usageLine === 'string' ? data.usageLine : undefined,
         usageBreakdown: data.usageBreakdown || undefined,
+        apolloPlan:
+          data.apolloPlan && typeof data.apolloPlan === 'object'
+            ? data.apolloPlan
+            : undefined,
+        apolloPlanSource:
+          data.apolloPlanSource === 'llm' ||
+          data.apolloPlanSource === 'heuristic'
+            ? data.apolloPlanSource
+            : undefined,
       };
       setResearchRuns((prev) => [run, ...prev].slice(0, 12));
       if (!res.ok || !people.length) {
@@ -615,7 +636,7 @@ export function AgentWorkbench({
             className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none ring-violet-500/0 transition focus:border-violet-400/40 focus:bg-white/[0.07] focus:ring-2 focus:ring-violet-500/30"
             placeholder={
               isResearch
-                ? 'Best: careers job URL. Or a clear title e.g. Operations Manager Florida manufacturing (not soft-skill paragraphs alone)'
+                ? 'Careers job URL or full JD — LLM builds Apollo filters (titles/location/keywords), then finds real people'
                 : 'e.g. Construction companies in Palm Beach County under 300 employees — HR or owners…'
             }
           />
@@ -807,6 +828,54 @@ export function AgentWorkbench({
                         ~${run.estimatedCostUsd.toFixed(4)}
                       </span>
                     </div>
+                    {run.apolloPlan && (
+                      <div className="mt-2 rounded-lg border border-violet-500/20 bg-violet-500/10 px-2.5 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-200">
+                          Apollo search plan
+                          {run.apolloPlanSource
+                            ? ` · ${run.apolloPlanSource}`
+                            : ''}
+                        </p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-slate-200">
+                          {(run.apolloPlan.titles || []).length > 0 && (
+                            <>
+                              <span className="text-slate-400">Titles: </span>
+                              {(run.apolloPlan.titles || [])
+                                .slice(0, 4)
+                                .join('; ')}
+                              <br />
+                            </>
+                          )}
+                          <span className="text-slate-400">Location: </span>
+                          {(run.apolloPlan.personLocations || []).length
+                            ? (run.apolloPlan.personLocations || []).join('; ')
+                            : 'anywhere'}
+                          {(run.apolloPlan.keywords || []).length > 0 && (
+                            <>
+                              <br />
+                              <span className="text-slate-400">Keywords: </span>
+                              {(run.apolloPlan.keywords || [])
+                                .slice(0, 6)
+                                .join(', ')}
+                            </>
+                          )}
+                          {(run.apolloPlan.seniorities || []).length > 0 && (
+                            <>
+                              <br />
+                              <span className="text-slate-400">Seniority: </span>
+                              {(run.apolloPlan.seniorities || []).join(', ')}
+                            </>
+                          )}
+                          {run.apolloPlan.rationale && (
+                            <>
+                              <br />
+                              <span className="text-slate-400">Why: </span>
+                              {run.apolloPlan.rationale}
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    )}
                     {run.usageBreakdown && (
                       <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                         <div className="rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">

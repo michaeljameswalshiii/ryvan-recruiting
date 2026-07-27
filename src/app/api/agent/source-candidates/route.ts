@@ -44,9 +44,9 @@ export async function GET(request: NextRequest) {
       llm: true,
     },
     message:
-      'Paste a careers job URL or role brief. We extract the req and find people via Apollo/PDL or LLM + Nova web grounding (person-shaped results).',
+      'Paste a careers job URL or role brief. LLM reviews the JD → structured Apollo filters (titles, locations, keywords), then Apollo/PDL return real people. No invented profiles.',
     costNote:
-      'LLM: tokens + $ · Apollo People Search: results + 0 credits (rate limits apply) · PDL/AgentCore when used',
+      'LLM plan: tokens + $ · Apollo People Search: results + 0 credits (rate limits apply) · PDL/AgentCore when used',
   });
 }
 
@@ -118,6 +118,8 @@ export async function POST(request: NextRequest) {
           costs: result.costs,
           usageBreakdown: result.usageBreakdown,
           usageLine: result.usageLine,
+          apolloPlan: result.apolloPlan,
+          apolloPlanSource: result.apolloPlanSource,
         },
         { status: result.job ? 502 : 400 }
       );
@@ -134,6 +136,8 @@ export async function POST(request: NextRequest) {
       costs: result.costs,
       usageBreakdown: result.usageBreakdown,
       usageLine: result.usageLine,
+      apolloPlan: result.apolloPlan,
+      apolloPlanSource: result.apolloPlanSource,
       message:
         result.usageLine ||
         `Found ${result.candidates.length} candidate(s) for ${result.job?.title || 'this role'}. ~$${result.estimatedCostUsd.toFixed(4)} est.`,
