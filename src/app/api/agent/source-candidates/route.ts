@@ -76,6 +76,16 @@ export async function POST(request: NextRequest) {
         ''
     ).trim();
     const jobId = body.jobId ? String(body.jobId) : undefined;
+    // location: omit = use job; "" or "any"/"worldwide" = no filter; else override
+    let location: string | null | undefined = undefined;
+    if (Object.prototype.hasOwnProperty.call(body, 'location')) {
+      const loc = body.location;
+      if (loc == null || loc === '' || loc === 'any' || loc === 'worldwide') {
+        location = '';
+      } else {
+        location = String(loc).trim();
+      }
+    }
 
     if (!input && !jobId) {
       return NextResponse.json(
@@ -93,6 +103,7 @@ export async function POST(request: NextRequest) {
       tenantId,
       userId,
       limit: body.limit != null ? Number(body.limit) : 15,
+      location,
     });
 
     if (!result.ok && !result.candidates.length) {

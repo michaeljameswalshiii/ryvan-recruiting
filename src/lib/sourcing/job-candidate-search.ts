@@ -33,6 +33,7 @@ import {
   formatBreakdownLine,
   sumBreakdown,
 } from '@/lib/usage/cost-breakdown';
+import { filterAndRankByQuality } from '@/lib/sourcing/profile-quality';
 
 export type SourcedCandidate = {
   id: string;
@@ -47,6 +48,8 @@ export type SourcedCandidate = {
   source: 'apollo' | 'pdl' | 'llm' | 'web';
   snippet?: string;
   url?: string;
+  qualityScore?: number;
+  qualityFlags?: string[];
 };
 
 export type JobContext = {
@@ -283,6 +286,15 @@ export async function sourceCandidatesForJob(params: {
   userId?: string | null;
   jobId?: string | null;
   limit?: number;
+  /**
+   * Optional location override for this search only.
+   * - undefined: use job location when available
+   * - "": no location filter (worldwide)
+   * - "Miami, FL": person_locations filter
+   */
+  location?: string | null;
+  /** Skip LLM path when Apollo already returned enough quality people */
+  preferApolloOnlyWhenEnough?: boolean;
 }): Promise<SourceCandidatesResult> {
   const notes: string[] = [];
   const costs: SourceCandidatesResult['costs'] = [];
@@ -314,21 +326,37 @@ export async function sourceCandidatesForJob(params: {
     };
   }
 
+  // Location choice: explicit override > job location > none
+  let searchLocation: string | undefined;
+  if (params.location === '') {
+    searchLocation = undefined;
+    notes.push('Location filter: off (worldwide)');
+  } else if (params.location != null && String(params.location).trim()) {
+    searchLocation = String(params.location).trim();
+    notes.push(`Location filter: ${searchLocation}`);
+  } else if (job.location) {
+    searchLocation = job.location;
+    notes.push(`Location filter: ${searchLocation} (from job)`);
+  } else {
+    notes.push('Location filter: none');
+  }
+
   notes.push(
     `Sourcing for: ${job.title}` +
-      (job.location ? ` · ${job.location}` : '') +
+      (searchLocation ? ` · ${searchLocation}` : '') +
       (job.companyName ? ` @ ${job.companyName}` : '')
   );
 
   const candidates: SourcedCandidate[] = [];
   const seen = new Set<string>();
+  let droppedLowQuality = 0;
 
   const add = (c: SourcedCandidate) => {
-    // Web/LLM must look like a person; structured DBs already validated
     if (
       (c.source === 'web' || c.source === 'llm') &&
       !looksLikePersonName(c.name)
     ) {
+      droppedLowQuality++;
       return;
     }
     const key = (
@@ -344,7 +372,7 @@ export async function sourceCandidatesForJob(params: {
   };
 
   const titles = [job.title].filter(Boolean);
-  const locations = job.location ? [job.location] : [];
+  const locations = searchLocation ? [searchLocation] : [];
   const keywords = job.keywords.slice(0, 8);
 
   // --- 1) Apollo (tenant BYOK or platform) ---
@@ -442,12 +470,25 @@ export async function sourceCandidatesForJob(params: {
     notes.push('PDL not configured (optional)');
   }
 
-  // --- 3) LLM-native sourcing (Nova grounding + AgentCore extract + Haiku)
-  // Always run when structured DBs are thin so results are *people*, not articles.
-  if (candidates.length < Math.min(8, limit)) {
+  // --- 3) LLM only if Apollo/PDL did not yield enough *quality* people
+  // (reduces fake/hallucinated LinkedIn-looking profiles)
+  const preferSkipLlm =
+    params.preferApolloOnlyWhenEnough !== false &&
+    candidates.filter((c) => c.source === 'apollo' || c.source === 'pdl')
+      .length >= Math.min(6, limit);
+
+  if (preferSkipLlm) {
+    notes.push(
+      'Skipped LLM path — enough database matches (reduces fake profiles)'
+    );
+  } else if (candidates.length < Math.min(8, limit)) {
     try {
+      const jobForLlm = {
+        ...job,
+        location: searchLocation || job.location,
+      };
       const llm = await llmSourceCandidates({
-        job,
+        job: jobForLlm,
         limit,
         tenantId: params.tenantId,
         userId: params.userId,
@@ -537,10 +578,25 @@ export async function sourceCandidatesForJob(params: {
       .reduce((s, c) => s + c.estimatedCostUsd, 0),
   }).catch(() => {});
 
-  if (candidates.length === 0) {
+  // Quality filter: drop thin / placeholder / likely-hallucinated profiles
+  const beforeQ = candidates.length;
+  const ranked = filterAndRankByQuality(candidates, {
+    minScore: 45,
+    preferDbSources: true,
+  });
+  droppedLowQuality += beforeQ - ranked.length;
+  if (droppedLowQuality > 0) {
+    notes.push(
+      `Quality filter removed ${droppedLowQuality} thin or suspicious profile(s)`
+    );
+  }
+
+  const jobOut = { ...job, location: searchLocation || job.location };
+
+  if (ranked.length === 0) {
     return {
       ok: false,
-      job,
+      job: jobOut,
       candidates: [],
       estimatedCostUsd,
       costs,
@@ -548,21 +604,27 @@ export async function sourceCandidatesForJob(params: {
       usageLine,
       notes,
       error:
-        'No candidates found. Update the company Apollo key in Settings, enable PDL, or retry LLM sourcing (Bedrock Nova).',
+        'No quality candidates found. Try another location, broaden location (leave blank), or check Apollo results.',
     };
   }
 
-  // Prefer structured sources first, then LLM, then raw web
-  candidates.sort((a, b) => {
-    const rank = (s: string) =>
-      s === 'apollo' ? 0 : s === 'pdl' ? 1 : s === 'llm' ? 2 : 3;
-    return rank(a.source) - rank(b.source);
-  });
+  const finalCandidates: SourcedCandidate[] = ranked
+    .slice(0, limit)
+    .map((c) => ({
+      ...c,
+      qualityScore: c.qualityScore,
+      qualityFlags: c.qualityFlags,
+      snippet:
+        c.snippet ||
+        (c.source === 'llm' || c.source === 'web'
+          ? 'Verify on LinkedIn/Google before outreach'
+          : undefined),
+    }));
 
   return {
     ok: true,
-    job,
-    candidates: candidates.slice(0, limit),
+    job: jobOut,
+    candidates: finalCandidates,
     estimatedCostUsd,
     costs,
     usageBreakdown,

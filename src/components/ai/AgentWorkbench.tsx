@@ -46,6 +46,8 @@ type SourcedPerson = {
   source?: string;
   snippet?: string;
   url?: string;
+  qualityScore?: number;
+  qualityFlags?: string[];
 };
 
 type ResearchRun = {
@@ -224,6 +226,11 @@ export function AgentWorkbench({
   }>({});
   const [researchRuns, setResearchRuns] = useState<ResearchRun[]>([]);
   const [researching, setResearching] = useState(false);
+  /** Fill-job location: '' = use job default; 'any' = worldwide; else override */
+  const [fillLocation, setFillLocation] = useState('');
+  const [fillLocationMode, setFillLocationMode] = useState<
+    'job' | 'any' | 'custom'
+  >('job');
 
   const jobsRef = useRef(jobs);
   jobsRef.current = jobs;
@@ -376,6 +383,13 @@ export function AgentWorkbench({
     setResearching(true);
     setBusyId('research');
     try {
+      const locationPayload =
+        fillLocationMode === 'any'
+          ? ''
+          : fillLocationMode === 'custom' && fillLocation.trim()
+            ? fillLocation.trim()
+            : undefined; // job default
+
       const res = await fetch('/api/agent/source-candidates', {
         method: 'POST',
         credentials: 'include',
@@ -383,6 +397,9 @@ export function AgentWorkbench({
         body: JSON.stringify({
           input: brief.trim(),
           limit: 15,
+          ...(locationPayload !== undefined
+            ? { location: locationPayload }
+            : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -861,6 +878,11 @@ export function AgentWorkbench({
                               {[c.title, c.company, c.location]
                                 .filter(Boolean)
                                 .join(' · ')}
+                              {typeof c.qualityScore === 'number' && (
+                                <span className="ml-1.5 text-slate-500">
+                                  · Q{c.qualityScore}
+                                </span>
+                              )}
                             </p>
                             {c.snippet && (
                               <p className="mt-1 text-[10px] text-slate-500 line-clamp-2">
