@@ -136,11 +136,150 @@ const DATE_RANGE_RE = new RegExp(
 const US_STATES =
   'AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC';
 
-function normalizeText(text: string): string {
+/**
+ * Many designer resumes (Canva, etc.) place each glyph with large tracking so
+ * pdf.js emits "J e f f e r s o n" / "7 8 6 - 6 9 6 - 0 2 4 8". Collapse those
+ * runs so email/phone/name regexes can match.
+ */
+export function collapseSpacedGlyphs(text: string): string {
+  if (!text) return text;
+
+  const collapseLine = (line: string): string => {
+    const trimmed = line.trim();
+    if (!trimmed) return '';
+
+    const tokens = trimmed.split(/\s+/);
+    if (tokens.length < 3) return trimmed;
+
+    const isGlueable = (t: string) =>
+      t.length === 1 ||
+      (t.length <= 2 && /^[-–—./|+,():]$/.test(t));
+
+    const glueableCount = tokens.filter(isGlueable).length;
+    const glueRatio = glueableCount / tokens.length;
+
+    // Mostly single glyphs (letter-spaced name/title/phone lines)
+    if (glueRatio >= 0.6 && tokens.length >= 4) {
+      let out = '';
+      for (let i = 0; i < tokens.length; i++) {
+        const t = tokens[i];
+        if (t.length === 1 && /[A-Za-z0-9]/.test(t)) {
+          // Word break: lowercase/digit → Uppercase start of next word
+          // (e.g. JeffersonCapada already one word; "managerWith" → "manager With")
+          if (
+            out.length > 0 &&
+            /[a-z0-9]/.test(out[out.length - 1]) &&
+            /[A-Z]/.test(t)
+          ) {
+            out += ' ' + t;
+          } else if (
+            // ALL-CAPS runs: insert space before known title/name particles when
+            // previous glued chunk is long enough (Restaurant|General|Manager)
+            out.length > 0 &&
+            /^[A-Z]+$/.test(out.replace(/\s/g, '')) &&
+            /[A-Z]/.test(t)
+          ) {
+            out += t;
+          } else {
+            out += t;
+          }
+        } else if (/^[-–—./|+,():@]$/.test(t)) {
+          out += t;
+        } else {
+          if (out && !/\s$/.test(out)) out += ' ';
+          out += t;
+          out += ' ';
+        }
+      }
+      return out.replace(/\s+/g, ' ').trim();
+    }
+
+    // Mixed lines: still collapse digit runs like "7 8 6 - 6 9 6 - 0 2 4 8"
+    return collapseSpacedDigitRuns(trimmed);
+  };
+
   return text
+    .split('\n')
+    .map(collapseLine)
+    .join('\n');
+}
+
+/** Collapse "7 8 6 - 6 9 6 - 0 2 4 8" / "7 8 6 6 9 6 0 2 4 8" into phone-like form. */
+function collapseSpacedDigitRuns(s: string): string {
+  // Spaced digits with optional separators between groups
+  return s.replace(
+    /(?:\+?\s*)?(?:\(?\s*)?(?:\d\s+){2,}\d(?:\s*\)?\s*[-–.]?\s*(?:\d\s+){2,}\d){1,3}/g,
+    (m) => m.replace(/\s+/g, '')
+  );
+}
+
+/**
+ * Split glued ALL-CAPS title blobs: RESTAURANTGENERALMANAGER → known phrases.
+ */
+function unglueAllCapsTitles(text: string): string {
+  const phrases = [
+    'GENERAL MANAGER',
+    'ASSISTANT MANAGER',
+    'STORE MANAGER',
+    'OPERATIONS MANAGER',
+    'PROJECT MANAGER',
+    'PRODUCT MANAGER',
+    'ACCOUNT MANAGER',
+    'OFFICE MANAGER',
+    'SOFTWARE ENGINEER',
+    'SENIOR ENGINEER',
+    'FULL STACK',
+    'FRONT END',
+    'BACK END',
+    'CUSTOMER SERVICE',
+    'FOOD SAFETY',
+    'INVENTORY MANAGEMENT',
+    'TEAM LEAD',
+    'HUMAN RESOURCES',
+    'HIGH SCHOOL DIPLOMA',
+    'KEY SKILLS',
+    'RESTAURANT',
+    'MEDITERRANEAN',
+  ];
+  // Longest first so GENERAL MANAGER wins over MANAGER alone
+  const sorted = [...phrases].sort(
+    (a, b) => b.replace(/\s+/g, '').length - a.replace(/\s+/g, '').length
+  );
+  return text
+    .split('\n')
+    .map((line) => {
+      let l = line;
+      if (!/[A-Za-z]{10,}/.test(l.replace(/\s/g, ''))) return l;
+      for (const phrase of sorted) {
+        const compact = phrase.replace(/\s+/g, '');
+        if (compact.length < 4) continue;
+        const re = new RegExp(compact, 'gi');
+        l = l.replace(re, (match, offset: number, full: string) => {
+          const end = offset + match.length;
+          const before = offset > 0 ? full[offset - 1] : '';
+          const after = end < full.length ? full[end] : '';
+          const spaceBefore =
+            before && /[A-Za-z]/.test(before) ? ' ' : '';
+          const spaceAfter = after && /[A-Za-z]/.test(after) ? ' ' : '';
+          return spaceBefore + phrase + spaceAfter;
+        });
+      }
+      return l.replace(/\s+/g, ' ').trim();
+    })
+    .join('\n');
+}
+
+function normalizeText(text: string): string {
+  let t = text
     .replace(/^\uFEFF/, '')
     .replace(/\r\n?/g, '\n')
-    .replace(/\u00a0/g, ' ')
+    .replace(/\u00a0/g, ' ');
+
+  // Collapse letter-spaced PDF glyphs before other whitespace normalization
+  t = collapseSpacedGlyphs(t);
+  t = unglueAllCapsTitles(t);
+
+  return t
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -329,22 +468,81 @@ export function extractNameFromFilename(filename: string): string {
 }
 
 function extractEmail(text: string): string {
-  const m = text.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/);
-  return m ? m[0] : '';
+  // Normal: jane.doe@email.com
+  const direct = text.match(
+    /\b[A-Za-z0-9][A-Za-z0-9._%+-]{0,64}@[A-Za-z0-9][A-Za-z0-9.-]{0,64}\.[A-Za-z]{2,24}\b/
+  );
+  if (direct) return direct[0];
+
+  // Letter-spaced: j a n e @ e m a i l . c o m  (after partial collapse)
+  const spaced = text.match(
+    /(?:[A-Za-z0-9]\s+){1,40}[A-Za-z0-9]\s*@\s*(?:[A-Za-z0-9]\s+){0,40}[A-Za-z0-9](?:\s*\.\s*(?:[A-Za-z0-9]\s*){1,24})+/
+  );
+  if (spaced) {
+    const compact = spaced[0].replace(/\s+/g, '');
+    if (/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(compact)) {
+      return compact;
+    }
+  }
+
+  // mailto: links
+  const mailto = text.match(
+    /mailto:([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/i
+  );
+  if (mailto) return mailto[1];
+
+  return '';
+}
+
+function formatUsPhone(digits: string): string {
+  const d =
+    digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  if (d.length !== 10) return digits;
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
 }
 
 function extractPhone(text: string): string {
+  // Prefer header/top of resume (avoid matching years/zip noise later)
+  const areas = [text.slice(0, 900), text];
+
   const patterns = [
+    // (786) 696-0248 / 786-696-0248 / 786.696.0248
     /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/,
+    // International-ish
     /\+\d{1,3}[-.\s]?\d{1,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b/,
+    // Still-spaced: 7 8 6 - 6 9 6 - 0 2 4 8
+    /(?:\+?1\s*)?(?:\(?\s*)?(?:\d\s+){2}\d\s*\)?\s*[-–.]?\s*(?:\d\s+){2}\d\s*[-–.]?\s*(?:\d\s+){3}\d\b/,
+    // 786 696 0248
+    /\b\d{3}\s+\d{3}\s+\d{4}\b/,
   ];
-  for (const re of patterns) {
-    const m = text.match(re);
-    if (m) {
-      const digits = m[0].replace(/\D/g, '');
-      if (digits.length >= 10) return m[0].trim();
+
+  for (const area of areas) {
+    for (const re of patterns) {
+      const m = area.match(re);
+      if (!m) continue;
+      const raw = m[0].trim();
+      const digits = raw.replace(/\D/g, '');
+      if (digits.length < 10 || digits.length > 11) continue;
+      // Reject obvious junk (0000000000, font metrics)
+      if (/^(\d)\1+$/.test(digits)) continue;
+      if (/^0+$/.test(digits) || /^1{10,}$/.test(digits)) continue;
+      // Prefer US-looking numbers near top
+      if (digits.length === 10 || (digits.length === 11 && digits.startsWith('1'))) {
+        return formatUsPhone(digits);
+      }
+      return raw;
     }
   }
+
+  // Last resort: 10 consecutive digits after stripping spaces from a short header line
+  for (const line of linesOf(text).slice(0, 15)) {
+    const compact = line.replace(/[^\d+]/g, '');
+    const digits = compact.replace(/\D/g, '');
+    if (digits.length === 10 || (digits.length === 11 && digits.startsWith('1'))) {
+      if (!/^(\d)\1+$/.test(digits)) return formatUsPhone(digits);
+    }
+  }
+
   return '';
 }
 
@@ -1080,11 +1278,28 @@ export function textFromPdfItems(
     return lines
       .map((l) => {
         l.parts.sort((a, b) => a.x - b.x);
+        // Adaptive gap: letter-tracking resumes use large gaps between every glyph.
+        // Use median char width so only true word gaps become spaces.
+        const widths = l.parts
+          .map((p) => p.w || p.s.length * 4)
+          .filter((w) => w > 0);
+        const sortedW = [...widths].sort((a, b) => a - b);
+        const medianW =
+          sortedW.length > 0
+            ? sortedW[Math.floor(sortedW.length / 2)]
+            : 6;
+        // Gaps smaller than ~0.45 of a char are tracking; larger = word space.
+        // Floor 1.0 keeps tiny overlaps glued; cap 14 avoids huge gaps on sparse lines.
+        const spaceThreshold = Math.min(14, Math.max(1.0, medianW * 0.45));
+
         let out = '';
         let prevEnd = -Infinity;
         for (const p of l.parts) {
-          if (prevEnd !== -Infinity && p.x - prevEnd > 1.5) {
-            if (out && !out.endsWith(' ')) out += ' ';
+          if (prevEnd !== -Infinity) {
+            const gap = p.x - prevEnd;
+            if (gap > spaceThreshold) {
+              if (out && !out.endsWith(' ')) out += ' ';
+            }
           }
           out += p.s;
           prevEnd = p.x + (p.w || p.s.length * 4);
@@ -1126,5 +1341,7 @@ export function textFromPdfItems(
 
   const sSingle = scoreExtractedResumeText(single);
   const sTwo = scoreExtractedResumeText(twoCol);
-  return sTwo > sSingle + 1 ? twoCol : single;
+  const chosen = sTwo > sSingle + 1 ? twoCol : single;
+  // Final safety net for residual letter-spacing (Canva-style PDFs)
+  return collapseSpacedGlyphs(chosen);
 }

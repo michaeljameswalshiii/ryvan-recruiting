@@ -25,10 +25,53 @@ const BINARY_EMAIL_RE =
 const BINARY_PHONE_RE =
   /(?:\+?1[-.\s]?)?(?:\(\d{3}\)[-.\s]?\d{3}[-.\s]?\d{4}|\d{3}[-.]\d{3}[-.]\d{4})\b/g;
 
+/**
+ * Also catch UTF-16BE-encoded emails inside PDF streams (00 6A 00 61 00 6E 00 65 … 00 40 …).
+ */
+function scrapeUtf16BeEmails(buffer: Buffer): string[] {
+  const out: string[] = [];
+  // Scan for '@' as 00 40
+  for (let i = 0; i < buffer.length - 3; i++) {
+    if (buffer[i] !== 0x00 || buffer[i + 1] !== 0x40) continue;
+    // Walk back for local part
+    let start = i;
+    while (start >= 2) {
+      const hi = buffer[start - 2];
+      const lo = buffer[start - 1];
+      if (hi !== 0x00) break;
+      if (!/[A-Za-z0-9._%+-]/.test(String.fromCharCode(lo))) break;
+      start -= 2;
+    }
+    // Walk forward for domain
+    let end = i + 2;
+    while (end + 1 < buffer.length) {
+      const hi = buffer[end];
+      const lo = buffer[end + 1];
+      if (hi !== 0x00) break;
+      if (!/[A-Za-z0-9.-]/.test(String.fromCharCode(lo))) break;
+      end += 2;
+    }
+    let email = '';
+    for (let p = start; p < end; p += 2) {
+      if (buffer[p] === 0x00) email += String.fromCharCode(buffer[p + 1]);
+    }
+    if (
+      /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email) &&
+      email.length < 80
+    ) {
+      out.push(email);
+    }
+  }
+  return out;
+}
+
 function scrapeContactFromBinary(buffer: Buffer): string {
   const bufferStr = buffer.toString('latin1');
   const parts: string[] = [];
-  const emails = bufferStr.match(BINARY_EMAIL_RE) || [];
+  const emails = [
+    ...(bufferStr.match(BINARY_EMAIL_RE) || []),
+    ...scrapeUtf16BeEmails(buffer),
+  ];
   const phones = bufferStr.match(BINARY_PHONE_RE) || [];
 
   const seen = new Set<string>();
@@ -36,6 +79,8 @@ function scrapeContactFromBinary(buffer: Buffer): string {
     const key = e.toLowerCase();
     if (seen.has(key)) continue;
     if (e.includes('..') || e.length > 80) continue;
+    // Filter binary noise that happens to look like email
+    if (/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(e)) continue;
     seen.add(key);
     parts.push(e);
   }
@@ -174,11 +219,30 @@ export async function parseResumeBuffer(
   method: string;
 }> {
   const { text, method } = await extractTextFromResumeBuffer(buffer, fileName);
-  const parsed = parseResumeText(text, { filename: fileName });
+
+  // If pdf.js text is missing email/phone, graft contact tokens scraped from the
+  // raw PDF (and re-parse). Letter-spaced PDFs often still embed plain emails.
+  let workingText = text;
+  let workingMethod = method;
+  const contactOnly = scrapeContactFromBinary(buffer);
+  if (contactOnly) {
+    const hasEmail = /@/.test(workingText);
+    const hasPhone =
+      /\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(workingText) ||
+      /(?:\d\s+){2}\d\s*[-–.]?\s*(?:\d\s+){2}\d/.test(workingText);
+    if (!hasEmail || !hasPhone) {
+      workingText = [contactOnly, workingText].filter(Boolean).join('\n');
+      workingMethod = method
+        ? `${method}+binary-contact`
+        : 'binary-contact-fallback';
+    }
+  }
+
+  const parsed = parseResumeText(workingText, { filename: fileName });
   if (!parsed.name) {
     parsed.name =
       extractNameFromFilename(fileName) ||
       fileName.replace(/\.[^/.]+$/, '');
   }
-  return { parsed, text, method };
+  return { parsed, text: workingText, method: workingMethod };
 }
