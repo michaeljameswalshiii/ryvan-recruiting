@@ -39,6 +39,7 @@ import {
   buildApolloSearchPlan,
   formatPlanForNotes,
   isValidPersonLocation,
+  planFromUserEdit,
   type ApolloSearchPlan,
 } from '@/lib/sourcing/apollo-search-plan';
 
@@ -83,7 +84,7 @@ export type SourceCandidatesResult = {
   usageLine?: string;
   /** What the LLM told Apollo to search */
   apolloPlan?: ApolloSearchPlan;
-  apolloPlanSource?: 'llm' | 'heuristic';
+  apolloPlanSource?: 'llm' | 'heuristic' | 'user';
   /** tenant = company BYOK, platform = env key, none = missing */
   apolloKeySource?: 'tenant' | 'platform' | 'explicit' | 'none';
   /** Last Apollo HTTP status when search failed or ran */
@@ -420,6 +421,11 @@ export async function sourceCandidatesForJob(params: {
   location?: string | null;
   /** Skip LLM path when Apollo already returned enough quality people */
   preferApolloOnlyWhenEnough?: boolean;
+  /**
+   * User-edited Apollo plan — skip LLM replan and search with these filters.
+   * Used for "edit plan → search again" in Fill job UI.
+   */
+  apolloPlanOverride?: Partial<ApolloSearchPlan> | null;
 }): Promise<SourceCandidatesResult> {
   const notes: string[] = [];
   const costs: SourceCandidatesResult['costs'] = [];
@@ -511,42 +517,65 @@ export async function sourceCandidatesForJob(params: {
     candidates.push(c);
   };
 
-  // --- 0) LLM reviews full JD → structured Apollo filters (not people) ---
-  const planResult = await buildApolloSearchPlan({
-    job,
-    rawInput: params.input,
-    locationOverride:
-      params.location === undefined
-        ? undefined
-        : params.location === ''
-          ? ''
-          : params.location,
-    tenantId: params.tenantId,
-    userId: params.userId,
-  });
-  // Small LLM cost for planning (Haiku logged separately in completeJson)
-  llmUsd += 0.003;
-  llmInputTokens += 800;
-  llmOutputTokens += 200;
-  llmModelId = llmModelId || 'apollo-search-plan';
+  // --- 0) Apollo plan: user edit OR LLM from JD ---
+  let plan: ApolloSearchPlan;
+  let planSource: 'llm' | 'heuristic' | 'user' = 'heuristic';
+  let planLlmError: string | undefined;
 
-  let plan = planResult.plan;
+  if (params.apolloPlanOverride && typeof params.apolloPlanOverride === 'object') {
+    plan = planFromUserEdit(params.apolloPlanOverride, {
+      titles: [job.title].filter(Boolean),
+      personLocations: searchLocation ? [searchLocation] : [],
+      mustHaveKeywords: [],
+      keywords: [],
+      seniorities: [],
+    });
+    planSource = 'user';
+  } else {
+    const planResult = await buildApolloSearchPlan({
+      job,
+      rawInput: params.input,
+      locationOverride:
+        params.location === undefined
+          ? undefined
+          : params.location === ''
+            ? ''
+            : params.location,
+      tenantId: params.tenantId,
+      userId: params.userId,
+    });
+    // Small LLM cost for planning (Haiku logged separately in completeJson)
+    llmUsd += 0.003;
+    llmInputTokens += 800;
+    llmOutputTokens += 200;
+    llmModelId = llmModelId || 'apollo-search-plan';
+    plan = planResult.plan;
+    planSource = planResult.source;
+    planLlmError = planResult.error;
+  }
+
   // User location still wins over plan if explicitly set above
+  // (skip when user-edited plan already set locations and no location override)
   if (params.location === '') {
     plan = { ...plan, personLocations: [] };
-  } else if (searchLocation) {
+  } else if (searchLocation && planSource !== 'user') {
     plan = { ...plan, personLocations: [searchLocation] };
+  } else if (planSource === 'user') {
+    // Keep user locations; still drop invalid
+    plan = {
+      ...plan,
+      personLocations: (plan.personLocations || []).filter(isValidPersonLocation),
+    };
   } else {
-    // Drop any LLM locations that are JD prose
     plan = {
       ...plan,
       personLocations: plan.personLocations.filter(isValidPersonLocation),
     };
   }
 
-  notes.push(formatPlanForNotes(plan, planResult.source));
-  if (planResult.error && planResult.source === 'heuristic') {
-    notes.push(`Plan LLM fallback: ${planResult.error}`);
+  notes.push(formatPlanForNotes(plan, planSource));
+  if (planLlmError && planSource === 'heuristic') {
+    notes.push(`Plan LLM fallback: ${planLlmError}`);
   }
 
   const titles = plan.titles.length ? plan.titles : [job.title].filter(Boolean);
@@ -1075,7 +1104,7 @@ export async function sourceCandidatesForJob(params: {
       usageBreakdown,
       usageLine,
       apolloPlan: plan,
-      apolloPlanSource: planResult.source,
+      apolloPlanSource: planSource,
       apolloKeySource,
       apolloHttpStatus,
       apolloRequest,
@@ -1108,7 +1137,7 @@ export async function sourceCandidatesForJob(params: {
     usageBreakdown,
     usageLine,
     apolloPlan: plan,
-    apolloPlanSource: planResult.source,
+    apolloPlanSource: planSource,
     apolloKeySource,
     apolloHttpStatus,
     apolloRequest,

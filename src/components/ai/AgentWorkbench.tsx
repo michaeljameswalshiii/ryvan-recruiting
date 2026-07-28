@@ -60,6 +60,50 @@ type ApolloSearchPlanDto = {
   query?: string;
 };
 
+/** Editable Apollo plan draft (UI string fields → arrays on submit) */
+type PlanDraft = {
+  titles: string;
+  locations: string;
+  mustHave: string;
+  keywords: string;
+  seniorities: string;
+};
+
+const emptyPlanDraft = (): PlanDraft => ({
+  titles: '',
+  locations: '',
+  mustHave: '',
+  keywords: '',
+  seniorities: '',
+});
+
+function planToDraft(p?: ApolloSearchPlanDto | null): PlanDraft {
+  if (!p) return emptyPlanDraft();
+  return {
+    titles: (p.titles || []).join('; '),
+    locations: (p.personLocations || []).join('; '),
+    mustHave: (p.mustHaveKeywords || []).join(', '),
+    keywords: (p.keywords || []).join(', '),
+    seniorities: (p.seniorities || []).join(', '),
+  };
+}
+
+function draftToPlan(d: PlanDraft): ApolloSearchPlanDto {
+  const split = (s: string, re: RegExp) =>
+    (s || '')
+      .split(re)
+      .map((x) => x.trim())
+      .filter(Boolean);
+  return {
+    titles: split(d.titles, /[;\n]+/),
+    personLocations: split(d.locations, /[;\n]+/),
+    mustHaveKeywords: split(d.mustHave, /[,\n]+/),
+    keywords: split(d.keywords, /[,\n]+/),
+    seniorities: split(d.seniorities, /[,\n]+/),
+    rationale: 'User-edited Apollo plan',
+  };
+}
+
 type ResearchRun = {
   id: string;
   query: string;
@@ -74,7 +118,7 @@ type ResearchRun = {
   usageLine?: string;
   /** LLM-built Apollo filters used for this run */
   apolloPlan?: ApolloSearchPlanDto;
-  apolloPlanSource?: 'llm' | 'heuristic';
+  apolloPlanSource?: 'llm' | 'heuristic' | 'user';
   usageBreakdown?: {
     llm?: {
       inputTokens: number;
@@ -306,6 +350,9 @@ export function AgentWorkbench({
   } | null>(null);
   const [researchRuns, setResearchRuns] = useState<ResearchRun[]>([]);
   const [researching, setResearching] = useState(false);
+  /** Editable Apollo filters — filled after first LLM plan; user can tweak & re-run */
+  const [planDraft, setPlanDraft] = useState<PlanDraft>(emptyPlanDraft);
+  const [planSourceLabel, setPlanSourceLabel] = useState<string | null>(null);
   /** Fill-job location: '' = use job default; 'any' = worldwide; else override */
   const [fillLocation, setFillLocation] = useState('');
   const [fillLocationMode, setFillLocationMode] = useState<
@@ -462,14 +509,27 @@ export function AgentWorkbench({
     };
   }, [mode]);
 
-  const startResearch = async () => {
+  /**
+   * @param opts.useEditedPlan — re-run with planDraft (skip LLM replan)
+   */
+  const startResearch = async (opts?: { useEditedPlan?: boolean }) => {
     if (!brief.trim()) {
       toast.error(
         'Paste a careers job URL or describe the role (title + location + skills)'
       );
       return;
     }
-    // Always allowed — LLM path works without Apollo/PDL
+    const useEdited = !!opts?.useEditedPlan;
+    if (useEdited) {
+      const p = draftToPlan(planDraft);
+      if (!p.titles?.length) {
+        toast.error(
+          'Add at least one title in the Apollo plan before searching again'
+        );
+        return;
+      }
+    }
+
     setResearching(true);
     setBusyId('research');
     try {
@@ -480,17 +540,20 @@ export function AgentWorkbench({
             ? fillLocation.trim()
             : undefined; // job default
 
+      const body: Record<string, unknown> = {
+        input: brief.trim(),
+        limit: 15,
+        ...(locationPayload !== undefined ? { location: locationPayload } : {}),
+      };
+      if (useEdited) {
+        body.apolloPlan = draftToPlan(planDraft);
+      }
+
       const res = await fetch('/api/agent/source-candidates', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input: brief.trim(),
-          limit: 15,
-          ...(locationPayload !== undefined
-            ? { location: locationPayload }
-            : {}),
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       const cost =
@@ -502,6 +565,26 @@ export function AgentWorkbench({
       const people: SourcedPerson[] = Array.isArray(data.candidates)
         ? data.candidates
         : [];
+      const returnedPlan =
+        data.apolloPlan && typeof data.apolloPlan === 'object'
+          ? (data.apolloPlan as ApolloSearchPlanDto)
+          : useEdited
+            ? draftToPlan(planDraft)
+            : undefined;
+      const sourceLabel =
+        data.apolloPlanSource === 'user' ||
+        data.apolloPlanSource === 'llm' ||
+        data.apolloPlanSource === 'heuristic'
+          ? data.apolloPlanSource
+          : useEdited
+            ? 'user'
+            : undefined;
+
+      if (returnedPlan) {
+        setPlanDraft(planToDraft(returnedPlan));
+        setPlanSourceLabel(sourceLabel || null);
+      }
+
       const run: ResearchRun = {
         id: `r-${Date.now()}`,
         query: brief.trim(),
@@ -519,15 +602,8 @@ export function AgentWorkbench({
         usageLine:
           typeof data.usageLine === 'string' ? data.usageLine : undefined,
         usageBreakdown: data.usageBreakdown || undefined,
-        apolloPlan:
-          data.apolloPlan && typeof data.apolloPlan === 'object'
-            ? data.apolloPlan
-            : undefined,
-        apolloPlanSource:
-          data.apolloPlanSource === 'llm' ||
-          data.apolloPlanSource === 'heuristic'
-            ? data.apolloPlanSource
-            : undefined,
+        apolloPlan: returnedPlan,
+        apolloPlanSource: sourceLabel as ResearchRun['apolloPlanSource'],
       };
       setResearchRuns((prev) => [run, ...prev].slice(0, 12));
       if (!res.ok || !people.length) {
@@ -895,6 +971,121 @@ export function AgentWorkbench({
                 Session ~${researchSpend.toFixed(4)}
               </span>
             </div>
+
+            {/* Editable Apollo plan — edit and re-search without re-running LLM */}
+            {(planDraft.titles.trim() || researchRuns.length > 0) && (
+              <div className="mb-3 rounded-xl border border-violet-500/25 bg-violet-500/10 p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-200">
+                    Apollo search plan
+                    {planSourceLabel ? ` · ${planSourceLabel}` : ''}
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Edit filters → search again (skips LLM replan)
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <div>
+                    <label className="mb-0.5 block text-[10px] text-slate-400">
+                      Titles (semicolon-separated)
+                    </label>
+                    <textarea
+                      value={planDraft.titles}
+                      onChange={(e) =>
+                        setPlanDraft((d) => ({ ...d, titles: e.target.value }))
+                      }
+                      rows={2}
+                      className="w-full resize-none rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] text-slate-100 outline-none focus:border-violet-400/40"
+                      placeholder="Director of Operations; Plant Manager; Manufacturing Manager"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-0.5 block text-[10px] text-slate-400">
+                        Locations (semicolon-separated)
+                      </label>
+                      <input
+                        value={planDraft.locations}
+                        onChange={(e) =>
+                          setPlanDraft((d) => ({
+                            ...d,
+                            locations: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] text-slate-100 outline-none focus:border-violet-400/40"
+                        placeholder="Florida · or empty for anywhere"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-0.5 block text-[10px] text-amber-200/80">
+                        Must-have skills (comma-separated)
+                      </label>
+                      <input
+                        value={planDraft.mustHave}
+                        onChange={(e) =>
+                          setPlanDraft((d) => ({
+                            ...d,
+                            mustHave: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border border-amber-500/20 bg-black/30 px-2 py-1.5 text-[11px] text-amber-50 outline-none focus:border-amber-400/40"
+                        placeholder="CNC, NetSuite, AWS"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-0.5 block text-[10px] text-slate-400">
+                        Optional keywords
+                      </label>
+                      <input
+                        value={planDraft.keywords}
+                        onChange={(e) =>
+                          setPlanDraft((d) => ({
+                            ...d,
+                            keywords: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] text-slate-100 outline-none focus:border-violet-400/40"
+                        placeholder="optional hard skills only"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-0.5 block text-[10px] text-slate-400">
+                        Seniority (usually leave empty)
+                      </label>
+                      <input
+                        value={planDraft.seniorities}
+                        onChange={(e) =>
+                          setPlanDraft((d) => ({
+                            ...d,
+                            seniorities: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] text-slate-100 outline-none focus:border-violet-400/40"
+                        placeholder="manager, director — rare"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    disabled={researching || !planDraft.titles.trim()}
+                    onClick={() => void startResearch({ useEditedPlan: true })}
+                    className="h-9 w-full rounded-lg bg-violet-600 text-xs font-semibold text-white hover:bg-violet-500"
+                  >
+                    {researching ? (
+                      <>
+                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        Searching with your plan…
+                      </>
+                    ) : (
+                      'Search again with this plan'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {researchRuns.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-10 text-center">
                 <Target className="mx-auto h-8 w-8 text-slate-600" />
@@ -934,68 +1125,20 @@ export function AgentWorkbench({
                       </span>
                     </div>
                     {run.apolloPlan && (
-                      <div className="mt-2 rounded-lg border border-violet-500/20 bg-violet-500/10 px-2.5 py-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-200">
-                          Apollo search plan
-                          {run.apolloPlanSource
-                            ? ` · ${run.apolloPlanSource}`
-                            : ''}
-                        </p>
-                        <p className="mt-1 text-[11px] leading-relaxed text-slate-200">
-                          {(run.apolloPlan.titles || []).length > 0 && (
-                            <>
-                              <span className="text-slate-400">Titles: </span>
-                              {(run.apolloPlan.titles || [])
-                                .slice(0, 4)
-                                .join('; ')}
-                              <br />
-                            </>
-                          )}
-                          <span className="text-slate-400">Location: </span>
-                          {(run.apolloPlan.personLocations || []).length
-                            ? (run.apolloPlan.personLocations || []).join('; ')
-                            : 'anywhere'}
-                          {(run.apolloPlan.mustHaveKeywords || []).length >
-                            0 && (
-                            <>
-                              <br />
-                              <span className="text-slate-400">
-                                Must-have:{' '}
-                              </span>
-                              <span className="text-amber-100">
-                                {(run.apolloPlan.mustHaveKeywords || [])
-                                  .slice(0, 4)
-                                  .join(', ')}
-                              </span>
-                            </>
-                          )}
-                          {(run.apolloPlan.keywords || []).length > 0 && (
-                            <>
-                              <br />
-                              <span className="text-slate-400">
-                                Optional kw:{' '}
-                              </span>
-                              {(run.apolloPlan.keywords || [])
-                                .slice(0, 6)
-                                .join(', ')}
-                            </>
-                          )}
-                          {(run.apolloPlan.seniorities || []).length > 0 && (
-                            <>
-                              <br />
-                              <span className="text-slate-400">Seniority: </span>
-                              {(run.apolloPlan.seniorities || []).join(', ')}
-                            </>
-                          )}
-                          {run.apolloPlan.rationale && (
-                            <>
-                              <br />
-                              <span className="text-slate-400">Why: </span>
-                              {run.apolloPlan.rationale}
-                            </>
-                          )}
-                        </p>
-                      </div>
+                      <p className="mt-1.5 text-[10px] leading-snug text-slate-500">
+                        Plan
+                        {run.apolloPlanSource
+                          ? ` (${run.apolloPlanSource})`
+                          : ''}
+                        : {(run.apolloPlan.titles || []).slice(0, 3).join('; ') ||
+                          '—'}
+                        {(run.apolloPlan.mustHaveKeywords || []).length > 0
+                          ? ` · must ${(run.apolloPlan.mustHaveKeywords || []).join(', ')}`
+                          : ''}
+                        {(run.apolloPlan.personLocations || []).length
+                          ? ` · ${(run.apolloPlan.personLocations || []).join('; ')}`
+                          : ' · anywhere'}
+                      </p>
                     )}
                     {run.usageBreakdown && (
                       <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">

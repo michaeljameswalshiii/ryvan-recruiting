@@ -145,6 +145,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Optional user-edited Apollo plan (skip LLM replan on retry)
+    let apolloPlanOverride: Record<string, unknown> | null = null;
+    if (body.apolloPlan && typeof body.apolloPlan === 'object') {
+      apolloPlanOverride = body.apolloPlan as Record<string, unknown>;
+    } else if (body.plan && typeof body.plan === 'object') {
+      apolloPlanOverride = body.plan as Record<string, unknown>;
+    }
+
     const result = await sourceCandidatesForJob({
       input: input || jobId || '',
       jobId,
@@ -152,6 +160,7 @@ export async function POST(request: NextRequest) {
       userId,
       limit: body.limit != null ? Number(body.limit) : 15,
       location,
+      apolloPlanOverride,
     });
 
     if (!result.ok && !result.candidates.length) {

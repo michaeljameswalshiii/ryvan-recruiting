@@ -353,6 +353,25 @@ export function heuristicApolloPlan(
 }
 
 /**
+ * Normalize a user-edited plan from the UI (comma-separated fields already split).
+ */
+export function planFromUserEdit(
+  raw: Partial<ApolloSearchPlan> | Record<string, unknown>,
+  fallback?: Partial<ApolloSearchPlan>
+): ApolloSearchPlan {
+  const base: ApolloSearchPlan = {
+    titles: fallback?.titles || [],
+    personLocations: fallback?.personLocations || [],
+    mustHaveKeywords: fallback?.mustHaveKeywords || [],
+    keywords: fallback?.keywords || [],
+    seniorities: fallback?.seniorities || [],
+    rationale: fallback?.rationale || 'User-edited Apollo plan',
+    query: fallback?.query,
+  };
+  return normalizePlan(raw, base);
+}
+
+/**
  * LLM reviews the full JD and returns exact Apollo People Search inputs.
  */
 export async function buildApolloSearchPlan(params: {
