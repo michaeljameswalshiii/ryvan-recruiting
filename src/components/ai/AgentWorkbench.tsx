@@ -568,6 +568,9 @@ export function AgentWorkbench({
       const people: SourcedPerson[] = Array.isArray(data.candidates)
         ? data.candidates
         : [];
+      // Prefer real candidate count; do not show "15 people" from raw Apollo
+      // usage when the list is empty after filters.
+      const displayCount = people.length;
       const returnedPlan =
         data.apolloPlan && typeof data.apolloPlan === 'object'
           ? (data.apolloPlan as ApolloSearchPlanDto)
@@ -592,7 +595,7 @@ export function AgentWorkbench({
         id: `r-${Date.now()}`,
         query: brief.trim(),
         at: new Date().toISOString(),
-        count: people.length || Number(data.count) || 0,
+        count: displayCount,
         estimatedCostUsd: cost,
         jobTitle: data.job?.title,
         jobLocation: data.job?.location,
@@ -962,7 +965,7 @@ export function AgentWorkbench({
 
           {/* Always-visible editable Apollo plan (Fill job) */}
           {isResearch && (
-            <div className="mt-3 rounded-xl border border-violet-500/30 bg-violet-500/10 p-3">
+            <div className="mt-3 max-h-[42vh] overflow-y-auto rounded-xl border border-violet-500/30 bg-violet-500/10 p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-200">
                   Apollo search plan
@@ -1080,13 +1083,16 @@ export function AgentWorkbench({
         </div>
       </div>
 
-      {/* Queue / research results */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      {/* Queue / research results — give list room below the plan form */}
+      <div className="min-h-[220px] flex-1 overflow-y-auto px-3 py-3">
         {isResearch ? (
           <>
             <div className="mb-2 flex items-center justify-between px-1">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                 Candidate matches
+                {researchRuns[0]
+                  ? ` · ${researchRuns[0].count} shown`
+                  : ''}
               </span>
               <span className="text-[10px] text-slate-500">
                 Session ~${researchSpend.toFixed(4)}

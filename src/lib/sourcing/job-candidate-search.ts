@@ -389,6 +389,89 @@ function mapApollo(p: ApolloPerson, i: number): SourcedCandidate {
   };
 }
 
+/** Non-US countries we drop when the plan targets a US state / Florida / USA */
+const NON_US_COUNTRY_RE =
+  /\b(china|india|pakistan|bangladesh|philippines|nigeria|brazil|mexico|canada|uk|united kingdom|germany|france|spain|italy|japan|korea|singapore|australia|vietnam|indonesia|taiwan|hong kong|uae|saudi|russia|ukraine|poland|romania|argentina|colombia|chile|peru|egypt|south africa|israel|turkey|thailand|malaysia)\b/i;
+
+const US_STATE_HINT_RE =
+  /\b(florida|texas|california|georgia|new york|north carolina|south carolina|arizona|ohio|pennsylvania|illinois|michigan|virginia|massachusetts|washington|colorado|oregon|nevada|tennessee|indiana|missouri|maryland|wisconsin|minnesota|alabama|louisiana|kentucky|oklahoma|connecticut|utah|iowa|arkansas|mississippi|kansas|new mexico|nebraska|idaho|west virginia|hawaii|new hampshire|maine|montana|rhode island|delaware|south dakota|north dakota|alaska|vermont|wyoming|united states|usa|u\.s\.a?\.?)\b/i;
+
+/**
+ * When recruiter asks for Florida/US, reject profiles that clearly live in China etc.
+ * If location is unknown, keep (Apollo may still have matched person_locations).
+ */
+export function personMatchesGeoTarget(
+  personLocation: string | undefined,
+  targets: string[]
+): boolean {
+  if (!targets.length) return true;
+  const loc = (personLocation || '').trim();
+  if (!loc) return true; // unknown — keep
+
+  const targetUs = targets.some((t) => US_STATE_HINT_RE.test(t));
+  if (targetUs && NON_US_COUNTRY_RE.test(loc)) {
+    // Exception: "Canada" etc. only reject if not explicitly requested
+    if (!targets.some((t) => new RegExp(t, 'i').test(loc))) {
+      return false;
+    }
+  }
+
+  // If person has a US state and targets include Florida, keep FL and generic US;
+  // drop clear other-state only when target is a specific state and person has another state
+  const wantsFlorida = targets.some((t) => /\bflorida\b|\bfl\b/i.test(t));
+  if (wantsFlorida) {
+    if (NON_US_COUNTRY_RE.test(loc)) return false;
+    // Keep if FL / Florida / United States / empty city with US
+    if (
+      /\bflorida\b|\bfl\b|united states|usa|u\.s\./i.test(loc) ||
+      /\b(AL|AK|AZ|AR|CA|CO|CT|DE|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b/.test(
+        loc
+      ) === false
+    ) {
+      // has some location text without another US state code — keep if not non-US
+      if (!NON_US_COUNTRY_RE.test(loc)) return true;
+    }
+    if (/\bflorida\b|\bfl\b/i.test(loc)) return true;
+    // Other US states when Florida was requested — still keep for now (Apollo metro bleed);
+    // only hard-drop non-US above.
+    if (!NON_US_COUNTRY_RE.test(loc)) return true;
+    return false;
+  }
+
+  return true;
+}
+
+/** Expand "Florida" into Apollo-friendly person_locations variants */
+export function expandApolloLocations(locs: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (s: string) => {
+    const t = s.trim();
+    if (!t) return;
+    const k = t.toLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(t);
+  };
+  for (const raw of locs) {
+    const s = (raw || '').trim();
+    if (!s) continue;
+    add(s);
+    if (/^florida$/i.test(s) || /^fl$/i.test(s)) {
+      add('Florida');
+      add('Florida, United States');
+      add('FL, United States');
+    } else if (/^united states$/i.test(s) || /^usa$/i.test(s)) {
+      add('United States');
+    } else if (/^([A-Za-z .'-]+),\s*([A-Z]{2})$/.test(s)) {
+      add(s);
+      // also "City, State, United States"
+      add(`${s}, United States`);
+    }
+  }
+  return out.slice(0, 6);
+}
+
 function mapPdl(p: PdlNormalizedPerson, i: number): SourcedCandidate {
   return {
     id: p.pdlId || `pdl-${i}`,
@@ -579,11 +662,13 @@ export async function sourceCandidatesForJob(params: {
   }
 
   const titles = plan.titles.length ? plan.titles : [job.title].filter(Boolean);
-  const locations = plan.personLocations.length
-    ? plan.personLocations
-    : searchLocation
-      ? [searchLocation]
-      : [];
+  const locations = expandApolloLocations(
+    plan.personLocations.length
+      ? plan.personLocations
+      : searchLocation
+        ? [searchLocation]
+        : []
+  );
   // Must-have hard skills (CNC, NetSuite…) — first-pass precision
   const mustHaveKeywords = (plan.mustHaveKeywords || [])
     .map((k) => k.trim())
@@ -1074,10 +1159,28 @@ export async function sourceCandidatesForJob(params: {
       .reduce((s, c) => s + c.estimatedCostUsd, 0),
   }).catch(() => {});
 
+  // Drop people clearly outside target geo (e.g. China when Florida was requested)
+  const geoTargets = locations.length
+    ? locations
+    : plan.personLocations || [];
+  let geoFiltered = candidates;
+  if (geoTargets.length) {
+    const beforeGeo = geoFiltered.length;
+    geoFiltered = geoFiltered.filter((c) =>
+      personMatchesGeoTarget(c.location, geoTargets)
+    );
+    const droppedGeo = beforeGeo - geoFiltered.length;
+    if (droppedGeo > 0) {
+      notes.push(
+        `Geo filter removed ${droppedGeo} profile(s) outside ${geoTargets.join(', ')} (e.g. non-US when Florida requested)`
+      );
+    }
+  }
+
   // Quality filter: drop thin / likely-hallucinated LLM profiles.
   // Apollo/PDL rows use a lower bar (partial names / missing email are normal on search).
-  const beforeQ = candidates.length;
-  const ranked = filterAndRankByQuality(candidates, {
+  const beforeQ = geoFiltered.length;
+  let ranked = filterAndRankByQuality(geoFiltered, {
     preferDbSources: true,
   });
   droppedLowQuality += beforeQ - ranked.length;
@@ -1086,10 +1189,27 @@ export async function sourceCandidatesForJob(params: {
       `Quality filter removed ${droppedLowQuality} thin or suspicious profile(s)`
     );
   }
-  if (beforeQ > 0 && ranked.length === 0) {
-    notes.push(
-      `Had ${beforeQ} raw hit(s) before quality filter — all dropped. Showing none. Check Apollo name/title mapping if this persists.`
+
+  // Never hide a full Apollo page behind quality — if everything was dropped,
+  // surface DB hits anyway (better than "15 results / 0 people" UX).
+  if (ranked.length === 0 && beforeQ > 0) {
+    const dbOnly = geoFiltered.filter(
+      (c) => c.source === 'apollo' || c.source === 'pdl'
     );
+    if (dbOnly.length) {
+      notes.push(
+        `Showing ${dbOnly.length} Apollo/PDL hit(s) that failed strict quality — verify before outreach`
+      );
+      ranked = dbOnly.map((c) => ({
+        ...c,
+        qualityScore: c.qualityScore ?? 40,
+        qualityFlags: c.qualityFlags ?? ['soft_pass'],
+      }));
+    } else {
+      notes.push(
+        `Had ${beforeQ} raw hit(s) before quality filter — all dropped.`
+      );
+    }
   }
 
   const jobOut = { ...job, location: searchLocation || job.location };

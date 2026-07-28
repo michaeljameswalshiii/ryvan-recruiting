@@ -584,7 +584,16 @@ export async function searchPeople(
   };
 
   if (titles.length) body.person_titles = titles;
-  if (locations.length) body.person_locations = locations;
+  // Apollo expects person_locations like "florida" / "california" / "chicago"
+  // Also send United States variants for state filters when provided upstream.
+  if (locations.length) {
+    body.person_locations = locations.map((l) => {
+      const t = String(l).trim();
+      // Prefer "Florida" over "FL" alone for person_locations
+      if (/^fl$/i.test(t)) return 'Florida';
+      return t;
+    });
+  }
   if (orgLocations.length) body.organization_locations = orgLocations;
   if (seniorities.length) body.person_seniorities = seniorities;
   if (technologies.length) {
