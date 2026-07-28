@@ -63,7 +63,12 @@ export type ApolloSearchPlan = {
   titles: string[];
   /** Person locations (city/state/region); empty = no location filter */
   personLocations: string[];
-  /** Free-text skill / domain keywords for q_keywords */
+  /**
+   * Hard must-have skills/tools for q_keywords (CNC, NetSuite, AWS…).
+   * Applied on the FIRST Apollo pass for precision; dropped only if zero hits.
+   */
+  mustHaveKeywords: string[];
+  /** Optional hard skills (used after must-haves / for notes) */
   keywords: string[];
   /** Apollo person_seniorities when clear: entry, senior, manager, director, vp, c_suite, etc. */
   seniorities: string[];
@@ -72,6 +77,64 @@ export type ApolloSearchPlan = {
   /** Primary search phrase */
   query?: string;
 };
+
+/**
+ * Extract hard must-have tools/skills from JD text when LLM omits them.
+ * CNC, EDM, NetSuite-style tokens only — not soft skills.
+ */
+export function extractMustHaveSkillsFromText(text: string): string[] {
+  const t = text || '';
+  const found: string[] = [];
+  const patterns: Array<{ re: RegExp; token: string }> = [
+    { re: /\bCNC\b/i, token: 'CNC' },
+    { re: /\bEDM\b/i, token: 'EDM' },
+    { re: /\bwire\s*EDM\b/i, token: 'wire EDM' },
+    { re: /\bSwiss\s+machin/i, token: 'Swiss machining' },
+    { re: /\bNetSuite\b/i, token: 'NetSuite' },
+    { re: /\bSAP\b/i, token: 'SAP' },
+    { re: /\bSalesforce\b/i, token: 'Salesforce' },
+    { re: /\bWorkday\b/i, token: 'Workday' },
+    { re: /\bSolidWorks\b/i, token: 'SolidWorks' },
+    { re: /\bAutoCAD\b/i, token: 'AutoCAD' },
+    { re: /\bPLC\b/i, token: 'PLC' },
+    { re: /\bAWS\b/, token: 'AWS' },
+    { re: /\bAzure\b/i, token: 'Azure' },
+    { re: /\bKubernetes\b|\bk8s\b/i, token: 'Kubernetes' },
+    { re: /\bReact\b/, token: 'React' },
+    { re: /\bPython\b/i, token: 'Python' },
+    { re: /\bJava\b(?!\s*Script)/i, token: 'Java' },
+    { re: /\bTypeScript\b/i, token: 'TypeScript' },
+    { re: /\bGD&T\b|\bGDT\b/i, token: 'GD&T' },
+    { re: /\bISO\s*9001\b/i, token: 'ISO 9001' },
+    { re: /\bLean\s+Manufacturing\b/i, token: 'Lean Manufacturing' },
+    { re: /\bSix\s+Sigma\b/i, token: 'Six Sigma' },
+    { re: /\bmachining\b/i, token: 'machining' },
+    { re: /\btool\s*and\s*die\b/i, token: 'tool and die' },
+  ];
+  for (const { re, token } of patterns) {
+    if (re.test(t) && !found.some((f) => f.toLowerCase() === token.toLowerCase())) {
+      found.push(token);
+    }
+  }
+  return found.slice(0, 4);
+}
+
+function mergeUniqueSkills(...lists: string[][]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const list of lists) {
+    for (const raw of list) {
+      const k = String(raw || '').trim();
+      if (!k || k.length > 32 || BANNED_KEYWORD_RE.test(k)) continue;
+      if (k.split(/\s+/).length > 3) continue;
+      const key = k.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(k);
+    }
+  }
+  return out;
+}
 
 function asStringArray(v: unknown, max = 12): string[] {
   if (!v) return [];
@@ -140,7 +203,25 @@ function normalizePlan(raw: unknown, fallback: ApolloSearchPlan): ApolloSearchPl
       o.location,
     4
   );
-  // Apollo q_keywords ANDs — keep very short hard skills only (runner uses ≤2)
+  // Must-have hard skills (CNC, NetSuite…) — precision pass
+  let mustHaveKeywords = asStringArray(
+    o.mustHaveKeywords ||
+      o.must_have_keywords ||
+      o.required_skills ||
+      o.requiredSkills ||
+      o.must_haves,
+    4
+  )
+    .map((k) => k.replace(/\s+/g, ' ').trim())
+    .filter(
+      (k) =>
+        k.length >= 2 &&
+        k.length <= 32 &&
+        !BANNED_KEYWORD_RE.test(k) &&
+        k.split(/\s+/).length <= 3
+    );
+
+  // Optional / secondary hard skills
   let keywords = asStringArray(
     o.keywords || o.skills || o.q_keywords,
     6
@@ -152,10 +233,15 @@ function normalizePlan(raw: unknown, fallback: ApolloSearchPlan): ApolloSearchPl
         k.length <= 32 &&
         !BANNED_KEYWORD_RE.test(k) &&
         !/\s{2,}/.test(k) &&
-        // Prefer single tokens or short compounds (NetSuite, wire EDM ok; long phrases no)
         k.split(/\s+/).length <= 3
     )
     .slice(0, 4);
+
+  // If LLM only filled keywords, promote first hard ones to must-have
+  if (!mustHaveKeywords.length && keywords.length) {
+    mustHaveKeywords = keywords.slice(0, 2);
+    keywords = keywords.slice(2);
+  }
 
   const seniorities = asStringArray(
     o.seniorities || o.person_seniorities,
@@ -184,8 +270,13 @@ function normalizePlan(raw: unknown, fallback: ApolloSearchPlan): ApolloSearchPl
   return {
     titles: titles.length ? titles.slice(0, 6) : fallback.titles,
     personLocations: cleanLocs.length > 0 ? cleanLocs : fallbackLocs,
-    // Prefer empty keywords over fluff — empty lets title+location recall work
-    keywords: keywords.length ? keywords : [],
+    mustHaveKeywords: mustHaveKeywords.slice(0, 2),
+    keywords: keywords
+      .filter(
+        (k) =>
+          !mustHaveKeywords.some((m) => m.toLowerCase() === k.toLowerCase())
+      )
+      .slice(0, 3),
     seniorities: seniorities.length ? seniorities : [],
     rationale:
       typeof o.rationale === 'string'
@@ -236,14 +327,26 @@ export function heuristicApolloPlan(
     )
     .slice(0, 3);
 
+  const jdBlob = [job.title, job.description, ...(job.keywords || [])].join(
+    ' '
+  );
+  const mustFromJd = extractMustHaveSkillsFromText(jdBlob);
+  const mustHaveKeywords = mergeUniqueSkills(mustFromJd, kw).slice(0, 2);
+
   return {
-    titles: titles.length ? titles.map(cleanApolloTitle).filter(Boolean) : ['Software Engineer'],
+    titles: titles.length
+      ? titles.map(cleanApolloTitle).filter(Boolean)
+      : ['Software Engineer'],
     personLocations,
-    keywords: kw,
+    mustHaveKeywords,
+    keywords: kw.filter(
+      (k) => !mustHaveKeywords.some((m) => m.toLowerCase() === k.toLowerCase())
+    ),
     seniorities: [],
-    rationale:
-      'Heuristic: primary title + location; minimal hard-skill keywords (Apollo-AND safe)',
-    query: [titles[0] || job.title, personLocations[0] || '']
+    rationale: mustHaveKeywords.length
+      ? `Heuristic: titles + location + must-have ${mustHaveKeywords.join(', ')}`
+      : 'Heuristic: primary title + location; no clear hard-skill must-haves',
+    query: [titles[0] || job.title, personLocations[0] || '', mustHaveKeywords[0]]
       .filter(Boolean)
       .join(' '),
   };
@@ -267,65 +370,63 @@ export async function buildApolloSearchPlan(params: {
   const fallback = heuristicApolloPlan(params.job, params.locationOverride);
 
   const system = `You are an Apollo.io People Search expert (API: mixed_people/api_search).
-Your ONLY job: turn a job posting into high-recall Apollo filters that return REAL people.
+Your ONLY job: turn a job posting into Apollo filters that return REAL people who can do the job.
 You never invent candidate names. Output ONLY valid JSON (no markdown).
 
-## How Apollo filters work (critical)
-- person_titles, person_locations, q_keywords, person_seniorities are combined with AND-style logic.
-- MORE filters = FEWER (often ZERO) people. Sparse markets need BREADTH.
-- People Search is FREE and returns privacy-masked last names; that is fine for shortlisting.
-- q_keywords is free-text AND — long multi-skill keyword strings are the #1 cause of 0 results.
-- Prefer: strong titles + optional location. Keywords and seniorities are optional spice, not defaults.
+## Goal: PRECISION first, then recall
+Recruiters hate zero results AND hate broad trash.
+- Include 1–2 MUST-HAVE hard skills when the JD requires them (e.g. CNC, wire EDM, NetSuite, AWS).
+- Do NOT dump every nice-to-have skill into keywords.
+- Soft skills NEVER go into keywords.
+
+## How Apollo filters work
+- person_titles + person_locations + q_keywords are AND-style.
+- Too many keywords → 0 people. Too few when CNC is required → random ops leaders with no CNC.
+- People Search is free (masked last names OK for shortlist).
 
 ## JSON schema
 {
   "titles": ["primary LinkedIn title", "variant 1", "variant 2"],
-  "personLocations": ["City, ST"] | ["State"] | [] ,
-  "keywords": ["ToolOrDomain"],
+  "personLocations": ["City, ST"] | ["State"] | [],
+  "mustHaveKeywords": ["CNC"],
+  "keywords": ["optional secondary hard skill"],
   "seniorities": [],
-  "query": "short assist phrase (optional)",
-  "rationale": "one sentence: why this plan maximizes recall without junk"
+  "query": "optional short assist",
+  "rationale": "one sentence: required skill + title + geo tradeoff"
 }
 
-## Titles (person_titles) — most important
-- 2–5 REAL LinkedIn-style titles people actually hold (not wish-list paragraphs).
-- Primary title first = closest match to the role.
-- Add 1–3 ALTERNATES that the same person might use, e.g.:
-  - "Director of Operations" / "VP Operations" / "Head of Operations"
-  - "Plant Manager" / "Manufacturing Manager"
-  - "Software Engineer" / "Backend Engineer" (not "AWS API Healthcare Engineer")
-- Keep each title ≤ 60 characters. No "to lead…", no soft skills, no company slogans.
-- Do NOT invent exotic compound titles that almost nobody has on LinkedIn.
-- If the JD is bloated prose, EXTRACT the real role (e.g. Director of Operations) — ignore filler.
+## Titles (person_titles)
+- 2–5 REAL LinkedIn titles (not JD prose).
+- Cover how people title themselves: "Plant Manager", "Manufacturing Manager", "Director of Operations".
+- Do NOT put CNC inside the title string unless people commonly write "CNC Manager" on LinkedIn.
+- Prefer clean titles; put tools like CNC in mustHaveKeywords instead.
 
-## Locations (person_locations)
-- ONLY real places Apollo understands: "Jacksonville, FL", "Florida", "Miami", "Remote", "United States".
-- Prefer City+State when the job is local; use State alone when city is too small for recall.
-- NEVER JD fragments: "fast-paced environment", "industries where quality", "demonstrated ability…".
-- Empty [] when user wants worldwide OR no clear geo — better empty than wrong.
-- Do not put 4+ locations; 1 is usually best (or [] for anywhere).
+## Locations
+- Real places only: "Jacksonville, FL", "Florida", "Remote", "United States".
+- Never JD fragments. Empty [] for worldwide. Usually 0–1 locations.
 
-## Keywords (q_keywords) — use sparingly
-- 0–3 SHORT hard tokens: products, tools, industries (NetSuite, SAP, CNC, AWS, healthcare).
-- Prefer ZERO keywords when title+location is enough (most ops/leadership roles).
-- NEVER soft skills: integrity, humility, fast-paced, team player, communication.
-- NEVER long phrases: "high-volume restaurant operations" → use title variants instead.
-- Max ~3 words per keyword. No comma-stuffing the whole JD.
+## mustHaveKeywords (REQUIRED when JD requires a tool/process)
+- 1–2 SHORT hard tokens the person must know for the job.
+- Examples: CNC, EDM, "wire EDM", NetSuite, SAP, SolidWorks, PLC, AWS, React.
+- If the JD says "CNC machining", "Swiss CNC", "must know CNC" → mustHaveKeywords MUST include "CNC".
+- If the JD requires NetSuite implementation → "NetSuite".
+- Max 2 must-haves. Prefer the single strongest (CNC beats a list of five tools).
+- NEVER soft skills. NEVER long phrases.
 
-## Seniorities (person_seniorities)
-- Almost always []. Only set when the JD is crystal clear (e.g. explicit VP/C-level only).
-- Wrong seniority zeros results. Prefer title variants ("VP Operations") over seniority=vp.
+## keywords (optional only)
+- Extra hard skills NOT required to pass the first screen (0–2).
+- Do not repeat mustHaveKeywords.
 
-## Search strategy (think like a sourcer)
-1) Start wide: best title + 1–2 variants + location (or []).
-2) Do not over-constrain with skills + seniority + city + niche title all at once.
-3) For niche tech: one domain keyword max (e.g. "NetSuite") + clean title.
-4) For leadership/ops: titles only; drop keywords.
-5) If the role could be titled many ways, cover those ways in titles[] — not in keywords.
+## Seniorities
+- Almost always []. Prefer title variants over seniority filters.
 
-## Output discipline
-- rationale: explain tradeoff in one line (e.g. "Broad ops titles + FL only; no keywords to avoid AND zero").
-- Never invent people. Design the search only.`;
+## Strategy
+1) Extract role title variants + geo.
+2) Extract 1–2 non-negotiable tools/processes from the JD → mustHaveKeywords.
+3) Leave nice-to-haves out (or optional keywords only).
+4) rationale e.g. "Ops/plant titles + FL + CNC must-have so we don't get generic managers."
+
+Never invent people. Design the search only.`;
 
   const locNote =
     params.locationOverride === ''
@@ -335,18 +436,31 @@ You never invent candidate names. Output ONLY valid JSON (no markdown).
         ? `USER LOCATION CHOICE (must use as primary personLocations entry): ${String(params.locationOverride).trim()}`
         : 'USER LOCATION CHOICE: use job location if it is a real place; else [] or a clean inferred State/City.';
 
-  const user = `Convert this job into an Apollo People Search plan (expert mode: maximize useful recall).
+  const jdText = (
+    params.rawInput ||
+    params.job.description ||
+    params.job.title ||
+    ''
+  ).slice(0, 6000);
+  const autoMust = extractMustHaveSkillsFromText(
+    [params.job.title, jdText, ...(params.job.keywords || [])].join(' ')
+  );
+
+  const user = `Convert this job into an Apollo People Search plan (precision + recall).
 
 JOB TITLE FIELD (may be wrong if pasted prose): ${params.job.title}
 JOB LOCATION FIELD: ${params.job.location || '(none)'}
 COMPANY: ${params.job.companyName || '(none)'}
-SEED KEYWORDS (may be noisy — filter ruthlessly): ${(params.job.keywords || []).slice(0, 12).join(', ') || '(none)'}
+SEED KEYWORDS (filter ruthlessly): ${(params.job.keywords || []).slice(0, 12).join(', ') || '(none)'}
+AUTO-DETECTED HARD SKILLS (include in mustHaveKeywords if they fit the role): ${autoMust.join(', ') || '(none)'}
 ${locNote}
 
 FULL JOB TEXT / DESCRIPTION:
-${(params.rawInput || params.job.description || params.job.title || '').slice(0, 6000)}
+${jdText}
 
-Return JSON only. Prefer fewer filters if unsure.`;
+Return JSON only.
+If the JD requires CNC / EDM / NetSuite / similar tools, put them in mustHaveKeywords (1–2 max).
+Do not leave mustHaveKeywords empty when a clear tool requirement is in the JD.`;
 
   try {
     const { data, error } = await completeJson<unknown>(
@@ -395,25 +509,35 @@ Return JSON only. Prefer fewer filters if unsure.`;
       );
     if (!plan.titles.length) plan.titles = fallback.titles;
 
-    plan.keywords = plan.keywords
+    // Merge JD-detected must-haves (CNC etc.) when LLM omitted them
+    const fromJd = extractMustHaveSkillsFromText(
+      [
+        params.job.title,
+        params.rawInput,
+        params.job.description,
+        ...(params.job.keywords || []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+    );
+    plan.mustHaveKeywords = mergeUniqueSkills(
+      plan.mustHaveKeywords || [],
+      fromJd,
+      fallback.mustHaveKeywords || []
+    ).slice(0, 2);
+
+    plan.keywords = (plan.keywords || [])
       .filter(
         (k) =>
           k.length >= 2 &&
           k.length <= 32 &&
           !BANNED_KEYWORD_RE.test(k) &&
-          k.split(/\s+/).length <= 3
+          k.split(/\s+/).length <= 3 &&
+          !(plan.mustHaveKeywords || []).some(
+            (m) => m.toLowerCase() === k.toLowerCase()
+          )
       )
-      .slice(0, 3);
-
-    // Expert default: leadership/ops-style titles rarely need keywords
-    const looksLikeLeadership = plan.titles.some((t) =>
-      /\b(director|vp|vice president|head of|chief|coo|plant manager|general manager|operations manager)\b/i.test(
-        t
-      )
-    );
-    if (looksLikeLeadership && plan.keywords.length > 1) {
-      plan.keywords = plan.keywords.slice(0, 1);
-    }
+      .slice(0, 2);
 
     // Seniority only if LLM was confident — strip if titles already encode level
     if (
@@ -441,6 +565,9 @@ export function formatPlanForNotes(plan: ApolloSearchPlan, source: string): stri
     (plan.personLocations.length
       ? ` loc=[${plan.personLocations.join('; ')}]`
       : ' loc=anywhere') +
+    ((plan.mustHaveKeywords || []).length
+      ? ` must=[${(plan.mustHaveKeywords || []).slice(0, 3).join(', ')}]`
+      : '') +
     (plan.keywords.length
       ? ` kw=[${plan.keywords.slice(0, 5).join(', ')}]`
       : '') +

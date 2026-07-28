@@ -555,24 +555,27 @@ export async function sourceCandidatesForJob(params: {
     : searchLocation
       ? [searchLocation]
       : [];
-  const keywords = plan.keywords.length
-    ? plan.keywords
-    : job.keywords.slice(0, 8);
-  const seniorities = plan.seniorities || [];
-
-  /**
-   * Short keywords only — long multi-skill q_keywords AND'd with title+location
-   * routinely returns 0 people (e.g. "Swiss machining wire EDM" on a Dir Ops).
-   */
-  const lightKeywords = keywords
+  // Must-have hard skills (CNC, NetSuite…) — first-pass precision
+  const mustHaveKeywords = (plan.mustHaveKeywords || [])
     .map((k) => k.trim())
-    .filter((k) => k.length >= 3 && k.length <= 40)
-    .filter((k) => !/\s{2,}/.test(k))
+    .filter((k) => k.length >= 2 && k.length <= 32)
+    .slice(0, 2);
+  const optionalKeywords = (plan.keywords || [])
+    .map((k) => k.trim())
+    .filter((k) => k.length >= 2 && k.length <= 32)
+    .filter(
+      (k) => !mustHaveKeywords.some((m) => m.toLowerCase() === k.toLowerCase())
+    )
     .slice(0, 2);
 
+  if (mustHaveKeywords.length) {
+    notes.push(
+      `Must-have skill filter (first pass): ${mustHaveKeywords.join(', ')}`
+    );
+  }
+
   // --- 1) Apollo: progressive passes (search = 0 credits each) ---
-  // Tight LLM plan (titles+loc+many keywords+seniority) often zeros out.
-  // Broaden until we have people, then stop.
+  // Precision first (title+loc+must-have CNC), then broaden if too few hits.
   const apolloAuth = params.tenantId
     ? { tenantId: params.tenantId }
     : undefined;
@@ -585,30 +588,64 @@ export async function sourceCandidatesForJob(params: {
     seniorities?: string[];
   };
 
-  // Broad → slightly alternate → geography broaden.
-  // Never start with keywords+seniority: they AND with titles and often return 0.
   const apolloPasses: ApolloPass[] = [
-    {
-      label: 'titles+location',
-      titles: titles.slice(0, 5),
-      locations,
-    },
-    ...(titles.length > 1
+    // 1) Precision: titles + location + must-have (e.g. CNC)
+    ...(mustHaveKeywords.length
       ? [
           {
-            label: 'alt-titles+location',
-            titles: titles.slice(1, 5),
+            label: 'titles+location+mustHave',
+            titles: titles.slice(0, 4),
             locations,
+            keywords: mustHaveKeywords.slice(0, 1),
+          } satisfies ApolloPass,
+        ]
+      : [
+          {
+            label: 'titles+location',
+            titles: titles.slice(0, 5),
+            locations,
+          } satisfies ApolloPass,
+        ]),
+    // 2) Same must-have with alt titles
+    ...(mustHaveKeywords.length && titles.length > 1
+      ? [
+          {
+            label: 'alt-titles+location+mustHave',
+            titles: titles.slice(0, 5),
+            locations,
+            keywords: mustHaveKeywords.slice(0, 1),
           } satisfies ApolloPass,
         ]
       : []),
-    // Simpler title set (first 2 only) — sometimes long title lists over-narrow Apollo
+    // 3) Broader geo still with must-have (keep CNC when possible)
+    ...(mustHaveKeywords.length &&
+    locations.length &&
+    !locations.some((l) => /united states|usa|u\.s\./i.test(l))
+      ? [
+          {
+            label: 'titles+US+mustHave',
+            titles: titles.slice(0, 3),
+            locations: ['United States'],
+            keywords: mustHaveKeywords.slice(0, 1),
+          } satisfies ApolloPass,
+        ]
+      : []),
+    // 4) Drop must-have only if still thin (recall fallback)
     {
-      label: 'primary-title+location',
-      titles: titles.slice(0, 2),
+      label: 'titles+location-noMust',
+      titles: titles.slice(0, 4),
       locations,
     },
-    // Geography broaden when state/city is empty
+    ...(optionalKeywords.length
+      ? [
+          {
+            label: 'titles+location+optionalKw',
+            titles: titles.slice(0, 3),
+            locations,
+            keywords: optionalKeywords.slice(0, 1),
+          } satisfies ApolloPass,
+        ]
+      : []),
     ...(locations.length &&
     !locations.some((l) => /united states|usa|u\.s\./i.test(l))
       ? [
@@ -619,19 +656,8 @@ export async function sourceCandidatesForJob(params: {
           } satisfies ApolloPass,
         ]
       : []),
-    // Light industry kw ONLY if still thin (subset of prior — may still help different Apollo ranking)
-    ...(lightKeywords.length
-      ? [
-          {
-            label: 'titles+location+kw',
-            titles: titles.slice(0, 3),
-            locations,
-            keywords: lightKeywords.slice(0, 1),
-          } satisfies ApolloPass,
-        ]
-      : []),
   ];
-  // seniorities reserved in plan for notes/UI; not forced on search (too many false zeros)
+  // seniorities reserved in plan for notes/UI; not forced on search
 
   let apolloKeySource: SourceCandidatesResult['apolloKeySource'];
   let apolloHttpStatus: number | undefined;
@@ -720,7 +746,25 @@ export async function sourceCandidatesForJob(params: {
         );
         passIdx++;
 
-        if (passIdx === 1 && candidates.length >= Math.min(5, limit)) break;
+        // After a good precision pass (esp. with must-have), stop early
+        const haveMust =
+          pass.keywords?.length &&
+          mustHaveKeywords.some((m) =>
+            (pass.keywords || []).some(
+              (k) => k.toLowerCase() === m.toLowerCase()
+            )
+          );
+        if (
+          haveMust &&
+          candidates.filter((c) => c.source === 'apollo').length >=
+            Math.min(5, limit)
+        ) {
+          notes.push(
+            `Stopping after precision pass (${pass.label}) — enough must-have matches`
+          );
+          break;
+        }
+        if (passIdx === 1 && candidates.length >= Math.min(8, limit)) break;
       }
 
       if (apolloAuthError) {

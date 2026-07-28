@@ -53,6 +53,7 @@ type SourcedPerson = {
 type ApolloSearchPlanDto = {
   titles?: string[];
   personLocations?: string[];
+  mustHaveKeywords?: string[];
   keywords?: string[];
   seniorities?: string[];
   rationale?: string;
@@ -954,10 +955,26 @@ export function AgentWorkbench({
                           {(run.apolloPlan.personLocations || []).length
                             ? (run.apolloPlan.personLocations || []).join('; ')
                             : 'anywhere'}
+                          {(run.apolloPlan.mustHaveKeywords || []).length >
+                            0 && (
+                            <>
+                              <br />
+                              <span className="text-slate-400">
+                                Must-have:{' '}
+                              </span>
+                              <span className="text-amber-100">
+                                {(run.apolloPlan.mustHaveKeywords || [])
+                                  .slice(0, 4)
+                                  .join(', ')}
+                              </span>
+                            </>
+                          )}
                           {(run.apolloPlan.keywords || []).length > 0 && (
                             <>
                               <br />
-                              <span className="text-slate-400">Keywords: </span>
+                              <span className="text-slate-400">
+                                Optional kw:{' '}
+                              </span>
                               {(run.apolloPlan.keywords || [])
                                 .slice(0, 6)
                                 .join(', ')}
