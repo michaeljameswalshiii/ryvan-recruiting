@@ -302,6 +302,78 @@ export function mapPerson(p: any): ApolloPerson {
   };
 }
 
+/**
+ * People Search intentionally returns privacy-masked last names (e.g. Me***).
+ * Enrich by Apollo person id to unlock full name, LinkedIn, email (uses credits).
+ * Docs: POST /v1/people/bulk_match  body: { details: [{ id }] }
+ */
+export async function enrichPeopleByIds(
+  ids: string[],
+  auth?: ApolloAuthContext,
+  options?: { revealPersonalEmails?: boolean; revealPhoneNumber?: boolean }
+): Promise<{
+  people: ApolloPerson[];
+  creditsConsumed?: number;
+  error?: string;
+  keySource?: ApolloKeySource;
+  httpStatus?: number;
+}> {
+  const unique = Array.from(
+    new Set((ids || []).map((id) => String(id || '').trim()).filter(Boolean))
+  ).slice(0, 10); // Apollo bulk_match max 10 per call
+  if (!unique.length) {
+    return { people: [] };
+  }
+
+  const keyInfo = await resolveApiKeyDetailed(auth);
+  if (keyInfo.apiKey.length <= 10) {
+    return {
+      people: [],
+      error: 'Apollo not configured',
+      keySource: 'none',
+    };
+  }
+
+  const qs = new URLSearchParams();
+  if (options?.revealPersonalEmails) qs.set('reveal_personal_emails', 'true');
+  if (options?.revealPhoneNumber) qs.set('reveal_phone_number', 'true');
+  const path =
+    '/people/bulk_match' + (qs.toString() ? `?${qs.toString()}` : '');
+
+  const result = await apolloFetch(
+    path,
+    { details: unique.map((id) => ({ id })) },
+    { apiKey: keyInfo.apiKey }
+  );
+
+  if (!result.ok) {
+    return {
+      people: [],
+      error: result.error || `Apollo enrich failed (${result.status})`,
+      keySource: keyInfo.source,
+      httpStatus: result.status,
+    };
+  }
+
+  const matches =
+    result.data?.matches ||
+    result.data?.people ||
+    (Array.isArray(result.data) ? result.data : []);
+  const people = (Array.isArray(matches) ? matches : [])
+    .filter(Boolean)
+    .map(mapPerson);
+
+  return {
+    people,
+    creditsConsumed:
+      typeof result.data?.credits_consumed === 'number'
+        ? result.data.credits_consumed
+        : people.length,
+    keySource: keyInfo.source,
+    httpStatus: result.status,
+  };
+}
+
 export function mapOrganization(o: any): ApolloCompany {
   const city = o?.city || o?.organization_city;
   const state = o?.state || o?.organization_state;

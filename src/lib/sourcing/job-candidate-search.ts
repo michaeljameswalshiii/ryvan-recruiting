@@ -9,6 +9,7 @@
 import { getJobById } from '@/lib/db/repositories/job-repository';
 import { getTenantBySubdomain } from '@/lib/db/repositories/tenant-repository';
 import {
+  enrichPeopleByIds,
   resolveApolloConfigured,
   searchPeople as apolloSearchPeople,
   type ApolloPerson,
@@ -732,6 +733,90 @@ export async function sourceCandidatesForJob(params: {
         notes.push(
           'Apollo returned 0 people with a working key. Filters may still be too narrow — try a simpler title like "Operations Manager".'
         );
+      }
+
+      // Search API privacy-masks last names (Toby Me***). Enrich top hits by id
+      // so recruiters see real full names + LinkedIn (uses Apollo credits).
+      const apolloHits = candidates.filter(
+        (c) =>
+          c.source === 'apollo' &&
+          c.id &&
+          !String(c.id).startsWith('apollo-') &&
+          (/\*{2,}/.test(c.name || '') ||
+            !c.linkedinUrl ||
+            !c.email)
+      );
+      if (apolloHits.length > 0) {
+        try {
+          const enrichIds = apolloHits
+            .map((c) => c.id!)
+            .slice(0, Math.min(10, limit));
+          const enriched = await enrichPeopleByIds(enrichIds, apolloAuth, {
+            revealPersonalEmails: false,
+            revealPhoneNumber: false,
+          });
+          if (enriched.error) {
+            notes.push(
+              `Apollo enrich (unlock full names): ${enriched.error}. Search still returns real people with privacy-masked last names until enrich succeeds.`
+            );
+          } else if (enriched.people.length) {
+            const byId = new Map(
+              enriched.people
+                .filter((p) => p.id)
+                .map((p) => [String(p.id), p] as const)
+            );
+            let unlocked = 0;
+            for (let i = 0; i < candidates.length; i++) {
+              const c = candidates[i];
+              if (c.source !== 'apollo' || !c.id) continue;
+              const full = byId.get(String(c.id));
+              if (!full) continue;
+              const next = mapApollo(full, i);
+              // Prefer enriched fields when present
+              candidates[i] = {
+                ...c,
+                name: next.name && !/\*{2,}/.test(next.name) ? next.name : c.name,
+                title: next.title || c.title,
+                company: next.company || c.company,
+                location: next.location || c.location,
+                email: next.email || c.email,
+                phone: next.phone || c.phone,
+                linkedinUrl: next.linkedinUrl || c.linkedinUrl,
+              };
+              if (!/\*{2,}/.test(candidates[i].name || '')) unlocked++;
+            }
+            const enrichCredits =
+              typeof enriched.creditsConsumed === 'number'
+                ? enriched.creditsConsumed
+                : enriched.people.length;
+            // Credit cost for enrichment (search is free; enrich is not)
+            const enrichUsd = enrichCredits * 0.01; // rough; usage dashboard uses credit log
+            estimatedCostUsd += enrichUsd;
+            costs.push({
+              engine: 'apollo-enrich',
+              estimatedCostUsd: enrichUsd,
+              count: enriched.people.length,
+            });
+            void logApolloUsage({
+              modelId: 'apollo-people-bulk-match',
+              resultsCount: enriched.people.length,
+              estimatedCost: enrichUsd,
+              credits: enrichCredits,
+              endpoint: 'people/bulk_match',
+              queryPreview: `enrich ${enrichIds.length} search hits`,
+              tenantId: params.tenantId || undefined,
+              userId: params.userId || undefined,
+              surface: 'fill-job-enrich',
+            }).catch(() => {});
+            notes.push(
+              `Apollo enrich: unlocked ${unlocked}/${enrichIds.length} full profile(s) · ~${enrichCredits} credit(s). Search hits are real people; asterisks are Apollo privacy masking until enrich.`
+            );
+          }
+        } catch (err: any) {
+          notes.push(
+            `Apollo enrich error: ${err?.message || err}. Showing privacy-masked search results (real Apollo records).`
+          );
+        }
       }
     } else {
       apolloKeySource = 'none';

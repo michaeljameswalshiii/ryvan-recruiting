@@ -980,6 +980,20 @@ export function AgentWorkbench({
                         </div>
                       </div>
                     )}
+                    {run.candidates.some(
+                      (c) =>
+                        c.source === 'apollo' && /\*{2,}/.test(c.name || '')
+                    ) && (
+                      <p className="mt-2 rounded-lg border border-sky-500/25 bg-sky-500/10 px-2.5 py-2 text-[10px] leading-relaxed text-sky-100/90">
+                        <strong className="text-sky-50">
+                          Asterisks = Apollo privacy mask, not fake people.
+                        </strong>{' '}
+                        People Search returns real database records with last
+                        names redacted (e.g. Me***). We try to unlock full names
+                        via enrichment (uses credits). Use Find on LinkedIn /
+                        Google with title + company to verify.
+                      </p>
+                    )}
                     {hasLlmOnly && (
                       <p className="mt-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-2 text-[10px] leading-relaxed text-amber-100/90">
                         <strong className="text-amber-50">LLM leads ≠ open-to-work.</strong>{' '}
@@ -1045,6 +1059,15 @@ export function AgentWorkbench({
                                     : c.source}
                                 </span>
                               )}
+                              {c.source === 'apollo' &&
+                                /\*{2,}/.test(c.name || '') && (
+                                  <span
+                                    className="rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wide bg-slate-500/25 text-slate-300"
+                                    title="Apollo People Search redacts last names until enrichment"
+                                  >
+                                    masked
+                                  </span>
+                                )}
                             </div>
                             <p className="mt-0.5 text-[11px] text-slate-400">
                               {[c.title, c.company, c.location]
