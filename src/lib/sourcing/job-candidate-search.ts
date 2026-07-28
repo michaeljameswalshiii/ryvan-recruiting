@@ -545,7 +545,107 @@ export function personMatchesGeoTarget(
   return true;
 }
 
-/** Expand "Florida" into Apollo-friendly person_locations variants */
+/**
+ * Major metros by US state code — improves Apollo person_locations recall
+ * without leaving the state (docs prefer "City, State" / "State, US").
+ */
+const STATE_METROS: Record<string, string[]> = {
+  FL: ['Miami, Florida', 'Tampa, Florida', 'Orlando, Florida', 'Jacksonville, Florida'],
+  TX: ['Houston, Texas', 'Dallas, Texas', 'Austin, Texas'],
+  CA: ['Los Angeles, California', 'San Francisco, California', 'San Diego, California'],
+  NY: ['New York, New York', 'Buffalo, New York'],
+  GA: ['Atlanta, Georgia'],
+  NC: ['Charlotte, North Carolina', 'Raleigh, North Carolina'],
+  IL: ['Chicago, Illinois'],
+  PA: ['Philadelphia, Pennsylvania', 'Pittsburgh, Pennsylvania'],
+  OH: ['Columbus, Ohio', 'Cleveland, Ohio'],
+  AZ: ['Phoenix, Arizona'],
+  WA: ['Seattle, Washington'],
+  CO: ['Denver, Colorado'],
+  MA: ['Boston, Massachusetts'],
+  MI: ['Detroit, Michigan'],
+  TN: ['Nashville, Tennessee'],
+};
+
+/**
+ * Canonicalize a location for Apollo person_locations.
+ * Docs examples: "California, US", "Oregon, US", city names.
+ */
+export function canonicalizeApolloLocation(raw: string): string[] {
+  const s = (raw || '').trim();
+  if (!s) return [];
+  const out: string[] = [];
+  const add = (t: string) => {
+    const v = t.trim();
+    if (v) out.push(v);
+  };
+
+  if (/^(united states|usa|u\.s\.a?\.?)$/i.test(s)) {
+    add('United States');
+    return out;
+  }
+  if (/^remote$/i.test(s)) {
+    add('Remote');
+    return out;
+  }
+
+  // Bare state code or name
+  const codeOnly = s.match(/^([A-Z]{2})$/i);
+  if (codeOnly) {
+    const code = codeOnly[1].toUpperCase();
+    const name = US_STATE_CODE_TO_NAME[code];
+    if (name) {
+      const pretty = name.replace(/\b\w/g, (c) => c.toUpperCase());
+      add(pretty);
+      add(`${pretty}, US`);
+      add(`${pretty}, United States`);
+      for (const m of STATE_METROS[code] || []) add(m);
+      return out;
+    }
+  }
+
+  const stateCode = extractTargetUsState([s]);
+  if (stateCode && US_STATE_CODE_TO_NAME[stateCode]) {
+    const name = US_STATE_CODE_TO_NAME[stateCode];
+    const pretty = name.replace(/\b\w/g, (c) => c.toUpperCase());
+    // Full state phrase like "Florida" or "Florida, United States"
+    if (new RegExp(`^${name.replace(/\s+/g, '\\s+')}\\b`, 'i').test(s) || /^[A-Z]{2}\b/i.test(s)) {
+      add(pretty);
+      add(`${pretty}, US`);
+      add(`${pretty}, United States`);
+      for (const m of STATE_METROS[stateCode] || []) add(m);
+      // Keep original if it was a city, ST form
+      if (/^[A-Za-z .'-]+,\s*[A-Z]{2}\b/.test(s)) {
+        add(s);
+        add(`${s}, United States`);
+      }
+      return out;
+    }
+  }
+
+  // City, ST
+  const citySt = s.match(/^([A-Za-z .'-]{2,40}),\s*([A-Z]{2})\b/i);
+  if (citySt) {
+    const city = citySt[1].trim();
+    const code = citySt[2].toUpperCase();
+    const name = US_STATE_CODE_TO_NAME[code];
+    add(`${city}, ${code}`);
+    if (name) {
+      const pretty = name.replace(/\b\w/g, (c) => c.toUpperCase());
+      add(`${city}, ${pretty}`);
+      add(`${pretty}, US`);
+    }
+    return out;
+  }
+
+  add(s);
+  return out;
+}
+
+/**
+ * Expand plan locations into Apollo-friendly person_locations variants.
+ * Prefer "Florida, US" style (Apollo docs) + state metros for recall.
+ */
 export function expandApolloLocations(locs: string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -558,26 +658,12 @@ export function expandApolloLocations(locs: string[]): string[] {
     out.push(t);
   };
   for (const raw of locs) {
-    const s = (raw || '').trim();
-    if (!s) continue;
-    add(s);
-    if (/^florida$/i.test(s) || /^fl$/i.test(s)) {
-      add('Florida');
-      add('Florida, United States');
-      add('FL, United States');
-      // Major FL markets help Apollo person_locations recall without leaving the state
-      add('Miami, Florida');
-      add('Tampa, Florida');
-      add('Orlando, Florida');
-    } else if (/^united states$/i.test(s) || /^usa$/i.test(s)) {
-      add('United States');
-    } else if (/^([A-Za-z .'-]+),\s*([A-Z]{2})$/.test(s)) {
-      add(s);
-      // also "City, State, United States"
-      add(`${s}, United States`);
+    for (const v of canonicalizeApolloLocation(raw)) {
+      add(v);
     }
   }
-  return out.slice(0, 6);
+  // Cap: enough for state + US form + a few metros; avoid noisy 15-entry filters
+  return out.slice(0, 8);
 }
 
 function mapPdl(p: PdlNormalizedPerson, i: number): SourcedCandidate {
@@ -895,103 +981,162 @@ export async function sourceCandidatesForJob(params: {
   let apolloRequest: Record<string, unknown> | undefined;
   let apolloAuthError: string | undefined;
 
+  /** Enough unique people before we stop searching (search is free; prefer pages over loose filters) */
+  const searchTarget = Math.min(12, Math.max(limit, 8));
+  let apolloConfiguredOk = false;
+
   try {
     if (await resolveApolloConfigured(apolloAuth)) {
+      apolloConfiguredOk = true;
       let passIdx = 0;
       let lastApolloError: string | undefined;
+      let pageCallIdx = 0;
 
       for (const pass of apolloPasses) {
-        if (candidates.length >= Math.min(8, limit)) break;
+        if (candidates.length >= searchTarget) break;
         if (!pass.titles.length) continue;
 
-        const apolloRes = await apolloSearchPeople({
-          // Prefer structured filters; avoid stuffing long JD text into q_keywords
-          q: pass.titles[0],
-          titles: pass.titles,
-          // Always pass locations array (even empty) so client does not invent locations
-          locations: pass.locations || [],
-          keywords: pass.keywords,
-          seniorities: pass.seniorities,
-          per_page: limit,
-          page: 1,
-          auth: apolloAuth,
-        });
-
-        if (apolloRes.keySource) apolloKeySource = apolloRes.keySource;
-        if (apolloRes.httpStatus) apolloHttpStatus = apolloRes.httpStatus;
-        if (apolloRes.requestBody) apolloRequest = apolloRes.requestBody;
-
-        if (apolloRes.error && !apolloRes.people.length) {
-          lastApolloError = apolloRes.error;
-          // Auth failures won't improve on later passes — stop early
-          if (
-            apolloRes.httpStatus === 401 ||
-            apolloRes.httpStatus === 403
-          ) {
-            apolloAuthError = apolloRes.error;
-            notes.unshift(`Apollo AUTH: ${apolloRes.error}`);
-            notes.push(
-              `Key source: ${apolloRes.keySource || 'unknown'} · HTTP ${apolloRes.httpStatus}`
-            );
-            break;
-          }
-          notes.push(`Apollo ${pass.label}: ${apolloRes.error}`);
-          continue;
-        }
-
-        const before = candidates.length;
-        for (let i = 0; i < apolloRes.people.length; i++) {
-          add(mapApollo(apolloRes.people[i], passIdx * 100 + i));
-        }
-        const added = candidates.length - before;
-        const slice = buildApolloSearchSlice({
-          results: apolloRes.people.length,
-          endpoint: 'mixed_people/api_search',
-        });
-        estimatedCostUsd += slice.estimatedUsd;
-        costs.push({
-          engine: passIdx === 0 ? 'apollo' : `apollo-${pass.label}`,
-          estimatedCostUsd: slice.estimatedUsd,
-          count: apolloRes.people.length,
-        });
-        if (!apolloSlice) {
-          apolloSlice = slice;
-        } else {
-          apolloSlice = {
-            results: apolloSlice.results + slice.results,
-            credits: apolloSlice.credits,
-            estimatedUsd: apolloSlice.estimatedUsd + slice.estimatedUsd,
-            endpoint: apolloSlice.endpoint,
-            note: apolloSlice.note,
-          };
-        }
-        void logApolloUsage({
-          modelId: `apollo-source-for-job-${pass.label}`,
-          resultsCount: apolloRes.people.length,
-          estimatedCost: slice.estimatedUsd,
-          credits: slice.credits,
-          endpoint: slice.endpoint,
-          queryPreview: `${pass.titles[0]} | ${pass.label}`,
-          tenantId: params.tenantId || undefined,
-          userId: params.userId || undefined,
-          surface: 'fill-job',
-        }).catch(() => {});
-
-        notes.push(
-          `Apollo ${pass.label}: ${apolloRes.people.length} returned · +${added} new · key=${apolloRes.keySource || '?'}`
-        );
-        passIdx++;
-
-        // After a good precision pass (esp. with must-have), stop early
-        const haveMust =
-          pass.keywords?.length &&
+        const passHasMust =
+          !!pass.keywords?.length &&
           mustHaveKeywords.some((m) =>
             (pass.keywords || []).some(
               (k) => k.toLowerCase() === m.toLowerCase()
             )
           );
+
+        // Page 1 always; page 2 when still thin BEFORE next (broader) pass
+        // Search is 0 credits — pagination is cheaper than dropping CNC / geo.
+        const maxPages = passHasMust || passIdx === 0 ? 2 : 1;
+
+        for (let page = 1; page <= maxPages; page++) {
+          if (candidates.length >= searchTarget) break;
+          // Only page-2 if page 1 was full-ish (more results likely exist)
+          if (page === 2) {
+            /* checked after page 1 below via continue flag */
+          }
+
+          const apolloRes = await apolloSearchPeople({
+            q: pass.titles[0],
+            titles: pass.titles,
+            locations: pass.locations || [],
+            keywords: pass.keywords,
+            seniorities: pass.seniorities,
+            per_page: Math.min(Math.max(limit, 15), 25),
+            page,
+            auth: apolloAuth,
+          });
+
+          if (apolloRes.keySource) apolloKeySource = apolloRes.keySource;
+          if (apolloRes.httpStatus) apolloHttpStatus = apolloRes.httpStatus;
+          if (apolloRes.requestBody) apolloRequest = apolloRes.requestBody;
+
+          if (apolloRes.error && !apolloRes.people.length) {
+            lastApolloError = apolloRes.error;
+            if (
+              apolloRes.httpStatus === 401 ||
+              apolloRes.httpStatus === 403
+            ) {
+              apolloAuthError = apolloRes.error;
+              notes.unshift(`Apollo AUTH: ${apolloRes.error}`);
+              notes.push(
+                `Key source: ${apolloRes.keySource || 'unknown'} · HTTP ${apolloRes.httpStatus}`
+              );
+              break;
+            }
+            notes.push(
+              `Apollo ${pass.label} p${page}: ${apolloRes.error}`
+            );
+            break; // don't page 2 on hard error
+          }
+
+          const totalInApollo =
+            typeof apolloRes.total === 'number' ? apolloRes.total : undefined;
+          if (page === 1 && totalInApollo != null && totalInApollo > 0) {
+            notes.push(
+              `Apollo ${pass.label}: ~${totalInApollo} total in Apollo (showing best pages)`
+            );
+          }
+
+          const before = candidates.length;
+          for (let i = 0; i < apolloRes.people.length; i++) {
+            add(
+              mapApollo(
+                apolloRes.people[i],
+                pageCallIdx * 100 + passIdx * 10 + i
+              )
+            );
+          }
+          const added = candidates.length - before;
+          const slice = buildApolloSearchSlice({
+            results: apolloRes.people.length,
+            endpoint: 'mixed_people/api_search',
+          });
+          estimatedCostUsd += slice.estimatedUsd;
+          costs.push({
+            engine:
+              pageCallIdx === 0
+                ? 'apollo'
+                : `apollo-${pass.label}${page > 1 ? `-p${page}` : ''}`,
+            estimatedCostUsd: slice.estimatedUsd,
+            count: apolloRes.people.length,
+          });
+          if (!apolloSlice) {
+            apolloSlice = slice;
+          } else {
+            apolloSlice = {
+              results: apolloSlice.results + slice.results,
+              credits: apolloSlice.credits,
+              estimatedUsd: apolloSlice.estimatedUsd + slice.estimatedUsd,
+              endpoint: apolloSlice.endpoint,
+              note: apolloSlice.note,
+            };
+          }
+          void logApolloUsage({
+            modelId: `apollo-source-for-job-${pass.label}-p${page}`,
+            resultsCount: apolloRes.people.length,
+            estimatedCost: slice.estimatedUsd,
+            credits: slice.credits,
+            endpoint: slice.endpoint,
+            queryPreview: `${pass.titles[0]} | ${pass.label} p${page}`,
+            tenantId: params.tenantId || undefined,
+            userId: params.userId || undefined,
+            surface: 'fill-job',
+          }).catch(() => {});
+
+          notes.push(
+            `Apollo ${pass.label} p${page}: ${apolloRes.people.length} returned · +${added} new · key=${apolloRes.keySource || '?'}`
+          );
+          pageCallIdx++;
+
+          // Skip page 2 if page 1 was empty or short (no more results) or already full
+          if (page === 1) {
+            const pageFull =
+              apolloRes.people.length >= Math.min(limit, 15) ||
+              (totalInApollo != null &&
+                totalInApollo > apolloRes.people.length);
+            if (
+              !pageFull ||
+              candidates.length >= searchTarget ||
+              maxPages < 2
+            ) {
+              break;
+            }
+            if (candidates.length < Math.min(8, limit)) {
+              notes.push(
+                `Apollo ${pass.label}: page 2 before loosening filters (search is free)`
+              );
+            } else {
+              break;
+            }
+          }
+        }
+
+        if (apolloAuthError) break;
+        passIdx++;
+
+        // After a good precision pass (esp. with must-have), stop early
         if (
-          haveMust &&
+          passHasMust &&
           candidates.filter((c) => c.source === 'apollo').length >=
             Math.min(5, limit)
         ) {
@@ -1000,7 +1145,7 @@ export async function sourceCandidatesForJob(params: {
           );
           break;
         }
-        if (passIdx === 1 && candidates.length >= Math.min(8, limit)) break;
+        if (passIdx === 1 && candidates.length >= searchTarget) break;
       }
 
       if (apolloAuthError) {
@@ -1014,90 +1159,7 @@ export async function sourceCandidatesForJob(params: {
           'Apollo returned 0 people with a working key. Filters may still be too narrow — try a simpler title like "Operations Manager".'
         );
       }
-
-      // Search API privacy-masks last names (Toby Me***). Enrich top hits by id
-      // so recruiters see real full names + LinkedIn (uses Apollo credits).
-      const apolloHits = candidates.filter(
-        (c) =>
-          c.source === 'apollo' &&
-          c.id &&
-          !String(c.id).startsWith('apollo-') &&
-          (/\*{2,}/.test(c.name || '') ||
-            !c.linkedinUrl ||
-            !c.email)
-      );
-      if (apolloHits.length > 0) {
-        try {
-          const enrichIds = apolloHits
-            .map((c) => c.id!)
-            .slice(0, Math.min(10, limit));
-          const enriched = await enrichPeopleByIds(enrichIds, apolloAuth, {
-            revealPersonalEmails: false,
-            revealPhoneNumber: false,
-          });
-          if (enriched.error) {
-            notes.push(
-              `Apollo enrich (unlock full names): ${enriched.error}. Search still returns real people with privacy-masked last names until enrich succeeds.`
-            );
-          } else if (enriched.people.length) {
-            const byId = new Map(
-              enriched.people
-                .filter((p) => p.id)
-                .map((p) => [String(p.id), p] as const)
-            );
-            let unlocked = 0;
-            for (let i = 0; i < candidates.length; i++) {
-              const c = candidates[i];
-              if (c.source !== 'apollo' || !c.id) continue;
-              const full = byId.get(String(c.id));
-              if (!full) continue;
-              const next = mapApollo(full, i);
-              // Prefer enriched fields when present
-              candidates[i] = {
-                ...c,
-                name: next.name && !/\*{2,}/.test(next.name) ? next.name : c.name,
-                title: next.title || c.title,
-                company: next.company || c.company,
-                location: next.location || c.location,
-                email: next.email || c.email,
-                phone: next.phone || c.phone,
-                linkedinUrl: next.linkedinUrl || c.linkedinUrl,
-              };
-              if (!/\*{2,}/.test(candidates[i].name || '')) unlocked++;
-            }
-            const enrichCredits =
-              typeof enriched.creditsConsumed === 'number'
-                ? enriched.creditsConsumed
-                : enriched.people.length;
-            // Credit cost for enrichment (search is free; enrich is not)
-            const enrichUsd = enrichCredits * 0.01; // rough; usage dashboard uses credit log
-            estimatedCostUsd += enrichUsd;
-            costs.push({
-              engine: 'apollo-enrich',
-              estimatedCostUsd: enrichUsd,
-              count: enriched.people.length,
-            });
-            void logApolloUsage({
-              modelId: 'apollo-people-bulk-match',
-              resultsCount: enriched.people.length,
-              estimatedCost: enrichUsd,
-              credits: enrichCredits,
-              endpoint: 'people/bulk_match',
-              queryPreview: `enrich ${enrichIds.length} search hits`,
-              tenantId: params.tenantId || undefined,
-              userId: params.userId || undefined,
-              surface: 'fill-job-enrich',
-            }).catch(() => {});
-            notes.push(
-              `Apollo enrich: unlocked ${unlocked}/${enrichIds.length} full profile(s) · ~${enrichCredits} credit(s). Search hits are real people; asterisks are Apollo privacy masking until enrich.`
-            );
-          }
-        } catch (err: any) {
-          notes.push(
-            `Apollo enrich error: ${err?.message || err}. Showing privacy-masked search results (real Apollo records).`
-          );
-        }
-      }
+      // Enrich is deferred until AFTER re-rank (credits only on top-N).
     } else {
       apolloKeySource = 'none';
       apolloAuthError =
@@ -1353,8 +1415,95 @@ export async function sourceCandidatesForJob(params: {
     }
   }
 
-  // Recompute usage after re-rank token estimate
-  // (usageBreakdown built earlier — rebuild line at end with updated llmUsd)
+  // --- Rank-then-enrich: spend Apollo credits only on top shortlist ---
+  // Search is free (masked names OK). Enrich top N after re-rank for full name/LinkedIn.
+  const ENRICH_TOP_N = Math.min(8, limit);
+  if (
+    apolloConfiguredOk &&
+    !apolloAuthError &&
+    ranked.length > 0
+  ) {
+    const topSlice = ranked.slice(0, Math.max(ENRICH_TOP_N, Math.min(limit, 10)));
+    const enrichIds = topSlice
+      .filter(
+        (c) =>
+          c.source === 'apollo' &&
+          c.id &&
+          !String(c.id).startsWith('apollo-') &&
+          (/\*{2,}/.test(c.name || '') || !c.linkedinUrl || !c.email)
+      )
+      .map((c) => c.id!)
+      .slice(0, ENRICH_TOP_N);
+
+    if (enrichIds.length > 0) {
+      try {
+        const enriched = await enrichPeopleByIds(enrichIds, apolloAuth, {
+          revealPersonalEmails: false,
+          revealPhoneNumber: false,
+        });
+        if (enriched.error) {
+          notes.push(
+            `Apollo enrich (top ${enrichIds.length} only): ${enriched.error}. Search hits remain valid with privacy-masked names.`
+          );
+        } else if (enriched.people.length) {
+          const byId = new Map(
+            enriched.people
+              .filter((p) => p.id)
+              .map((p) => [String(p.id), p] as const)
+          );
+          let unlocked = 0;
+          ranked = ranked.map((c, i) => {
+            if (c.source !== 'apollo' || !c.id) return c;
+            const full = byId.get(String(c.id));
+            if (!full) return c;
+            const next = mapApollo(full, i);
+            const merged: typeof c = {
+              ...c,
+              name:
+                next.name && !/\*{2,}/.test(next.name) ? next.name : c.name,
+              title: next.title || c.title,
+              company: next.company || c.company,
+              location: next.location || c.location,
+              email: next.email || c.email,
+              phone: next.phone || c.phone,
+              linkedinUrl: next.linkedinUrl || c.linkedinUrl,
+            };
+            if (!/\*{2,}/.test(merged.name || '')) unlocked++;
+            return merged;
+          });
+          const enrichCredits =
+            typeof enriched.creditsConsumed === 'number'
+              ? enriched.creditsConsumed
+              : enriched.people.length;
+          const enrichUsd = enrichCredits * 0.01;
+          estimatedCostUsd += enrichUsd;
+          costs.push({
+            engine: 'apollo-enrich',
+            estimatedCostUsd: enrichUsd,
+            count: enriched.people.length,
+          });
+          void logApolloUsage({
+            modelId: 'apollo-people-bulk-match',
+            resultsCount: enriched.people.length,
+            estimatedCost: enrichUsd,
+            credits: enrichCredits,
+            endpoint: 'people/bulk_match',
+            queryPreview: `rank-then-enrich top ${enrichIds.length}`,
+            tenantId: params.tenantId || undefined,
+            userId: params.userId || undefined,
+            surface: 'fill-job-enrich',
+          }).catch(() => {});
+          notes.push(
+            `Rank→enrich: unlocked ${unlocked}/${enrichIds.length} top profile(s) · ~${enrichCredits} credit(s) (not whole search page)`
+          );
+        }
+      } catch (err: any) {
+        notes.push(
+          `Apollo enrich error: ${err?.message || err}. Showing ranked search results (masked names OK).`
+        );
+      }
+    }
+  }
 
   const jobOut = { ...job, location: searchLocation || job.location };
 

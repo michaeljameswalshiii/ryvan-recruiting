@@ -584,13 +584,35 @@ export async function searchPeople(
   };
 
   if (titles.length) body.person_titles = titles;
-  // Apollo expects person_locations like "florida" / "california" / "chicago"
-  // Also send United States variants for state filters when provided upstream.
+  // Apollo docs: person_locations like "California, US", "Oregon, US", city names.
+  // Prefer "State, US" / full state name over bare "FL".
   if (locations.length) {
+    const STATE_CODE_NAMES: Record<string, string> = {
+      AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
+      CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
+      HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
+      KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
+      MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi',
+      MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire',
+      NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina',
+      ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania',
+      RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee',
+      TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington',
+      WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming', DC: 'District of Columbia',
+    };
     body.person_locations = locations.map((l) => {
       const t = String(l).trim();
-      // Prefer "Florida" over "FL" alone for person_locations
-      if (/^fl$/i.test(t)) return 'Florida';
+      if (/^[A-Z]{2}$/i.test(t)) {
+        const name = STATE_CODE_NAMES[t.toUpperCase()];
+        return name ? `${name}, US` : t;
+      }
+      // "Florida" → "Florida, US" (Apollo docs style)
+      if (/^[A-Za-z .'-]+$/.test(t) && !/,\s*US$/i.test(t) && !/united states/i.test(t)) {
+        const asState = Object.values(STATE_CODE_NAMES).find(
+          (n) => n.toLowerCase() === t.toLowerCase()
+        );
+        if (asState) return `${asState}, US`;
+      }
       return t;
     });
   }
