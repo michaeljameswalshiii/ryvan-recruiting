@@ -1205,10 +1205,10 @@ export default function GeneralAiUsagePage() {
 
       {/* ── Right: autonomous list agent (resizable / collapsible) ── */}
       <aside
-        className={`relative flex min-h-0 w-full shrink-0 flex-col border-t border-slate-800 bg-slate-950 transition-[width] duration-200 ease-out lg:h-auto lg:border-t-0 ${
+        className={`relative flex min-h-0 w-full shrink-0 flex-col border-t border-slate-800 bg-slate-950 transition-[width] duration-200 ease-out lg:border-t-0 ${
           agentPanelSize === 'collapsed'
             ? 'h-12 lg:h-auto'
-            : 'h-[min(52vh,420px)]'
+            : 'h-[min(70vh,640px)] lg:h-auto lg:min-h-0'
         } ${panelWidthClass}`}
       >
         {/* Size controls — always visible on the chat/agent seam */}

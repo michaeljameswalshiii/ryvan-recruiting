@@ -571,7 +571,7 @@ export function FloatingAiAssistant() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-          <div className="mb-2 max-h-[40vh] overflow-hidden rounded-2xl">
+          <div className="mb-2 max-h-[min(70vh,560px)] min-h-[280px] overflow-y-auto overscroll-contain rounded-2xl border border-slate-800">
             <AgentWorkbench variant="compact" />
           </div>
           {messages.length === 0 && (

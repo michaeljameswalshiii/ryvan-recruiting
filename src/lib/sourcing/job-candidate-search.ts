@@ -403,9 +403,116 @@ const NON_US_COUNTRY_RE =
 const US_STATE_HINT_RE =
   /\b(florida|texas|california|georgia|new york|north carolina|south carolina|arizona|ohio|pennsylvania|illinois|michigan|virginia|massachusetts|washington|colorado|oregon|nevada|tennessee|indiana|missouri|maryland|wisconsin|minnesota|alabama|louisiana|kentucky|oklahoma|connecticut|utah|iowa|arkansas|mississippi|kansas|new mexico|nebraska|idaho|west virginia|hawaii|new hampshire|maine|montana|rhode island|delaware|south dakota|north dakota|alaska|vermont|wyoming|united states|usa|u\.s\.a?\.?)\b/i;
 
+/** Two-letter US state codes (uppercase) → full name for matching */
+const US_STATE_CODE_TO_NAME: Record<string, string> = {
+  AL: 'alabama',
+  AK: 'alaska',
+  AZ: 'arizona',
+  AR: 'arkansas',
+  CA: 'california',
+  CO: 'colorado',
+  CT: 'connecticut',
+  DE: 'delaware',
+  FL: 'florida',
+  GA: 'georgia',
+  HI: 'hawaii',
+  ID: 'idaho',
+  IL: 'illinois',
+  IN: 'indiana',
+  IA: 'iowa',
+  KS: 'kansas',
+  KY: 'kentucky',
+  LA: 'louisiana',
+  ME: 'maine',
+  MD: 'maryland',
+  MA: 'massachusetts',
+  MI: 'michigan',
+  MN: 'minnesota',
+  MS: 'mississippi',
+  MO: 'missouri',
+  MT: 'montana',
+  NE: 'nebraska',
+  NV: 'nevada',
+  NH: 'new hampshire',
+  NJ: 'new jersey',
+  NM: 'new mexico',
+  NY: 'new york',
+  NC: 'north carolina',
+  ND: 'north dakota',
+  OH: 'ohio',
+  OK: 'oklahoma',
+  OR: 'oregon',
+  PA: 'pennsylvania',
+  RI: 'rhode island',
+  SC: 'south carolina',
+  SD: 'south dakota',
+  TN: 'tennessee',
+  TX: 'texas',
+  UT: 'utah',
+  VT: 'vermont',
+  VA: 'virginia',
+  WA: 'washington',
+  WV: 'west virginia',
+  WI: 'wisconsin',
+  WY: 'wyoming',
+  DC: 'district of columbia',
+};
+
+const STATE_NAME_TO_CODE = Object.fromEntries(
+  Object.entries(US_STATE_CODE_TO_NAME).map(([code, name]) => [name, code])
+);
+
+/** Pull a specific US state from plan targets (e.g. "Florida" → FL). */
+export function extractTargetUsState(targets: string[]): string | null {
+  for (const t of targets) {
+    const s = (t || '').trim();
+    if (!s) continue;
+    // "FL" / "FL, United States"
+    const codeM = s.match(/\b([A-Z]{2})\b/);
+    if (codeM && US_STATE_CODE_TO_NAME[codeM[1]]) return codeM[1];
+    const lower = s.toLowerCase();
+    for (const [name, code] of Object.entries(STATE_NAME_TO_CODE)) {
+      if (new RegExp(`\\b${name.replace(/\s+/g, '\\s+')}\\b`, 'i').test(lower)) {
+        return code;
+      }
+    }
+  }
+  return null;
+}
+
+function personHasUsState(loc: string, stateCode: string): boolean {
+  const name = US_STATE_CODE_TO_NAME[stateCode];
+  if (!name) return false;
+  const lower = loc.toLowerCase();
+  if (new RegExp(`\\b${name.replace(/\s+/g, '\\s+')}\\b`, 'i').test(lower)) {
+    return true;
+  }
+  // "Miami, FL" / "Tampa FL" / "FL, United States"
+  if (new RegExp(`(?:^|[,\\s])${stateCode}(?:$|[,\\s])`, 'i').test(loc)) {
+    return true;
+  }
+  return false;
+}
+
+/** True if location clearly names a *different* US state than target. */
+function personInOtherUsState(loc: string, targetCode: string): boolean {
+  const lower = loc.toLowerCase();
+  for (const [code, name] of Object.entries(US_STATE_CODE_TO_NAME)) {
+    if (code === targetCode) continue;
+    if (new RegExp(`\\b${name.replace(/\s+/g, '\\s+')}\\b`, 'i').test(lower)) {
+      return true;
+    }
+    if (new RegExp(`(?:^|[,\\s])${code}(?:$|[,\\s])`, 'i').test(loc)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
- * When recruiter asks for Florida/US, reject profiles that clearly live in China etc.
- * If location is unknown, keep (Apollo may still have matched person_locations).
+ * When recruiter asks for Florida (or another state), hard-require that state.
+ * Drop Indiana/California/China when target is Florida.
+ * Unknown location kept (Apollo may have matched person_locations without city).
  */
 export function personMatchesGeoTarget(
   personLocation: string | undefined,
@@ -415,34 +522,24 @@ export function personMatchesGeoTarget(
   const loc = (personLocation || '').trim();
   if (!loc) return true; // unknown — keep
 
+  // Hard drop non-US when any US target
   const targetUs = targets.some((t) => US_STATE_HINT_RE.test(t));
   if (targetUs && NON_US_COUNTRY_RE.test(loc)) {
-    // Exception: "Canada" etc. only reject if not explicitly requested
-    if (!targets.some((t) => new RegExp(t, 'i').test(loc))) {
+    if (!targets.some((t) => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(loc))) {
       return false;
     }
   }
 
-  // If person has a US state and targets include Florida, keep FL and generic US;
-  // drop clear other-state only when target is a specific state and person has another state
-  const wantsFlorida = targets.some((t) => /\bflorida\b|\bfl\b/i.test(t));
-  if (wantsFlorida) {
+  const targetState = extractTargetUsState(targets);
+  if (targetState) {
     if (NON_US_COUNTRY_RE.test(loc)) return false;
-    // Keep if FL / Florida / United States / empty city with US
-    if (
-      /\bflorida\b|\bfl\b|united states|usa|u\.s\./i.test(loc) ||
-      /\b(AL|AK|AZ|AR|CA|CO|CT|DE|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b/.test(
-        loc
-      ) === false
-    ) {
-      // has some location text without another US state code — keep if not non-US
-      if (!NON_US_COUNTRY_RE.test(loc)) return true;
-    }
-    if (/\bflorida\b|\bfl\b/i.test(loc)) return true;
-    // Other US states when Florida was requested — still keep for now (Apollo metro bleed);
-    // only hard-drop non-US above.
-    if (!NON_US_COUNTRY_RE.test(loc)) return true;
-    return false;
+    // Explicit match for target state
+    if (personHasUsState(loc, targetState)) return true;
+    // Other US state named → hard drop (no more "keep CA when Florida")
+    if (personInOtherUsState(loc, targetState)) return false;
+    // City-only / vague US without another state — keep (soft)
+    if (/\bunited states\b|\busa\b|\bu\.s\./i.test(loc)) return true;
+    return true;
   }
 
   return true;
@@ -468,6 +565,10 @@ export function expandApolloLocations(locs: string[]): string[] {
       add('Florida');
       add('Florida, United States');
       add('FL, United States');
+      // Major FL markets help Apollo person_locations recall without leaving the state
+      add('Miami, Florida');
+      add('Tampa, Florida');
+      add('Orlando, Florida');
     } else if (/^united states$/i.test(s) || /^usa$/i.test(s)) {
       add('United States');
     } else if (/^([A-Za-z .'-]+),\s*([A-Z]{2})$/.test(s)) {
@@ -738,20 +839,7 @@ export async function sourceCandidatesForJob(params: {
           } satisfies ApolloPass,
         ]
       : []),
-    // 3) Broader geo still with must-have (keep CNC when possible)
-    ...(mustHaveKeywords.length &&
-    locations.length &&
-    !locations.some((l) => /united states|usa|u\.s\./i.test(l))
-      ? [
-          {
-            label: 'titles+US+mustHave',
-            titles: titles.slice(0, 3),
-            locations: ['United States'],
-            keywords: mustHaveKeywords.slice(0, 1),
-          } satisfies ApolloPass,
-        ]
-      : []),
-    // 4) Drop must-have only if still thin (recall fallback)
+    // 3) Drop must-have only if still thin (recall) — KEEP state locations
     {
       label: 'titles+location-noMust',
       titles: titles.slice(0, 4),
@@ -767,16 +855,32 @@ export async function sourceCandidatesForJob(params: {
           } satisfies ApolloPass,
         ]
       : []),
-    ...(locations.length &&
-    !locations.some((l) => /united states|usa|u\.s\./i.test(l))
-      ? [
-          {
-            label: 'titles+US',
-            titles: titles.slice(0, 3),
-            locations: ['United States'],
-          } satisfies ApolloPass,
-        ]
-      : []),
+    // 4) Only broaden to whole US when plan has no specific state (Florida etc.)
+    //    Expanding Florida → US is what flooded results with IN / CA.
+    ...(() => {
+      const specificState = extractTargetUsState(locations);
+      const alreadyUs = locations.some((l) =>
+        /united states|usa|u\.s\./i.test(l)
+      );
+      if (specificState || alreadyUs || !locations.length) return [];
+      return [
+        ...(mustHaveKeywords.length
+          ? [
+              {
+                label: 'titles+US+mustHave',
+                titles: titles.slice(0, 3),
+                locations: ['United States'],
+                keywords: mustHaveKeywords.slice(0, 1),
+              } satisfies ApolloPass,
+            ]
+          : []),
+        {
+          label: 'titles+US',
+          titles: titles.slice(0, 3),
+          locations: ['United States'],
+        } satisfies ApolloPass,
+      ];
+    })(),
   ];
   // seniorities reserved in plan for notes/UI; not forced on search
 
