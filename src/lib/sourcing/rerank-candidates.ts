@@ -80,16 +80,18 @@ Schema:
 }
 
 Scoring guide (best-in-class ATS sourcing):
-- 85–100: Strong title fit + geo OK + must-have skill likely (e.g. CNC in background)
-- 70–84: Good title or industry fit; must-have unclear but plausible
-- 50–69: Partial fit (title OK, geo weak OR must-have missing)
+- 85–100: Strong title fit + geo OK + employer/context implies skill (e.g. Plant Manager at precision machine shop)
+- 70–84: Good title fit; skill plausible from industry/company type even without the skill string
+- 50–69: Partial (title OK but wrong industry; OR skill only as company name token)
 - 0–49: Wrong function, wrong country, or pure noise
 
 Rules:
-- mustHaveHit: true if title/company/snippet suggests the skill (CNC, NetSuite, etc.) OR role implies it; false if clearly absent.
+- Prefer TITLE match to the role (Plant Manager, Director of Operations) over company name matching a skill token.
+- For shop skills like CNC/EDM/machining: Apollo often only matches the string in COMPANY NAME ("CNC Industries"). That alone is a WEAK must-have — score lower than a Plant Manager at "Acme Precision Machining" without the letters C-N-C.
+- mustHaveHit: true if company/industry/snippet suggests machining/manufacturing/tooling OR the skill token appears; do NOT require the skill in the person's job title.
+- Soft-penalize profiles whose ONLY skill signal is the exact skill token inside the company legal name with no other manufacturing context.
 - geoOk: false if location is clearly wrong country (China when job is Florida); true if US/FL/unknown.
-- Prefer people whose TITLE matches the role; do not require must-have in the job title string.
-- fitReason must be specific ("Plant Manager at machine shop — likely CNC") not generic.
+- fitReason must be specific ("Plant Manager at machine shop — likely CNC env") not generic.
 - Return one ranking object per input person id.`;
 
   const user = `JOB TITLE: ${params.jobTitle}
@@ -226,48 +228,92 @@ function heuristicRerank(
       ctx.jobLocation
     );
 
+  const shopMust = must.some(
+    (m) =>
+      m === 'cnc' ||
+      m.includes('edm') ||
+      m.includes('machin') ||
+      m.includes('tool') ||
+      m.includes('die')
+  );
+  const mfgCompanyRe =
+    /\b(machine|machining|machinist|tool(?:\s*and\s*|&)?\s*die|precision|aerospace|metal|fabrication|fabricat|stamping|foundry|industrial|manufactur|production\s*shop|cnc)\b/i;
+
   const ranked = people.map((p) => {
     let score = 45;
+    const title = (p.title || '').toLowerCase();
+    const company = (p.company || '').toLowerCase();
     const blob = [p.title, p.company, p.snippet, p.name]
       .filter(Boolean)
       .join(' ')
       .toLowerCase();
     const loc = (p.location || '').toLowerCase();
 
-    // Title overlap
+    // Title overlap (strongest signal for Fill job)
     const pTitleTok = tokenize(p.title || '');
     const overlap = titleTokens.filter((t) => pTitleTok.includes(t)).length;
-    score += Math.min(25, overlap * 8);
+    score += Math.min(28, overlap * 9);
 
-    // Leadership / ops / plant signals from JD title
+    // Leadership / ops / plant signals
     if (
-      /\b(plant|manufactur|operations|machin|cnc|production)\b/i.test(
+      /\b(plant|manufactur|operations|machin|cnc|production|director)\b/i.test(
         ctx.jobTitle
       ) &&
-      /\b(plant|manufactur|operations|machin|cnc|production|shop)\b/i.test(
-        blob
+      /\b(plant|manufactur|operations|machin|production|shop|director|vp)\b/i.test(
+        title
       )
     ) {
-      score += 12;
+      score += 14;
     }
 
+    const mfgContext = mfgCompanyRe.test(company) || mfgCompanyRe.test(blob);
+    // Skill token only in company legal name (e.g. "CNC Industries") — weak alone
+    let skillOnlyInCompanyName = false;
     let mustHaveHit = false;
+
     for (const m of must) {
-      if (blob.includes(m.toLowerCase())) {
+      const ml = m.toLowerCase();
+      if (company.includes(ml) && !title.includes(ml)) {
+        skillOnlyInCompanyName = true;
+      }
+      if (blob.includes(ml)) {
         mustHaveHit = true;
-        score += 18;
-        break;
       }
     }
-    // Company type hints for CNC without keyword in title
-    if (
-      must.some((m) => m === 'cnc' || m.includes('edm') || m.includes('machin')) &&
-      /\b(machine|machining|tool|die|precision|aerospace|metal|fabrication|cnc)\b/i.test(
-        blob
-      )
-    ) {
-      mustHaveHit = true;
-      score += 10;
+
+    if (shopMust) {
+      // Prefer plant/ops leaders in machining context over "CNC" string in company name
+      if (mfgContext) {
+        mustHaveHit = true;
+        score += 16;
+      }
+      if (skillOnlyInCompanyName && mfgContext) {
+        score += 6; // CNC + machine shop is fine
+      } else if (skillOnlyInCompanyName && !mfgContext && overlap < 1) {
+        score -= 12; // "Something CNC LLC" random title — deprioritize
+      } else if (skillOnlyInCompanyName && overlap >= 1) {
+        score += 4; // right title at a company literally named CNC
+      }
+      // Ops leader at machine shop without "CNC" letters still valid
+      if (
+        !mustHaveHit &&
+        mfgContext &&
+        /\b(plant|operations|manufactur|production|general\s*manager)\b/i.test(
+          title
+        )
+      ) {
+        mustHaveHit = true;
+        score += 12;
+      }
+    } else {
+      // Software / ERP tools: keyword in blob is stronger
+      for (const m of must) {
+        if (blob.includes(m.toLowerCase())) {
+          mustHaveHit = true;
+          score += 18;
+          break;
+        }
+      }
     }
 
     let geoOk = true;
@@ -290,11 +336,15 @@ function heuristicRerank(
 
     const fitReason = [
       overlap > 0 ? 'title overlap' : 'weak title match',
-      mustHaveHit
-        ? `must-have signal (${must[0] || 'skill'})`
-        : must.length
-          ? `no clear ${must[0]} signal`
-          : null,
+      shopMust && mfgContext
+        ? 'manufacturing/machining employer context'
+        : mustHaveHit
+          ? skillOnlyInCompanyName
+            ? `skill token in company name (${must[0]}) — not verified experience`
+            : `must-have signal (${must[0] || 'skill'})`
+          : must.length
+            ? `no clear ${must[0]} signal`
+            : null,
       geoOk ? null : 'geo mismatch',
       p.company ? `at ${p.company}` : null,
     ]

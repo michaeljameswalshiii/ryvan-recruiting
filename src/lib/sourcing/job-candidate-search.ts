@@ -882,14 +882,42 @@ export async function sourceCandidatesForJob(params: {
     )
     .slice(0, 2);
 
-  if (mustHaveKeywords.length) {
-    notes.push(
-      `Must-have experience keywords (Apollo q_keywords, not title): ${mustHaveKeywords.join(', ')}`
+  /**
+   * Shop / process skills (CNC, EDM, machining) are poorly represented in Apollo
+   * employment history. Putting them in q_keywords mostly matches COMPANY NAMES
+   * ("CNC Industries") — not "Plant Manager who ran CNC lines."
+   * Software tools (NetSuite, AWS) hit profile text better → keep keyword earlier.
+   */
+  const isShopFloorSkill = (k: string) =>
+    /\b(cnc|edm|machin|tool\s*and\s*die|swiss|gd&t|gdt|iso\s*9001|fabrication|stamping)\b/i.test(
+      k
     );
+  const shopMustHaves = mustHaveKeywords.filter(isShopFloorSkill);
+  const softwareMustHaves = mustHaveKeywords.filter((k) => !isShopFloorSkill(k));
+  /** Broader industry text — less "company literally named CNC" */
+  const manufacturingProxies = ['machining', 'manufacturing', 'precision'].filter(
+    (p) =>
+      !mustHaveKeywords.some((m) => m.toLowerCase() === p) &&
+      !optionalKeywords.some((m) => m.toLowerCase() === p)
+  );
+
+  if (mustHaveKeywords.length) {
+    if (shopMustHaves.length) {
+      notes.push(
+        `Must-have shop skills (${shopMustHaves.join(', ')}): primary search is title+geo only — Apollo q_keywords often only hits company names (e.g. "CNC Industries"), not past CNC experience. Industry proxy + labeled company-text pass run separately; re-rank merges.`
+      );
+    }
+    if (softwareMustHaves.length) {
+      notes.push(
+        `Must-have tools (${softwareMustHaves.join(', ')}): used as Apollo q_keywords (profile/company text).`
+      );
+    }
   }
 
-  // --- 1) Apollo: progressive passes (search = 0 credits each) ---
-  // Precision first (title+loc+must-have CNC), then broaden if too few hits.
+  // --- 1) Apollo: dual-track progressive passes (search = 0 credits each) ---
+  // Primary = titles + location (real plant/ops leaders).
+  // Secondary = manufacturing proxies (machining/manufacturing).
+  // Tertiary = CNC/q_keywords labeled as company/profile TEXT only.
   const apolloAuth = params.tenantId
     ? { tenantId: params.tenantId }
     : undefined;
@@ -900,43 +928,67 @@ export async function sourceCandidatesForJob(params: {
     locations: string[];
     keywords?: string[];
     seniorities?: string[];
+    /** Prefer page-2 for this pass when thin */
+    deepPages?: boolean;
   };
 
   const apolloPasses: ApolloPass[] = [
-    // 1) Precision: titles + location + must-have (e.g. CNC)
-    ...(mustHaveKeywords.length
+    // 1) PRIMARY: role + geo — no CNC string (avoids company-name-only hits)
+    {
+      label: 'titles+location',
+      titles: titles.slice(0, 5),
+      locations,
+      deepPages: true,
+    },
+    // 2) Alt title set still without shop-skill keyword
+    ...(titles.length > 3
       ? [
           {
-            label: 'titles+location+mustHave',
-            titles: titles.slice(0, 4),
+            label: 'alt-titles+location',
+            titles: titles.slice(0, 6),
             locations,
-            keywords: mustHaveKeywords.slice(0, 1),
-          } satisfies ApolloPass,
-        ]
-      : [
-          {
-            label: 'titles+location',
-            titles: titles.slice(0, 5),
-            locations,
-          } satisfies ApolloPass,
-        ]),
-    // 2) Same must-have with alt titles
-    ...(mustHaveKeywords.length && titles.length > 1
-      ? [
-          {
-            label: 'alt-titles+location+mustHave',
-            titles: titles.slice(0, 5),
-            locations,
-            keywords: mustHaveKeywords.slice(0, 1),
+            deepPages: true,
           } satisfies ApolloPass,
         ]
       : []),
-    // 3) Drop must-have only if still thin (recall) — KEEP state locations
-    {
-      label: 'titles+location-noMust',
-      titles: titles.slice(0, 4),
-      locations,
-    },
+    // 3) Manufacturing / machining industry proxy (broader than "CNC")
+    ...(shopMustHaves.length && manufacturingProxies[0]
+      ? [
+          {
+            label: 'titles+location+mfgProxy',
+            titles: titles.slice(0, 4),
+            locations,
+            keywords: [manufacturingProxies[0]],
+            deepPages: true,
+          } satisfies ApolloPass,
+        ]
+      : []),
+    // 4) Software must-haves (NetSuite etc.) — OK as q_keywords earlier
+    ...(softwareMustHaves.length
+      ? [
+          {
+            label: 'titles+location+toolKeyword',
+            titles: titles.slice(0, 4),
+            locations,
+            keywords: softwareMustHaves.slice(0, 1),
+            deepPages: true,
+          } satisfies ApolloPass,
+        ]
+      : []),
+    // 5) OPTIONAL: shop skill as company/profile TEXT (not experience history)
+    //    Labeled so recruiters know these are often "*CNC* Inc" companies.
+    ...(shopMustHaves.length
+      ? [
+          {
+            label: 'titles+location+skillInCompanyText',
+            titles: titles.slice(0, 4),
+            locations,
+            keywords: shopMustHaves.slice(0, 1),
+            deepPages: false,
+          } satisfies ApolloPass,
+        ]
+      : []),
+    // 6) Optional nice-to-have keywords
     ...(optionalKeywords.length
       ? [
           {
@@ -947,8 +999,7 @@ export async function sourceCandidatesForJob(params: {
           } satisfies ApolloPass,
         ]
       : []),
-    // 4) Only broaden to whole US when plan has no specific state (Florida etc.)
-    //    Expanding Florida → US is what flooded results with IN / CA.
+    // 7) Only broaden to whole US when plan has no specific state
     ...(() => {
       const specificState = extractTargetUsState(locations);
       const alreadyUs = locations.some((l) =>
@@ -956,16 +1007,6 @@ export async function sourceCandidatesForJob(params: {
       );
       if (specificState || alreadyUs || !locations.length) return [];
       return [
-        ...(mustHaveKeywords.length
-          ? [
-              {
-                label: 'titles+US+mustHave',
-                titles: titles.slice(0, 3),
-                locations: ['United States'],
-                keywords: mustHaveKeywords.slice(0, 1),
-              } satisfies ApolloPass,
-            ]
-          : []),
         {
           label: 'titles+US',
           titles: titles.slice(0, 3),
@@ -981,8 +1022,16 @@ export async function sourceCandidatesForJob(params: {
   let apolloRequest: Record<string, unknown> | undefined;
   let apolloAuthError: string | undefined;
 
-  /** Enough unique people before we stop searching (search is free; prefer pages over loose filters) */
-  const searchTarget = Math.min(12, Math.max(limit, 8));
+  /**
+   * Enough unique people before we stop. For shop skills (CNC) collect a larger
+   * pool across title+geo + mfg proxy + company-text so re-rank can pick real ops
+   * leaders over "*CNC* Inc" company-name matches.
+   */
+  const searchTarget = shopMustHaves.length
+    ? Math.min(28, Math.max(limit * 2, 18))
+    : Math.min(12, Math.max(limit, 8));
+  /** Run at least this many pass types before early-stop on volume */
+  const minPassesBeforeVolumeStop = shopMustHaves.length ? 3 : 1;
   let apolloConfiguredOk = false;
 
   try {
@@ -993,26 +1042,25 @@ export async function sourceCandidatesForJob(params: {
       let pageCallIdx = 0;
 
       for (const pass of apolloPasses) {
-        if (candidates.length >= searchTarget) break;
+        if (
+          candidates.length >= searchTarget &&
+          passIdx >= minPassesBeforeVolumeStop
+        ) {
+          break;
+        }
         if (!pass.titles.length) continue;
 
-        const passHasMust =
-          !!pass.keywords?.length &&
-          mustHaveKeywords.some((m) =>
-            (pass.keywords || []).some(
-              (k) => k.toLowerCase() === m.toLowerCase()
-            )
-          );
-
-        // Page 1 always; page 2 when still thin BEFORE next (broader) pass
-        // Search is 0 credits — pagination is cheaper than dropping CNC / geo.
-        const maxPages = passHasMust || passIdx === 0 ? 2 : 1;
+        // Page 1 always; page 2 on deep passes when still thin (search is free).
+        const maxPages = pass.deepPages || passIdx === 0 ? 2 : 1;
+        const isCompanyTextSkillPass =
+          pass.label === 'titles+location+skillInCompanyText';
 
         for (let page = 1; page <= maxPages; page++) {
-          if (candidates.length >= searchTarget) break;
-          // Only page-2 if page 1 was full-ish (more results likely exist)
-          if (page === 2) {
-            /* checked after page 1 below via continue flag */
+          if (
+            candidates.length >= searchTarget &&
+            passIdx >= minPassesBeforeVolumeStop
+          ) {
+            break;
           }
 
           const apolloRes = await apolloSearchPeople({
@@ -1059,12 +1107,26 @@ export async function sourceCandidatesForJob(params: {
 
           const before = candidates.length;
           for (let i = 0; i < apolloRes.people.length; i++) {
-            add(
-              mapApollo(
-                apolloRes.people[i],
-                pageCallIdx * 100 + passIdx * 10 + i
-              )
+            const mapped = mapApollo(
+              apolloRes.people[i],
+              pageCallIdx * 100 + passIdx * 10 + i
             );
+            // Tag company-text keyword hits (CNC in company name, not experience)
+            if (isCompanyTextSkillPass) {
+              mapped.qualityFlags = [
+                ...(mapped.qualityFlags || []),
+                'skill_in_company_or_profile_text',
+              ];
+              mapped.snippet =
+                mapped.snippet ||
+                `Matched Apollo text for "${(pass.keywords || [])[0] || 'skill'}" (often company name — not verified experience)`;
+            } else if (pass.label === 'titles+location+mfgProxy') {
+              mapped.qualityFlags = [
+                ...(mapped.qualityFlags || []),
+                'mfg_industry_proxy',
+              ];
+            }
+            add(mapped);
           }
           const added = candidates.length - before;
           const slice = buildApolloSearchSlice({
@@ -1133,19 +1195,6 @@ export async function sourceCandidatesForJob(params: {
 
         if (apolloAuthError) break;
         passIdx++;
-
-        // After a good precision pass (esp. with must-have), stop early
-        if (
-          passHasMust &&
-          candidates.filter((c) => c.source === 'apollo').length >=
-            Math.min(5, limit)
-        ) {
-          notes.push(
-            `Stopping after precision pass (${pass.label}) — enough must-have matches`
-          );
-          break;
-        }
-        if (passIdx === 1 && candidates.length >= searchTarget) break;
       }
 
       if (apolloAuthError) {
@@ -1388,16 +1437,21 @@ export async function sourceCandidatesForJob(params: {
         })
         .filter(Boolean) as typeof ranked;
 
-      // Prefer must-have hits when we have enough
+      // Prefer must-have / mfg-context hits, but not company-name-only CNC over title fit
       const withMust = ranked.filter((c) => c.mustHaveHit);
       if (
         mustHaveKeywords.length &&
-        withMust.length >= Math.min(3, ranked.length)
+        withMust.length >= Math.min(3, ranked.length) &&
+        !shopMustHaves.length // shop skills already scored in re-rank; don't force-reorder
       ) {
         const without = ranked.filter((c) => !c.mustHaveHit);
         ranked = [...withMust, ...without];
         notes.push(
           `Re-rank: prioritizing ${withMust.length} with must-have signal (${mustHaveKeywords.join(', ')})`
+        );
+      } else if (shopMustHaves.length && withMust.length) {
+        notes.push(
+          `Re-rank: scored ${withMust.length} with manufacturing/skill context (title+employer preferred over company named "${shopMustHaves[0]}")`
         );
       }
 

@@ -402,10 +402,14 @@ Recruiters hate zero results AND hate broad trash.
 - Include 1–2 MUST-HAVE hard skills when the JD requires them (e.g. CNC, wire EDM, NetSuite, AWS).
 - Do NOT dump every nice-to-have skill into keywords.
 - Soft skills NEVER go into keywords.
+- CRITICAL: Apollo q_keywords does NOT search full employment history. For shop skills like CNC,
+  q_keywords mostly matches COMPANY NAMES ("CNC Industries"), not "Plant Manager who ran CNC".
+  Still put CNC in mustHaveKeywords so the product can run a separate labeled pass + re-rank —
+  but never put CNC into person_titles unless people commonly hold "CNC Manager" as title.
 
 ## How Apollo filters work
 - person_titles + person_locations + q_keywords are AND-style.
-- Too many keywords → 0 people. Too few when CNC is required → random ops leaders with no CNC.
+- Too many keywords → 0 people.
 - People Search is free (masked last names OK for shortlist).
 
 ## JSON schema
