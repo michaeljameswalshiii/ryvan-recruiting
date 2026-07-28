@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { SimpleDialog } from '@/components/ui/simple-dialog';
 import { Plus, RefreshCw, ArrowLeft } from 'lucide-react';
 import { 
@@ -21,7 +20,12 @@ import {
   HiringManagerSelect,
   type HiringManagerFields,
 } from '@/components/job/JobHiringManagerCard';
-import { handleJobDescriptionPaste } from '@/lib/careers/format-description';
+import { JobDescriptionEditor } from '@/components/job/JobDescriptionEditor';
+import {
+  looksLikeHtml,
+  sanitizeJobHtml,
+} from '@/lib/careers/sanitize-job-html';
+import { normalizeJobDescriptionPaste } from '@/lib/careers/format-description';
 
 interface Job {
   id: string;
@@ -123,9 +127,12 @@ export default function NewJobPage() {
 
     try {
       // Success/error toasts come from useCreateJob
+      const desc = (newJobDescription || '').trim();
       await createJobMutation.mutateAsync({
         title: newJobTitle.trim(),
-        description: newJobDescription,
+        description: looksLikeHtml(desc)
+          ? sanitizeJobHtml(desc)
+          : normalizeJobDescriptionPaste(desc),
         location: newJobLocation,
         salaryRange: newJobSalary,
         employmentType: newJobEmploymentType,
@@ -309,19 +316,12 @@ export default function NewJobPage() {
         </div>
 
         <div className="grid gap-2">
-          <Label htmlFor="description">Description</Label>
-          <Textarea
-            id="description"
+          <Label>Description</Label>
+          <JobDescriptionEditor
             value={newJobDescription}
-            onChange={(e) => setNewJobDescription(e.target.value)}
-            onPaste={(e) => handleJobDescriptionPaste(e, setNewJobDescription)}
-            placeholder="Paste a job description — headings and bullets are cleaned automatically."
-            rows={10}
-            className="min-h-[160px] text-sm leading-relaxed"
+            onChange={setNewJobDescription}
+            minHeight={220}
           />
-          <p className="text-xs text-muted-foreground">
-            Paste from Word/Docs is cleaned automatically for a clean layout.
-          </p>
         </div>
 
         {/* Actions */}

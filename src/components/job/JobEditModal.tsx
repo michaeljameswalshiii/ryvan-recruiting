@@ -1,23 +1,24 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useUpdateJob } from '@/lib/hooks/query-job';
 import { useClients } from '@/lib/hooks/query-client';
 import { toast } from 'sonner';
-import { Plus, Sparkles, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import {
   HiringManagerSelect,
   type HiringManagerFields,
 } from '@/components/job/JobHiringManagerCard';
+import { JobDescriptionEditor } from '@/components/job/JobDescriptionEditor';
 import {
-  handleJobDescriptionPaste,
-  normalizeJobDescriptionPaste,
-} from '@/lib/careers/format-description';
+  looksLikeHtml,
+  sanitizeJobHtml,
+} from '@/lib/careers/sanitize-job-html';
+import { normalizeJobDescriptionPaste } from '@/lib/careers/format-description';
 
 interface JobEditModalProps {
   isOpen: boolean;
@@ -62,7 +63,6 @@ export default function JobEditModal({
   focusDescription = false,
 }: JobEditModalProps) {
   const updateJob = useUpdateJob();
-  const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const { data: companiesData = [] } = useClients();
   const companies = useMemo(() => {
     if (Array.isArray(companiesData)) return companiesData;
@@ -123,8 +123,13 @@ export default function JobEditModal({
   useEffect(() => {
     if (!isOpen || !focusDescription) return;
     const t = window.setTimeout(() => {
-      descriptionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      descriptionRef.current?.focus();
+      document
+        .getElementById('edit-description')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const editable = document.querySelector(
+        '#edit-description .job-desc-editor'
+      ) as HTMLElement | null;
+      editable?.focus();
     }, 80);
     return () => window.clearTimeout(t);
   }, [isOpen, focusDescription]);
@@ -138,9 +143,11 @@ export default function JobEditModal({
       jobData.title = formData.title.trim();
     }
     if (formData.description?.trim() !== (job.description || '')) {
-      jobData.description = normalizeJobDescriptionPaste(
-        formData.description.trim()
-      );
+      const desc = formData.description.trim();
+      // Preserve rich HTML; only plain-text pastes get structure-normalized
+      jobData.description = looksLikeHtml(desc)
+        ? sanitizeJobHtml(desc)
+        : normalizeJobDescriptionPaste(desc);
     }
     if (formData.location?.trim() !== (job.location || '')) {
       jobData.location = formData.location.trim();
@@ -327,44 +334,16 @@ export default function JobEditModal({
               </div>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <Label htmlFor="edit-description">Description</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs gap-1"
-                  onClick={() => {
-                    const cleaned = normalizeJobDescriptionPaste(formData.description);
-                    setFormData({ ...formData, description: cleaned });
-                    toast.success('Description formatting cleaned up');
-                  }}
-                  disabled={!formData.description?.trim()}
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Clean formatting
-                </Button>
-              </div>
-              <Textarea
-                id="edit-description"
-                ref={descriptionRef}
+            <div id="edit-description">
+              <Label className="mb-1.5 block">Description</Label>
+              <JobDescriptionEditor
                 value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
+                onChange={(description) =>
+                  setFormData((prev) => ({ ...prev, description }))
                 }
-                onPaste={(e) =>
-                  handleJobDescriptionPaste(e, (next) =>
-                    setFormData((prev) => ({ ...prev, description: next }))
-                  )
-                }
-                rows={12}
-                className="font-sans text-sm leading-relaxed min-h-[200px]"
-                placeholder="Paste a job description — headings and bullets are cleaned automatically."
+                autoFocus={focusDescription}
+                minHeight={240}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                Paste from Word/Docs/email is cleaned automatically (bullets, headings, soft wraps).
-              </p>
             </div>
 
             <label className="flex items-start gap-2 rounded-md border p-3 text-sm cursor-pointer">

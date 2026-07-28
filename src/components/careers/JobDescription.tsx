@@ -1,4 +1,8 @@
 import { parseJobDescription } from "@/lib/careers/format-description";
+import {
+  looksLikeHtml,
+  sanitizeJobHtml,
+} from "@/lib/careers/sanitize-job-html";
 
 type Props = {
   description: string;
@@ -6,11 +10,31 @@ type Props = {
 };
 
 /**
- * Renders a job description with real lists, headings, and readable spacing.
- * Uses explicit bullet glyphs so lists stay visible even if list-style CSS is purged.
+ * Renders a job description with real lists, headings, bold/italic when stored as HTML.
+ * Plain-text legacy postings still use structural parse (bullets / section headings).
  */
 export function JobDescription({ description, className = "" }: Props) {
-  const blocks = parseJobDescription(description);
+  const raw = description || "";
+
+  // Rich HTML (from new editor / Docs paste)
+  if (looksLikeHtml(raw)) {
+    const html = sanitizeJobHtml(raw);
+    if (!html.replace(/<[^>]+>/g, "").trim()) {
+      return (
+        <p className={`text-sm text-slate-500 ${className}`}>
+          No description provided.
+        </p>
+      );
+    }
+    return (
+      <div
+        className={`job-desc-html space-y-1 text-[15px] leading-[1.65] text-slate-700 ${className}`}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  }
+
+  const blocks = parseJobDescription(raw);
 
   if (!blocks.length) {
     return (

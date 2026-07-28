@@ -72,6 +72,58 @@
   }
 }
 
+/* Job description rich HTML (careers + editor) */
+.job-desc-html p,
+.job-desc-editor p {
+  margin: 0 0 0.75em;
+}
+.job-desc-html h2,
+.job-desc-html h3,
+.job-desc-editor h2,
+.job-desc-editor h3 {
+  margin: 1em 0 0.5em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.job-desc-html ul,
+.job-desc-editor ul {
+  margin: 0.5em 0 1em;
+  padding-left: 1.35rem;
+  list-style-type: disc;
+}
+.job-desc-html ol,
+.job-desc-editor ol {
+  margin: 0.5em 0 1em;
+  padding-left: 1.35rem;
+  list-style-type: decimal;
+}
+.job-desc-html li,
+.job-desc-editor li {
+  margin: 0.4em 0;
+}
+.job-desc-html strong,
+.job-desc-html b,
+.job-desc-editor strong,
+.job-desc-editor b {
+  font-weight: 600;
+  color: #0f172a;
+}
+.job-desc-html em,
+.job-desc-html i,
+.job-desc-editor em,
+.job-desc-editor i {
+  font-style: italic;
+}
+.job-desc-html u,
+.job-desc-editor u {
+  text-decoration: underline;
+}
+
 @layer base {
   * {
     @apply border-border;

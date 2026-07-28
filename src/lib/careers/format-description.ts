@@ -382,9 +382,25 @@ export function redactCompanyNames(
   return out;
 }
 
-/** Plain-text preview for cards */
+/** Plain-text preview for cards (works for HTML or plain descriptions) */
 export function descriptionPreview(raw: string, maxLen = 180): string {
-  const blocks = parseJobDescription(raw);
+  let source = raw || "";
+  // Strip simple HTML for card snippets
+  if (/<\/?(p|div|br|ul|ol|li|strong|b|em|i|h[1-6])\b/i.test(source)) {
+    source = source
+      .replace(/<\s*br\s*\/?>/gi, "\n")
+      .replace(/<\s*li[^>]*>/gi, "\n• ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (source.length <= maxLen) return source;
+    return source.slice(0, maxLen - 1).trimEnd() + "…";
+  }
+  const blocks = parseJobDescription(source);
   const parts: string[] = [];
   for (const b of blocks) {
     if (b.type === "p" || b.type === "h") parts.push(b.text);

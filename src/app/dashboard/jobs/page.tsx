@@ -2,10 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, RefreshCw, Sparkles } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -22,10 +21,12 @@ import {
   HiringManagerSelect,
   type HiringManagerFields,
 } from '@/components/job/JobHiringManagerCard';
+import { JobDescriptionEditor } from '@/components/job/JobDescriptionEditor';
 import {
-  handleJobDescriptionPaste,
-  normalizeJobDescriptionPaste,
-} from '@/lib/careers/format-description';
+  looksLikeHtml,
+  sanitizeJobHtml,
+} from '@/lib/careers/sanitize-job-html';
+import { normalizeJobDescriptionPaste } from '@/lib/careers/format-description';
 import { toast } from 'sonner';
 
 export default function JobsPage() {
@@ -147,7 +148,12 @@ export default function JobsPage() {
         title: formData.title.trim(),
         companyId: formData.companyId.trim(),
         companyName,
-        description: normalizeJobDescriptionPaste(formData.description.trim()),
+        description: (() => {
+          const d = formData.description.trim();
+          return looksLikeHtml(d)
+            ? sanitizeJobHtml(d)
+            : normalizeJobDescriptionPaste(d);
+        })(),
         salaryRange: formData.salaryRange.trim(),
         status: formData.status,
         showOnWebsite: formData.showOnWebsite,
@@ -323,44 +329,14 @@ export default function JobsPage() {
               </div>
 
               <div>
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <Label htmlFor="description">Description</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs gap-1"
-                    onClick={() => {
-                      const cleaned = normalizeJobDescriptionPaste(
-                        formData.description
-                      );
-                      setFormData({ ...formData, description: cleaned });
-                      toast.success('Description formatting cleaned up');
-                    }}
-                    disabled={!formData.description?.trim()}
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Clean formatting
-                  </Button>
-                </div>
-                <Textarea
-                  id="description"
+                <Label className="mb-1.5 block">Description</Label>
+                <JobDescriptionEditor
                   value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
+                  onChange={(description) =>
+                    setFormData((prev) => ({ ...prev, description }))
                   }
-                  onPaste={(e) =>
-                    handleJobDescriptionPaste(e, (next) =>
-                      setFormData((prev) => ({ ...prev, description: next }))
-                    )
-                  }
-                  placeholder="Paste a job description — headings and bullets are cleaned automatically."
-                  rows={10}
-                  className="min-h-[160px] text-sm leading-relaxed"
+                  minHeight={200}
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Paste from Word/Docs is cleaned automatically for a clean layout.
-                </p>
               </div>
 
               <div>
