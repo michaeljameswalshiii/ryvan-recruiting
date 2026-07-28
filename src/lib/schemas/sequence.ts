@@ -5,7 +5,13 @@ import { z } from 'zod';
  * Stored in DynamoDB profiles table — no new infra.
  */
 
-export const sequenceChannelSchema = z.enum(['email', 'task', 'linkedin_task']);
+export const sequenceChannelSchema = z.enum([
+  'email',
+  'task',
+  'linkedin_task',
+  /** Embed / create a self-schedule link for the candidate */
+  'schedule_link',
+]);
 export type SequenceChannel = z.infer<typeof sequenceChannelSchema>;
 
 export const sequenceStepSchema = z.object({
@@ -16,6 +22,11 @@ export const sequenceStepSchema = z.object({
   subject: z.string().max(500).optional(),
   bodyTemplate: z.string().max(10000).optional(),
   taskTitle: z.string().max(500).optional(),
+  /** For schedule_link steps: interview type label */
+  scheduleInterviewType: z.string().max(200).optional(),
+  scheduleDurationMinutes: z.number().int().min(15).max(480).optional(),
+  schedulePlanId: z.string().optional(),
+  schedulePoolId: z.string().optional(),
 });
 export type SequenceStep = z.infer<typeof sequenceStepSchema>;
 

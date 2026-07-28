@@ -29,6 +29,8 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 const PUBLIC_PAGE_ROUTES = [
   '/careers', // /careers, /careers/{slug}, /careers/{slug}/{jobId}
+  '/schedule', // candidate self-schedule (token)
+  '/client-schedule', // client interviewer portal (token)
   '/login',
   '/signup',
   '/invite', // invite accept flow

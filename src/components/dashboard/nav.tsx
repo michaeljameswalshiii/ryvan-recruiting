@@ -24,6 +24,7 @@ import {
   MessageSquare,
   ListOrdered,
   Network,
+  CalendarClock,
 } from "lucide-react";
 import { logout } from "@/lib/api/auth-client";
 import { useTheme } from "@/components/ThemeProvider";
@@ -43,6 +44,7 @@ const allNavItems = [
   { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
   { href: "/dashboard/talent-graph", label: "Talent Graph", icon: Network },
   { href: "/dashboard/sequences", label: "Sequences", icon: ListOrdered },
+  { href: "/dashboard/scheduling", label: "Scheduling", icon: CalendarClock },
   { href: "/dashboard/general-ai-usage", label: "AI Assistant", icon: MessageSquare },
   { href: "/dashboard/ai-reliability", label: "AI Reliability", icon: Activity },
   { href: "/dashboard/issues", label: "Issues", icon: AlertCircle },
@@ -150,7 +152,10 @@ export function DashboardNav({ session }: DashboardNavProps) {
       >
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const isActive =
+            pathname === item.href ||
+            (item.href !== "/dashboard" &&
+              pathname?.startsWith(item.href + "/"));
           return (
             <Link
               key={item.href}

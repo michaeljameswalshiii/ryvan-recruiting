@@ -28,10 +28,17 @@ export interface StepRunResult {
   candidateName?: string;
   stepIndex: number;
   channel: string;
-  action: "email_sent" | "task_created" | "skipped" | "error" | "completed";
+  action:
+    | "email_sent"
+    | "task_created"
+    | "schedule_link_created"
+    | "skipped"
+    | "error"
+    | "completed";
   success: boolean;
   message?: string;
   messageId?: string;
+  scheduleUrl?: string;
 }
 
 export interface RunDueResult {
@@ -309,6 +316,116 @@ export async function runEnrollmentStep(params: {
         success: true,
         message: `Sent to ${to}`,
         messageId: sendResult.messageId,
+      };
+    }
+
+    // Self-schedule link step — create booking link + optional email with URL
+    if (step.channel === "schedule_link") {
+      const { createLinkWithUrl } = await import("@/lib/scheduling/booking");
+      const baseUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        (process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : "https://app.trio.local");
+      const appBase = baseUrl.startsWith("http")
+        ? baseUrl
+        : `https://${baseUrl}`;
+
+      const { link, url } = await createLinkWithUrl(
+        tenantId,
+        {
+          candidateId: enrollment.candidateId,
+          candidateName: enrollment.candidateName,
+          candidateEmail: enrollment.candidateEmail || "",
+          jobId: enrollment.jobId,
+          jobTitle: enrollment.jobTitle,
+          planId: step.schedulePlanId,
+          poolId: step.schedulePoolId,
+          interviewTypeName:
+            step.scheduleInterviewType || "Interview",
+          durationMinutes: step.scheduleDurationMinutes || 30,
+          stageOnBook: "interviewing",
+          mode: "self_serve",
+          enrollmentId: enrollment.id,
+          sequenceId: enrollment.sequenceId,
+          expiresInDays: 7,
+        },
+        appBase,
+        userId
+      );
+
+      const lead = await getLeadById(tenantId, enrollment.candidateId);
+      const to = enrollment.candidateEmail || lead?.email || "";
+      let emailSent = false;
+      let messageId: string | undefined;
+
+      if (to?.includes("@")) {
+        const subject =
+          step.subject ||
+          `Please pick a time — ${step.scheduleInterviewType || "Interview"}`;
+        const body =
+          (step.bodyTemplate ||
+            `Hi {{candidateName}},\n\nPlease pick a time that works for you:\n\n{{scheduleUrl}}\n\nBest,\n{{recruiterName}}`)
+            .replace(/\{\{candidateName\}\}/g, enrollment.candidateName || "there")
+            .replace(/\{\{scheduleUrl\}\}/g, url)
+            .replace(/\{\{recruiterName\}\}/g, recruiterName || "Recruiting")
+            .replace(/\{\{jobTitle\}\}/g, enrollment.jobTitle || "the role");
+        const html = body
+          .split("\n")
+          .map((l) => l.trimEnd())
+          .join("<br/>\n");
+        const sendResult = await sendEmail(userId, {
+          from: "",
+          to,
+          subject,
+          text: body,
+          html: `<div style="font-family:sans-serif;font-size:14px;line-height:1.5">${html}</div>`,
+          candidateId: enrollment.candidateId,
+          candidateEmail: to,
+        });
+        emailSent = sendResult.success;
+        messageId = sendResult.messageId;
+      }
+
+      try {
+        await addNoteToCandidate(
+          enrollment.candidateId,
+          `Schedule link created (step ${enrollment.currentStepIndex + 1}): ${url}${emailSent ? " · emailed" : " · email skipped (no address or send failed)"}`,
+          "sequence",
+          {
+            noteType: "Task",
+            stage: "interviewing",
+            jobId: enrollment.jobId,
+            jobTitle: enrollment.jobTitle,
+          }
+        );
+      } catch {
+        /* non-fatal */
+      }
+
+      await putEnrollmentPatch(tenantId, enrollment.id, {
+        lastSentAt: new Date().toISOString(),
+        lastMessageId: messageId,
+        lastChannel: "schedule_link",
+        historyEntry: {
+          at: new Date().toISOString(),
+          stepIndex: enrollment.currentStepIndex,
+          channel: "schedule_link",
+          action: "schedule_link_created",
+          subject: link.interviewTypeName,
+          messageId,
+        },
+      });
+
+      await advanceEnrollment(tenantId, enrollment.id);
+
+      return {
+        ...base,
+        action: "schedule_link_created",
+        success: true,
+        message: url,
+        messageId,
+        scheduleUrl: url,
       };
     }
 
