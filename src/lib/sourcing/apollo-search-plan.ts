@@ -425,11 +425,14 @@ Recruiters hate zero results AND hate broad trash.
 - Never JD fragments. Empty [] for worldwide. Usually 0–1 locations.
 
 ## mustHaveKeywords (REQUIRED when JD requires a tool/process)
-- 1–2 SHORT hard tokens the person must know for the job.
+- These map to Apollo q_keywords = experience / skills / profile TEXT match.
+- They do NOT need to appear in the person's job TITLE or NAME.
+  Example: Plant Manager with CNC experience → titles=["Plant Manager"], mustHaveKeywords=["CNC"].
 - Examples: CNC, EDM, "wire EDM", NetSuite, SAP, SolidWorks, PLC, AWS, React.
 - If the JD says "CNC machining", "Swiss CNC", "must know CNC" → mustHaveKeywords MUST include "CNC".
 - If the JD requires NetSuite implementation → "NetSuite".
 - Max 2 must-haves. Prefer the single strongest (CNC beats a list of five tools).
+- NEVER put CNC into titles unless people commonly hold "CNC Operator" as their title.
 - NEVER soft skills. NEVER long phrases.
 
 ## keywords (optional only)

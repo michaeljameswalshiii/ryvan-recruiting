@@ -533,8 +533,11 @@ export function AgentWorkbench({
     setResearching(true);
     setBusyId('research');
     try {
-      const locationPayload =
-        fillLocationMode === 'any'
+      // When re-running a user-edited plan, locations live in the plan form
+      // (do not wipe them with the Location mode toggle).
+      const locationPayload = useEdited
+        ? undefined
+        : fillLocationMode === 'any'
           ? ''
           : fillLocationMode === 'custom' && fillLocation.trim()
             ? fillLocation.trim()
@@ -953,9 +956,127 @@ export function AgentWorkbench({
           </Button>
           <p className="text-center text-[10px] text-slate-500">
             {isResearch
-              ? 'Reads the job → Apollo/PDL or LLM people discovery · cost on Usage'
+              ? '1st run: LLM builds Apollo plan below · edit plan → Search again'
               : 'Runs until target usable leads (email or phone) · up to 2 hours · pause anytime'}
           </p>
+
+          {/* Always-visible editable Apollo plan (Fill job) */}
+          {isResearch && (
+            <div className="mt-3 rounded-xl border border-violet-500/30 bg-violet-500/10 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-200">
+                  Apollo search plan
+                  {planSourceLabel ? ` · ${planSourceLabel}` : ' · edit anytime'}
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  Filled after first search · tweak & re-run
+                </p>
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <label className="mb-0.5 block text-[10px] text-slate-400">
+                    Job titles (LinkedIn-style, use ; between)
+                  </label>
+                  <textarea
+                    value={planDraft.titles}
+                    onChange={(e) =>
+                      setPlanDraft((d) => ({ ...d, titles: e.target.value }))
+                    }
+                    rows={2}
+                    className="w-full resize-none rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-[11px] text-white outline-none focus:border-violet-400/50"
+                    placeholder="Plant Manager; Manufacturing Manager; Director of Operations"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-0.5 block text-[10px] text-slate-400">
+                      Locations (; separated, empty = anywhere)
+                    </label>
+                    <input
+                      value={planDraft.locations}
+                      onChange={(e) =>
+                        setPlanDraft((d) => ({
+                          ...d,
+                          locations: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-[11px] text-white outline-none focus:border-violet-400/50"
+                      placeholder="Florida"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-[10px] text-amber-200/90">
+                      Experience / skills Apollo must match
+                    </label>
+                    <input
+                      value={planDraft.mustHave}
+                      onChange={(e) =>
+                        setPlanDraft((d) => ({
+                          ...d,
+                          mustHave: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-amber-500/30 bg-black/40 px-2 py-1.5 text-[11px] text-amber-50 outline-none focus:border-amber-400/50"
+                      placeholder="CNC — profile/experience keyword, not title"
+                    />
+                    <p className="mt-0.5 text-[9px] leading-snug text-slate-500">
+                      Apollo q_keywords (experience/skills text) — e.g. CNC.
+                      Not required in their job title.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-0.5 block text-[10px] text-slate-400">
+                      Optional keywords
+                    </label>
+                    <input
+                      value={planDraft.keywords}
+                      onChange={(e) =>
+                        setPlanDraft((d) => ({
+                          ...d,
+                          keywords: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-[11px] text-white outline-none focus:border-violet-400/50"
+                      placeholder="nice-to-have hard skills"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-[10px] text-slate-400">
+                      Seniority (usually empty)
+                    </label>
+                    <input
+                      value={planDraft.seniorities}
+                      onChange={(e) =>
+                        setPlanDraft((d) => ({
+                          ...d,
+                          seniorities: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-[11px] text-white outline-none focus:border-violet-400/50"
+                      placeholder="rarely needed"
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  disabled={researching || !planDraft.titles.trim()}
+                  onClick={() => void startResearch({ useEditedPlan: true })}
+                  className="h-9 w-full rounded-lg bg-violet-600 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
+                >
+                  {researching ? (
+                    <>
+                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                      Searching with your plan…
+                    </>
+                  ) : (
+                    'Search again with this plan'
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -971,120 +1092,6 @@ export function AgentWorkbench({
                 Session ~${researchSpend.toFixed(4)}
               </span>
             </div>
-
-            {/* Editable Apollo plan — edit and re-search without re-running LLM */}
-            {(planDraft.titles.trim() || researchRuns.length > 0) && (
-              <div className="mb-3 rounded-xl border border-violet-500/25 bg-violet-500/10 p-3">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-200">
-                    Apollo search plan
-                    {planSourceLabel ? ` · ${planSourceLabel}` : ''}
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    Edit filters → search again (skips LLM replan)
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <div>
-                    <label className="mb-0.5 block text-[10px] text-slate-400">
-                      Titles (semicolon-separated)
-                    </label>
-                    <textarea
-                      value={planDraft.titles}
-                      onChange={(e) =>
-                        setPlanDraft((d) => ({ ...d, titles: e.target.value }))
-                      }
-                      rows={2}
-                      className="w-full resize-none rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] text-slate-100 outline-none focus:border-violet-400/40"
-                      placeholder="Director of Operations; Plant Manager; Manufacturing Manager"
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-0.5 block text-[10px] text-slate-400">
-                        Locations (semicolon-separated)
-                      </label>
-                      <input
-                        value={planDraft.locations}
-                        onChange={(e) =>
-                          setPlanDraft((d) => ({
-                            ...d,
-                            locations: e.target.value,
-                          }))
-                        }
-                        className="w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] text-slate-100 outline-none focus:border-violet-400/40"
-                        placeholder="Florida · or empty for anywhere"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-0.5 block text-[10px] text-amber-200/80">
-                        Must-have skills (comma-separated)
-                      </label>
-                      <input
-                        value={planDraft.mustHave}
-                        onChange={(e) =>
-                          setPlanDraft((d) => ({
-                            ...d,
-                            mustHave: e.target.value,
-                          }))
-                        }
-                        className="w-full rounded-lg border border-amber-500/20 bg-black/30 px-2 py-1.5 text-[11px] text-amber-50 outline-none focus:border-amber-400/40"
-                        placeholder="CNC, NetSuite, AWS"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-0.5 block text-[10px] text-slate-400">
-                        Optional keywords
-                      </label>
-                      <input
-                        value={planDraft.keywords}
-                        onChange={(e) =>
-                          setPlanDraft((d) => ({
-                            ...d,
-                            keywords: e.target.value,
-                          }))
-                        }
-                        className="w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] text-slate-100 outline-none focus:border-violet-400/40"
-                        placeholder="optional hard skills only"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-0.5 block text-[10px] text-slate-400">
-                        Seniority (usually leave empty)
-                      </label>
-                      <input
-                        value={planDraft.seniorities}
-                        onChange={(e) =>
-                          setPlanDraft((d) => ({
-                            ...d,
-                            seniorities: e.target.value,
-                          }))
-                        }
-                        className="w-full rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] text-slate-100 outline-none focus:border-violet-400/40"
-                        placeholder="manager, director — rare"
-                      />
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    disabled={researching || !planDraft.titles.trim()}
-                    onClick={() => void startResearch({ useEditedPlan: true })}
-                    className="h-9 w-full rounded-lg bg-violet-600 text-xs font-semibold text-white hover:bg-violet-500"
-                  >
-                    {researching ? (
-                      <>
-                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                        Searching with your plan…
-                      </>
-                    ) : (
-                      'Search again with this plan'
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
 
             {researchRuns.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-10 text-center">

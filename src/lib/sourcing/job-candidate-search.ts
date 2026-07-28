@@ -599,7 +599,7 @@ export async function sourceCandidatesForJob(params: {
 
   if (mustHaveKeywords.length) {
     notes.push(
-      `Must-have skill filter (first pass): ${mustHaveKeywords.join(', ')}`
+      `Must-have experience keywords (Apollo q_keywords, not title): ${mustHaveKeywords.join(', ')}`
     );
   }
 
