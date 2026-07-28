@@ -88,10 +88,22 @@ export function scoreProfileQuality(p: QualityInput): QualityResult {
   const company = (p.company || '').trim();
   const location = (p.location || '').trim();
   const source = (p.source || '').toLowerCase();
-  const linkedin = (p.linkedinUrl || p.url || '').trim();
+  const linkedin = (p.linkedinUrl || (p as any).url || '').trim();
   const email = (p.email || '').trim();
+  const isDb = source === 'apollo' || source === 'pdl';
 
-  if (!looksLikeRealPersonName(name)) {
+  // Apollo People Search often returns partial names (first + obfuscated last).
+  // Still treat as keep-eligible when we have employment signals from the DB.
+  const nameOk = looksLikeRealPersonName(name);
+  const apolloPartialName =
+    isDb &&
+    !nameOk &&
+    name.length >= 2 &&
+    !/^unknown$/i.test(name) &&
+    !FAKE_NAME_RE.test(name) &&
+    (title.length >= 3 || company.length >= 2);
+
+  if (!nameOk && !apolloPartialName) {
     return {
       score: 5,
       keep: false,
@@ -99,8 +111,14 @@ export function scoreProfileQuality(p: QualityInput): QualityResult {
       flags: ['bad_name'],
     };
   }
-  score += 15;
-  reasons.push('Real-looking name');
+  if (nameOk) {
+    score += 15;
+    reasons.push('Real-looking name');
+  } else {
+    score += 8;
+    flags.push('partial_name');
+    reasons.push('Partial/obfuscated name from people DB (still usable)');
+  }
 
   if (FAKE_COMPANY_RE.test(company)) {
     flags.push('suspicious_company');
@@ -173,7 +191,14 @@ export function scoreProfileQuality(p: QualityInput): QualityResult {
   }
 
   // Require minimum employment signal for keep
-  const hasEmploymentSignal = !!(company || (title && location) || email);
+  // Apollo search rows often have title only (no email/company until enrich)
+  const hasEmploymentSignal = !!(
+    company ||
+    title ||
+    (title && location) ||
+    email ||
+    (isDb && nameOk)
+  );
   if (!hasEmploymentSignal) {
     flags.push('no_employment_signal');
     score -= 20;
@@ -203,7 +228,12 @@ export function scoreProfileQuality(p: QualityInput): QualityResult {
     };
   }
 
-  const keep = score >= 45 && hasEmploymentSignal;
+  // People-DB (Apollo/PDL): lower bar so search hits are not all discarded.
+  // LLM/web still need score >= 45.
+  const minForKeep = isDb ? 35 : 45;
+  const keep =
+    score >= minForKeep &&
+    (hasEmploymentSignal || (isDb && (title || company || nameOk)));
   if (!keep && !reasons.some((r) => r.includes('drop'))) {
     reasons.push('Below quality threshold');
   }
@@ -220,15 +250,21 @@ export function filterAndRankByQuality<T extends QualityInput>(
   people: T[],
   options?: { minScore?: number; preferDbSources?: boolean }
 ): Array<T & { qualityScore: number; qualityFlags: string[] }> {
-  const minScore = options?.minScore ?? 45;
+  // Default minScore is lower for DB sources (handled inside scoreProfileQuality keep).
+  // options.minScore still applies as a floor when set explicitly.
+  const minScore = options?.minScore;
   const scored = people
     .map((p) => {
       const q = scoreProfileQuality(p);
+      const source = (p.source || '').toLowerCase();
+      const isDb = source === 'apollo' || source === 'pdl';
+      const floor =
+        minScore != null ? minScore : isDb ? 35 : 45;
       return {
         ...p,
         qualityScore: q.score,
         qualityFlags: q.flags,
-        _keep: q.keep && q.score >= minScore,
+        _keep: q.keep && q.score >= floor,
       };
     })
     .filter((p) => p._keep);

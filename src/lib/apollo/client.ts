@@ -244,33 +244,61 @@ function normalizeEmployeeRanges(raw?: string[]): string[] {
 }
 
 function personName(p: any): string {
-  if (p?.name) return String(p.name);
-  const first = p?.first_name || p?.firstName || '';
-  const last = p?.last_name || p?.lastName || '';
-  return `${first} ${last}`.trim() || 'Unknown';
+  if (p?.name && String(p.name).trim() && !/^unknown$/i.test(String(p.name))) {
+    return String(p.name).trim();
+  }
+  const first =
+    p?.first_name ||
+    p?.firstName ||
+    p?.first_name_obfuscated ||
+    p?.firstNameObfuscated ||
+    '';
+  // Apollo People Search often returns last_name_obfuscated (e.g. "S***h") not full last
+  const last =
+    p?.last_name ||
+    p?.lastName ||
+    p?.last_name_obfuscated ||
+    p?.lastNameObfuscated ||
+    '';
+  const combined = `${first} ${last}`.replace(/\s+/g, ' ').trim();
+  if (combined) return combined;
+  // Last resort: title-based label so profiles are not all "Unknown" (which dedupe + quality-drop)
+  const title = p?.title || p?.headline || '';
+  if (title) return `Apollo contact · ${String(title).slice(0, 40)}`;
+  if (p?.id) return `Apollo contact ${String(p.id).slice(0, 8)}`;
+  return 'Unknown';
 }
 
 export function mapPerson(p: any): ApolloPerson {
   const org = p?.organization || p?.company || p?.account || {};
+  const city =
+    p?.city ||
+    p?.present_raw_address ||
+    (typeof p?.present_raw_address === 'string' ? p.present_raw_address : undefined);
   return {
     id: p?.id,
     name: personName(p),
-    first_name: p?.first_name || p?.firstName,
-    last_name: p?.last_name || p?.lastName,
+    first_name: p?.first_name || p?.firstName || p?.first_name_obfuscated,
+    last_name: p?.last_name || p?.lastName || p?.last_name_obfuscated,
     title: p?.title || p?.headline,
     company:
       (typeof org === 'string' ? org : org?.name) ||
       p?.organization_name ||
-      p?.company_name,
+      p?.company_name ||
+      p?.account?.name,
     email: p?.email || undefined,
     phone: p?.phone_number || p?.phone || p?.sanitized_phone,
     linkedin_url: p?.linkedin_url || p?.linkedin,
-    city: p?.city || p?.present_raw_address,
-    state: p?.state,
+    city:
+      typeof city === 'string'
+        ? city.split(',')[0]?.trim() || city
+        : p?.city,
+    state: p?.state || p?.state_code,
     country: p?.country,
-    industry: org?.industry || p?.industry,
+    industry: (typeof org === 'object' && org?.industry) || p?.industry,
     headline: p?.headline,
-    organization_id: org?.id || p?.organization_id,
+    organization_id:
+      (typeof org === 'object' && org?.id) || p?.organization_id,
   };
 }
 

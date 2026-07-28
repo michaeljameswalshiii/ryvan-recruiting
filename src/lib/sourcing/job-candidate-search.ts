@@ -495,10 +495,13 @@ export async function sourceCandidatesForJob(params: {
       droppedLowQuality++;
       return;
     }
+    // Prefer stable unique keys — Apollo search often lacks email/LinkedIn.
+    // Include id so 15 thin rows are not all collapsed to "unknown||".
     const key = (
+      c.id ||
       c.linkedinUrl ||
       c.email ||
-      `${c.name}|${c.title}|${c.company}`
+      `${c.name}|${c.title || ''}|${c.company || ''}`
     )
       .toLowerCase()
       .trim();
@@ -913,16 +916,21 @@ export async function sourceCandidatesForJob(params: {
       .reduce((s, c) => s + c.estimatedCostUsd, 0),
   }).catch(() => {});
 
-  // Quality filter: drop thin / placeholder / likely-hallucinated profiles
+  // Quality filter: drop thin / likely-hallucinated LLM profiles.
+  // Apollo/PDL rows use a lower bar (partial names / missing email are normal on search).
   const beforeQ = candidates.length;
   const ranked = filterAndRankByQuality(candidates, {
-    minScore: 45,
     preferDbSources: true,
   });
   droppedLowQuality += beforeQ - ranked.length;
   if (droppedLowQuality > 0) {
     notes.push(
       `Quality filter removed ${droppedLowQuality} thin or suspicious profile(s)`
+    );
+  }
+  if (beforeQ > 0 && ranked.length === 0) {
+    notes.push(
+      `Had ${beforeQ} raw hit(s) before quality filter — all dropped. Showing none. Check Apollo name/title mapping if this persists.`
     );
   }
 
