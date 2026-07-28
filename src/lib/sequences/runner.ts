@@ -319,6 +319,78 @@ export async function runEnrollmentStep(params: {
       };
     }
 
+    // SMS step — compliance-checked send via AWS End User Messaging
+    if (step.channel === "sms") {
+      const { sendSmsToCandidate } = await import("@/lib/sms/service");
+      const bodyTemplate =
+        step.bodyTemplate ||
+        `Hi {{candidateName}} — quick note about {{jobTitle}}. Reply STOP to opt out.`;
+      const body = bodyTemplate
+        .replace(/\{\{candidateName\}\}/g, enrollment.candidateName || "there")
+        .replace(/\{\{jobTitle\}\}/g, enrollment.jobTitle || "the role")
+        .replace(/\{\{recruiterName\}\}/g, recruiterName || "Recruiting");
+
+      const smsResult = await sendSmsToCandidate(
+        tenantId,
+        {
+          candidateId: enrollment.candidateId,
+          body,
+          // Sequence sends assume prior consent was recorded or requireConsent relaxed
+          markConsent: false,
+        },
+        userId
+      );
+
+      if (!smsResult.ok) {
+        return {
+          ...base,
+          action: "error",
+          success: false,
+          message: smsResult.error || "SMS send blocked",
+        };
+      }
+
+      try {
+        await addNoteToCandidate(
+          enrollment.candidateId,
+          `Sequence SMS (step ${enrollment.currentStepIndex + 1}): ${body.slice(0, 180)}`,
+          "sequence",
+          {
+            noteType: "SMS",
+            jobId: enrollment.jobId,
+            jobTitle: enrollment.jobTitle,
+          }
+        );
+      } catch {
+        /* non-fatal */
+      }
+
+      await putEnrollmentPatch(tenantId, enrollment.id, {
+        lastSentAt: new Date().toISOString(),
+        lastChannel: "sms",
+        historyEntry: {
+          at: new Date().toISOString(),
+          stepIndex: enrollment.currentStepIndex,
+          channel: "sms",
+          action: "sms_sent",
+          subject: body.slice(0, 80),
+          messageId: smsResult.message.providerMessageId,
+        },
+      });
+
+      await advanceEnrollment(tenantId, enrollment.id);
+
+      return {
+        ...base,
+        action: "email_sent",
+        success: true,
+        message: smsResult.simulated
+          ? `SMS simulated to candidate`
+          : `SMS sent`,
+        messageId: smsResult.message.providerMessageId,
+      };
+    }
+
     // Self-schedule link step — create booking link + optional email with URL
     if (step.channel === "schedule_link") {
       const { createLinkWithUrl } = await import("@/lib/scheduling/booking");

@@ -15,6 +15,7 @@ import {
   MessageSquareReply,
   Inbox,
   Calendar,
+  MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +34,7 @@ import { toast } from 'sonner';
 interface SequenceStep {
   id: string;
   order: number;
-  channel: 'email' | 'task' | 'linkedin_task' | 'schedule_link';
+  channel: 'email' | 'task' | 'linkedin_task' | 'schedule_link' | 'sms';
   delayDays: number;
   subject?: string;
   bodyTemplate?: string;
@@ -71,6 +72,7 @@ function channelIcon(channel: string) {
   if (channel === 'email') return <Mail className="h-3.5 w-3.5" />;
   if (channel === 'linkedin_task') return <Linkedin className="h-3.5 w-3.5" />;
   if (channel === 'schedule_link') return <Calendar className="h-3.5 w-3.5" />;
+  if (channel === 'sms') return <MessageSquare className="h-3.5 w-3.5" />;
   return <CheckSquare className="h-3.5 w-3.5" />;
 }
 
@@ -78,6 +80,7 @@ function channelLabel(channel: string) {
   if (channel === 'email') return 'Email';
   if (channel === 'linkedin_task') return 'LinkedIn task';
   if (channel === 'schedule_link') return 'Schedule link';
+  if (channel === 'sms') return 'SMS';
   return 'Task';
 }
 

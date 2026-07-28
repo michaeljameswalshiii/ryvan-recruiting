@@ -23,6 +23,7 @@ import {
   Building2,
   CreditCard,
   Terminal,
+  MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,6 +36,7 @@ import { OrgSettings } from '@/components/settings/OrgSettings';
 import { PlanSettings } from '@/components/settings/PlanSettings';
 import { McpKeysSettings } from '@/components/settings/McpKeysSettings';
 import { ApolloSettings } from '@/components/settings/ApolloSettings';
+import { TextingSettings } from '@/components/settings/TextingSettings';
 
 interface EmailConnection {
   provider: 'gmail' | 'outlook';
@@ -64,7 +66,13 @@ interface AiCredStatus {
   grokKeyHint?: string;
 }
 
-type SettingsTab = 'account' | 'team' | 'organization' | 'plan' | 'integrations';
+type SettingsTab =
+  | 'account'
+  | 'team'
+  | 'organization'
+  | 'plan'
+  | 'integrations'
+  | 'texting';
 
 export default function SettingsPage() {
   const searchParams = useSearchParams();
@@ -397,6 +405,11 @@ export default function SettingsPage() {
       icon: <Terminal className="h-4 w-4" />,
       adminOnly: true,
     },
+    {
+      id: 'texting',
+      label: 'Texting',
+      icon: <MessageSquare className="h-4 w-4" />,
+    },
     { id: 'plan', label: 'Plan', icon: <CreditCard className="h-4 w-4" /> },
   ];
 
@@ -437,6 +450,7 @@ export default function SettingsPage() {
           <McpKeysSettings />
         </div>
       )}
+      {tab === 'texting' && <TextingSettings />}
       {tab === 'plan' && <PlanSettings />}
 
       {tab === 'account' && (

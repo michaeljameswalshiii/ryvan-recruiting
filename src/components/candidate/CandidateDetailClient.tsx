@@ -36,6 +36,7 @@ import { SendEmailModal } from '@/components/email/send-email-modal';
 import { ResumeViewer } from '@/components/candidate/ResumeViewer';
 import { LinkJobModal } from '@/components/candidate/LinkJobModal';
 import { MergeCandidatesModal } from '@/components/candidate/MergeCandidatesModal';
+import { CandidateSmsPanel } from '@/components/candidate/CandidateSmsPanel';
 import { Link2, Unlink, Combine } from 'lucide-react';
 
 import {
@@ -1212,6 +1213,15 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   Added {formatShortDate(safe.createdAt)} · {safe.source || 'Manual'}
                 </span>
               </div>
+              {candidateId && (
+                <div className="pt-3 max-w-xl">
+                  <CandidateSmsPanel
+                    candidateId={candidateId}
+                    phone={contactInfo.phone}
+                    candidateName={contactInfo.name}
+                  />
+                </div>
+              )}
             </div>
           </div>
 

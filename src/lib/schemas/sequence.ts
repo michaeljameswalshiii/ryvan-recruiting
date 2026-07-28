@@ -11,6 +11,8 @@ export const sequenceChannelSchema = z.enum([
   'linkedin_task',
   /** Embed / create a self-schedule link for the candidate */
   'schedule_link',
+  /** SMS via AWS End User Messaging (compliance-checked) */
+  'sms',
 ]);
 export type SequenceChannel = z.infer<typeof sequenceChannelSchema>;
 
