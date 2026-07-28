@@ -5,7 +5,10 @@
  * @serverOnly
  */
 
-import { completeJson } from '@/lib/list-builder/llm-json';
+import {
+  completeJson,
+  fillJobPlanModelChain,
+} from '@/lib/list-builder/llm-json';
 
 /** Minimal job fields needed for planning (avoid circular runtime import) */
 export type JobPlanInput = {
@@ -385,6 +388,8 @@ export async function buildApolloSearchPlan(params: {
   plan: ApolloSearchPlan;
   source: 'llm' | 'heuristic';
   error?: string;
+  /** Bedrock model that produced the plan (when source=llm) */
+  modelId?: string;
 }> {
   const fallback = heuristicApolloPlan(params.job, params.locationOverride);
 
@@ -485,7 +490,8 @@ If the JD requires CNC / EDM / NetSuite / similar tools, put them in mustHaveKey
 Do not leave mustHaveKeywords empty when a clear tool requirement is in the JD.`;
 
   try {
-    const { data, error } = await completeJson<unknown>(
+    // Sonnet for plan quality; list-builder stays on Haiku (see fillJobPlanModelChain)
+    const { data, error, modelId } = await completeJson<unknown>(
       system,
       user,
       {
@@ -494,7 +500,12 @@ Do not leave mustHaveKeywords empty when a clear tool requirement is in the JD.`
         purpose: 'apollo-search-plan',
         queryPreview: params.job.title,
       },
-      { timeoutMs: 20_000 }
+      {
+        timeoutMs: 25_000,
+        modelIds: fillJobPlanModelChain(),
+        temperature: 0.2,
+        maxTokens: 2048,
+      }
     );
 
     if (error || data == null) {
@@ -502,6 +513,7 @@ Do not leave mustHaveKeywords empty when a clear tool requirement is in the JD.`
         plan: fallback,
         source: 'heuristic',
         error: error || 'LLM returned no plan',
+        modelId,
       };
     }
 
@@ -571,7 +583,7 @@ Do not leave mustHaveKeywords empty when a clear tool requirement is in the JD.`
       plan.seniorities = [];
     }
 
-    return { plan, source: 'llm' };
+    return { plan, source: 'llm', modelId };
   } catch (err: any) {
     return {
       plan: fallback,

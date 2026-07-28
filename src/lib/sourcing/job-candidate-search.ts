@@ -735,11 +735,17 @@ export async function sourceCandidatesForJob(params: {
       tenantId: params.tenantId,
       userId: params.userId,
     });
-    // Small LLM cost for planning (Haiku logged separately in completeJson)
-    llmUsd += 0.003;
-    llmInputTokens += 800;
-    llmOutputTokens += 200;
-    llmModelId = llmModelId || 'apollo-search-plan';
+    // Sonnet plan cost estimate (actual tokens logged in completeJson / Usage)
+    if (planResult.source === 'llm') {
+      llmUsd += 0.012;
+      llmInputTokens += 1800;
+      llmOutputTokens += 400;
+      llmModelId = planResult.modelId || 'claude-sonnet-4-6:apollo-search-plan';
+      const short = (planResult.modelId || 'sonnet-4.6')
+        .replace(/^.*anthropic\./, '')
+        .slice(0, 48);
+      notes.push(`Apollo plan model: ${short}`);
+    }
     plan = planResult.plan;
     planSource = planResult.source;
     planLlmError = planResult.error;
@@ -1296,10 +1302,12 @@ export async function sourceCandidatesForJob(params: {
         tenantId: params.tenantId,
         userId: params.userId,
       });
-      llmUsd += rr.usedLlm ? 0.004 : 0;
-      llmInputTokens += rr.usedLlm ? 1200 : 0;
-      llmOutputTokens += rr.usedLlm ? 400 : 0;
-      llmModelId = llmModelId || 'fill-job-rerank';
+      if (rr.usedLlm) {
+        llmUsd += 0.015;
+        llmInputTokens += 2200;
+        llmOutputTokens += 600;
+        llmModelId = rr.modelId || llmModelId || 'claude-sonnet-4-6:fill-job-rerank';
+      }
 
       const byId = new Map(qualityKept.map((c) => [String(c.id), c]));
       ranked = rr.ranked
@@ -1331,9 +1339,12 @@ export async function sourceCandidatesForJob(params: {
         );
       }
 
+      const modelHint = rr.modelId
+        ? rr.modelId.replace(/^.*anthropic\./, '').slice(0, 40)
+        : '';
       notes.push(
         rr.usedLlm
-          ? `LLM re-rank applied to ${rr.ranked.length} candidate(s) vs JD`
+          ? `Sonnet re-rank applied to ${rr.ranked.length} candidate(s) vs JD${modelHint ? ` (${modelHint})` : ''}`
           : `Heuristic re-rank applied${rr.error ? ` (${rr.error})` : ''}`
       );
     } catch (err: any) {

@@ -17,6 +17,7 @@ const region =
 
 const client = new BedrockRuntimeClient({ region });
 
+/** List-builder / generic JSON batches — cheap & fast */
 const MODEL =
   process.env.LIST_BUILDER_MODEL_ID ||
   'global.anthropic.claude-haiku-4-5-20251001-v1:0';
@@ -27,6 +28,64 @@ const FALLBACKS = [
   'us.anthropic.claude-3-haiku-20240307-v1:0',
 ];
 
+/**
+ * Fill-job Apollo plan + re-rank — Sonnet quality (cost/quality blend).
+ * Does not change list-builder Haiku defaults.
+ *
+ * Env:
+ *   FILL_JOB_PLAN_MODEL_ID   — JD → Apollo filters (default Sonnet 4.6)
+ *   FILL_JOB_RERANK_MODEL_ID — shortlist scoring (defaults to plan model)
+ *   AI_MODEL                 — shared product default if plan env unset
+ */
+export const FILL_JOB_PLAN_MODEL =
+  process.env.FILL_JOB_PLAN_MODEL_ID ||
+  process.env.AI_MODEL ||
+  'global.anthropic.claude-sonnet-4-6';
+
+export const FILL_JOB_RERANK_MODEL =
+  process.env.FILL_JOB_RERANK_MODEL_ID ||
+  process.env.FILL_JOB_PLAN_MODEL_ID ||
+  process.env.AI_MODEL ||
+  'global.anthropic.claude-sonnet-4-6';
+
+const SONNET_FALLBACKS = [
+  'global.anthropic.claude-sonnet-4-6',
+  'us.anthropic.claude-sonnet-4-6',
+  'us.anthropic.claude-sonnet-4-6-20250219',
+];
+
+function dedupeModels(ids: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of ids) {
+    const t = (id || '').trim();
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/** Model chain for Fill-job Apollo plan (Sonnet first, Haiku last-resort). */
+export function fillJobPlanModelChain(): string[] {
+  return dedupeModels([
+    FILL_JOB_PLAN_MODEL,
+    ...SONNET_FALLBACKS,
+    MODEL,
+    'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+  ]);
+}
+
+/** Model chain for Fill-job candidate re-rank. */
+export function fillJobRerankModelChain(): string[] {
+  return dedupeModels([
+    FILL_JOB_RERANK_MODEL,
+    ...SONNET_FALLBACKS,
+    MODEL,
+    'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+  ]);
+}
+
 export type ListBuilderLlmUsageContext = {
   tenantId?: string;
   userId?: string;
@@ -34,6 +93,18 @@ export type ListBuilderLlmUsageContext = {
   purpose?: string;
   jobId?: string;
   queryPreview?: string;
+};
+
+export type CompleteJsonOptions = {
+  timeoutMs?: number;
+  /**
+   * Override model chain (first success wins).
+   * Omit → list-builder Haiku chain.
+   * Use fillJobPlanModelChain() / fillJobRerankModelChain() for Fill job.
+   */
+  modelIds?: string[];
+  temperature?: number;
+  maxTokens?: number;
 };
 
 function estimateTokens(text: string): number {
@@ -124,17 +195,23 @@ export async function completeJson<T = unknown>(
   system: string,
   user: string,
   usageCtx?: ListBuilderLlmUsageContext,
-  options?: { timeoutMs?: number }
-): Promise<{ data?: T; text?: string; error?: string }> {
+  options?: CompleteJsonOptions
+): Promise<{ data?: T; text?: string; error?: string; modelId?: string }> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
+  const modelIds =
+    options?.modelIds?.length ? options.modelIds : FALLBACKS;
+  const temperature =
+    typeof options?.temperature === 'number' ? options.temperature : 0.3;
+  const maxTokens =
+    typeof options?.maxTokens === 'number' ? options.maxTokens : 4096;
   let lastErr = '';
-  for (const modelId of FALLBACKS) {
+  for (const modelId of modelIds) {
     const started = Date.now();
     try {
       const body = {
         anthropic_version: 'bedrock-2023-05-31',
-        max_tokens: 4096,
-        temperature: 0.3,
+        max_tokens: maxTokens,
+        temperature,
         system,
         messages: [{ role: 'user', content: user }],
       };
@@ -183,9 +260,9 @@ export async function completeJson<T = unknown>(
         text.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
       const raw = jsonMatch ? jsonMatch[1].trim() : text.trim();
       try {
-        return { data: JSON.parse(raw) as T, text };
+        return { data: JSON.parse(raw) as T, text, modelId };
       } catch {
-        return { text, error: 'Model returned non-JSON' };
+        return { text, error: 'Model returned non-JSON', modelId };
       }
     } catch (err: any) {
       lastErr = err?.message || String(err);

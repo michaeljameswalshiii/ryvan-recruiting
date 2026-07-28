@@ -5,7 +5,10 @@
  * @serverOnly
  */
 
-import { completeJson } from '@/lib/list-builder/llm-json';
+import {
+  completeJson,
+  fillJobRerankModelChain,
+} from '@/lib/list-builder/llm-json';
 
 export type RerankInputPerson = {
   id: string;
@@ -40,6 +43,7 @@ export async function rerankCandidatesForJob(params: {
   ranked: RerankResultPerson[];
   error?: string;
   usedLlm: boolean;
+  modelId?: string;
 }> {
   const people = (params.people || []).slice(0, 20);
   if (!people.length) {
@@ -110,7 +114,8 @@ ${JSON.stringify(
 )}`;
 
   try {
-    const { data, error } = await completeJson<{
+    // Sonnet for re-rank quality; list-builder stays on Haiku
+    const { data, error, modelId } = await completeJson<{
       rankings?: Array<{
         id?: string;
         fitScore?: number;
@@ -127,11 +132,21 @@ ${JSON.stringify(
         purpose: 'fill-job-rerank',
         queryPreview: params.jobTitle,
       },
-      { timeoutMs: 22_000 }
+      {
+        timeoutMs: 22_000,
+        modelIds: fillJobRerankModelChain(),
+        temperature: 0.15,
+        maxTokens: 2500,
+      }
     );
 
     if (error || !data?.rankings?.length) {
-      return { ranked: heuristic, usedLlm: false, error: error || 'empty rank' };
+      return {
+        ranked: heuristic,
+        usedLlm: false,
+        error: error || 'empty rank',
+        modelId,
+      };
     }
 
     const byId = new Map(
@@ -179,7 +194,7 @@ ${JSON.stringify(
     const final =
       geoOkList.length >= Math.min(3, ranked.length) ? geoOkList : ranked;
 
-    return { ranked: final, usedLlm: true };
+    return { ranked: final, usedLlm: true, modelId };
   } catch (err: any) {
     return {
       ranked: heuristic,
