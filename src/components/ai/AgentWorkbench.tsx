@@ -175,25 +175,72 @@ function resultsPath(_mode: AgentMode, id: string): string {
  * Long "name + full title + company" keyword strings often return 0 hits.
  * Prefer quoted name (+ short company); never dump the full job title.
  */
+/** Apollo masks last names as Me*** — never put asterisks into search URLs. */
+function cleanSearchName(name?: string): {
+  queryName: string;
+  isMasked: boolean;
+} {
+  const raw = (name || '').trim();
+  const isMasked = /\*{2,}/.test(raw);
+  // Strip * and collapse spaces: "Toby Me***" → "Toby Me"
+  const stripped = raw
+    .replace(/\*+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!stripped) return { queryName: '', isMasked };
+  const parts = stripped.split(/\s+/).filter(Boolean);
+  if (isMasked) {
+    // First name only is more reliable than partial last (Me / Ha / Ep)
+    return { queryName: parts[0] || stripped, isMasked: true };
+  }
+  return { queryName: stripped, isMasked: false };
+}
+
+/** "VP / Director of Ops · Plant Manager" → first usable title */
+function cleanSearchTitle(title?: string): string {
+  if (!title) return '';
+  let t = title
+    .split(/\s*\/\s*/)[0]
+    .split(/\s*[·•|]\s*/)[0]
+    .replace(/\s+/g, ' ')
+    .trim();
+  // Drop trailing seniority clutter after em-dash style dual titles
+  if (t.length > 55) t = t.slice(0, 55).replace(/\s+\S*$/, '');
+  return t;
+}
+
+function cleanSearchCompany(company?: string): string {
+  if (!company) return '';
+  return company
+    .replace(/\b(inc\.?|llc|ltd|corp\.?|co\.|plc)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 48);
+}
+
+/**
+ * Build a LinkedIn people search that works for Apollo privacy-masked names.
+ * Prefer: first name + title + company (not "Toby Me***").
+ */
 function linkedInPeopleSearchUrl(person: {
   name?: string;
   title?: string;
   company?: string;
 }): string {
-  const name = (person.name || '').trim();
-  if (!name) {
-    return 'https://www.linkedin.com/search/results/people/';
+  const { queryName, isMasked } = cleanSearchName(person.name);
+  const title = cleanSearchTitle(person.title);
+  const company = cleanSearchCompany(person.company);
+
+  const parts: string[] = [];
+  if (queryName) {
+    // Quote full real names; don't quote single first names on masked rows
+    parts.push(isMasked || !queryName.includes(' ') ? queryName : `"${queryName}"`);
   }
-  const company = (person.company || '')
-    .replace(/\b(inc\.?|llc|ltd|corp\.?|co\.)\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 48);
-  const keywords = company ? `"${name}" ${company}` : `"${name}"`;
-  const params = new URLSearchParams({
-    keywords,
-    origin: 'GLOBAL_SEARCH_HEADER',
-  });
+  if (title) parts.push(title);
+  if (company) parts.push(company);
+
+  const keywords = parts.join(' ').trim() || 'people';
+  const params = new URLSearchParams({ keywords });
   return `https://www.linkedin.com/search/results/people/?${params.toString()}`;
 }
 
@@ -202,9 +249,19 @@ function googlePersonSearchUrl(person: {
   title?: string;
   company?: string;
 }): string {
-  const name = (person.name || '').trim();
-  const company = (person.company || '').trim();
-  const q = [`"${name}"`, company, 'LinkedIn'].filter(Boolean).join(' ');
+  const { queryName, isMasked } = cleanSearchName(person.name);
+  const title = cleanSearchTitle(person.title);
+  const company = cleanSearchCompany(person.company);
+
+  const parts: string[] = [];
+  if (queryName) {
+    parts.push(isMasked || !queryName.includes(' ') ? queryName : `"${queryName}"`);
+  }
+  if (title) parts.push(`"${title}"`);
+  if (company) parts.push(`"${company}"`);
+  parts.push('site:linkedin.com/in OR LinkedIn');
+
+  const q = parts.filter(Boolean).join(' ');
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 }
 
@@ -1094,12 +1151,18 @@ export function AgentWorkbench({
                                   {c.email}
                                 </a>
                               )}
-                              {/* LLM/web /in/ URLs often 404 — only trust direct profile from Apollo/PDL */}
-                              {c.linkedinUrl && !isLlm ? (
+                              {/* Direct /in/ only when enriched; else people-search (no asterisks in query) */}
+                              {c.linkedinUrl &&
+                              !isLlm &&
+                              /linkedin\.com\/in\//i.test(c.linkedinUrl) ? (
                                 <a
-                                  href={c.linkedinUrl}
+                                  href={
+                                    c.linkedinUrl.startsWith('http')
+                                      ? c.linkedinUrl
+                                      : `https://${c.linkedinUrl.replace(/^\/+/, '')}`
+                                  }
                                   target="_blank"
-                                  rel="noreferrer"
+                                  rel="noopener noreferrer"
                                   className="inline-flex items-center gap-1 text-sky-300 hover:underline"
                                 >
                                   <Linkedin className="h-3 w-3" />
@@ -1109,8 +1172,9 @@ export function AgentWorkbench({
                                 <a
                                   href={liSearch}
                                   target="_blank"
-                                  rel="noreferrer"
+                                  rel="noopener noreferrer"
                                   className="inline-flex items-center gap-1 text-sky-300 hover:underline"
+                                  title="Opens LinkedIn people search (first name + title + company)"
                                 >
                                   <Linkedin className="h-3 w-3" />
                                   Find on LinkedIn
@@ -1119,8 +1183,9 @@ export function AgentWorkbench({
                               <a
                                 href={googleSearch}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 text-slate-400 hover:text-sky-300 hover:underline"
+                                title="Google: name + title + company + LinkedIn"
                               >
                                 <ExternalLink className="h-3 w-3" />
                                 Google
