@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { INDUSTRY_PLAYS } from '@/lib/sourcing/industry-plays';
 
 export type AgentMode = 'companies' | 'research';
 
@@ -48,7 +49,19 @@ type SourcedPerson = {
   url?: string;
   qualityScore?: number;
   qualityFlags?: string[];
+  /** 0–100 fit vs JD after re-rank */
+  fitScore?: number;
+  fitReason?: string;
+  mustHaveHit?: boolean;
+  geoOk?: boolean;
 };
+
+function fitBadgeClass(score: number): string {
+  if (score >= 85) return 'bg-emerald-500/25 text-emerald-100 ring-emerald-400/40';
+  if (score >= 70) return 'bg-sky-500/20 text-sky-100 ring-sky-400/35';
+  if (score >= 50) return 'bg-amber-500/20 text-amber-100 ring-amber-400/30';
+  return 'bg-slate-500/20 text-slate-300 ring-slate-400/25';
+}
 
 type ApolloSearchPlanDto = {
   titles?: string[];
@@ -975,6 +988,37 @@ export function AgentWorkbench({
                   Filled after first search · tweak & re-run
                 </p>
               </div>
+              {/* One-click industry plays → seed plan fields */}
+              <div className="mb-2.5">
+                <p className="mb-1 text-[10px] text-slate-400">
+                  Quick plays (seed plan, then edit)
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {INDUSTRY_PLAYS.map((play) => (
+                    <button
+                      key={play.id}
+                      type="button"
+                      title={play.description}
+                      onClick={() => {
+                        setPlanDraft({
+                          titles: play.titles.join('; '),
+                          locations: play.locationHint || planDraft.locations,
+                          mustHave: play.mustHaveKeywords.join(', '),
+                          keywords: play.keywords.join(', '),
+                          seniorities: '',
+                        });
+                        setPlanSourceLabel('play');
+                        toast.success(
+                          `Loaded “${play.label}” — edit if needed, then Search again`
+                        );
+                      }}
+                      className="rounded-full border border-violet-400/30 bg-violet-500/15 px-2.5 py-1 text-[10px] font-medium text-violet-100 transition hover:border-violet-300/50 hover:bg-violet-500/25"
+                    >
+                      {play.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="space-y-2">
                 <div>
                   <label className="mb-0.5 block text-[10px] text-slate-400">
@@ -1261,6 +1305,13 @@ export function AgentWorkbench({
                         const liSearch = linkedInPeopleSearchUrl(c);
                         const googleSearch = googlePersonSearchUrl(c);
                         const isLlm = c.source === 'llm' || c.source === 'web';
+                        const fit =
+                          typeof c.fitScore === 'number'
+                            ? c.fitScore
+                            : typeof c.qualityScore === 'number'
+                              ? c.qualityScore
+                              : undefined;
+                        const fitReason = c.fitReason || c.snippet;
                         return (
                         <li
                           key={`${run.id}-${c.id || i}`}
@@ -1268,6 +1319,14 @@ export function AgentWorkbench({
                         >
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-1.5">
+                              {typeof fit === 'number' && (
+                                <span
+                                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${fitBadgeClass(fit)}`}
+                                  title="Fit score vs this job (re-ranked)"
+                                >
+                                  {fit}
+                                </span>
+                              )}
                               <p className="text-xs font-medium text-white">
                                 {c.name}
                               </p>
@@ -1289,6 +1348,22 @@ export function AgentWorkbench({
                                     : c.source}
                                 </span>
                               )}
+                              {c.mustHaveHit && (
+                                <span
+                                  className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide bg-amber-500/25 text-amber-100"
+                                  title="Must-have skill/experience signal found"
+                                >
+                                  must-have
+                                </span>
+                              )}
+                              {c.geoOk === false && (
+                                <span
+                                  className="rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wide bg-rose-500/20 text-rose-200"
+                                  title="Location may not match job geo"
+                                >
+                                  geo?
+                                </span>
+                              )}
                               {c.source === 'apollo' &&
                                 /\*{2,}/.test(c.name || '') && (
                                   <span
@@ -1303,15 +1378,10 @@ export function AgentWorkbench({
                               {[c.title, c.company, c.location]
                                 .filter(Boolean)
                                 .join(' · ')}
-                              {typeof c.qualityScore === 'number' && (
-                                <span className="ml-1.5 text-slate-500">
-                                  · Q{c.qualityScore}
-                                </span>
-                              )}
                             </p>
-                            {c.snippet && (
-                              <p className="mt-1 text-[10px] text-slate-500 line-clamp-2">
-                                {c.snippet}
+                            {fitReason && (
+                              <p className="mt-1 text-[10px] leading-snug text-violet-200/80 line-clamp-2">
+                                {fitReason}
                               </p>
                             )}
                             <div className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-1 text-[11px]">

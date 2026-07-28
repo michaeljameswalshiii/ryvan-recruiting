@@ -42,6 +42,7 @@ import {
   planFromUserEdit,
   type ApolloSearchPlan,
 } from '@/lib/sourcing/apollo-search-plan';
+import { rerankCandidatesForJob } from '@/lib/sourcing/rerank-candidates';
 
 export { isValidPersonLocation };
 
@@ -60,6 +61,12 @@ export type SourcedCandidate = {
   url?: string;
   qualityScore?: number;
   qualityFlags?: string[];
+  /** LLM / heuristic fit vs JD (0–100) */
+  fitScore?: number;
+  /** One-line recruiter explanation */
+  fitReason?: string;
+  mustHaveHit?: boolean;
+  geoOk?: boolean;
 };
 
 export type JobContext = {
@@ -837,12 +844,17 @@ export async function sourceCandidatesForJob(params: {
           estimatedCostUsd: slice.estimatedUsd,
           count: apolloRes.people.length,
         });
-        if (!apolloSlice) apolloSlice = slice;
-        else
+        if (!apolloSlice) {
+          apolloSlice = slice;
+        } else {
           apolloSlice = {
-            ...apolloSlice,
             results: apolloSlice.results + slice.results,
+            credits: apolloSlice.credits,
+            estimatedUsd: apolloSlice.estimatedUsd + slice.estimatedUsd,
+            endpoint: apolloSlice.endpoint,
+            note: apolloSlice.note,
           };
+        }
         void logApolloUsage({
           modelId: `apollo-source-for-job-${pass.label}`,
           resultsCount: apolloRes.people.length,
@@ -992,7 +1004,7 @@ export async function sourceCandidatesForJob(params: {
       const pdlRes = await pdlSearchPeople({
         titles,
         locations,
-        keywords: keywords.slice(0, 6),
+        keywords: [...mustHaveKeywords, ...optionalKeywords].slice(0, 6),
         size: Math.min(limit, 15),
       });
       if (pdlRes.error && !pdlRes.people.length) {
@@ -1101,7 +1113,200 @@ export async function sourceCandidatesForJob(params: {
     );
   }
 
-  const usageBreakdown = sumBreakdown({
+  // Drop people clearly outside target geo (e.g. China when Florida was requested)
+  const geoTargets = locations.length
+    ? locations
+    : plan.personLocations || [];
+  let geoFiltered = candidates;
+  if (geoTargets.length) {
+    const beforeGeo = geoFiltered.length;
+    geoFiltered = geoFiltered.filter((c) =>
+      personMatchesGeoTarget(c.location, geoTargets)
+    );
+    const droppedGeo = beforeGeo - geoFiltered.length;
+    if (droppedGeo > 0) {
+      notes.push(
+        `Geo filter removed ${droppedGeo} profile(s) outside ${geoTargets.join(', ')} (e.g. non-US when Florida requested)`
+      );
+    }
+  }
+
+  // Quality filter: drop thin / likely-hallucinated LLM profiles.
+  const beforeQ = geoFiltered.length;
+  let qualityKept = filterAndRankByQuality(geoFiltered, {
+    preferDbSources: true,
+  });
+  droppedLowQuality += beforeQ - qualityKept.length;
+  if (droppedLowQuality > 0) {
+    notes.push(
+      `Quality filter removed ${droppedLowQuality} thin or suspicious profile(s)`
+    );
+  }
+
+  // Soft-pass: never empty a full Apollo page
+  if (qualityKept.length === 0 && beforeQ > 0) {
+    const dbOnly = geoFiltered.filter(
+      (c) => c.source === 'apollo' || c.source === 'pdl'
+    );
+    if (dbOnly.length) {
+      notes.push(
+        `Soft-pass ${dbOnly.length} Apollo/PDL hit(s) after quality — will re-rank vs JD`
+      );
+      qualityKept = dbOnly.map((c) => ({
+        ...c,
+        qualityScore: c.qualityScore ?? 40,
+        qualityFlags: c.qualityFlags ?? ['soft_pass'],
+      }));
+    }
+  }
+
+  // --- Best-in-class: LLM re-rank shortlist vs JD + must-haves (CNC etc.) ---
+  let ranked: Array<
+    SourcedCandidate & {
+      qualityScore?: number;
+      qualityFlags?: string[];
+      fitScore?: number;
+      fitReason?: string;
+      mustHaveHit?: boolean;
+      geoOk?: boolean;
+    }
+  > = qualityKept;
+
+  if (qualityKept.length > 0) {
+    try {
+      const rr = await rerankCandidatesForJob({
+        jobTitle: job.title,
+        jobLocation: searchLocation || job.location || locations[0],
+        jobDescription:
+          params.input || job.description || plan.rationale || job.title,
+        mustHaveKeywords: mustHaveKeywords,
+        people: qualityKept.map((c) => ({
+          id: c.id,
+          name: c.name,
+          title: c.title,
+          company: c.company,
+          location: c.location,
+          source: c.source,
+          snippet: c.snippet,
+        })),
+        tenantId: params.tenantId,
+        userId: params.userId,
+      });
+      llmUsd += rr.usedLlm ? 0.004 : 0;
+      llmInputTokens += rr.usedLlm ? 1200 : 0;
+      llmOutputTokens += rr.usedLlm ? 400 : 0;
+      llmModelId = llmModelId || 'fill-job-rerank';
+
+      const byId = new Map(qualityKept.map((c) => [String(c.id), c]));
+      ranked = rr.ranked
+        .map((r) => {
+          const base = byId.get(String(r.id));
+          if (!base) return null;
+          return {
+            ...base,
+            fitScore: r.fitScore,
+            fitReason: r.fitReason,
+            mustHaveHit: r.mustHaveHit,
+            geoOk: r.geoOk,
+            qualityScore: r.fitScore,
+            snippet: r.fitReason || base.snippet,
+          };
+        })
+        .filter(Boolean) as typeof ranked;
+
+      // Prefer must-have hits when we have enough
+      const withMust = ranked.filter((c) => c.mustHaveHit);
+      if (
+        mustHaveKeywords.length &&
+        withMust.length >= Math.min(3, ranked.length)
+      ) {
+        const without = ranked.filter((c) => !c.mustHaveHit);
+        ranked = [...withMust, ...without];
+        notes.push(
+          `Re-rank: prioritizing ${withMust.length} with must-have signal (${mustHaveKeywords.join(', ')})`
+        );
+      }
+
+      notes.push(
+        rr.usedLlm
+          ? `LLM re-rank applied to ${rr.ranked.length} candidate(s) vs JD`
+          : `Heuristic re-rank applied${rr.error ? ` (${rr.error})` : ''}`
+      );
+    } catch (err: any) {
+      notes.push(`Re-rank skipped: ${err?.message || err}`);
+      ranked = qualityKept;
+    }
+  }
+
+  // Recompute usage after re-rank token estimate
+  // (usageBreakdown built earlier — rebuild line at end with updated llmUsd)
+
+  const jobOut = { ...job, location: searchLocation || job.location };
+
+  if (ranked.length === 0) {
+    const emptyBreakdown = sumBreakdown({
+      llm:
+        llmUsd > 0
+          ? {
+              inputTokens: llmInputTokens,
+              outputTokens: llmOutputTokens,
+              estimatedUsd: llmUsd,
+              modelId: llmModelId,
+            }
+          : null,
+      apollo: apolloSlice,
+      engines: [],
+    });
+    emptyBreakdown.totalEstimatedUsd = estimatedCostUsd;
+    return {
+      ok: false,
+      job: jobOut,
+      candidates: [],
+      estimatedCostUsd,
+      costs,
+      usageBreakdown: emptyBreakdown,
+      usageLine: formatBreakdownLine(emptyBreakdown),
+      apolloPlan: plan,
+      apolloPlanSource: planSource,
+      apolloKeySource,
+      apolloHttpStatus,
+      apolloRequest,
+      notes,
+      error:
+        apolloAuthError ||
+        'No real candidates found. Check notes for Apollo key/auth errors. With a valid master key, titles like "Director of Operations" should return people.',
+    };
+  }
+
+  const finalCandidates: SourcedCandidate[] = ranked
+    .slice(0, limit)
+    .map((c) => ({
+      ...c,
+      qualityScore: c.fitScore ?? c.qualityScore,
+      qualityFlags: c.qualityFlags,
+      fitScore: c.fitScore,
+      fitReason: c.fitReason,
+      mustHaveHit: c.mustHaveHit,
+      geoOk: c.geoOk,
+      snippet:
+        c.fitReason ||
+        c.snippet ||
+        (c.source === 'llm' || c.source === 'web'
+          ? 'Verify on LinkedIn/Google before outreach'
+          : undefined),
+    }));
+
+  // Final usage (includes plan + re-rank LLM estimates)
+  estimatedCostUsd = Math.max(
+    estimatedCostUsd,
+    (apolloSlice?.estimatedUsd || 0) +
+      llmUsd +
+      costs
+        .filter((c) => c.engine === 'apollo-enrich')
+        .reduce((s, c) => s + c.estimatedCostUsd, 0)
+  );
+
+  const usageBreakdownFinal = sumBreakdown({
     llm:
       llmUsd > 0 || llmInputTokens > 0
         ? {
@@ -1113,16 +1318,15 @@ export async function sourceCandidatesForJob(params: {
         : null,
     apollo: apolloSlice,
     engines: costs
-      .filter((c) => c.engine !== 'apollo')
+      .filter((c) => c.engine !== 'apollo' && !c.engine.startsWith('apollo-titles') && !c.engine.includes('titles+location'))
       .map((c) => ({
         engine: c.engine,
         results: c.count,
         estimatedUsd: c.estimatedCostUsd,
       })),
   });
-  // Avoid double-counting engines already in llmUsd
-  usageBreakdown.totalEstimatedUsd = estimatedCostUsd;
-  const usageLine = formatBreakdownLine(usageBreakdown);
+  usageBreakdownFinal.totalEstimatedUsd = estimatedCostUsd;
+  const usageLineFinal = formatBreakdownLine(usageBreakdownFinal);
 
   void logCombinedUsageTurn({
     queryPreview: `Fill job: ${job.title}`.slice(0, 200),
@@ -1147,7 +1351,7 @@ export async function sourceCandidatesForJob(params: {
           endpoint: apolloSlice.endpoint,
         }
       : null,
-    toolsUsed: costs.map((c) => c.engine),
+    toolsUsed: [...costs.map((c) => c.engine), 'fill-job-rerank'],
     extraUsd: costs
       .filter(
         (c) =>
@@ -1159,103 +1363,14 @@ export async function sourceCandidatesForJob(params: {
       .reduce((s, c) => s + c.estimatedCostUsd, 0),
   }).catch(() => {});
 
-  // Drop people clearly outside target geo (e.g. China when Florida was requested)
-  const geoTargets = locations.length
-    ? locations
-    : plan.personLocations || [];
-  let geoFiltered = candidates;
-  if (geoTargets.length) {
-    const beforeGeo = geoFiltered.length;
-    geoFiltered = geoFiltered.filter((c) =>
-      personMatchesGeoTarget(c.location, geoTargets)
-    );
-    const droppedGeo = beforeGeo - geoFiltered.length;
-    if (droppedGeo > 0) {
-      notes.push(
-        `Geo filter removed ${droppedGeo} profile(s) outside ${geoTargets.join(', ')} (e.g. non-US when Florida requested)`
-      );
-    }
-  }
-
-  // Quality filter: drop thin / likely-hallucinated LLM profiles.
-  // Apollo/PDL rows use a lower bar (partial names / missing email are normal on search).
-  const beforeQ = geoFiltered.length;
-  let ranked = filterAndRankByQuality(geoFiltered, {
-    preferDbSources: true,
-  });
-  droppedLowQuality += beforeQ - ranked.length;
-  if (droppedLowQuality > 0) {
-    notes.push(
-      `Quality filter removed ${droppedLowQuality} thin or suspicious profile(s)`
-    );
-  }
-
-  // Never hide a full Apollo page behind quality — if everything was dropped,
-  // surface DB hits anyway (better than "15 results / 0 people" UX).
-  if (ranked.length === 0 && beforeQ > 0) {
-    const dbOnly = geoFiltered.filter(
-      (c) => c.source === 'apollo' || c.source === 'pdl'
-    );
-    if (dbOnly.length) {
-      notes.push(
-        `Showing ${dbOnly.length} Apollo/PDL hit(s) that failed strict quality — verify before outreach`
-      );
-      ranked = dbOnly.map((c) => ({
-        ...c,
-        qualityScore: c.qualityScore ?? 40,
-        qualityFlags: c.qualityFlags ?? ['soft_pass'],
-      }));
-    } else {
-      notes.push(
-        `Had ${beforeQ} raw hit(s) before quality filter — all dropped.`
-      );
-    }
-  }
-
-  const jobOut = { ...job, location: searchLocation || job.location };
-
-  if (ranked.length === 0) {
-    return {
-      ok: false,
-      job: jobOut,
-      candidates: [],
-      estimatedCostUsd,
-      costs,
-      usageBreakdown,
-      usageLine,
-      apolloPlan: plan,
-      apolloPlanSource: planSource,
-      apolloKeySource,
-      apolloHttpStatus,
-      apolloRequest,
-      notes,
-      error:
-        apolloAuthError ||
-        'No real candidates found. Check notes for Apollo key/auth errors. With a valid master key, titles like "Director of Operations" should return people.',
-    };
-  }
-
-  const finalCandidates: SourcedCandidate[] = ranked
-    .slice(0, limit)
-    .map((c) => ({
-      ...c,
-      qualityScore: c.qualityScore,
-      qualityFlags: c.qualityFlags,
-      snippet:
-        c.snippet ||
-        (c.source === 'llm' || c.source === 'web'
-          ? 'Verify on LinkedIn/Google before outreach'
-          : undefined),
-    }));
-
   return {
     ok: true,
     job: jobOut,
     candidates: finalCandidates,
     estimatedCostUsd,
     costs,
-    usageBreakdown,
-    usageLine,
+    usageBreakdown: usageBreakdownFinal,
+    usageLine: usageLineFinal,
     apolloPlan: plan,
     apolloPlanSource: planSource,
     apolloKeySource,
