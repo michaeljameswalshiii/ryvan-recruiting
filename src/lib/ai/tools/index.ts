@@ -550,24 +550,15 @@ export function formatToolResultsForAI(results: Record<string, ToolResult>): {
     }
   }
 
-  // Direct website fetch
-  if (results.fetch_website?.success && results.fetch_website.data) {
+  // Direct website fetch (include failures so the model does not invent)
+  if (results.fetch_website?.data) {
     hasData = true;
-    const data = results.fetch_website.data as {
-      url?: string;
-      finalUrl?: string;
-      title?: string;
-      text?: string;
-      truncated?: boolean;
-    };
+    parts.push(formatFetchWebsiteResult(results.fetch_website.data as any));
+  } else if (results.fetch_website && !results.fetch_website.success) {
+    hasData = true;
     parts.push(
-      formatFetchWebsiteResult({
-        url: data.url || "",
-        finalUrl: data.finalUrl || data.url || "",
-        title: data.title || "",
-        text: data.text || "",
-        truncated: !!data.truncated,
-      })
+      `Website fetch failed: ${results.fetch_website.error || "unknown"}\n` +
+        `Do NOT invent industry/location/description. Minimal name+domain only.`
     );
   }
   

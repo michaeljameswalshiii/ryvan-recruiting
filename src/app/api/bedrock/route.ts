@@ -187,7 +187,12 @@ CRITICAL confirmation rules for ALL write tools:
 Other rules:
 - Maintain multi-turn context; honor revision requests
 - Use tools when they improve the answer
-- When building a company record from a website, call fetch_website with the URL first, then extract name, industry, location, description, and domain from the returned text
+- When building a company record from a website:
+  1) ALWAYS call fetch_website first
+  2) If fetch fails / blocked / insufficient text: do NOT invent industry, city, state, or description. Offer only name (from title or domain label) + domain, set website_fetch_failed:true on create_company, and ask the user to paste About text or confirm a minimal record
+  3) NEVER infer Brazil or São Paulo from letters "br" inside a brand domain (structuralbr.com is NOT Brazil; only .br TLD or explicit page text means Brazil)
+  4) Extract name, industry, location, phone, description ONLY from returned page text/title
+  5) After a successful fetch, set website_fetch_failed:false; set page_supports_brazil:true only if the page text supports Brazil
 - Analyze file attachments carefully when present
 - Be clear and professional; prefer actionable answers
 - If a tool fails, say so and continue with what you know
@@ -1396,24 +1401,19 @@ async function executeToolByName(
       { query: url, url } as ToolParams,
       toolContext
     );
-    if (result.success && result.data) {
-      const data = result.data as {
-        url?: string;
-        finalUrl?: string;
-        title?: string;
-        text?: string;
-        truncated?: boolean;
-      };
-      const lines = [
-        `URL: ${data.finalUrl || data.url || url}`,
-        data.title ? `Title: ${data.title}` : null,
-        data.truncated ? "(content truncated for length)" : null,
-        "",
-        data.text || "",
-      ].filter((x) => x !== null);
-      return lines.join("\n");
+    const { formatFetchWebsiteResult } = await import(
+      "@/lib/ai/tools/fetch-website"
+    );
+    if (result.data && typeof result.data === "object") {
+      // Always use grounded formatter (includes fail / no-invent instructions)
+      return formatFetchWebsiteResult(result.data as any);
     }
-    return `Error: ${result.error || "Failed to fetch website"}`;
+    return `Error: ${result.error || "Failed to fetch website"}
+
+=== WEBSITE FETCH FAILED ===
+Do NOT invent industry, city, state, or description from the domain name.
+For create_company use only name + domain and website_fetch_failed:true.
+Never map "br" in a brand domain (e.g. structuralbr.com) to Brazil.`;
   }
 
   if (toolName === "generate_file") {

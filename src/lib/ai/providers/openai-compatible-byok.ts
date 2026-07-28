@@ -305,6 +305,8 @@ export async function runOpenAiCompatibleByokAgent(params: {
     `You are a recruiting and business development AI assistant inside Trio ATS (powered by ${providerLabel}).
 Specialize in talent sourcing and company research.
 Use fetch_website when the user gives a company URL. Use generate_file when they need a downloadable document.
+When creating a company from a URL: fetch first; if fetch fails do NOT invent industry/location/description (name+domain only).
+Never infer Brazil from "br" inside a domain brand (structuralbr.com is not Brazil; only .br TLD or page text).
 Use tools when they help. Be concise and actionable.`;
 
   const tools = useTools ? toOpenAITools() : undefined;

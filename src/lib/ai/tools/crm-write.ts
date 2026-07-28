@@ -381,7 +381,11 @@ export async function executeUpdateCandidateStage(
 
 export const CREATE_COMPANY_TOOL = "create_company";
 export const CREATE_COMPANY_DESCRIPTION =
-  "Create a company/client in the CRM. Requires name. Preview first, then confirmed:true.";
+  "Create a company/client in the CRM. Requires name. Preview first, then confirmed:true. " +
+  "When creating from a website: call fetch_website first. " +
+  "If fetch fails, only name+domain are allowed (set website_fetch_failed:true). " +
+  "Never invent Brazil/São Paulo from letters \"br\" in a domain brand (structuralbr.com ≠ Brazil); " +
+  "set page_supports_brazil:true only if page text confirms Brazil.";
 
 export async function executeCreateCompany(
   params: unknown,
@@ -394,15 +398,89 @@ export async function executeCreateCompany(
   const name = str(p.name) || str(p.company_name);
   if (!name) return { success: false, error: "name is required" };
 
+  const domain = str(p.domain) || str(p.website) || "";
+  let industry = str(p.industry) || "";
+  let city = str(p.city) || "";
+  let state = str(p.state) || "";
+  let description = str(p.description) || "";
+  const phone = str(p.phone) || "";
+
+  const websiteFetchFailed =
+    p.website_fetch_failed === true ||
+    p.website_fetch_failed === "true" ||
+    p.fetch_failed === true ||
+    p.fetch_failed === "true" ||
+    p.grounding === "failed";
+
+  const pageSupportsBrazil =
+    p.page_supports_brazil === true ||
+    p.page_supports_brazil === "true" ||
+    p.pageSupportsBrazil === true;
+
+  // Import guards (inline require avoided — use static import at top)
+  const {
+    shouldRejectInferredBrazil,
+    shouldRejectUngroundedCompanyFields,
+  } = await import("@/lib/ai/company-from-website");
+
+  const ungrounded = shouldRejectUngroundedCompanyFields({
+    websiteFetchFailed,
+    industry,
+    city,
+    state,
+    description,
+  });
+  if (ungrounded.reject) {
+    return {
+      success: false,
+      error: ungrounded.reason,
+      metadata: {
+        reason: "ungrounded_fields",
+        hint: "Retry with only name + domain and website_fetch_failed:true, or re-run fetch_website successfully first.",
+      },
+    };
+  }
+
+  const brazilGate = shouldRejectInferredBrazil({
+    domain,
+    city,
+    state,
+    description,
+    pageSupportsBrazil,
+  });
+  if (brazilGate.reject) {
+    return {
+      success: false,
+      error: brazilGate.reason,
+      metadata: {
+        reason: "inferred_brazil_from_domain",
+        domain,
+        city,
+        state,
+      },
+    };
+  }
+
+  // If fetch failed, force strip any residual invented fields
+  if (websiteFetchFailed) {
+    industry = "";
+    city = "";
+    state = "";
+    description = "";
+  }
+
   const preview = {
     name,
-    industry: str(p.industry) || "",
-    city: str(p.city) || "",
-    state: str(p.state) || "",
-    domain: str(p.domain) || str(p.website) || "",
-    phone: str(p.phone) || "",
-    description: str(p.description) || "",
+    industry,
+    city,
+    state,
+    domain,
+    phone,
+    description,
     status: str(p.status) || "identification",
+    ...(websiteFetchFailed
+      ? { note: "Minimal record — website could not be read; no invented details." }
+      : {}),
   };
 
   const gate = confirmGate(p, CREATE_COMPANY_TOOL, preview);
@@ -1259,13 +1337,42 @@ export const CRM_WRITE_TOOLS: Array<{
       type: "object",
       properties: {
         name: { type: "string", description: "Company name" },
-        industry: { type: "string", description: "Industry" },
-        city: { type: "string", description: "City" },
-        state: { type: "string", description: "State" },
+        industry: {
+          type: "string",
+          description:
+            "Industry — only from page text. Empty if website_fetch_failed.",
+        },
+        city: {
+          type: "string",
+          description:
+            "City — only if on page. Never São Paulo from 'br' in domain brand.",
+        },
+        state: {
+          type: "string",
+          description:
+            "State — only if on page. Never Brazil from structuralbr-style domains.",
+        },
         domain: { type: "string", description: "Website domain" },
         phone: { type: "string", description: "Main company phone number" },
-        description: { type: "string", description: "Description" },
-        confirmed: { type: "boolean", description: "true to apply after user confirms" },
+        description: {
+          type: "string",
+          description:
+            "Description — only from page text. Empty if fetch failed.",
+        },
+        website_fetch_failed: {
+          type: "boolean",
+          description:
+            "true if fetch_website failed — only name+domain allowed then",
+        },
+        page_supports_brazil: {
+          type: "boolean",
+          description:
+            "true ONLY if fetch_website page text confirms Brazil (not domain letters)",
+        },
+        confirmed: {
+          type: "boolean",
+          description: "true to apply after user confirms",
+        },
       },
       required: ["name"],
     },
