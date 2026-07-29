@@ -111,10 +111,55 @@ export function ResumeViewer({
   const [hasResume, setHasResume] = useState(!!(url || fileKey));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [zoom, setZoom] = useState(100);
+  /** HTML preview for .docx (mammoth) — browsers cannot iframe Word files */
+  const [docxHtml, setDocxHtml] = useState<string | null>(null);
+  const [docxLoading, setDocxLoading] = useState(false);
+  const [docxError, setDocxError] = useState<string | null>(null);
 
   useEffect(() => {
     setDisplayName(fileName || "");
   }, [fileName]);
+
+  // Convert .docx to HTML for in-app preview (mammoth)
+  useEffect(() => {
+    if (fileType !== "docx" || !currentUrl || isS3ObjectKey(currentUrl)) {
+      setDocxHtml(null);
+      setDocxError(null);
+      setDocxLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setDocxLoading(true);
+    setDocxError(null);
+    setDocxHtml(null);
+    (async () => {
+      try {
+        const res = await fetch(currentUrl, { credentials: "omit" });
+        if (!res.ok) {
+          throw new Error(`Could not download Word file (${res.status})`);
+        }
+        const buf = await res.arrayBuffer();
+        const mammoth = await import("mammoth");
+        const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+        if (cancelled) return;
+        setDocxHtml(result.value || "<p>(Empty document)</p>");
+        setLoading(false);
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error("[ResumeViewer] docx preview", err);
+        setDocxError(
+          err?.message ||
+            "Could not generate Word preview. Download the file to open it."
+        );
+        setLoading(false);
+      } finally {
+        if (!cancelled) setDocxLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fileType, currentUrl]);
 
   useEffect(() => {
     setHasResume(!!(url || fileKey || currentUrl));
@@ -387,8 +432,9 @@ export function ResumeViewer({
     );
   }
 
-  // Word document
+  // Word document — .docx rendered via mammoth; legacy .doc still download-only
   if (fileType === "docx" || fileType === "doc") {
+    const isLegacyDoc = fileType === "doc";
     return (
       <div className={`flex flex-col h-full min-h-[320px] ${className || ""}`}>
         <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-gray-100 border-b shrink-0">
@@ -397,6 +443,9 @@ export function ResumeViewer({
             <span className="text-sm font-medium truncate">
               {displayName || fileName || "Word document"}
             </span>
+            {docxLoading && (
+              <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {actionBar}
@@ -420,26 +469,64 @@ export function ResumeViewer({
             )}
           </div>
         </div>
-        <div className="flex-1 bg-white flex items-center justify-center p-8">
-          <div className="text-center">
-            <FileType className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-            <p className="text-gray-500 mb-4">
-              Preview not available for Word documents
-            </p>
-            {currentUrl && (
-              <Button asChild variant="default">
-                <a
-                  href={currentUrl}
-                  download={displayName || fileName}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Download Resume
-                </a>
-              </Button>
-            )}
-          </div>
+        <div className="flex-1 bg-white overflow-auto min-h-0">
+          {isLegacyDoc ? (
+            <div className="flex flex-col items-center justify-center h-full min-h-[280px] p-8 text-center">
+              <FileType className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+              <p className="text-gray-600 font-medium mb-1">
+                Preview not available for older .doc files
+              </p>
+              <p className="text-sm text-gray-500 mb-4 max-w-sm">
+                Browsers can&apos;t display classic Word (.doc) inline. Download
+                the file, or re-upload as .docx or PDF for an in-app preview.
+              </p>
+              {currentUrl && (
+                <Button asChild variant="default">
+                  <a
+                    href={currentUrl}
+                    download={displayName || fileName}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Download Resume
+                  </a>
+                </Button>
+              )}
+            </div>
+          ) : docxLoading ? (
+            <div className="flex flex-col items-center justify-center h-full min-h-[280px] text-gray-500">
+              <Loader2 className="h-8 w-8 animate-spin mb-3" />
+              <p className="text-sm">Generating Word preview…</p>
+            </div>
+          ) : docxError ? (
+            <div className="flex flex-col items-center justify-center h-full min-h-[280px] p-8 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto mb-3 text-amber-500" />
+              <p className="text-amber-800 text-sm mb-4 max-w-md">{docxError}</p>
+              {currentUrl && (
+                <Button asChild variant="default">
+                  <a
+                    href={currentUrl}
+                    download={displayName || fileName}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Download Resume
+                  </a>
+                </Button>
+              )}
+            </div>
+          ) : docxHtml ? (
+            <div
+              className="prose prose-sm max-w-none p-6 text-gray-800 resume-docx-preview"
+              dangerouslySetInnerHTML={{ __html: docxHtml }}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full min-h-[280px] text-sm text-gray-500">
+              No preview available
+            </div>
+          )}
         </div>
       </div>
     );
