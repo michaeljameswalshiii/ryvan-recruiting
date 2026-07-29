@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import {
   CONTACT_ACTIVITY_TYPES,
+  normalizeContactActivityType,
   stripActivityTypePrefix,
 } from '@/lib/contacts/activity-types';
 
@@ -50,14 +51,14 @@ export default function ActivityModal({
     if (activity) {
       setForm({
         id: activity.id,
-        type: stripActivityTypePrefix(activity.type || ''),
+        type: normalizeContactActivityType(activity.type || ''),
         title: activity.title || '',
         description: activity.description || '',
         date: formatDateSafe(activity.date),
       });
     } else {
       setForm({
-        type: '',
+        type: 'Conversation',
         title: '',
         description: '',
         date: new Date().toISOString().split('T')[0],
