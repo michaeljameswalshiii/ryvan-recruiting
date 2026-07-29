@@ -2129,37 +2129,42 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                       </div>
                     </div>
                     {isExpanded && hasFit && (
-                      <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5 text-xs text-gray-700 space-y-1.5">
+                      <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/90 px-3.5 py-3 text-sm text-gray-800">
                         {fitSummary ? (
-                          <pre className="whitespace-pre-wrap font-sans leading-relaxed">
+                          <div className="whitespace-pre-wrap font-sans leading-relaxed text-[13px]">
                             {fitSummary}
-                          </pre>
+                          </div>
                         ) : (
-                          <>
+                          <div className="space-y-2 text-[13px] leading-relaxed">
                             <div className="font-semibold text-gray-900">
                               Fit {Math.round(Number(fitScore))}/100
-                              {fitGrade ? ` (${fitGrade})` : ''}
+                              {fitGrade ? ` · Grade ${fitGrade}` : ''}
                             </div>
                             {fitStrengths.length > 0 && (
-                              <p>
-                                <span className="font-medium">Strengths: </span>
-                                {fitStrengths.slice(0, 4).join('; ')}
-                              </p>
+                              <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                                  Why it fits
+                                </div>
+                                <ul className="list-disc pl-4 space-y-0.5">
+                                  {fitStrengths.slice(0, 5).map((s: string, i: number) => (
+                                    <li key={i}>{s}</li>
+                                  ))}
+                                </ul>
+                              </div>
                             )}
                             {fitGaps.length > 0 && (
-                              <p>
-                                <span className="font-medium">Gaps: </span>
-                                {fitGaps.slice(0, 4).join('; ')}
-                              </p>
+                              <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                                  Worth checking
+                                </div>
+                                <ul className="list-disc pl-4 space-y-0.5">
+                                  {fitGaps.slice(0, 4).map((g: string, i: number) => (
+                                    <li key={i}>{g}</li>
+                                  ))}
+                                </ul>
+                              </div>
                             )}
-                            {Array.isArray(fitReasons) && fitReasons.length > 0 && (
-                              <ul className="list-disc pl-4 space-y-0.5">
-                                {fitReasons.slice(0, 5).map((r: string, i: number) => (
-                                  <li key={i}>{r}</li>
-                                ))}
-                              </ul>
-                            )}
-                          </>
+                          </div>
                         )}
                       </div>
                     )}

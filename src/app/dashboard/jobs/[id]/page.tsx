@@ -892,37 +892,32 @@ export default function JobDetailPage() {
                         </div>
                       </div>
                       {isExpanded && hasFit && fit && (
-                        <div className="mt-2 ml-10 rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-2 text-[11px] text-gray-700 space-y-1">
+                        <div className="mt-2 ml-10 rounded-lg border border-slate-100 bg-slate-50/90 px-2.5 py-2 text-[12px] text-gray-800">
                           {fit.summary ? (
-                            <pre className="whitespace-pre-wrap font-sans leading-relaxed">
+                            <div className="whitespace-pre-wrap font-sans leading-relaxed">
                               {fit.summary}
-                            </pre>
+                            </div>
                           ) : (
-                            <>
+                            <div className="space-y-1.5 leading-relaxed">
                               <div className="font-semibold text-gray-900">
                                 Fit {Math.round(fit.score)}/100
-                                {fit.grade ? ` (${fit.grade})` : ""}
+                                {fit.grade ? ` · Grade ${fit.grade}` : ""}
                               </div>
                               {!!fit.strengths?.length && (
-                                <p>
-                                  <span className="font-medium">Strengths: </span>
-                                  {fit.strengths.slice(0, 3).join("; ")}
-                                </p>
-                              )}
-                              {!!fit.gaps?.length && (
-                                <p>
-                                  <span className="font-medium">Gaps: </span>
-                                  {fit.gaps.slice(0, 3).join("; ")}
-                                </p>
-                              )}
-                              {!!fit.reasons?.length && (
                                 <ul className="list-disc pl-3.5 space-y-0.5">
-                                  {fit.reasons.slice(0, 4).map((r, i) => (
-                                    <li key={i}>{r}</li>
+                                  {fit.strengths.slice(0, 4).map((s, i) => (
+                                    <li key={i}>{s}</li>
                                   ))}
                                 </ul>
                               )}
-                            </>
+                              {!!fit.gaps?.length && (
+                                <ul className="list-disc pl-3.5 space-y-0.5 text-gray-600">
+                                  {fit.gaps.slice(0, 3).map((g, i) => (
+                                    <li key={i}>{g}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
                           )}
                         </div>
                       )}

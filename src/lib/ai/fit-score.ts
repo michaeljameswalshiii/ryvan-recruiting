@@ -242,46 +242,31 @@ const SKILL_ALIASES: Record<string, string> = {
  * Related skill groups — near-matches count (not just exact strings).
  * Keys and values should be canonical (post-alias) forms.
  */
+/**
+ * Tight related groups only — near-matches must be genuinely interchangeable.
+ * (Broad groups caused noise like month-end≈AP and unreadable ≈ labels.)
+ */
 const RELATED_SKILL_GROUPS: string[][] = [
-  [
-    "quickbooks",
-    "accounting",
-    "finance",
-    "bookkeeping",
-    "general ledger",
-    "chart of accounts",
-    "financial systems",
-    "financial reporting",
-    "xero",
-    "sage",
-    "netsuite",
-  ],
-  [
-    "accounts payable",
-    "bill.com",
-    "accounts receivable",
-    "expense management",
-    "ramp",
-    "bank reconciliation",
-    "journal entries",
-    "month-end close",
-    "year-end close",
-  ],
-  [
-    "fund accounting",
-    "nonprofit",
-    "donor management",
-    "planning center",
-    "bloomerang",
-    "givebutter",
-  ],
-  ["implementation", "client onboarding", "data migration", "training"],
-  ["client-facing", "client onboarding", "training", "account management"],
-  ["project management", "implementation", "client onboarding"],
-  ["budgeting", "forecasting", "financial reporting", "audit", "1099s"],
+  ["quickbooks", "xero", "sage", "netsuite", "financial systems"],
+  ["accounting", "finance", "bookkeeping"],
+  ["general ledger", "chart of accounts", "journal entries"],
+  ["accounts payable", "bill.com"],
+  ["accounts receivable"],
+  ["expense management", "ramp", "expensify"],
+  ["bank reconciliation", "month-end close", "year-end close"],
+  ["financial reporting", "budgeting", "forecasting"],
+  ["fund accounting", "nonprofit"],
+  ["donor management", "planning center", "bloomerang", "givebutter"],
+  ["implementation", "client onboarding", "data migration"],
+  ["client-facing", "training", "account management", "customer success"],
+  ["project management", "implementation"],
+  ["audit", "1099s"],
   ["google workspace", "microsoft office", "microsoft 365", "excel"],
-  ["gusto", "payroll", "hris"],
+  ["gusto", "payroll"],
 ];
+
+/** Skills often present because the *agency* name is in the JD, not a requirement */
+const AGENCY_NOISE_SKILLS = new Set(["recruiting", "sourcing"]);
 
 const RELATED_LOOKUP: Map<string, Set<string>> = (() => {
   const m = new Map<string, Set<string>>();
@@ -503,7 +488,13 @@ const SENIORITY_KEYWORDS: Array<{ pattern: RegExp; level: number; label: string 
     level: 4,
     label: "lead",
   },
-  { pattern: /\b(director|vp|vice president|head of|chief|c[to]o)\b/i, level: 5, label: "executive" },
+  // Require clear exec *title* forms — avoid "head of household", random "chief", etc.
+  {
+    pattern:
+      /\b(director|vp|vice president|head of (finance|accounting|operations|engineering|product|sales|people|hr)|chief (financial|executive|operating|technology|people) officer|cfo|ceo|coo|cto|cpo)\b/i,
+    level: 5,
+    label: "executive",
+  },
 ];
 
 /**
@@ -1050,8 +1041,7 @@ export function scoreCandidateJobFit(
     .filter(Boolean)
     .join("\n");
 
-  // --- Skills (50%) + domain soft-match (10%) ---
-  // Skills weight reduced slightly so domain keyword near-matches can contribute.
+  // --- Skills + domain ---
   const explicitSkills = (candidate.skills || [])
     .map(normalizeSkill)
     .filter(Boolean);
@@ -1060,8 +1050,16 @@ export function scoreCandidateJobFit(
     new Set([...explicitSkills, ...extractedCand])
   );
 
-  const jobSkills = extractSkillsFromText(jobText);
-  // If job has no extractable skills, fall back to title tokens as soft skills
+  const jobSkillsRaw = extractSkillsFromText(jobText);
+  // Drop agency-noise skills (e.g. "recruiting" from "RYVAN Recruiting is searching…")
+  const jobSkills = jobSkillsRaw.filter((s) => {
+    if (!AGENCY_NOISE_SKILLS.has(s)) return true;
+    // Keep only if JD truly asks for recruiting as a skill
+    return /\b(experience (in|with) recruiting|recruiting experience|talent acquisition|sourcer)\b/i.test(
+      jobText
+    );
+  });
+
   const effectiveJobSkills =
     jobSkills.length > 0
       ? jobSkills
@@ -1069,48 +1067,103 @@ export function scoreCandidateJobFit(
           .toLowerCase()
           .split(/[\s,/|]+/)
           .map(normalizeSkill)
-          .filter((s) => s.length > 2);
+          .filter((s) => s.length > 2 && !AGENCY_NOISE_SKILLS.has(s));
+
+  /** Optional JD skills (familiarity / or similar) get lower miss penalty */
+  function skillImportance(skill: string): number {
+    const lower = jobText.toLowerCase();
+    const idx = lower.indexOf(skill.toLowerCase());
+    if (idx < 0) {
+      // try first token
+      const tok = skill.split(/\s+/)[0];
+      const i2 = lower.indexOf(tok);
+      if (i2 < 0) return 1;
+      const window = lower.slice(Math.max(0, i2 - 80), i2 + 80);
+      if (
+        /familiarity|nice to have|preferred|or similar|a plus|bonus/.test(window)
+      ) {
+        return 0.35;
+      }
+      return 1;
+    }
+    const window = lower.slice(Math.max(0, idx - 100), idx + skill.length + 100);
+    if (
+      /familiarity|nice to have|preferred|or similar|a plus|bonus|e\.g\./.test(
+        window
+      )
+    ) {
+      return 0.35;
+    }
+    // Core stack called out in "including X" / "proficiency" is important
+    if (/proficiency|required|must|intermediate to advanced|including/.test(window)) {
+      return 1.15;
+    }
+    return 1;
+  }
 
   const skillsMatched: string[] = [];
   const skillsMissing: string[] = [];
+  const skillsNear: string[] = [];
   let creditSum = 0;
+  let weightSum = 0;
+
   for (const js of effectiveJobSkills) {
+    const importance = skillImportance(js);
+    weightSum += importance;
     const { credit, matchedAs } = skillMatchCredit(js, candidateSkills);
     if (credit >= 0.5) {
-      creditSum += credit;
-      skillsMatched.push(
-        credit >= 0.99 ? js : `${js}≈${matchedAs || "related"}`
-      );
+      creditSum += credit * importance;
+      // Clean labels for UI — no "skill≈other" noise
+      if (credit >= 0.99) skillsMatched.push(prettySkill(js));
+      else {
+        skillsMatched.push(prettySkill(js));
+        if (matchedAs && normalizeSkill(matchedAs) !== js) {
+          skillsNear.push(prettySkill(js));
+        }
+      }
     } else {
-      skillsMissing.push(js);
+      // Optional / nice-to-have tools shouldn't tank the score
+      if (importance <= 0.4) {
+        creditSum += 0.55 * importance;
+        skillsMissing.push(`${prettySkill(js)} (nice-to-have)`);
+      } else {
+        if (importance >= 0.6) skillsMissing.push(prettySkill(js));
+        else skillsMissing.push(`${prettySkill(js)} (nice-to-have)`);
+      }
     }
   }
 
   let skillsRatio = 0;
-  if (effectiveJobSkills.length === 0) {
+  if (weightSum <= 0) {
     skillsRatio = candidateSkills.length > 0 ? 0.55 : 0.4;
   } else {
-    skillsRatio = creditSum / effectiveJobSkills.length;
-    // Bonus for having extra relevant depth (capped)
-    if (candidateSkills.length >= effectiveJobSkills.length && skillsRatio > 0) {
+    skillsRatio = Math.min(1, creditSum / weightSum);
+    if (candidateSkills.length >= 6 && skillsRatio > 0.35) {
       skillsRatio = Math.min(1, skillsRatio + 0.05);
     }
   }
 
-  // Domain keyword soft score (near-match language not limited to skill list)
   const domain = domainKeywordOverlap(candText, jobText);
-  // Blend: structured skills still dominate, domain rescues true-fit profiles
-  // that the closed skill list under-extracts.
-  const blendedSkills = Math.min(
+
+  // Strong domain + solid skill base → realistic "good accountant for finance role" scores
+  let blendedSkills = Math.min(
     1,
-    skillsRatio * 0.75 + domain.score * 0.35 + (skillsRatio > 0.3 ? 0.05 : 0)
+    skillsRatio * 0.7 + domain.score * 0.4
   );
+  if (domain.score >= 0.45 && skillsRatio >= 0.45) {
+    blendedSkills = Math.max(blendedSkills, 0.78);
+  }
+  if (domain.score >= 0.55 && skillsRatio >= 0.55) {
+    blendedSkills = Math.max(blendedSkills, 0.86);
+  }
+  if (domain.score >= 0.6 && skillsRatio >= 0.65) {
+    blendedSkills = Math.max(blendedSkills, 0.92);
+  }
 
   // --- Title (20%) ---
   const titlePart = titleKeywordScore(
     candidate.title || "",
     job.title || "",
-    // Include full candidate blob so experience language helps title synonyms
     candText
   );
 
@@ -1122,43 +1175,42 @@ export function scoreCandidateJobFit(
   );
 
   // --- Seniority / years (10%) ---
-  // Prefer job TITLE for seniority — full JD bullets often start with "Lead …" verbs
-  // and incorrectly inflate seniority (e.g. "Lead financial discovery").
-  const jobSen = detectSeniority(
-    job.title?.trim()
-      ? job.title
-      : `${job.title || ""} ${job.description || ""}`
-  );
+  // Title-first only — scanning full resume text creates false "executive" hits.
+  const jobSen = detectSeniority(job.title || "specialist");
+  const titleLooksLikePersonName = (t: string) => {
+    const parts = t.trim().split(/\s+/);
+    return (
+      parts.length >= 2 &&
+      parts.length <= 4 &&
+      parts.every((p) => /^[A-Z][a-z'’-]+$/.test(p) || /^[A-Z]\.$/.test(p))
+    );
+  };
+  const candTitle = candidate.title || "";
   const candSen = detectSeniority(
-    candidate.title?.trim()
-      ? `${candidate.title} ${candidate.summary || ""}`
-      : `${candidate.title || ""} ${candidate.summary || ""} ${candText}`
+    titleLooksLikePersonName(candTitle)
+      ? `${candidate.summary || ""}`.slice(0, 280)
+      : `${candTitle} ${(candidate.summary || "").slice(0, 200)}`
   );
   const years = estimateYearsFromExperience(candidate.experience);
 
-  // Map years loosely onto seniority levels
   let yearsLevel = 1;
-  if (years >= 12) yearsLevel = 5;
-  else if (years >= 8) yearsLevel = 4;
+  if (years >= 12) yearsLevel = 4; // long tenure ≠ executive title
+  else if (years >= 8) yearsLevel = 3;
   else if (years >= 5) yearsLevel = 3;
   else if (years >= 2) yearsLevel = 2;
 
   const effectiveCandLevel = Math.max(candSen.level, yearsLevel);
   const levelDiff = Math.abs(effectiveCandLevel - jobSen.level);
   let seniorityScore = 1;
-  if (levelDiff === 0) seniorityScore = 1;
-  else if (levelDiff === 1) seniorityScore = 0.75;
-  // Over-qualified by 2 levels is still fine for IC specialist roles
-  else if (levelDiff === 2) seniorityScore = 0.55;
-  else seniorityScore = 0.3;
-
-  // Slight boost if years look solid and job is senior+
-  if (jobSen.level >= 3 && years >= 5) {
-    seniorityScore = Math.min(1, seniorityScore + 0.1);
-  }
-  // Don't punish experienced accountants for "mid" specialist JDs
-  if (effectiveCandLevel > jobSen.level && years >= 4) {
-    seniorityScore = Math.max(seniorityScore, 0.7);
+  if (effectiveCandLevel >= jobSen.level) {
+    // Over-qualified for mid specialist roles is fine — do not punish
+    seniorityScore = 1;
+  } else if (levelDiff === 1) {
+    seniorityScore = 0.8;
+  } else if (levelDiff === 2) {
+    seniorityScore = 0.55;
+  } else {
+    seniorityScore = 0.35;
   }
 
   const weighted =
@@ -1170,37 +1222,54 @@ export function scoreCandidateJobFit(
   const score = Math.max(0, Math.min(100, Math.round(weighted * 100)));
   const grade = gradeFromScore(score);
 
+  // --- Human-readable strengths / gaps (no raw ≈ dumps) ---
   const reasons: string[] = [];
-  const strengths: string[] = [...titlePart.strengths];
-  const gaps: string[] = [...titlePart.gaps];
+  const strengths: string[] = [];
+  const gaps: string[] = [];
+
+  if (titlePart.score >= 0.45) {
+    strengths.push(
+      titlePart.strengths[0] ||
+        `Role alignment with "${job.title || "this job"}"`
+    );
+  } else if (titlePart.gaps[0]) {
+    gaps.push(titlePart.gaps[0]);
+  }
 
   if (skillsMatched.length > 0) {
+    const core = skillsMatched.slice(0, 6).join(", ");
     strengths.push(
-      `Matched skills: ${skillsMatched.slice(0, 8).join(", ")}${
-        skillsMatched.length > 8 ? "…" : ""
-      }`
+      skillsNear.length
+        ? `Core skills present: ${core}`
+        : `Strong skill match: ${core}`
     );
     reasons.push(
-      `${skillsMatched.length}/${effectiveJobSkills.length || "?"} skills matched (incl. near-matches)`
+      `${skillsMatched.length} of ${effectiveJobSkills.length} job skills evidenced`
     );
   } else if (effectiveJobSkills.length > 0 && domain.hits.length === 0) {
-    reasons.push("No required skills matched from job description");
+    reasons.push("Few job skills evidenced on the profile/resume");
   }
 
   if (domain.hits.length > 0) {
-    strengths.push(
-      `Domain language overlap: ${domain.hits.slice(0, 6).join(", ")}`
-    );
-    reasons.push(
-      `Domain keyword overlap ${Math.round(domain.score * 100)}% (${domain.hits.length} terms)`
-    );
+    const themes = summarizeDomainHits(domain.hits);
+    if (themes) strengths.push(themes);
+    reasons.push("Resume language overlaps the job domain");
   }
 
-  if (skillsMissing.length > 0) {
+  // Only surface meaningful tool gaps (skip noisy nice-to-haves when core is strong)
+  const hardMissing = skillsMissing
+    .filter((s) => !/\(nice-to-have\)/i.test(s))
+    .slice(0, 5);
+  const softMissing = skillsMissing
+    .filter((s) => /\(nice-to-have\)/i.test(s))
+    .map((s) => s.replace(/\s*\(nice-to-have\)/i, ""))
+    .slice(0, 4);
+
+  if (hardMissing.length > 0 && skillsRatio < 0.85) {
+    gaps.push(`Confirm experience with: ${hardMissing.join(", ")}`);
+  } else if (softMissing.length > 0 && skillsRatio < 0.9) {
     gaps.push(
-      `Weaker / missing skills: ${skillsMissing.slice(0, 6).join(", ")}${
-        skillsMissing.length > 6 ? "…" : ""
-      }`
+      `Optional tools not clearly shown: ${softMissing.join(", ")}`
     );
   }
 
@@ -1210,49 +1279,111 @@ export function scoreCandidateJobFit(
     reasons.push(locPart.reason);
   }
 
-  if (years > 0) {
-    reasons.push(`~${years} yrs experience (heuristic)`);
-    if (years >= 5) strengths.push(`Solid tenure (~${years} years)`);
+  if (years >= 5) {
+    strengths.push(`Solid experience (~${years} years)`);
+    reasons.push(`~${years} years experience (estimated)`);
+  } else if (years > 0) {
+    reasons.push(`~${years} years experience (estimated)`);
   }
 
-  reasons.push(
-    `Seniority signal: candidate ${candSen.label} vs job ${jobSen.label}`
-  );
-  if (levelDiff >= 2) {
-    gaps.push(`Seniority gap (candidate ${candSen.label}, job ${jobSen.label})`);
-  } else if (levelDiff === 0) {
-    strengths.push(`Seniority aligned (${jobSen.label})`);
+  // Only flag under-qualification, never "too senior"
+  if (effectiveCandLevel < jobSen.level && levelDiff >= 2) {
+    gaps.push(
+      `May be light on seniority for this level (profile reads ${candSen.label}, role reads ${jobSen.label})`
+    );
   }
 
   reasons.push(...titlePart.reasons);
 
-  // Dedupe reasons
   const uniq = (arr: string[]) => Array.from(new Set(arr.filter(Boolean)));
 
   return {
     score,
     grade,
-    reasons: uniq(reasons).slice(0, 12),
-    strengths: uniq(strengths).slice(0, 10),
-    gaps: uniq(gaps).slice(0, 10),
+    reasons: uniq(reasons).slice(0, 10),
+    strengths: uniq(strengths).slice(0, 8),
+    gaps: uniq(gaps).slice(0, 6),
     skillsMatched: uniq(skillsMatched),
-    skillsMissing: uniq(skillsMissing),
+    skillsMissing: uniq(
+      skillsMissing.map((s) => s.replace(/\s*\(nice-to-have\)/i, ""))
+    ),
   };
 }
 
+function prettySkill(s: string): string {
+  const t = normalizeSkill(s);
+  if (!t) return s;
+  // Title-case multi-word skills for display
+  return t
+    .split(" ")
+    .map((w) => {
+      if (["ap", "ar", "gl", "hr", "ui", "ux"].includes(w)) return w.toUpperCase();
+      if (w.includes(".")) return w; // bill.com, node.js
+      if (w === "quickbooks") return "QuickBooks";
+      if (w === "1099s") return "1099s";
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    })
+    .join(" ");
+}
+
+function summarizeDomainHits(hits: string[]): string {
+  const h = hits.map((x) => x.toLowerCase());
+  const bits: string[] = [];
+  if (h.some((x) => /account|quickbooks|bookkeep|ledger|reconcil|ap\/ar|finance/.test(x))) {
+    bits.push("accounting/finance operations");
+  }
+  if (h.some((x) => /nonprofit|ministry|church|donor/.test(x))) {
+    bits.push("nonprofit / ministry context");
+  }
+  if (h.some((x) => /implement|onboard|migration|training|client/.test(x))) {
+    bits.push("implementation / client work");
+  }
+  if (!bits.length) return "";
+  return `Domain experience signals: ${bits.join("; ")}`;
+}
+
 /**
- * Format a short human-readable fit summary (for notes / API).
+ * Human-readable fit summary for activity notes + expandable UI.
  */
 export function formatFitSummary(result: FitScoreResult): string {
-  const lines = [
-    `Fit score: ${result.score}/100 (grade ${result.grade})`,
-    result.strengths.length
-      ? `Strengths: ${result.strengths.slice(0, 3).join("; ")}`
-      : "",
-    result.gaps.length ? `Gaps: ${result.gaps.slice(0, 3).join("; ")}` : "",
-    result.skillsMatched.length
-      ? `Skills matched: ${result.skillsMatched.slice(0, 8).join(", ")}`
-      : "",
-  ].filter(Boolean);
+  const tone =
+    result.score >= 85
+      ? "Strong overall fit"
+      : result.score >= 70
+        ? "Good fit with a few gaps to validate"
+        : result.score >= 55
+          ? "Partial fit — review gaps carefully"
+          : result.score >= 40
+            ? "Weak fit on paper"
+            : "Poor fit on paper";
+
+  const lines: string[] = [
+    `Fit ${result.score}/100 · Grade ${result.grade}`,
+    tone,
+  ];
+
+  if (result.strengths.length) {
+    lines.push("");
+    lines.push("Why it fits");
+    for (const s of result.strengths.slice(0, 5)) {
+      lines.push(`• ${s}`);
+    }
+  }
+
+  if (result.gaps.length) {
+    lines.push("");
+    lines.push("Worth checking");
+    for (const g of result.gaps.slice(0, 4)) {
+      lines.push(`• ${g}`);
+    }
+  }
+
+  if (result.skillsMatched.length && result.strengths.length < 2) {
+    lines.push("");
+    lines.push(
+      `Skills evidenced: ${result.skillsMatched.slice(0, 8).join(", ")}`
+    );
+  }
+
   return lines.join("\n");
 }
