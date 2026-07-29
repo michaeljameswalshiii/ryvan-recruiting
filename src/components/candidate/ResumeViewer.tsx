@@ -120,29 +120,46 @@ export function ResumeViewer({
     setDisplayName(fileName || "");
   }, [fileName]);
 
-  // Convert .docx to HTML for in-app preview (mammoth)
+  // Convert .docx via same-origin API (server reads S3 — avoids browser CORS "Failed to fetch")
   useEffect(() => {
-    if (fileType !== "docx" || !currentUrl || isS3ObjectKey(currentUrl)) {
+    if (fileType !== "docx") {
       setDocxHtml(null);
       setDocxError(null);
       setDocxLoading(false);
       return;
     }
+    const keyForApi =
+      fileKey || (isS3ObjectKey(url) ? url : undefined);
+    if (!candidateId && !keyForApi) {
+      setDocxHtml(null);
+      setDocxError(
+        "Missing candidate or file key — use Download to open the resume."
+      );
+      setDocxLoading(false);
+      return;
+    }
+
     let cancelled = false;
     setDocxLoading(true);
     setDocxError(null);
     setDocxHtml(null);
     (async () => {
       try {
-        const res = await fetch(currentUrl, { credentials: "omit" });
-        if (!res.ok) {
-          throw new Error(`Could not download Word file (${res.status})`);
-        }
-        const buf = await res.arrayBuffer();
-        const mammoth = await import("mammoth");
-        const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+        const params = new URLSearchParams();
+        if (candidateId) params.set("candidateId", candidateId);
+        if (keyForApi) params.set("fileKey", keyForApi);
+        const res = await fetch(`/api/resume-preview?${params.toString()}`, {
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => ({}));
         if (cancelled) return;
-        setDocxHtml(result.value || "<p>(Empty document)</p>");
+        if (!res.ok || !data.html) {
+          throw new Error(
+            data.error ||
+              `Could not generate Word preview (${res.status})`
+          );
+        }
+        setDocxHtml(data.html);
         setLoading(false);
       } catch (err: any) {
         if (cancelled) return;
@@ -159,7 +176,7 @@ export function ResumeViewer({
     return () => {
       cancelled = true;
     };
-  }, [fileType, currentUrl]);
+  }, [fileType, candidateId, fileKey, url]);
 
   useEffect(() => {
     setHasResume(!!(url || fileKey || currentUrl));
