@@ -572,37 +572,128 @@ function skillTokens(skill: string): string[] {
     .filter((t) => t.length > 1 && !STOP_SKILL_TOKENS.has(t));
 }
 
+/** Extra free-text phrases that prove a canonical skill is present on a resume */
+const SKILL_TEXT_HINTS: Record<string, string[]> = {
+  "month-end close": [
+    "month-end",
+    "month end",
+    "month end close",
+    "monthly close",
+    "close process",
+    "period close",
+  ],
+  "journal entries": [
+    "journal entr",
+    "journal entry",
+    "journal entries",
+    "gl entries",
+  ],
+  "general ledger": [
+    "general ledger",
+    " g/l ",
+    " g.l.",
+    "gl accounting",
+    "full-cycle accounting",
+    "full cycle accounting",
+  ],
+  "chart of accounts": ["chart of accounts", "coa ", "account structure"],
+  "bank reconciliation": [
+    "bank reconcil",
+    "reconciliations",
+    "reconciliation",
+    "bank feeds",
+  ],
+  "accounts payable": ["accounts payable", "a/p", " ap ", "ap/", "payables"],
+  "accounts receivable": ["accounts receivable", "a/r", " ar ", "ar/", "receivables"],
+  "client-facing": [
+    "client-facing",
+    "client facing",
+    "customer facing",
+    "client training",
+    "trained clients",
+    "client onboarding",
+    "stakeholder",
+    "worked with clients",
+    "customer success",
+  ],
+  "financial reporting": [
+    "financial report",
+    "financial statements",
+    "p&l",
+    "balance sheet",
+    "management reporting",
+  ],
+  implementation: [
+    "implementation",
+    "implemented",
+    "system implementation",
+    "rollout",
+    "deployed",
+  ],
+  "data migration": ["data migration", "migrat", "data conversion"],
+  quickbooks: ["quickbooks", "qbo", "quick books"],
+  "fund accounting": ["fund accounting", "fund-based", "restricted funds"],
+  "donor management": ["donor", "donation management", "giving platform"],
+};
+
 /**
- * Soft skill match: exact, related-group, substring, or token overlap.
+ * Soft skill match: exact, related-group, free-text hints, substring, or tokens.
  * Returns 0–1 credit so near-matches count (user expectation).
  */
 export function skillMatchCredit(
   jobSkill: string,
-  candidateSkills: string[]
+  candidateSkills: string[],
+  candidateText?: string
 ): { credit: number; matchedAs?: string } {
   const job = normalizeSkill(jobSkill);
   if (!job) return { credit: 0 };
   const candNorm = candidateSkills.map(normalizeSkill).filter(Boolean);
+  const blob = (candidateText || "").toLowerCase();
 
   // Exact
   if (candNorm.includes(job)) return { credit: 1, matchedAs: job };
 
-  // Related skill family (e.g. QuickBooks ≈ accounting/bookkeeping)
+  // Related skill family (tight groups only)
   const related = RELATED_LOOKUP.get(job);
   if (related) {
     for (const c of candNorm) {
       if (related.has(c)) {
-        return { credit: 0.85, matchedAs: c };
+        return { credit: 0.88, matchedAs: c };
       }
     }
   }
 
-  // Substring / containment (quickbooks vs quickbooks online already aliased;
-  // still helps custom free-text skills)
+  // Free-text / resume language (catches "month end", "JEs", "client training")
+  if (blob.length > 20) {
+    if (blob.includes(job)) {
+      return { credit: 0.95, matchedAs: job };
+    }
+    const hints = SKILL_TEXT_HINTS[job] || [];
+    for (const hint of hints) {
+      if (hint.length >= 3 && blob.includes(hint.toLowerCase())) {
+        return { credit: 0.9, matchedAs: hint.trim() };
+      }
+    }
+    // Also search related-family skills in free text
+    if (related) {
+      for (const rel of related) {
+        if (rel !== job && blob.includes(rel)) {
+          return { credit: 0.8, matchedAs: rel };
+        }
+        const relHints = SKILL_TEXT_HINTS[rel] || [];
+        for (const hint of relHints) {
+          if (hint.length >= 4 && blob.includes(hint.toLowerCase())) {
+            return { credit: 0.78, matchedAs: hint.trim() };
+          }
+        }
+      }
+    }
+  }
+
+  // Substring / containment on structured skills
   for (const c of candNorm) {
     if (!c) continue;
     if (c.includes(job) || job.includes(c)) {
-      // Avoid tiny false positives ("r" in "react")
       if (Math.min(c.length, job.length) >= 4) {
         return { credit: 0.8, matchedAs: c };
       }
@@ -630,6 +721,55 @@ export function skillMatchCredit(
   }
 
   return { credit: 0 };
+}
+
+/** Core accounting ops that usually travel together on real finance resumes */
+const ACCOUNTING_CLUSTER = [
+  "accounting",
+  "quickbooks",
+  "general ledger",
+  "chart of accounts",
+  "journal entries",
+  "month-end close",
+  "bank reconciliation",
+  "accounts payable",
+  "accounts receivable",
+  "financial reporting",
+  "fund accounting",
+  "bookkeeping",
+];
+
+/** Prefer these skills first in "Core skills present" UI ordering */
+const SKILL_DISPLAY_PRIORITY: string[] = [
+  "quickbooks",
+  "accounting",
+  "finance",
+  "general ledger",
+  "chart of accounts",
+  "accounts payable",
+  "accounts receivable",
+  "month-end close",
+  "journal entries",
+  "bank reconciliation",
+  "fund accounting",
+  "financial reporting",
+  "budgeting",
+  "implementation",
+  "client-facing",
+  "client onboarding",
+  "data migration",
+  "project management",
+  "google workspace",
+  "excel",
+];
+
+function sortSkillsForDisplay(skills: string[]): string[] {
+  const rank = (s: string) => {
+    const n = normalizeSkill(s);
+    const idx = SKILL_DISPLAY_PRIORITY.indexOf(n);
+    return idx >= 0 ? idx : 100 + n.charCodeAt(0);
+  };
+  return [...skills].sort((a, b) => rank(a) - rank(b));
 }
 
 /**
@@ -837,14 +977,10 @@ function locationSoftMatch(
 
   if (j && c === j) return { score: 1, reason: "Location exact match" };
 
-  // Remote flexibility
   const jobRemote = /\bremote\b|\bwork from home\b|\bwfh\b/i.test(jobLocBlob);
   const candRemote = /\bremote\b|\bopen to remote\b/i.test(c);
-  if (jobRemote || candRemote) {
-    return { score: 0.85, reason: "Remote / flexible location" };
-  }
 
-  // Multi-state eligibility lists (common in distributed / remote-US JDs)
+  // Multi-state eligibility first — don't mislabel residency-list roles as plain "remote"
   const jobStates = extractStateCodes(jobLocBlob);
   const candStates = extractStateCodes(c);
   if (jobStates.length >= 2 && candStates.length > 0) {
@@ -852,12 +988,20 @@ function locationSoftMatch(
     if (hit) {
       return {
         score: 0.95,
-        reason: `Candidate state (${hit.toUpperCase()}) is in job's eligible states`,
+        reason: jobRemote
+          ? `Eligible state (${hit.toUpperCase()}) for this multi-state / remote role`
+          : `Eligible state (${hit.toUpperCase()}) — matches job residency list`,
       };
     }
     return {
       score: 0.25,
       reason: "Candidate state not in job's eligible state list",
+    };
+  }
+  if (jobStates.length >= 2 && candStates.length === 0) {
+    return {
+      score: 0.4,
+      reason: "Confirm candidate lives in an eligible state for this role",
     };
   }
   if (jobStates.length === 1 && candStates.length > 0) {
@@ -867,6 +1011,15 @@ function locationSoftMatch(
         reason: `Location state match (${jobStates[0].toUpperCase()})`,
       };
     }
+  }
+
+  if (jobRemote || candRemote) {
+    return {
+      score: 0.85,
+      reason: jobRemote
+        ? "Role allows remote / flexible location"
+        : "Candidate open to remote",
+    };
   }
 
   // City or state substring against job location field / description
@@ -879,7 +1032,6 @@ function locationSoftMatch(
     }
   }
 
-  // If we only had description states and no candidate match, already returned above
   if (jobStates.length === 0) {
     return { score: 0.5, reason: "Job location not specific enough to score" };
   }
@@ -990,30 +1142,36 @@ function titleKeywordScore(
   }
 
   let hits = 0;
-  const matched: string[] = [];
+  let exactHits = 0;
+  let synHits = 0;
   for (const t of jobTokens) {
     if (candBlob.includes(t)) {
       hits += 1;
-      matched.push(t);
+      exactHits += 1;
       continue;
     }
-    // Synonym near-match (finance ↔ accounting, implementation ↔ onboarding)
     const syns = TITLE_SYNONYMS[t] || [];
     if (syns.some((s) => candBlob.includes(s))) {
       hits += 0.75;
-      matched.push(`~${t}`);
+      synHits += 1;
     }
   }
   const ratio = hits / jobTokens.length;
 
-  if (ratio >= 0.6) {
-    strengths.push(`Title/role alignment: ${matched.slice(0, 4).join(", ")}`);
-    reasons.push("Strong title/role keyword overlap");
+  if (ratio >= 0.55) {
+    strengths.push(
+      `Title aligns with a ${jobTitle.trim()} role` +
+        (synHits > 0 && exactHits === 0
+          ? " (via related experience language)"
+          : "")
+    );
+    reasons.push("Strong title/role alignment");
   } else if (ratio >= 0.3) {
-    reasons.push("Partial title/role keyword overlap (including related terms)");
+    strengths.push(`Partial title alignment with "${jobTitle.trim()}"`);
+    reasons.push("Partial title/role alignment");
   } else {
-    gaps.push(`Limited title match vs "${jobTitle}"`);
-    reasons.push("Weak title/role keyword overlap");
+    gaps.push(`Limited title match vs "${jobTitle.trim()}"`);
+    reasons.push("Weak title/role alignment");
   }
 
   return { score: Math.min(1, ratio + (ratio > 0 ? 0.1 : 0)), reasons, strengths, gaps };
@@ -1104,32 +1262,86 @@ export function scoreCandidateJobFit(
   const skillsMatched: string[] = [];
   const skillsMissing: string[] = [];
   const skillsNear: string[] = [];
+  const matchCreditBySkill = new Map<string, number>();
   let creditSum = 0;
   let weightSum = 0;
 
   for (const js of effectiveJobSkills) {
     const importance = skillImportance(js);
     weightSum += importance;
-    const { credit, matchedAs } = skillMatchCredit(js, candidateSkills);
+    const { credit, matchedAs } = skillMatchCredit(
+      js,
+      candidateSkills,
+      candText
+    );
+    matchCreditBySkill.set(js, credit);
     if (credit >= 0.5) {
       creditSum += credit * importance;
-      // Clean labels for UI — no "skill≈other" noise
-      if (credit >= 0.99) skillsMatched.push(prettySkill(js));
-      else {
-        skillsMatched.push(prettySkill(js));
-        if (matchedAs && normalizeSkill(matchedAs) !== js) {
-          skillsNear.push(prettySkill(js));
-        }
+      skillsMatched.push(prettySkill(js));
+      if (credit < 0.99 && matchedAs && normalizeSkill(matchedAs) !== js) {
+        skillsNear.push(prettySkill(js));
       }
     } else {
       // Optional / nice-to-have tools shouldn't tank the score
       if (importance <= 0.4) {
         creditSum += 0.55 * importance;
         skillsMissing.push(`${prettySkill(js)} (nice-to-have)`);
+      } else if (importance >= 0.6) {
+        skillsMissing.push(prettySkill(js));
       } else {
-        if (importance >= 0.6) skillsMissing.push(prettySkill(js));
-        else skillsMissing.push(`${prettySkill(js)} (nice-to-have)`);
+        skillsMissing.push(`${prettySkill(js)} (nice-to-have)`);
       }
+    }
+  }
+
+  // Accounting cluster: if several core ops are present, don't treat sibling
+  // ops (GL, month-end, JEs) as hard misses — they almost always co-occur.
+  const clusterPresent = ACCOUNTING_CLUSTER.filter(
+    (s) => (matchCreditBySkill.get(s) || 0) >= 0.5 || candidateSkills.includes(s)
+  );
+  // Also count free-text / extracted accounting presence
+  const accountingDomainHits = domainKeywordOverlap(candText, jobText).hits;
+  const hasAccountingDomain = accountingDomainHits.some((h) =>
+    /account|quickbooks|bookkeep|ledger|reconcil|finance|fund/.test(h)
+  );
+  if (clusterPresent.length >= 3 || (clusterPresent.length >= 2 && hasAccountingDomain)) {
+    for (const js of effectiveJobSkills) {
+      if (!ACCOUNTING_CLUSTER.includes(js)) continue;
+      const prev = matchCreditBySkill.get(js) || 0;
+      if (prev >= 0.5) continue;
+      const importance = skillImportance(js);
+      const inferred = 0.82;
+      matchCreditBySkill.set(js, inferred);
+      creditSum += inferred * importance;
+      skillsMatched.push(prettySkill(js));
+      // Remove from hard missing
+      const pretty = prettySkill(js);
+      const idx = skillsMissing.findIndex(
+        (m) => m === pretty || m.startsWith(pretty)
+      );
+      if (idx >= 0) skillsMissing.splice(idx, 1);
+    }
+  }
+
+  // Client-facing inferred from implementation / training language
+  if (
+    effectiveJobSkills.includes("client-facing") &&
+    (matchCreditBySkill.get("client-facing") || 0) < 0.5 &&
+    /client|customer|training|onboarding|stakeholder|implementation support/i.test(
+      candText
+    )
+  ) {
+    const importance = skillImportance("client-facing");
+    const prev = matchCreditBySkill.get("client-facing") || 0;
+    if (prev < 0.5) {
+      matchCreditBySkill.set("client-facing", 0.85);
+      creditSum += 0.85 * importance;
+      skillsMatched.push(prettySkill("client-facing"));
+      const pretty = prettySkill("client-facing");
+      const idx = skillsMissing.findIndex(
+        (m) => m === pretty || m.startsWith(pretty)
+      );
+      if (idx >= 0) skillsMissing.splice(idx, 1);
     }
   }
 
@@ -1137,6 +1349,14 @@ export function scoreCandidateJobFit(
   if (weightSum <= 0) {
     skillsRatio = candidateSkills.length > 0 ? 0.55 : 0.4;
   } else {
+    // Recompute from map for accuracy after cluster inference
+    creditSum = 0;
+    for (const js of effectiveJobSkills) {
+      const importance = skillImportance(js);
+      const credit = matchCreditBySkill.get(js) || 0;
+      if (credit >= 0.5) creditSum += credit * importance;
+      else if (importance <= 0.4) creditSum += 0.55 * importance;
+    }
     skillsRatio = Math.min(1, creditSum / weightSum);
     if (candidateSkills.length >= 6 && skillsRatio > 0.35) {
       skillsRatio = Math.min(1, skillsRatio + 0.05);
@@ -1145,19 +1365,22 @@ export function scoreCandidateJobFit(
 
   const domain = domainKeywordOverlap(candText, jobText);
 
-  // Strong domain + solid skill base → realistic "good accountant for finance role" scores
-  let blendedSkills = Math.min(
-    1,
-    skillsRatio * 0.7 + domain.score * 0.4
-  );
-  if (domain.score >= 0.45 && skillsRatio >= 0.45) {
-    blendedSkills = Math.max(blendedSkills, 0.78);
+  // Strong domain + solid skill base → realistic finance-role scores (high 70s–80s+)
+  let blendedSkills = Math.min(1, skillsRatio * 0.68 + domain.score * 0.42);
+  if (domain.score >= 0.4 && skillsRatio >= 0.4) {
+    blendedSkills = Math.max(blendedSkills, 0.8);
   }
-  if (domain.score >= 0.55 && skillsRatio >= 0.55) {
+  if (domain.score >= 0.5 && skillsRatio >= 0.5) {
+    blendedSkills = Math.max(blendedSkills, 0.88);
+  }
+  if (domain.score >= 0.55 && skillsRatio >= 0.6) {
+    blendedSkills = Math.max(blendedSkills, 0.93);
+  }
+  // Accounting-heavy JD + strong accounting domain → don't sit at mid-70s
+  const jobIsFinanceHeavy =
+    effectiveJobSkills.filter((s) => ACCOUNTING_CLUSTER.includes(s)).length >= 4;
+  if (jobIsFinanceHeavy && hasAccountingDomain && skillsRatio >= 0.45) {
     blendedSkills = Math.max(blendedSkills, 0.86);
-  }
-  if (domain.score >= 0.6 && skillsRatio >= 0.65) {
-    blendedSkills = Math.max(blendedSkills, 0.92);
   }
 
   // --- Title (20%) ---
@@ -1237,9 +1460,10 @@ export function scoreCandidateJobFit(
   }
 
   if (skillsMatched.length > 0) {
-    const core = skillsMatched.slice(0, 6).join(", ");
+    const ordered = sortSkillsForDisplay(skillsMatched).slice(0, 7);
+    const core = ordered.join(", ");
     strengths.push(
-      skillsNear.length
+      skillsNear.length > 2
         ? `Core skills present: ${core}`
         : `Strong skill match: ${core}`
     );
@@ -1256,21 +1480,38 @@ export function scoreCandidateJobFit(
     reasons.push("Resume language overlaps the job domain");
   }
 
-  // Only surface meaningful tool gaps (skip noisy nice-to-haves when core is strong)
+  // Prefer real product/tool gaps over accounting ops already implied by domain
   const hardMissing = skillsMissing
     .filter((s) => !/\(nice-to-have\)/i.test(s))
-    .slice(0, 5);
+    .filter((s) => {
+      const n = normalizeSkill(s);
+      // Don't ask to "confirm GL/month-end" if accounting domain is solid
+      if (
+        hasAccountingDomain &&
+        clusterPresent.length >= 2 &&
+        ACCOUNTING_CLUSTER.includes(n)
+      ) {
+        return false;
+      }
+      // Don't ask client-facing if domain already says implementation/client work
+      if (
+        n === "client-facing" &&
+        /implement|client|training|onboard/i.test(domain.hits.join(" "))
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .slice(0, 4);
   const softMissing = skillsMissing
     .filter((s) => /\(nice-to-have\)/i.test(s))
     .map((s) => s.replace(/\s*\(nice-to-have\)/i, ""))
     .slice(0, 4);
 
-  if (hardMissing.length > 0 && skillsRatio < 0.85) {
+  if (hardMissing.length > 0 && skillsRatio < 0.9) {
     gaps.push(`Confirm experience with: ${hardMissing.join(", ")}`);
-  } else if (softMissing.length > 0 && skillsRatio < 0.9) {
-    gaps.push(
-      `Optional tools not clearly shown: ${softMissing.join(", ")}`
-    );
+  } else if (softMissing.length > 0 && skillsRatio < 0.92) {
+    gaps.push(`Optional tools not clearly shown: ${softMissing.join(", ")}`);
   }
 
   if (locPart.reason) {
