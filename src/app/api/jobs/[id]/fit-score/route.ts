@@ -58,13 +58,34 @@ function leadToCandidateInput(lead: {
   title?: string;
   summary?: string;
   experience?: FitCandidateInput["experience"];
+  education?: Array<Record<string, unknown> | string>;
+  certifications?: string[];
   location?: string;
   notes?: string;
+  company?: string;
 }): FitCandidateInput {
+  // Pull as much free text as we have so near-match domain scoring can work
+  // even when structured skills[] is sparse (common after resume upload).
+  const eduText = Array.isArray(lead.education)
+    ? lead.education
+        .map((e) =>
+          typeof e === "string"
+            ? e
+            : [e?.school, e?.degree, e?.field, e?.description]
+                .filter(Boolean)
+                .join(" ")
+        )
+        .join("\n")
+    : "";
+  const certText = Array.isArray(lead.certifications)
+    ? lead.certifications.join(", ")
+    : "";
   return {
     skills: lead.skills,
     title: lead.title,
-    summary: [lead.summary, lead.notes].filter(Boolean).join("\n"),
+    summary: [lead.summary, lead.notes, lead.company, eduText, certText]
+      .filter(Boolean)
+      .join("\n"),
     experience: lead.experience,
     location: lead.location,
   };
