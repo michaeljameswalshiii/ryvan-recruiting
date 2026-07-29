@@ -7,12 +7,14 @@ import {
   ArrowLeft,
   Building2,
   Calendar,
+  ChevronDown,
   DollarSign,
   ExternalLink,
   Globe,
   Loader2,
   MapPin,
   Pencil,
+  Sparkles,
   Trash2,
   UserPlus,
   Briefcase,
@@ -51,6 +53,7 @@ type FitScoreClient = {
   reasons?: string[];
   strengths?: string[];
   gaps?: string[];
+  summary?: string;
 };
 
 const STAGES = APPLICATION_STAGES.map((s) => s.value);
@@ -163,6 +166,10 @@ export default function JobDetailPage() {
     Record<string, FitScoreClient>
   >({});
   const [fitLoading, setFitLoading] = useState(false);
+  /** candidateId currently re-scoring */
+  const [fitRescoringId, setFitRescoringId] = useState<string | null>(null);
+  /** candidateId with expanded fit summary */
+  const [expandedFitId, setExpandedFitId] = useState<string | null>(null);
 
   // Support both field names used across the codebase
   const linkedCandidates = useMemo(() => {
@@ -187,6 +194,10 @@ export default function JobDetailPage() {
           score: lc.fitScore,
           grade: lc.fitGrade || "C",
           reasons: Array.isArray(lc.fitReasons) ? lc.fitReasons : [],
+          strengths: Array.isArray(lc.fitStrengths) ? lc.fitStrengths : [],
+          gaps: Array.isArray(lc.fitGaps) ? lc.fitGaps : [],
+          summary:
+            typeof lc.fitSummary === "string" ? lc.fitSummary : undefined,
         };
       }
     }
@@ -226,6 +237,7 @@ export default function JobDetailPage() {
               reasons: row.fit.reasons,
               strengths: row.fit.strengths,
               gaps: row.fit.gaps,
+              summary: row.fit.summary,
             };
           }
         }
@@ -241,6 +253,46 @@ export default function JobDetailPage() {
       cancelled = true;
     };
   }, [jobId, linkedCandidates]);
+
+  const runFitForCandidate = async (cid: string) => {
+    if (!jobId || !cid) return;
+    setFitRescoringId(cid);
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/fit-score`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateId: cid, persist: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to score fit");
+      }
+      const row =
+        Array.isArray(data.scores) && data.scores.length
+          ? data.scores[0]
+          : null;
+      const fit = row?.fit || data.fit;
+      if (!fit) throw new Error("No fit result returned");
+      setFitByCandidate((prev) => ({
+        ...prev,
+        [cid]: {
+          score: fit.score,
+          grade: fit.grade,
+          reasons: fit.reasons,
+          strengths: fit.strengths,
+          gaps: fit.gaps,
+          summary: fit.summary,
+        },
+      }));
+      setExpandedFitId(cid);
+      toast.success(`AI fit: ${fit.score}/100 (${fit.grade})`);
+    } catch (err: any) {
+      toast.error(err?.message || "AI fit failed");
+    } finally {
+      setFitRescoringId(null);
+    }
+  };
 
   const pipelineCounts = useMemo(() => {
     const total = linkedCandidates.length;
@@ -724,76 +776,156 @@ export default function JobDetailPage() {
                           score: lc.fitScore,
                           grade: lc.fitGrade,
                           reasons: lc.fitReasons,
+                          strengths: lc.fitStrengths,
+                          gaps: lc.fitGaps,
+                          summary: lc.fitSummary,
                         }
                       : null);
+                  const isRescoring = fitRescoringId === lc.candidateId;
+                  const isExpanded = expandedFitId === lc.candidateId;
+                  const hasFit = fit != null && typeof fit.score === "number";
                   return (
                     <li
                       key={lc.candidateId}
-                      className="flex items-center gap-2.5 py-2.5 first:pt-0 last:pb-0"
+                      className="py-2.5 first:pt-0 last:pb-0"
                     >
-                      <div
-                        className={`h-8 w-8 shrink-0 rounded-full ${avatarColor(name)} text-white flex items-center justify-center text-[11px] font-semibold`}
-                      >
-                        {getInitials(name)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <Link
-                            href={`/dashboard/candidates/${lc.candidateId}`}
-                            className="text-sm font-medium text-blue-600 hover:underline truncate"
-                          >
-                            {name}
-                          </Link>
-                          <FitScoreBadge
-                            score={fit?.score}
-                            grade={fit?.grade}
-                            reasons={fit?.reasons}
-                            strengths={fit?.strengths}
-                            gaps={fit?.gaps}
-                            loading={fitLoading && !fit}
-                            className="shrink-0"
-                          />
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className={`h-8 w-8 shrink-0 rounded-full ${avatarColor(name)} text-white flex items-center justify-center text-[11px] font-semibold`}
+                        >
+                          {getInitials(name)}
                         </div>
-                        <div className="mt-0.5 flex items-center gap-1.5">
-                          <select
-                            className="border-0 bg-transparent p-0 text-[11px] font-medium text-gray-600 cursor-pointer max-w-full focus:ring-0"
-                            value={stage}
-                            onChange={(e) =>
-                              updateStage.mutate({
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                            <Link
+                              href={`/dashboard/candidates/${lc.candidateId}`}
+                              className="text-sm font-medium text-blue-600 hover:underline truncate"
+                            >
+                              {name}
+                            </Link>
+                            <FitScoreBadge
+                              score={fit?.score}
+                              grade={fit?.grade}
+                              reasons={fit?.reasons}
+                              strengths={fit?.strengths}
+                              gaps={fit?.gaps}
+                              loading={(fitLoading || isRescoring) && !fit}
+                              className="shrink-0"
+                            />
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-1.5">
+                            <select
+                              className="border-0 bg-transparent p-0 text-[11px] font-medium text-gray-600 cursor-pointer max-w-full focus:ring-0"
+                              value={stage}
+                              onChange={(e) =>
+                                updateStage.mutate({
+                                  jobId,
+                                  candidateId: lc.candidateId,
+                                  stage: e.target.value,
+                                })
+                              }
+                              disabled={updateStage.isPending}
+                              aria-label={`Stage for ${name}`}
+                              title="Change stage"
+                            >
+                              {!STAGES.includes(stage) && (
+                                <option value={stage}>
+                                  {getStageLabel(stage)}
+                                </option>
+                              )}
+                              {STAGES.map((s) => (
+                                <option key={s} value={s}>
+                                  {getStageLabel(s)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button
+                            type="button"
+                            title={hasFit ? "Re-score AI fit" : "Run AI fit"}
+                            onClick={() => runFitForCandidate(lc.candidateId)}
+                            disabled={isRescoring || !!fitRescoringId}
+                            className="text-gray-300 hover:text-violet-600 p-1"
+                          >
+                            {isRescoring ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Sparkles className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                          {hasFit && (
+                            <button
+                              type="button"
+                              title={
+                                isExpanded ? "Hide fit summary" : "Show fit summary"
+                              }
+                              onClick={() =>
+                                setExpandedFitId(
+                                  isExpanded ? null : lc.candidateId
+                                )
+                              }
+                              className="text-gray-300 hover:text-gray-600 p-1"
+                            >
+                              <ChevronDown
+                                className={`h-3.5 w-3.5 transition-transform ${
+                                  isExpanded ? "rotate-180" : ""
+                                }`}
+                              />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            title="Unlink"
+                            onClick={() =>
+                              unlinkCandidate.mutate({
                                 jobId,
                                 candidateId: lc.candidateId,
-                                stage: e.target.value,
                               })
                             }
-                            disabled={updateStage.isPending}
-                            aria-label={`Stage for ${name}`}
-                            title="Change stage"
+                            disabled={unlinkCandidate.isPending}
+                            className="text-gray-300 hover:text-red-500 p-1"
                           >
-                            {!STAGES.includes(stage) && (
-                              <option value={stage}>{getStageLabel(stage)}</option>
-                            )}
-                            {STAGES.map((s) => (
-                              <option key={s} value={s}>
-                                {getStageLabel(s)}
-                              </option>
-                            ))}
-                          </select>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        title="Unlink"
-                        onClick={() =>
-                          unlinkCandidate.mutate({
-                            jobId,
-                            candidateId: lc.candidateId,
-                          })
-                        }
-                        disabled={unlinkCandidate.isPending}
-                        className="text-gray-300 hover:text-red-500 p-1 shrink-0"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {isExpanded && hasFit && fit && (
+                        <div className="mt-2 ml-10 rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-2 text-[11px] text-gray-700 space-y-1">
+                          {fit.summary ? (
+                            <pre className="whitespace-pre-wrap font-sans leading-relaxed">
+                              {fit.summary}
+                            </pre>
+                          ) : (
+                            <>
+                              <div className="font-semibold text-gray-900">
+                                Fit {Math.round(fit.score)}/100
+                                {fit.grade ? ` (${fit.grade})` : ""}
+                              </div>
+                              {!!fit.strengths?.length && (
+                                <p>
+                                  <span className="font-medium">Strengths: </span>
+                                  {fit.strengths.slice(0, 3).join("; ")}
+                                </p>
+                              )}
+                              {!!fit.gaps?.length && (
+                                <p>
+                                  <span className="font-medium">Gaps: </span>
+                                  {fit.gaps.slice(0, 3).join("; ")}
+                                </p>
+                              )}
+                              {!!fit.reasons?.length && (
+                                <ul className="list-disc pl-3.5 space-y-0.5">
+                                  {fit.reasons.slice(0, 4).map((r, i) => (
+                                    <li key={i}>{r}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
                     </li>
                   );
                 })}

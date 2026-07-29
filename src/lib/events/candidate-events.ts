@@ -926,6 +926,61 @@ export async function recordJobStageChanged(
   );
 }
 
+/**
+ * AI job-fit assessment completed (or re-run).
+ * Stored as NOTE / Other so it shows in the activity list; systemKind distinguishes it.
+ * Does not change pipeline stage.
+ */
+export async function recordAiFitAssessed(
+  candidateId: string,
+  jobId: string,
+  jobTitle: string,
+  createdBy: string,
+  fit: {
+    score: number;
+    grade: string;
+    summary?: string;
+    strengths?: string[];
+    gaps?: string[];
+    reasons?: string[];
+  }
+): Promise<RecordEventResponse> {
+  const summary =
+    (fit.summary && fit.summary.trim()) ||
+    `Fit score: ${fit.score}/100 (grade ${fit.grade})`;
+  const noteText = [
+    `AI fit for "${jobTitle}": ${fit.score}/100 (grade ${fit.grade})`,
+    summary,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return recordEvent(
+    candidateId,
+    "NOTE",
+    {
+      title: `AI fit · ${jobTitle}`,
+      description: `Fit ${fit.score}/100 (${fit.grade}) for ${jobTitle}`,
+      metadata: {
+        noteText,
+        noteType: "Other",
+        noteTypeLabel: "Other",
+        systemKind: "ai_fit",
+        jobId,
+        jobTitle,
+        fitScore: fit.score,
+        fitGrade: fit.grade,
+        fitSummary: summary,
+        fitStrengths: fit.strengths?.slice(0, 6) || [],
+        fitGaps: fit.gaps?.slice(0, 6) || [],
+        fitReasons: fit.reasons?.slice(0, 6) || [],
+        changedBy: createdBy,
+      },
+    },
+    createdBy
+  );
+}
+
 /** Profile / contact fields updated */
 export async function recordProfileUpdated(
   candidateId: string,

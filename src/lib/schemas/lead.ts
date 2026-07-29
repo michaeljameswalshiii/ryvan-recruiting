@@ -135,6 +135,15 @@ export const linkedJobSchema = z.object({
   
   // Job-specific notes
   notes: z.array(jobNoteSchema).default([]),
+
+  // AI job-fit assessment (dual-written with job.candidates[])
+  fitScore: z.number().min(0).max(100).optional(),
+  fitGrade: z.enum(["A", "B", "C", "D", "F"]).optional(),
+  fitReasons: z.array(z.string()).optional(),
+  fitStrengths: z.array(z.string()).optional(),
+  fitGaps: z.array(z.string()).optional(),
+  fitSummary: z.string().max(4000).optional(),
+  fitScoredAt: z.string().datetime().optional(),
 });
 
 // Legacy linked job type for backward compatibility during migration

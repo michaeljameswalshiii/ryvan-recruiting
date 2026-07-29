@@ -55,6 +55,14 @@ export const linkedCandidateSchema = z.object({
   stage: z.enum(jobCandidateStages),
   dateApplied: z.string().datetime(),
   notes: z.string().max(1000).optional(),
+  // AI job-fit assessment (source of truth on the job↔candidate link)
+  fitScore: z.number().min(0).max(100).optional(),
+  fitGrade: z.enum(["A", "B", "C", "D", "F"]).optional(),
+  fitReasons: z.array(z.string()).optional(),
+  fitStrengths: z.array(z.string()).optional(),
+  fitGaps: z.array(z.string()).optional(),
+  fitSummary: z.string().max(4000).optional(),
+  fitScoredAt: z.string().datetime().optional(),
 });
 
 export type LinkedCandidate = z.infer<typeof linkedCandidateSchema>;

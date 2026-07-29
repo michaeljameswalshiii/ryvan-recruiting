@@ -37,7 +37,8 @@ import { ResumeViewer } from '@/components/candidate/ResumeViewer';
 import { LinkJobModal } from '@/components/candidate/LinkJobModal';
 import { MergeCandidatesModal } from '@/components/candidate/MergeCandidatesModal';
 import { CandidateSmsPanel } from '@/components/candidate/CandidateSmsPanel';
-import { Link2, Unlink, Combine } from 'lucide-react';
+import { FitScoreBadge } from '@/components/job/FitScoreBadge';
+import { Link2, Unlink, Combine, ChevronDown } from 'lucide-react';
 
 import {
   ACTIVITY_NOTE_TYPES,
@@ -305,6 +306,25 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     Array.isArray(safe.linkedJobs) ? safe.linkedJobs : []
   );
   const [unlinkingJobId, setUnlinkingJobId] = useState<string | null>(null);
+  /** jobId currently running AI fit */
+  const [fitScoringJobId, setFitScoringJobId] = useState<string | null>(null);
+  /** jobId with expanded fit summary */
+  const [expandedFitJobId, setExpandedFitJobId] = useState<string | null>(null);
+  /** Local overlay of fit fields after Run AI fit (merged into linkedJobs) */
+  const [fitOverlayByJob, setFitOverlayByJob] = useState<
+    Record<
+      string,
+      {
+        fitScore: number;
+        fitGrade?: string;
+        fitReasons?: string[];
+        fitStrengths?: string[];
+        fitGaps?: string[];
+        fitSummary?: string;
+        fitScoredAt?: string;
+      }
+    >
+  >({});
 
   const [contactInfo, setContactInfo] = useState({
     name: safe.name || '',
@@ -625,6 +645,56 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     await setPipelineStage(nextStatus, {
       noteText: `Moved to ${PIPELINE_STEPS[stepIndex].label}`,
     });
+  };
+
+  const handleRunAiFit = async (job: any) => {
+    const jobId = job.jobId || job.id;
+    if (!jobId || !candidateId) return;
+    setFitScoringJobId(jobId);
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/fit-score`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateId, persist: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to score fit');
+      }
+      const row =
+        Array.isArray(data.scores) && data.scores.length
+          ? data.scores[0]
+          : data.fit
+            ? { fit: data.fit }
+            : null;
+      const fit = row?.fit || data.fit;
+      if (!fit) {
+        throw new Error('No fit result returned');
+      }
+      const overlay = {
+        fitScore: fit.score,
+        fitGrade: fit.grade,
+        fitReasons: fit.reasons || [],
+        fitStrengths: fit.strengths || [],
+        fitGaps: fit.gaps || [],
+        fitSummary: fit.summary || undefined,
+        fitScoredAt: new Date().toISOString(),
+      };
+      setFitOverlayByJob((prev) => ({ ...prev, [jobId]: overlay }));
+      setLinkedJobs((prev) =>
+        prev.map((j: any) =>
+          (j.jobId || j.id) === jobId ? { ...j, ...overlay } : j
+        )
+      );
+      setExpandedFitJobId(jobId);
+      void fetchNotes();
+      toast.success(`AI fit: ${fit.score}/100 (${fit.grade})`);
+    } catch (err: any) {
+      toast.error(err?.message || 'AI fit failed');
+    } finally {
+      setFitScoringJobId(null);
+    }
   };
 
   const handleUnlinkJob = async (job: any) => {
@@ -1951,47 +2021,148 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
               {linkedJobs.map((job: any) => {
                 const jobId = job.jobId || job.id;
                 const isUnlinking = unlinkingJobId === jobId;
+                const overlay = fitOverlayByJob[jobId];
+                const fitScore =
+                  overlay?.fitScore ??
+                  (typeof job.fitScore === 'number' ? job.fitScore : null);
+                const fitGrade = overlay?.fitGrade ?? job.fitGrade;
+                const fitReasons = overlay?.fitReasons ?? job.fitReasons ?? [];
+                const fitStrengths =
+                  overlay?.fitStrengths ?? job.fitStrengths ?? [];
+                const fitGaps = overlay?.fitGaps ?? job.fitGaps ?? [];
+                const fitSummary =
+                  overlay?.fitSummary ?? job.fitSummary ?? null;
+                const isScoring = fitScoringJobId === jobId;
+                const isExpanded = expandedFitJobId === jobId;
+                const hasFit = fitScore != null && !Number.isNaN(Number(fitScore));
+
                 return (
                   <div
                     key={jobId}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-4 py-3 hover:bg-gray-50"
+                    className="rounded-xl border border-gray-100 px-4 py-3 hover:bg-gray-50"
                   >
-                    <Link
-                      href={`/dashboard/jobs/${jobId}`}
-                      className="min-w-0 flex-1"
-                    >
-                      <div className="font-medium text-gray-900">
-                        {job.jobTitle || job.title || 'Job'}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {job.companyName || '—'}
-                        {job.stage ? ` · ${job.stage}` : ''}
-                      </div>
-                    </Link>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        disabled={isUnlinking || !!unlinkingJobId}
-                        onClick={() => handleUnlinkJob(job)}
-                      >
-                        {isUnlinking ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                        ) : (
-                          <Unlink className="h-3.5 w-3.5 mr-1.5" />
-                        )}
-                        Unlink
-                      </Button>
+                    <div className="flex items-center justify-between gap-3">
                       <Link
                         href={`/dashboard/jobs/${jobId}`}
-                        className="p-2 text-gray-400 hover:text-gray-600"
-                        title="Open job"
+                        className="min-w-0 flex-1"
                       >
-                        <ChevronRight className="h-4 w-4" />
+                        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                          <span className="font-medium text-gray-900">
+                            {job.jobTitle || job.title || 'Job'}
+                          </span>
+                          <FitScoreBadge
+                            score={fitScore}
+                            grade={fitGrade}
+                            reasons={fitReasons}
+                            strengths={fitStrengths}
+                            gaps={fitGaps}
+                            loading={isScoring && !hasFit}
+                            className="shrink-0"
+                          />
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {job.companyName || '—'}
+                          {job.stage ? ` · ${String(job.stage).replace(/_/g, ' ')}` : ''}
+                          {(overlay?.fitScoredAt || job.fitScoredAt) && hasFit
+                            ? ` · scored ${new Date(
+                                overlay?.fitScoredAt || job.fitScoredAt
+                              ).toLocaleDateString()}`
+                            : ''}
+                        </div>
                       </Link>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isScoring || !!fitScoringJobId}
+                          onClick={() => handleRunAiFit(job)}
+                          title="Run AI job-fit assessment"
+                        >
+                          {isScoring ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                          ) : (
+                            <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                          )}
+                          {hasFit ? 'Re-score' : 'Run AI fit'}
+                        </Button>
+                        {hasFit && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="px-2"
+                            onClick={() =>
+                              setExpandedFitJobId(isExpanded ? null : jobId)
+                            }
+                            title={isExpanded ? 'Hide summary' : 'Show summary'}
+                          >
+                            <ChevronDown
+                              className={`h-4 w-4 transition-transform ${
+                                isExpanded ? 'rotate-180' : ''
+                              }`}
+                            />
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          disabled={isUnlinking || !!unlinkingJobId}
+                          onClick={() => handleUnlinkJob(job)}
+                        >
+                          {isUnlinking ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                          ) : (
+                            <Unlink className="h-3.5 w-3.5 mr-1.5" />
+                          )}
+                          Unlink
+                        </Button>
+                        <Link
+                          href={`/dashboard/jobs/${jobId}`}
+                          className="p-2 text-gray-400 hover:text-gray-600"
+                          title="Open job"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Link>
+                      </div>
                     </div>
+                    {isExpanded && hasFit && (
+                      <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5 text-xs text-gray-700 space-y-1.5">
+                        {fitSummary ? (
+                          <pre className="whitespace-pre-wrap font-sans leading-relaxed">
+                            {fitSummary}
+                          </pre>
+                        ) : (
+                          <>
+                            <div className="font-semibold text-gray-900">
+                              Fit {Math.round(Number(fitScore))}/100
+                              {fitGrade ? ` (${fitGrade})` : ''}
+                            </div>
+                            {fitStrengths.length > 0 && (
+                              <p>
+                                <span className="font-medium">Strengths: </span>
+                                {fitStrengths.slice(0, 4).join('; ')}
+                              </p>
+                            )}
+                            {fitGaps.length > 0 && (
+                              <p>
+                                <span className="font-medium">Gaps: </span>
+                                {fitGaps.slice(0, 4).join('; ')}
+                              </p>
+                            )}
+                            {Array.isArray(fitReasons) && fitReasons.length > 0 && (
+                              <ul className="list-disc pl-4 space-y-0.5">
+                                {fitReasons.slice(0, 5).map((r: string, i: number) => (
+                                  <li key={i}>{r}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

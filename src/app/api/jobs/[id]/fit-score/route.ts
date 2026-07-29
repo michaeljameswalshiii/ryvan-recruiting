@@ -4,16 +4,26 @@
  * POST /api/jobs/[id]/fit-score
  *   body: { candidateId } | { candidateIds: string[] } | { resumeText?, skills? }
  *
+ * On persist: stamps fit fields on job.candidates[] + lead.linkedJobs[] (dual-write)
+ * and appends an activity note (type Other, systemKind ai_fit). No pipeline stage change.
+ *
  * @serverOnly
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionTenantId } from "@/lib/server-auth";
+import {
+  getSessionTenantId,
+  getSessionUserEmail,
+} from "@/lib/server-auth";
 import { getJobById } from "@/lib/db/repositories/job-repository";
-import { getLeadById } from "@/lib/db/repositories/lead-repository";
+import {
+  getLeadById,
+  updateLead,
+} from "@/lib/db/repositories/lead-repository";
 import {
   scoreCandidateJobFit,
   extractSkillsFromText,
+  formatFitSummary,
   type FitScoreResult,
   type FitCandidateInput,
 } from "@/lib/ai/fit-score";
@@ -25,6 +35,7 @@ import {
   jobsTable,
 } from "@/lib/db/dynamodb";
 import type { Job } from "@/lib/schemas/job";
+import { recordAiFitAssessed } from "@/lib/events/candidate-events";
 
 export const dynamic = "force-dynamic";
 
@@ -59,68 +70,128 @@ function leadToCandidateInput(lead: {
   };
 }
 
+/** Shared fit fields written to both sides of the dual-write link. */
+function fitLinkFields(result: FitScoreResult, scoredAt: string) {
+  return {
+    fitScore: result.score,
+    fitGrade: result.grade,
+    fitReasons: result.reasons.slice(0, 6),
+    fitStrengths: result.strengths.slice(0, 6),
+    fitGaps: result.gaps.slice(0, 6),
+    fitSummary: formatFitSummary(result),
+    fitScoredAt: scoredAt,
+  };
+}
+
 /**
- * Optionally stamp fit fields onto job.candidates[] entry.
- * Extra fields are tolerated; never fail the request if write fails.
+ * Stamp fit fields onto job.candidates[] and dual-write lead.linkedJobs[].
+ * Never fail the request if a side write fails — returns true if either side updated.
  */
 async function tryStoreFitOnLinkedCandidate(
   tenantId: string,
   jobId: string,
+  jobTitle: string,
   candidateId: string,
-  result: FitScoreResult
+  result: FitScoreResult,
+  createdBy: string
 ): Promise<boolean> {
+  const scoredAt = new Date().toISOString();
+  const fields = fitLinkFields(result, scoredAt);
+  let jobStored = false;
+
   try {
     const job = await getItem<Job & { candidates?: any[] }>(jobsTable, {
       tenant_id: tenantId,
       id: jobId,
     });
-    if (!job) return false;
-    const existing =
-      (Array.isArray(job.candidates) && job.candidates) ||
-      (Array.isArray((job as any).linkedCandidates) &&
-        (job as any).linkedCandidates) ||
-      [];
-    const idx = existing.findIndex(
-      (c: any) => c.candidateId === candidateId
-    );
-    if (idx < 0) return false;
+    if (job) {
+      const existing =
+        (Array.isArray(job.candidates) && job.candidates) ||
+        (Array.isArray((job as any).linkedCandidates) &&
+          (job as any).linkedCandidates) ||
+        [];
+      const idx = existing.findIndex(
+        (c: any) => c.candidateId === candidateId
+      );
+      if (idx >= 0) {
+        const next = existing.map((c: any, i: number) => {
+          if (i !== idx) return c;
+          return { ...c, ...fields };
+        });
 
-    const next = existing.map((c: any, i: number) => {
-      if (i !== idx) return c;
-      return {
-        ...c,
-        fitScore: result.score,
-        fitGrade: result.grade,
-        fitReasons: result.reasons.slice(0, 6),
-        fitScoredAt: new Date().toISOString(),
-      };
-    });
-
-    await updateItem(
-      jobsTable,
-      { tenant_id: tenantId, id: jobId },
-      "SET #candidates = :candidates, #modified_at = :modified_at",
-      {
-        ":candidates": next,
-        ":modified_at": new Date().toISOString(),
-      },
-      {
-        "#candidates": "candidates",
-        "#modified_at": "modified_at",
+        await updateItem(
+          jobsTable,
+          { tenant_id: tenantId, id: jobId },
+          "SET #candidates = :candidates, #modified_at = :modified_at",
+          {
+            ":candidates": next,
+            ":modified_at": scoredAt,
+          },
+          {
+            "#candidates": "candidates",
+            "#modified_at": "modified_at",
+          }
+        );
+        jobStored = true;
       }
-    );
-    return true;
+    }
   } catch (err) {
-    console.warn("[fit-score] store on link failed:", err);
-    return false;
+    console.warn("[fit-score] store on job.candidates failed:", err);
   }
+
+  // Dual-write: lead.linkedJobs[] for the same candidate↔job link
+  let leadStored = false;
+  try {
+    const lead = await getLeadById(tenantId, candidateId);
+    if (lead) {
+      const linked = Array.isArray((lead as any).linkedJobs)
+        ? [...(lead as any).linkedJobs]
+        : [];
+      const lidx = linked.findIndex((j: any) => j?.jobId === jobId);
+      if (lidx >= 0) {
+        linked[lidx] = { ...linked[lidx], ...fields };
+        await updateLead(tenantId, candidateId, {
+          linkedJobs: linked as any,
+        });
+        leadStored = true;
+      }
+    }
+  } catch (err) {
+    console.warn("[fit-score] dual-write lead.linkedJobs failed:", err);
+  }
+
+  const anyStored = jobStored || leadStored;
+
+  // Activity history (append-only); does not change pipeline stage
+  if (anyStored) {
+    try {
+      await recordAiFitAssessed(
+        candidateId,
+        jobId,
+        jobTitle || "Job",
+        createdBy,
+        {
+          score: result.score,
+          grade: result.grade,
+          summary: fields.fitSummary,
+          strengths: result.strengths,
+          gaps: result.gaps,
+          reasons: result.reasons,
+        }
+      );
+    } catch (err) {
+      console.warn("[fit-score] activity note failed:", err);
+    }
+  }
+
+  return anyStored;
 }
 
 async function scoreOne(
   tenantId: string,
   job: NonNullable<Awaited<ReturnType<typeof getJobById>>>,
   candidateId: string,
-  opts?: { persist?: boolean; useOutcomes?: boolean }
+  opts?: { persist?: boolean; useOutcomes?: boolean; createdBy?: string }
 ): Promise<{
   candidateId: string;
   candidateName?: string;
@@ -128,6 +199,7 @@ async function scoreOne(
     baseScore?: number;
     outcomeBoost?: number;
     rankedWithOutcomes?: boolean;
+    summary?: string;
   };
   persisted?: boolean;
 } | null> {
@@ -138,6 +210,7 @@ async function scoreOne(
     baseScore?: number;
     outcomeBoost?: number;
     rankedWithOutcomes?: boolean;
+    summary?: string;
   };
 
   if (opts?.useOutcomes !== false) {
@@ -161,13 +234,17 @@ async function scoreOne(
     );
   }
 
+  fit.summary = formatFitSummary(fit);
+
   let persisted = false;
   if (opts?.persist !== false) {
     persisted = await tryStoreFitOnLinkedCandidate(
       tenantId,
       job.id!,
+      job.title || "Job",
       candidateId,
-      fit
+      fit,
+      opts?.createdBy || "system"
     );
   }
   return {
@@ -212,7 +289,11 @@ export async function GET(
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
-    const result = await scoreOne(tenantId, job, candidateId);
+    const createdBy =
+      (await getSessionUserEmail()) || "system";
+    const result = await scoreOne(tenantId, job, candidateId, {
+      createdBy,
+    });
     if (!result) {
       return NextResponse.json(
         { error: "Candidate not found" },
@@ -319,6 +400,8 @@ export async function POST(
     }
 
     const unique = Array.from(new Set(ids)).slice(0, 100);
+    const createdBy =
+      (await getSessionUserEmail()) || "system";
     const scores: Array<{
       candidateId: string;
       candidateName?: string;
@@ -328,7 +411,10 @@ export async function POST(
     const missing: string[] = [];
 
     for (const cid of unique) {
-      const r = await scoreOne(tenantId, job, cid, { persist });
+      const r = await scoreOne(tenantId, job, cid, {
+        persist,
+        createdBy,
+      });
       if (r) scores.push(r);
       else missing.push(cid);
     }
