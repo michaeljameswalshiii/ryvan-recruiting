@@ -494,7 +494,15 @@ const SENIORITY_KEYWORDS: Array<{ pattern: RegExp; level: number; label: string 
   { pattern: /\b(intern|internship|student|entry[-\s]?level|junior|jr\.?)\b/i, level: 1, label: "junior" },
   { pattern: /\b(mid[-\s]?level|intermediate)\b/i, level: 2, label: "mid" },
   { pattern: /\b(senior|sr\.?)\b/i, level: 3, label: "senior" },
-  { pattern: /\b(staff|principal|lead|architect)\b/i, level: 4, label: "lead" },
+  // Avoid matching:
+  // - verbs like "Lead financial discovery"
+  // - "staff accountant" (common IC title, not staff-level eng ladder)
+  {
+    pattern:
+      /\b(principal|architect)\b|\b(staff\s+(engineer|developer|scientist|designer|product))\b|\b(team\s+lead|tech\s+lead|technical\s+lead|lead\s+(engineer|developer|accountant|analyst|consultant|manager|recruiter|designer))\b/i,
+    level: 4,
+    label: "lead",
+  },
   { pattern: /\b(director|vp|vice president|head of|chief|c[to]o)\b/i, level: 5, label: "executive" },
 ];
 
@@ -1114,9 +1122,17 @@ export function scoreCandidateJobFit(
   );
 
   // --- Seniority / years (10%) ---
-  const jobSen = detectSeniority(`${job.title || ""} ${job.description || ""}`);
+  // Prefer job TITLE for seniority — full JD bullets often start with "Lead …" verbs
+  // and incorrectly inflate seniority (e.g. "Lead financial discovery").
+  const jobSen = detectSeniority(
+    job.title?.trim()
+      ? job.title
+      : `${job.title || ""} ${job.description || ""}`
+  );
   const candSen = detectSeniority(
-    `${candidate.title || ""} ${candidate.summary || ""} ${candText}`
+    candidate.title?.trim()
+      ? `${candidate.title} ${candidate.summary || ""}`
+      : `${candidate.title || ""} ${candidate.summary || ""} ${candText}`
   );
   const years = estimateYearsFromExperience(candidate.experience);
 

@@ -36,8 +36,11 @@ import {
 } from "@/lib/db/dynamodb";
 import type { Job } from "@/lib/schemas/job";
 import { recordAiFitAssessed } from "@/lib/events/candidate-events";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { extractTextFromResumeBuffer } from "@/lib/candidates/resume-extract-server";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 function jobFitInput(job: {
   title?: string;
@@ -53,17 +56,20 @@ function jobFitInput(job: {
   };
 }
 
-function leadToCandidateInput(lead: {
-  skills?: string[];
-  title?: string;
-  summary?: string;
-  experience?: FitCandidateInput["experience"];
-  education?: Array<Record<string, unknown> | string>;
-  certifications?: string[];
-  location?: string;
-  notes?: string;
-  company?: string;
-}): FitCandidateInput {
+function leadToCandidateInput(
+  lead: {
+    skills?: string[];
+    title?: string;
+    summary?: string;
+    experience?: FitCandidateInput["experience"];
+    education?: Array<Record<string, unknown> | string>;
+    certifications?: string[];
+    location?: string;
+    notes?: string;
+    company?: string;
+  },
+  extraResumeText?: string
+): FitCandidateInput {
   // Pull as much free text as we have so near-match domain scoring can work
   // even when structured skills[] is sparse (common after resume upload).
   const eduText = Array.isArray(lead.education)
@@ -80,15 +86,135 @@ function leadToCandidateInput(lead: {
   const certText = Array.isArray(lead.certifications)
     ? lead.certifications.join(", ")
     : "";
+  const summary = [
+    lead.summary,
+    lead.notes,
+    lead.company,
+    eduText,
+    certText,
+    extraResumeText,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const fromResume = extraResumeText
+    ? extractSkillsFromText(extraResumeText)
+    : [];
+  const skills = Array.from(
+    new Set([...(lead.skills || []), ...fromResume].map(String).filter(Boolean))
+  );
+
   return {
-    skills: lead.skills,
+    skills: skills.length ? skills : lead.skills,
     title: lead.title,
-    summary: [lead.summary, lead.notes, lead.company, eduText, certText]
-      .filter(Boolean)
-      .join("\n"),
+    summary,
     experience: lead.experience,
     location: lead.location,
   };
+}
+
+function candidateInputIsSparse(input: FitCandidateInput): boolean {
+  const skillCount = Array.isArray(input.skills) ? input.skills.length : 0;
+  const summaryLen = (input.summary || "").trim().length;
+  const expCount = Array.isArray(input.experience) ? input.experience.length : 0;
+  // Typical empty CRM profile after resume file attach without re-parse.
+  // Any of these weak signals means we should try the resume file.
+  return skillCount < 5 || summaryLen < 200 || expCount < 1;
+}
+
+function extractS3KeyFromUrlOrKey(raw: string): string {
+  let s3Key = raw || "";
+  if (s3Key.startsWith("http")) {
+    try {
+      const path = new URL(s3Key).pathname.replace(/^\//, "");
+      const bucket = process.env.AWS_S3_BUCKET_NAME || "";
+      s3Key =
+        bucket && path.startsWith(bucket + "/")
+          ? path.slice(bucket.length + 1)
+          : path;
+    } catch {
+      /* keep */
+    }
+  }
+  return s3Key;
+}
+
+async function streamToBuffer(
+  body: AsyncIterable<Uint8Array> | ReadableStream | Blob | undefined
+): Promise<Buffer> {
+  if (!body) return Buffer.alloc(0);
+  const anyBody = body as {
+    transformToByteArray?: () => Promise<Uint8Array>;
+  };
+  if (typeof anyBody.transformToByteArray === "function") {
+    return Buffer.from(await anyBody.transformToByteArray());
+  }
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks.map((c) => Buffer.from(c)));
+}
+
+/**
+ * When profile skills/summary/experience are empty, load resume text from S3
+ * so fit scoring can use the actual resume content (Theresa-style case).
+ */
+async function loadResumeTextForLead(lead: any): Promise<string> {
+  try {
+    const rawKey =
+      lead.resume_key ||
+      lead.resume_s3_key ||
+      lead.resumeKey ||
+      lead.resume_url ||
+      lead.resumeUrl ||
+      "";
+    const s3Key = extractS3KeyFromUrlOrKey(String(rawKey || ""));
+    if (!s3Key) return "";
+
+    const bucket =
+      process.env.AWS_S3_BUCKET_NAME ||
+      process.env.NEXT_PUBLIC_AWS_S3_BUCKET_NAME;
+    if (!bucket) return "";
+
+    const region =
+      process.env.AWS_REGION ||
+      process.env.NEXT_PUBLIC_AWS_REGION ||
+      "us-east-1";
+    const client = new S3Client({ region });
+    const obj = await client.send(
+      new GetObjectCommand({ Bucket: bucket, Key: s3Key })
+    );
+    const buffer = await streamToBuffer(obj.Body as any);
+    if (!buffer.length) return "";
+
+    const fileName =
+      lead.resume_file_name ||
+      lead.resumeFileName ||
+      s3Key.split("/").pop() ||
+      "resume.pdf";
+    const { text } = await extractTextFromResumeBuffer(buffer, String(fileName));
+    return (text || "").trim().slice(0, 20000);
+  } catch (err) {
+    console.warn("[fit-score] resume text load failed:", err);
+    return "";
+  }
+}
+
+async function buildCandidateInput(lead: any): Promise<{
+  input: FitCandidateInput;
+  resumeUsed: boolean;
+}> {
+  let input = leadToCandidateInput(lead);
+  let resumeUsed = false;
+  if (candidateInputIsSparse(input)) {
+    const resumeText = await loadResumeTextForLead(lead);
+    if (resumeText.length >= 40) {
+      input = leadToCandidateInput(lead, resumeText);
+      resumeUsed = true;
+    }
+  }
+  return { input, resumeUsed };
 }
 
 /** Shared fit fields written to both sides of the dual-write link. */
@@ -223,9 +349,14 @@ async function scoreOne(
     summary?: string;
   };
   persisted?: boolean;
+  resumeUsed?: boolean;
 } | null> {
   const lead = await getLeadById(tenantId, candidateId);
   if (!lead) return null;
+
+  const { input: candidateInput, resumeUsed } = await buildCandidateInput(
+    lead as any
+  );
 
   let fit: FitScoreResult & {
     baseScore?: number;
@@ -238,24 +369,24 @@ async function scoreOne(
     try {
       const { graph } = await getSkillsGraphFresh(tenantId, { rebuild: false });
       fit = scoreCandidateJobFitWithOutcomes(
-        leadToCandidateInput(lead as any),
+        candidateInput,
         jobFitInput(job),
         graph
       );
     } catch {
-      fit = scoreCandidateJobFit(
-        leadToCandidateInput(lead as any),
-        jobFitInput(job)
-      );
+      fit = scoreCandidateJobFit(candidateInput, jobFitInput(job));
     }
   } else {
-    fit = scoreCandidateJobFit(
-      leadToCandidateInput(lead as any),
-      jobFitInput(job)
-    );
+    fit = scoreCandidateJobFit(candidateInput, jobFitInput(job));
   }
 
   fit.summary = formatFitSummary(fit);
+  if (resumeUsed) {
+    fit.reasons = [
+      "Scored using resume file text (profile skills/summary were sparse)",
+      ...fit.reasons,
+    ].slice(0, 12);
+  }
 
   let persisted = false;
   if (opts?.persist !== false) {
@@ -273,6 +404,7 @@ async function scoreOne(
     candidateName: lead.name,
     fit,
     persisted,
+    resumeUsed,
   };
 }
 
