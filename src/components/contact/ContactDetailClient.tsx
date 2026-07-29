@@ -1274,7 +1274,7 @@ export default function ContactDetailClient({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              type: '02 Email Sent',
+              type: 'EM Sent',
               content: `Email sent: ${subject}`,
               companyId: companyId || undefined,
             }),

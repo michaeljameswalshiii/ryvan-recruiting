@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
+import { normalizeContactActivityType } from '@/lib/contacts/activity-types';
 
 type Activity = {
   id: string;
@@ -18,11 +19,12 @@ interface ActivityItemProps {
 
 export default function ActivityItem({ activity, onEdit, onDelete }: ActivityItemProps) {
   const [showConfirm, setShowConfirm] = useState(false);
+  const typeLabel = normalizeContactActivityType(activity.type);
 
   return (
     <div className="group relative border-l-4 border-orange-500 pl-4 py-3 hover:bg-gray-50 rounded-r-xl flex gap-4">
       <div className="flex-1">
-        <div className="font-medium">{activity.type}</div>
+        <div className="font-medium">{typeLabel}</div>
         <div className="text-gray-900">{activity.title}</div>
         {activity.description && (
           <p className="text-sm text-gray-600 mt-1">{activity.description}</p>
