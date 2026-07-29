@@ -850,8 +850,10 @@ export async function recordJobLinked(
       description: `Linked to ${jobTitle}${company} · stage: ${stage.replace(/_/g, " ")}`,
       metadata: {
         noteText: `Linked to job: ${jobTitle}${company}`,
-        noteType: "job_linked",
-        noteTypeLabel: "Job linked",
+        // Canonical activity list: system events that aren't in the list → Other
+        noteType: "Other",
+        noteTypeLabel: "Other",
+        systemKind: "job_linked",
         jobId,
         jobTitle,
         companyName: options?.companyName,
@@ -878,8 +880,9 @@ export async function recordJobUnlinked(
       description: `Unlinked from ${jobTitle || jobId}`,
       metadata: {
         noteText: `Unlinked from job: ${jobTitle || jobId}`,
-        noteType: "job_unlinked",
-        noteTypeLabel: "Job unlinked",
+        noteType: "Other",
+        noteTypeLabel: "Other",
+        systemKind: "job_unlinked",
         jobId,
         jobTitle,
         changedBy: createdBy,
@@ -908,8 +911,9 @@ export async function recordJobStageChanged(
       description: `${jobTitle}: ${from} → ${to}`,
       metadata: {
         noteText: `Job stage on "${jobTitle}": ${from} → ${to}`,
-        noteType: "job_stage_change",
-        noteTypeLabel: "Job stage",
+        noteType: "Other",
+        noteTypeLabel: "Other",
+        systemKind: "job_stage_change",
         jobId,
         jobTitle,
         oldStage,
@@ -937,8 +941,9 @@ export async function recordProfileUpdated(
       description: summary,
       metadata: {
         noteText: summary,
-        noteType: "profile_updated",
-        noteTypeLabel: "Profile update",
+        noteType: "Other",
+        noteTypeLabel: "Other",
+        systemKind: "profile_updated",
         fields: fields || [],
         changedBy: createdBy,
       },
