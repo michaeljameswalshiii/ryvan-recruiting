@@ -24,6 +24,10 @@ import type {
   PaginationCursor,
   CandidateEventType,
 } from './types';
+import {
+  ACTIVITY_NOTE_TYPES,
+  normalizeNoteTypeLabel,
+} from '@/lib/candidates/note-type-stage';
 
 // ============================================================================
 // Constants & Configuration
@@ -339,9 +343,10 @@ export async function updateCandidateEvent(
 
     if (updates.noteType !== undefined) {
       const noteTypeValue = updates.noteType;
-      const noteTypeLabel =
+      const noteTypeLabel = normalizeNoteTypeLabel(
         candidateNoteTypes.find((t) => t.value === noteTypeValue)?.label ||
-        noteTypeValue;
+          noteTypeValue
+      );
       meta.noteType = noteTypeValue;
       meta.noteTypeLabel = noteTypeLabel;
       if (existing.eventType === 'NOTE' || meta.noteText) {
@@ -431,35 +436,24 @@ export async function deleteCandidateEvent(
   }
 }
 
-// Note types constants - used for display labels
+// Canonical note types + legacy aliases for display labels
 const candidateNoteTypes = [
-  { value: 'general', label: 'General Note' },
-  { value: 'phone_call', label: 'Phone call' },
-  { value: 'email_sent', label: 'Email sent' },
-  { value: 'meeting', label: 'Meeting' },
+  ...ACTIVITY_NOTE_TYPES.map((t) => ({ value: t.value, label: t.label })),
+  // Legacy stored values still resolve via normalizeNoteTypeLabel
+  { value: 'general', label: 'Other' },
+  { value: 'phone_call', label: 'Other' },
+  { value: 'email_sent', label: 'EM Sent' },
+  { value: 'Email Sent', label: 'EM Sent' },
+  { value: 'Email Received', label: 'EM Received' },
+  { value: 'Left Message', label: 'LM' },
+  { value: 'Interview Scheduled', label: 'Interview' },
+  { value: 'meeting', label: 'Other' },
   { value: 'follow_up', label: 'Follow-up' },
-  { value: 'proposal_sent', label: 'Proposal sent' },
-  { value: 'contract_signed', label: 'Contract signed' },
-  { value: 'placement_made', label: 'Placement made' },
-  { value: 'check_in', label: 'Check-in' },
-  { value: 'other', label: 'Other' },
-  // Legacy UI note types from older candidate detail
-  { value: 'Conversation', label: 'Conversation' },
-  { value: 'Interview Scheduled', label: 'Interview Scheduled' },
-  { value: 'Sourced', label: 'Sourced' },
-  { value: 'Applied', label: 'Applied' },
-  { value: 'Interested', label: 'Interested' },
-  { value: 'Submitted', label: 'Submitted' },
-  { value: 'Offer Out', label: 'Offer Out' },
-  { value: 'Accepted', label: 'Accepted' },
-  { value: 'Rejected', label: 'Rejected' },
-  { value: 'Email Sent', label: 'Email Sent' },
-  { value: 'Left Message', label: 'Left Message' },
-  { value: 'stage_change', label: 'Stage change' },
-  { value: 'job_linked', label: 'Job linked' },
-  { value: 'job_unlinked', label: 'Job unlinked' },
-  { value: 'job_stage_change', label: 'Job stage' },
-  { value: 'profile_updated', label: 'Profile update' },
+  { value: 'stage_change', label: 'Other' },
+  { value: 'job_linked', label: 'Other' },
+  { value: 'job_unlinked', label: 'Other' },
+  { value: 'job_stage_change', label: 'Other' },
+  { value: 'profile_updated', label: 'Other' },
 ];
 
 /**
@@ -483,11 +477,12 @@ export async function addNoteToCandidate(
 ): Promise<RecordEventResponse> {
   // Note detail text is optional — action type alone is enough (e.g. "No Answer")
   const text = (noteText || '').trim();
-  const noteTypeValue = options?.noteType || 'general';
-  const noteTypeLabel =
+  const noteTypeValue = options?.noteType || 'Other';
+  const noteTypeLabel = normalizeNoteTypeLabel(
     candidateNoteTypes.find((t) => t.value === noteTypeValue)?.label ||
-    String(noteTypeValue).replace(/_/g, ' ') ||
-    'Note';
+      String(noteTypeValue).replace(/_/g, ' ') ||
+      'Other'
+  );
 
   // Build metadata, including optional stage and noteType if provided
   const metadata: Record<string, unknown> = {

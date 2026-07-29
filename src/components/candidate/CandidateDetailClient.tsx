@@ -41,13 +41,14 @@ import { Link2, Unlink, Combine } from 'lucide-react';
 
 import {
   ACTIVITY_NOTE_TYPES,
+  normalizeNoteTypeLabel,
   noteTypeDrivesStage,
   noteTypeFromStage,
   stageDisplayLabel,
 } from '@/lib/candidates/note-type-stage';
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
 
-/** Activity / note types shown in the log composer */
+/** Activity / note types shown in the log composer (canonical order) */
 const NOTE_TYPES = ACTIVITY_NOTE_TYPES;
 
 /** Human labels for system event types in the activity log */
@@ -239,16 +240,24 @@ function noteTypeBadgeClass(label: string) {
   const l = label.toLowerCase();
   if (l.includes('interview')) return 'bg-violet-100 text-violet-800 border-violet-200';
   if (l.includes('submit')) return 'bg-sky-100 text-sky-800 border-sky-200';
-  if (l.includes('email')) return 'bg-blue-100 text-blue-800 border-blue-200';
-  if (l.includes('left message') || l.includes('phone') || l.includes('call'))
+  if (l.includes('em sent') || l.includes('email sent') || l === 'email')
+    return 'bg-blue-100 text-blue-800 border-blue-200';
+  if (l.includes('em received') || l.includes('email received'))
+    return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+  if (l === 'lm' || l.includes('left message'))
     return 'bg-amber-100 text-amber-900 border-amber-200';
+  if (l.includes('text sent') || l.includes('text received'))
+    return 'bg-cyan-100 text-cyan-800 border-cyan-200';
   if (l.includes('conversation'))
     return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-  if (l.includes('job linked') || l.includes('job unlinked'))
-    return 'bg-indigo-100 text-indigo-800 border-indigo-200';
-  if (l.includes('job stage') || l.includes('stage') || l.includes('pipeline'))
-    return 'bg-orange-100 text-orange-900 border-orange-200';
-  if (l.includes('profile')) return 'bg-slate-100 text-slate-800 border-slate-200';
+  if (l.includes('follow')) return 'bg-teal-100 text-teal-800 border-teal-200';
+  if (l.includes('offer')) return 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200';
+  if (l.includes('accept') || l.includes('placed'))
+    return 'bg-green-100 text-green-800 border-green-200';
+  if (l.includes('reject') || l.includes('not interest') || l === 'dnu')
+    return 'bg-rose-100 text-rose-800 border-rose-200';
+  if (l.includes('sourced') || l.includes('applied'))
+    return 'bg-slate-100 text-slate-800 border-slate-200';
   return 'bg-slate-100 text-slate-700 border-slate-200';
 }
 
@@ -357,19 +366,26 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
 
   const getNoteTypeLabel = (note: any): string => {
     const meta = note?.metadata || {};
-    if (meta.noteTypeLabel) return meta.noteTypeLabel;
+    // Prefer raw noteType → normalize (legacy → canonical / Other)
     if (meta.noteType) {
-      const match = NOTE_TYPES.find((t) => t.value === meta.noteType);
-      if (match) return match.label;
-      const pretty = String(meta.noteType).replace(/_/g, ' ');
-      return pretty.charAt(0).toUpperCase() + pretty.slice(1);
+      return normalizeNoteTypeLabel(String(meta.noteType));
+    }
+    if (meta.noteTypeLabel) {
+      return normalizeNoteTypeLabel(String(meta.noteTypeLabel));
     }
     const et = note?.eventType as string | undefined;
-    if (et && EVENT_TYPE_LABELS[et]) return EVENT_TYPE_LABELS[et];
-    if (et && et !== 'NOTE') {
-      return String(et).replace(/_/g, ' ');
+    if (et === 'EMAIL_SENT') return 'EM Sent';
+    if (et === 'EMAIL_OPENED') return 'Other';
+    if (et === 'INTERVIEW_SCHEDULED' || et === 'INTERVIEW_COMPLETED')
+      return 'Interview';
+    if (et === 'CALL_COMPLETED') return 'Other';
+    if (et && EVENT_TYPE_LABELS[et]) {
+      return normalizeNoteTypeLabel(EVENT_TYPE_LABELS[et]);
     }
-    return 'Note';
+    if (et && et !== 'NOTE') {
+      return normalizeNoteTypeLabel(String(et).replace(/_/g, ' '));
+    }
+    return 'Other';
   };
 
   const getNoteBody = (note: any): string => {
@@ -448,12 +464,8 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     const id = String(note.id || note.timestamp);
     setEditingEventId(id);
     setEditNoteText(getNoteBody(note) === '—' ? '' : getNoteBody(note));
-    const meta = note?.metadata || {};
-    setEditNoteType(
-      meta.noteType ||
-        NOTE_TYPES.find((t) => t.label === getNoteTypeLabel(note))?.value ||
-        'Conversation'
-    );
+    // Map legacy stored types into the new dropdown list (unknown → Other)
+    setEditNoteType(normalizeNoteTypeLabel(getNoteTypeLabel(note)));
   };
 
   const cancelEditActivity = () => {
@@ -2106,7 +2118,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               noteText: `Email sent: ${subject}`,
-              noteType: 'Email Sent',
+              noteType: 'EM Sent',
             }),
           }).catch(() => {});
           await fetchNotes();

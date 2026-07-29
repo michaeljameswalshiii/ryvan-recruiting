@@ -6,6 +6,7 @@ import {
   PaginationBar,
   paginateItems,
 } from '@/components/ui/pagination-bar';
+import { ACTIVITY_NOTE_TYPES } from '@/lib/candidates/note-type-stage';
 
 // Event types matching the server types
 type EventType = 'EMAIL_SENT' | 'NOTE' | 'STATUS_CHANGE' | 'INTERVIEW_SCHEDULED';
@@ -27,26 +28,18 @@ interface EventTimelineProps {
   initialEvents?: CandidateEvent[];
 }
 
-// Note Types
-const noteTypes = [
-  { value: 'general', label: 'General Note' },
-  { value: 'phone_call', label: 'Phone call' },
-  { value: 'email_sent', label: 'Email sent' },
-  { value: 'meeting', label: 'Meeting' },
-  { value: 'follow_up', label: 'Follow-up' },
-  { value: 'proposal_sent', label: 'Proposal sent' },
-  { value: 'contract_signed', label: 'Contract signed' },
-  { value: 'placement_made', label: 'Placement made' },
-  { value: 'check_in', label: 'Check-in' },
-  { value: 'other', label: 'Other' },
-];
+// Note Types (canonical activity list)
+const noteTypes = ACTIVITY_NOTE_TYPES.map((t) => ({
+  value: t.value,
+  label: t.label,
+}));
 
 export function EventTimeline({ candidateId, initialEvents = [] }: EventTimelineProps) {
   const [events, setEvents] = useState<CandidateEvent[]>(initialEvents);
   const [loading, setLoading] = useState(!initialEvents.length);
   const [error, setError] = useState<string | null>(null);
   const [newNote, setNewNote] = useState('');
-  const [noteType, setNoteType] = useState('general');
+  const [noteType, setNoteType] = useState('Conversation');
   const [addingNote, setAddingNote] = useState(false);
   const [page, setPage] = useState(1);
 

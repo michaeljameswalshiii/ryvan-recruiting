@@ -466,15 +466,15 @@ export function CandidatesClient() {
 
       const trimmed = (noteText || '').trim();
       if (trimmed) {
-        const noteType = noteTypeFromStage(newStage) || 'general';
+        const noteType = noteTypeFromStage(newStage) || 'Other';
         const res = await fetch(`/api/candidate/${encodeURIComponent(id)}/notes`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
             noteText: trimmed,
-            // Use general so we don't double-apply stage (status already updated)
-            noteType: 'general',
+            // Prefer stage-matching type for the log; stage already updated above
+            noteType,
             stage: newStage,
             metadata: { stageChangeNote: true, from: oldStage, to: newStage, noteType },
           }),
