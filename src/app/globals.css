@@ -458,6 +458,108 @@
   .text-readable-muted {
     color: hsl(var(--muted-foreground));
   }
+
+  /**
+   * Light panel on any theme: near-black primary ink + dark secondary.
+   * Use on cream/white/pastel cards (Desk actions, Insights, KPI shells)
+   * so dark-mode gray/slate remaps cannot wash out child text.
+   */
+  .surface-light {
+    color: #0f172a;
+  }
+  .surface-light .text-muted-foreground {
+    color: #334155 !important;
+  }
+}
+
+/*
+ * Nuclear: any gray/slate/zinc text utility inside a light panel stays dark.
+ * Covers bg-white/80 rows, amber/blue pastels, and gradient shells.
+ * Must come AFTER canvas remaps so !important wins.
+ */
+.dark .surface-light [class*="text-gray-"],
+.dark .surface-light [class*="text-slate-"],
+.dark .surface-light [class*="text-zinc-"],
+.dark .surface-light [class*="text-neutral-"],
+.dark .bg-white [class*="text-gray-"],
+.dark .bg-white [class*="text-slate-"],
+.dark .bg-white [class*="text-zinc-"],
+.dark .bg-white\/70 [class*="text-gray-"],
+.dark .bg-white\/70 [class*="text-slate-"],
+.dark .bg-white\/80 [class*="text-gray-"],
+.dark .bg-white\/80 [class*="text-slate-"],
+.dark .bg-white\/90 [class*="text-gray-"],
+.dark .bg-white\/90 [class*="text-slate-"],
+.dark .bg-gray-50 [class*="text-gray-"],
+.dark .bg-gray-50 [class*="text-slate-"],
+.dark .bg-slate-50 [class*="text-gray-"],
+.dark .bg-slate-50 [class*="text-slate-"],
+.dark .bg-zinc-50 [class*="text-gray-"],
+.dark .bg-zinc-50 [class*="text-slate-"],
+.dark .bg-amber-50 [class*="text-gray-"],
+.dark .bg-amber-50 [class*="text-slate-"],
+.dark .bg-amber-50\/90 [class*="text-gray-"],
+.dark .bg-amber-50\/90 [class*="text-slate-"],
+.dark .bg-blue-50 [class*="text-gray-"],
+.dark .bg-blue-50 [class*="text-slate-"],
+.dark .bg-blue-50\/80 [class*="text-gray-"],
+.dark .bg-blue-50\/80 [class*="text-slate-"],
+.dark .bg-violet-50 [class*="text-gray-"],
+.dark .bg-violet-50 [class*="text-slate-"],
+.dark .bg-emerald-50 [class*="text-gray-"],
+.dark .bg-emerald-50 [class*="text-slate-"],
+.dark .bg-indigo-50 [class*="text-gray-"],
+.dark .bg-indigo-50 [class*="text-slate-"],
+.dark .bg-sky-50 [class*="text-gray-"],
+.dark .bg-sky-50 [class*="text-slate-"],
+.dark .bg-green-50 [class*="text-gray-"],
+.dark .bg-green-50 [class*="text-slate-"],
+.dark .bg-rose-50 [class*="text-gray-"],
+.dark .bg-rose-50 [class*="text-slate-"],
+.dark .from-amber-50\/90 [class*="text-gray-"],
+.dark .from-amber-50\/90 [class*="text-slate-"],
+.dark .from-blue-50\/80 [class*="text-gray-"],
+.dark .from-blue-50\/80 [class*="text-slate-"],
+.dark .from-blue-50 [class*="text-gray-"],
+.dark .from-blue-50 [class*="text-slate-"] {
+  color: #1e293b !important; /* slate-800 — strong secondary */
+}
+
+/* Primary titles / values on light panels */
+.dark .surface-light [class*="text-gray-900"],
+.dark .surface-light [class*="text-slate-900"],
+.dark .surface-light [class*="text-gray-800"],
+.dark .surface-light [class*="text-slate-800"],
+.dark .bg-white [class*="text-gray-900"],
+.dark .bg-white [class*="text-slate-900"],
+.dark .bg-white [class*="text-gray-800"],
+.dark .bg-white [class*="text-slate-800"],
+.dark .bg-white\/80 [class*="text-gray-900"],
+.dark .bg-white\/80 [class*="text-slate-900"],
+.dark .bg-white\/80 [class*="text-gray-800"],
+.dark .bg-white\/80 [class*="text-slate-800"],
+.dark .from-blue-50\/80 [class*="text-gray-900"],
+.dark .from-blue-50\/80 [class*="text-slate-900"],
+.dark .from-amber-50\/90 [class*="text-gray-900"],
+.dark .from-amber-50\/90 [class*="text-slate-900"] {
+  color: #0f172a !important; /* slate-900 */
+}
+
+/* Keep brand link colors on light panels */
+.dark .surface-light .text-blue-600,
+.dark .bg-white .text-blue-600,
+.dark .bg-white\/80 .text-blue-600,
+.dark .from-blue-50\/80 .text-blue-600 {
+  color: #2563eb !important;
+}
+.dark .surface-light .text-emerald-600,
+.dark .bg-white .text-emerald-600,
+.dark .bg-white\/80 .text-emerald-600 {
+  color: #059669 !important;
+}
+.dark .surface-light .text-rose-600,
+.dark .bg-white .text-rose-600 {
+  color: #e11d48 !important;
 }
 
 /* Custom scrollbar styles */

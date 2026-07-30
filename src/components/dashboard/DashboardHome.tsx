@@ -60,14 +60,14 @@ const PERIODS: { key: PeriodKey; label: string }[] = [
 function DeltaBadge({ deltaPct }: { deltaPct: number | null }) {
   if (deltaPct === null) {
     return (
-      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-gray-400">
+      <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-slate-600">
         <Minus className="h-3 w-3" /> n/a
       </span>
     );
   }
   if (deltaPct === 0) {
     return (
-      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-gray-500">
+      <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-slate-700">
         <Minus className="h-3 w-3" /> 0%
       </span>
     );
@@ -243,11 +243,11 @@ export function DashboardHome({
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Dashboard
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="mt-0.5 text-sm font-medium text-slate-600 dark:text-slate-300">
             Recruiting pulse for {stats.periodLabel}. KPI cards drill into detail.
           </p>
         </div>
-        <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm self-start">
+        <div className="surface-light inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm self-start">
           {PERIODS.map((p) => {
             const active = period === p.key;
             return (
@@ -258,7 +258,7 @@ export function DashboardHome({
                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
                   active
                     ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-gray-600 hover:bg-gray-50'
+                    : 'text-slate-700 hover:bg-gray-50'
                 }`}
               >
                 {p.label}
@@ -276,7 +276,7 @@ export function DashboardHome({
           <Link
             key={c.title}
             href={c.href}
-            className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm hover:border-blue-200 hover:shadow transition-all"
+            className="surface-light rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm hover:border-blue-200 hover:shadow transition-all"
           >
             <div className="flex items-start justify-between gap-2">
               <div className={`p-2 rounded-xl ${c.bg}`}>
@@ -284,28 +284,30 @@ export function DashboardHome({
               </div>
               <DeltaBadge deltaPct={c.delta} />
             </div>
-            <div className="mt-3 text-2xl font-semibold tabular-nums text-gray-900">
+            <div className="mt-3 text-2xl font-semibold tabular-nums text-slate-900">
               {c.isString ? c.value : Number(c.value).toLocaleString()}
             </div>
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mt-1">
+            <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-700">
               {c.title}
             </div>
-            <div className="text-[11px] text-gray-400 mt-0.5 truncate">{c.sub}</div>
+            <div className="mt-0.5 truncate text-[11px] font-medium text-slate-600">
+              {c.sub}
+            </div>
           </Link>
         ))}
       </div>
 
       {/* Insights */}
       {stats.insights.length > 0 && (
-        <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/80 to-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="h-4 w-4 text-blue-600" />
-            <h2 className="text-sm font-semibold text-gray-900">Insights</h2>
+        <div className="surface-light rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-blue-700" />
+            <h2 className="text-sm font-semibold text-slate-900">Insights</h2>
           </div>
           <ul className="space-y-1.5">
             {stats.insights.map((line, i) => (
-              <li key={i} className="text-sm text-gray-700 flex gap-2">
-                <span className="text-blue-500 font-bold shrink-0">·</span>
+              <li key={i} className="flex gap-2 text-sm font-medium text-slate-800">
+                <span className="shrink-0 font-bold text-blue-700">·</span>
                 <span>{line}</span>
               </li>
             ))}

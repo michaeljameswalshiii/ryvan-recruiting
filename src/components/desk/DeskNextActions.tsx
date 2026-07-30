@@ -167,18 +167,18 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
 
   return (
     <section
-      className={`rounded-xl border border-amber-200/70 bg-gradient-to-r from-amber-50/90 to-white ${
+      className={`surface-light rounded-xl border border-amber-300 bg-amber-50 ${
         compact ? "p-3" : "p-4 shadow-sm"
       } ${className || ""}`}
     >
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0">
-          <Zap className="h-4 w-4 text-amber-600 shrink-0" />
+          <Zap className="h-4 w-4 text-amber-700 shrink-0" />
           <span className="text-sm font-semibold text-slate-900">
             Desk next actions
           </span>
           {summary && (
-            <span className="text-[11px] text-muted-foreground truncate">
+            <span className="text-[11px] font-medium text-slate-700 truncate">
               {summary.urgent} urgent · {summary.due} due · {summary.enroll}{" "}
               enroll
             </span>
@@ -189,7 +189,7 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
             <button
               type="button"
               onClick={() => clearFeed("desk")}
-              className="text-[11px] font-medium text-slate-500 hover:text-slate-800 hover:underline px-1"
+              className="text-[11px] font-semibold text-slate-700 hover:text-slate-900 hover:underline px-1"
               title="Show desk items you dismissed"
             >
               Restore {dismissedCount}
@@ -203,7 +203,7 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
                   dismiss(deskActionKey(a));
                 }
               }}
-              className="text-[11px] font-medium text-slate-500 hover:text-slate-800 hover:underline px-1"
+              className="text-[11px] font-semibold text-slate-700 hover:text-slate-900 hover:underline px-1"
               title="Dismiss all visible desk actions for 30 days"
             >
               Dismiss
@@ -243,25 +243,25 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
       </div>
 
       {loading && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+        <div className="flex items-center gap-2 text-xs font-medium text-slate-700 py-2">
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
         </div>
       )}
 
       {!loading && actions.length === 0 && (
-        <p className="text-xs text-muted-foreground py-1">
+        <p className="text-xs font-medium text-slate-700 py-1">
           No urgent desk actions right now.
         </p>
       )}
 
       {!loading && actions.length > 0 && visibleActions.length === 0 && (
-        <div className="text-xs text-muted-foreground py-1 flex items-center gap-2">
+        <div className="text-xs font-medium text-slate-700 py-1 flex items-center gap-2">
           <span>All desk actions dismissed for now.</span>
           {dismissedCount > 0 && (
             <button
               type="button"
               onClick={() => clearFeed("desk")}
-              className="font-medium text-blue-600 hover:underline"
+              className="font-semibold text-blue-700 hover:underline"
             >
               Restore {dismissedCount}
             </button>
@@ -279,17 +279,17 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
             return (
               <li
                 key={`${a.candidateId}-${a.kind}-${i}`}
-                className="group flex items-center justify-between gap-2 rounded-lg border border-amber-100/80 bg-white/80 px-2.5 py-1.5 text-xs"
+                className="group flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs"
               >
                 <div className="min-w-0">
-                  <div className="font-medium text-slate-800 truncate">
+                  <div className="font-semibold text-slate-900 truncate">
                     {a.candidateName || a.candidateId?.slice(0, 8)}
-                    <span className="font-normal text-slate-500">
+                    <span className="font-medium text-slate-700">
                       {" "}
                       · {a.label}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-500 truncate">
+                  <div className="text-[11px] font-medium text-slate-700 truncate">
                     {jobTitle ? `${jobTitle} · ` : ""}
                     {a.reason}
                   </div>
@@ -299,7 +299,7 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
                     <Button
                       type="button"
                       size="sm"
-                      className="h-6 text-[10px] px-2 bg-emerald-700 hover:bg-emerald-800"
+                      className="h-6 text-[10px] px-2 bg-emerald-700 hover:bg-emerald-800 text-white"
                       disabled={!!busy}
                       onClick={() => runDue(enrollId)}
                     >
@@ -324,7 +324,7 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
                     <Link
                       href={`/dashboard/candidates/${a.candidateId}`}
                       title={`Open ${a.candidateName || "candidate"}`}
-                      className="text-blue-600 hover:bg-blue-50 rounded p-0.5 inline-flex items-center"
+                      className="text-blue-700 hover:bg-blue-50 rounded p-0.5 inline-flex items-center"
                     >
                       <ChevronRight className="h-3.5 w-3.5" />
                     </Link>
@@ -333,7 +333,7 @@ export function DeskNextActions({ compact, className, limit = 12 }: Props) {
                     alwaysVisible
                     label={`Dismiss ${a.candidateName || "action"}`}
                     onDismiss={() => dismiss(deskActionKey(a))}
-                    className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    className="shrink-0 rounded p-1 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                   />
                 </div>
               </li>
