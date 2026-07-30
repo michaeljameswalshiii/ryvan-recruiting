@@ -128,8 +128,8 @@ export default function Sidebar({ role }: SidebarProps) {
   };
 
   return (
-    <div className="w-72 min-w-[280px] bg-white dark:bg-slate-950 border-r border-gray-200 dark:border-slate-800 h-screen flex flex-col fixed left-0 top-0 shadow-sm z-50">
-      <div className="px-3 pt-3 pb-3 border-b border-gray-200 dark:border-slate-800">
+    <div className="w-72 min-w-[280px] bg-white dark:bg-sidebar border-r border-gray-200 dark:border-border h-screen flex flex-col fixed left-0 top-0 shadow-sm z-50">
+      <div className="px-3 pt-3 pb-3 border-b border-gray-200 dark:border-border">
         <Link
           href="/dashboard"
           className="block rounded-lg hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors -mx-0.5 px-0.5"
@@ -143,7 +143,7 @@ export default function Sidebar({ role }: SidebarProps) {
         </Link>
         {/* Global light / dark toggle — under logo */}
         <div
-          className="mt-2.5 flex rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-0.5"
+          className="mt-2.5 flex rounded-lg border border-gray-200 dark:border-border bg-gray-50 dark:bg-card p-0.5"
           role="group"
           aria-label="Color theme"
         >
@@ -152,7 +152,7 @@ export default function Sidebar({ role }: SidebarProps) {
             onClick={() => setTheme('white')}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${
               theme === 'white' || theme === 'gray'
-                ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                ? 'bg-white text-slate-900 shadow-sm dark:bg-secondary dark:text-white'
                 : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
             title="Light UI"
@@ -165,10 +165,10 @@ export default function Sidebar({ role }: SidebarProps) {
             onClick={() => setTheme('black')}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${
               isDark
-                ? 'bg-slate-800 text-white shadow-sm'
+                ? 'bg-[#20293a] text-white shadow-sm'
                 : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
             }`}
-            title="Dark UI (near-black)"
+            title="Dark UI (soft navy)"
           >
             <Moon className="h-3.5 w-3.5" />
             Dark
@@ -179,7 +179,7 @@ export default function Sidebar({ role }: SidebarProps) {
       {canScrollUp && (
         <button
           onClick={() => scrollMenu('up')}
-          className="absolute top-28 left-1/2 -translate-x-1/2 z-10 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-full p-1 shadow-md hover:bg-gray-100 dark:hover:bg-slate-800"
+          className="absolute top-28 left-1/2 -translate-x-1/2 z-10 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-full p-1 shadow-md hover:bg-gray-100 dark:hover:bg-slate-800"
           style={{ left: '50%' }}
         >
           <ChevronUp className="h-4 w-4 dark:text-slate-300" />
@@ -201,7 +201,7 @@ export default function Sidebar({ role }: SidebarProps) {
         </div>
 
         {visibleAdmin.length > 0 && (
-          <div className="mt-6 pt-4 border-t border-gray-200 dark:border-slate-800">
+          <div className="mt-6 pt-4 border-t border-gray-200 dark:border-border">
             <div className="text-xs font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-4 mb-2">
               Admin
             </div>
@@ -217,7 +217,7 @@ export default function Sidebar({ role }: SidebarProps) {
         )}
 
         {visibleSite.length > 0 && (
-          <div className="mt-6 pt-4 border-t border-gray-200 dark:border-slate-800">
+          <div className="mt-6 pt-4 border-t border-gray-200 dark:border-border">
             <div className="text-xs font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-4 mb-2">
               Site Admin
             </div>
@@ -236,14 +236,14 @@ export default function Sidebar({ role }: SidebarProps) {
       {canScrollDown && (
         <button
           onClick={() => scrollMenu('down')}
-          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-full p-1 shadow-md hover:bg-gray-100 dark:hover:bg-slate-800"
+          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-full p-1 shadow-md hover:bg-gray-100 dark:hover:bg-slate-800"
           style={{ left: '50%' }}
         >
           <ChevronDown className="h-4 w-4 dark:text-slate-300" />
         </button>
       )}
 
-      <div className="p-4 border-t border-gray-200 dark:border-slate-800 mt-auto">
+      <div className="p-4 border-t border-gray-200 dark:border-border mt-auto">
         <div className="text-xs text-gray-500 dark:text-slate-500 text-center">
           © 2026 Trio Recruiting
         </div>

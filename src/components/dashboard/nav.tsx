@@ -33,7 +33,7 @@ import { isApolloUiEnabled } from "@/lib/ai/apollo-feature";
 const themeOptions = [
   { value: "white", label: "White", icon: "⬜" },
   { value: "gray", label: "Gray", icon: "⬛" },
-  { value: "black", label: "Black", icon: "🌙" },
+  { value: "black", label: "Dark", icon: "🌙" },
 ] as const;
 
 const allNavItems = [

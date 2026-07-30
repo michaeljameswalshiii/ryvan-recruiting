@@ -24,29 +24,31 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+    --sidebar: 0 0% 100%;
   }
 
-/* Near-black slate (not pure #000) for easier reading */
+/* Soft navy dark mode — matches Dark toggle chrome rgb(32,41,58) ≈ #20293a */
   .dark {
-    --background: 222 47% 7%;
+    --background: 221 28% 11%;
     --foreground: 210 40% 98%;
-    --card: 222 41% 9%;
+    --card: 221 26% 14%;
     --card-foreground: 210 40% 98%;
-    --popover: 222 41% 9%;
+    --popover: 221 26% 13%;
     --popover-foreground: 210 40% 98%;
     --primary: 217.2 91.2% 65.3%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217 25% 14%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 221 25% 18%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217 25% 14%;
-    --muted-foreground: 215 16% 65%;
-    --accent: 217 25% 16%;
+    --muted: 221 22% 16%;
+    --muted-foreground: 215 20% 68%;
+    --accent: 221 25% 18%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 40%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217 20% 18%;
-    --input: 217 20% 18%;
-    --ring: 224.3 76.3% 48.4%;
+    --border: 221 20% 22%;
+    --input: 221 20% 20%;
+    --ring: 217 70% 55%;
+    --sidebar: 221 30% 9%;
   }
 
   /* Gray Theme (middle ground) */
@@ -70,6 +72,7 @@
     --border: 214.3 31.8% 85%;
     --input: 214.3 31.8% 85%;
     --ring: 221.2 83.2% 53.3%;
+    --sidebar: 0 0% 94%;
   }
 }
 
