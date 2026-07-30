@@ -20,6 +20,7 @@ import {
   Building2,
   Briefcase,
   Target,
+  PanelRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -316,6 +317,8 @@ export default function GeneralAiUsagePage() {
   const [threadId, setThreadId] = useState(() => makeThreadId());
   const [threadCreatedAt, setThreadCreatedAt] = useState(() => nowIso());
   const [historyOpen, setHistoryOpen] = useState(false);
+  /** Active runs overlay on viewports too narrow for a docked rail */
+  const [activeRunsOpen, setActiveRunsOpen] = useState(false);
   const [historyThreads, setHistoryThreads] = useState<ChatHistoryThread[]>(
     []
   );
@@ -355,6 +358,7 @@ export default function GeneralAiUsagePage() {
   const openWorkspace = useCallback(
     (ws: AiWorkspace, opts?: { runId?: string }) => {
       setWorkspaceRunId(opts?.runId?.trim() || null);
+      setActiveRunsOpen(false);
       setAiView(ws);
       try {
         localStorage.setItem(AI_VIEW_KEY, ws);
@@ -824,60 +828,37 @@ export default function GeneralAiUsagePage() {
   }
 
   return (
-    <div className="-m-6 flex h-[calc(100vh-4rem)] bg-slate-100">
-      {/* Interactive chat (default) + Active runs rail */}
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-gradient-to-b from-slate-50 to-white">
-      {/* Header */}
-      <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-slate-200/80 bg-white/90 px-5 py-3.5 backdrop-blur sm:px-6">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
-              AI
-            </h1>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
-              <Sparkles className="h-3 w-3" />
-              {platformModel === 'auto'
-                ? 'Most Efficient'
-                : PLATFORM_MODELS.find((m) => m.id === platformModel)?.label ||
-                  'Platform'}
-            </span>
-            <span className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600 sm:inline-flex">
-              <Wrench className="h-3 w-3" />
-              Chat · agents · Apollo
-            </span>
+    <div className="-m-6 flex h-[calc(100vh-4rem)] min-w-0 overflow-hidden bg-slate-100">
+      {/* Interactive chat (default) — must min-w-0 so the rail cannot crush this column */}
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-slate-50 to-white">
+      {/* Header: stack on narrow so actions never squeeze the title to one-word width */}
+      <header className="flex flex-shrink-0 flex-col gap-3 border-b border-slate-200/80 bg-white/90 px-4 py-3 backdrop-blur sm:px-6 sm:py-3.5">
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h1 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
+                AI
+              </h1>
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+                <Sparkles className="h-3 w-3" />
+                {platformModel === 'auto'
+                  ? 'Most Efficient'
+                  : PLATFORM_MODELS.find((m) => m.id === platformModel)
+                      ?.label || 'Platform'}
+              </span>
+              <span className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600 md:inline-flex">
+                <Wrench className="h-3 w-3" />
+                Chat · agents · Apollo
+              </span>
+            </div>
+            <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-slate-500 sm:text-sm">
+              Chat for quick work. Use starters or Active runs for company
+              lists, fill-a-job, and multi-step CRM goals.
+            </p>
           </div>
-          <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
-            Chat for quick work. Use starters or Active runs for company lists,
-            fill-a-job, and multi-step CRM goals.
-          </p>
-          {/* Model strategy — default Most Efficient, optional lock */}
-          <div className="mt-2.5 inline-flex flex-wrap rounded-xl border border-orange-200 bg-orange-50/50 p-1 shadow-sm gap-0.5">
-            {PLATFORM_MODELS.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setPlatformModel(m.id)}
-                disabled={isLoading}
-                title={m.title}
-                className={`inline-flex items-center px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-60 ${
-                  platformModel === m.id
-                    ? m.id === 'auto'
-                      ? 'bg-emerald-700 text-white'
-                      : m.id.startsWith('nova')
-                        ? 'bg-orange-600 text-white'
-                        : m.id === 'grok-4.3'
-                          ? 'bg-zinc-900 text-white'
-                          : 'bg-slate-800 text-white'
-                    : 'text-slate-600 hover:bg-white'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
-          <div className="hidden items-center gap-1 sm:flex">
+
+          {/* Actions: full-width wrap so they never force a ~40px title column */}
+          <div className="flex min-w-0 w-full flex-wrap items-center gap-2 lg:w-auto lg:max-w-[min(100%,28rem)] lg:justify-end">
             {WORKSPACE_STARTERS.map((s) => {
               const Icon = s.icon;
               return (
@@ -890,53 +871,80 @@ export default function GeneralAiUsagePage() {
                   className="gap-1.5 border-violet-200 text-violet-800 hover:bg-violet-50"
                   title={s.description}
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span className="hidden xl:inline">{s.title}</span>
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{s.title}</span>
                 </Button>
               );
             })}
+            {/* Docked rail only at xl+; below that open as overlay */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setActiveRunsOpen(true)}
+              className="gap-1.5 xl:hidden"
+              title="Company lists, fill jobs & goals"
+            >
+              <PanelRight className="h-4 w-4 shrink-0" />
+              Active runs
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                refreshHistoryList();
+                setHistoryOpen(true);
+              }}
+              className="gap-1.5"
+              title="Past conversations with date & time"
+            >
+              <History className="h-4 w-4 shrink-0" />
+              History
+              {historyThreads.length > 0 && (
+                <span className="ml-0.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                  {historyThreads.length}
+                </span>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={startNewChat}
+              disabled={isLoading}
+              className="gap-1.5"
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              New chat
+            </Button>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => openWorkspace('companies')}
-            className="gap-1.5 border-violet-200 text-violet-800 sm:hidden"
-            title="Open agents"
-          >
-            <Target className="h-4 w-4" />
-            Agents
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              refreshHistoryList();
-              setHistoryOpen(true);
-            }}
-            className="gap-1.5"
-            title="Past conversations with date & time"
-          >
-            <History className="h-4 w-4" />
-            History
-            {historyThreads.length > 0 && (
-              <span className="ml-0.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                {historyThreads.length}
-              </span>
-            )}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={startNewChat}
-            disabled={isLoading}
-            className="gap-1.5"
-          >
-            <Plus className="h-4 w-4" />
-            New chat
-          </Button>
+        </div>
+
+        {/* Model strategy — own row so header never pinches copy */}
+        <div className="inline-flex max-w-full flex-wrap rounded-xl border border-orange-200 bg-orange-50/50 p-1 shadow-sm gap-0.5">
+          {PLATFORM_MODELS.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setPlatformModel(m.id)}
+              disabled={isLoading}
+              title={m.title}
+              className={`inline-flex items-center px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-60 ${
+                platformModel === m.id
+                  ? m.id === 'auto'
+                    ? 'bg-emerald-700 text-white'
+                    : m.id.startsWith('nova')
+                      ? 'bg-orange-600 text-white'
+                      : m.id === 'grok-4.3'
+                        ? 'bg-zinc-900 text-white'
+                        : 'bg-slate-800 text-white'
+                  : 'text-slate-600 hover:bg-white'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
         </div>
       </header>
 
@@ -971,10 +979,10 @@ export default function GeneralAiUsagePage() {
       )}
 
       {/* Messages / empty */}
-      <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-        <div className="mx-auto max-w-2xl space-y-4">
+      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6">
+        <div className="mx-auto w-full min-w-0 max-w-2xl space-y-4">
           {isEmpty ? (
-            <div className="flex flex-col items-center px-4 py-10 text-center">
+            <div className="flex w-full min-w-0 flex-col items-center px-2 py-10 text-center sm:px-4">
               <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg shadow-slate-900/10">
                 <Sparkles className="h-7 w-7" />
               </div>
@@ -992,7 +1000,7 @@ export default function GeneralAiUsagePage() {
                 <p className="mb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Start an agent
                 </p>
-                <div className="grid gap-2 sm:grid-cols-3">
+                <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {WORKSPACE_STARTERS.map((s) => {
                     const Icon = s.icon;
                     return (
@@ -1000,7 +1008,7 @@ export default function GeneralAiUsagePage() {
                         key={s.id}
                         type="button"
                         onClick={() => openWorkspace(s.id)}
-                        className="rounded-xl border border-violet-200/80 bg-gradient-to-b from-violet-50 to-white px-3.5 py-3.5 text-left shadow-sm transition hover:border-violet-300 hover:shadow-md"
+                        className="min-w-0 rounded-xl border border-violet-200/80 bg-gradient-to-b from-violet-50 to-white px-3.5 py-3.5 text-left shadow-sm transition hover:border-violet-300 hover:shadow-md"
                       >
                         <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white">
                           <Icon className="h-4 w-4" />
@@ -1367,10 +1375,31 @@ export default function GeneralAiUsagePage() {
       </div>
       </section>
 
-      {/* Active runs — list builder + goal history */}
-      <div className="hidden min-h-0 lg:flex">
-        <ActiveRunsRail onOpenWorkspace={openWorkspace} />
+      {/* Active runs — docked only on xl+ (sidebar + rail was crushing chat) */}
+      <div className="hidden min-h-0 w-72 shrink-0 2xl:w-80 xl:flex">
+        <ActiveRunsRail
+          className="h-full w-full"
+          onOpenWorkspace={openWorkspace}
+        />
       </div>
+
+      {/* Overlay Active runs for laptop / smaller widths */}
+      {activeRunsOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end xl:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/30"
+            aria-label="Close active runs"
+            onClick={() => setActiveRunsOpen(false)}
+          />
+          <div className="relative flex h-full w-[min(100%,22rem)] shadow-2xl sm:w-[24rem]">
+            <ActiveRunsRail
+              className="h-full w-full border-l-0"
+              onOpenWorkspace={openWorkspace}
+            />
+          </div>
+        </div>
+      )}
 
       <ChatHistoryPanel
         open={historyOpen}

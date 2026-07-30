@@ -296,7 +296,7 @@ export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
 
   return (
     <aside
-      className={`flex w-full shrink-0 flex-col border-l border-slate-200/80 bg-white lg:w-72 xl:w-80 ${className}`}
+      className={`flex h-full w-full min-w-0 shrink-0 flex-col border-l border-slate-200/80 bg-white ${className || 'xl:w-72 2xl:w-80'}`}
     >
       <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
         <div className="min-w-0">
