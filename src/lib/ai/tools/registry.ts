@@ -253,7 +253,27 @@ export async function executeTool(
   }
 
   try {
-    const result = await tool.execute(params, context);
+    // Agent Desk: one-time user approval auto-confirms CRM write tools
+    let execParams = params;
+    if (context.agentWriteApproved) {
+      const writeTools = new Set([
+        "create_company",
+        "update_company",
+        "create_contact",
+        "update_contact",
+        "create_candidate",
+        "update_candidate",
+        "create_job",
+        "update_job",
+        "link_candidate_to_job",
+        "update_candidate_stage",
+        "update_job_candidate_stage",
+      ]);
+      if (writeTools.has(toolName)) {
+        execParams = { ...params, confirmed: true };
+      }
+    }
+    const result = await tool.execute(execParams, context);
     const status =
       result?.success === false
         ? "error"

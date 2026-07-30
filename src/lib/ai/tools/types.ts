@@ -41,6 +41,13 @@ export interface ToolContext {
    * Surfaced on the AI response as estimatedToolCostUsd + toolSpend.
    */
   toolSpend?: ToolSpendEntry[];
+  /**
+   * Agent Desk: user approved CRM writes for this run once.
+   * Write tools may skip the preview gate (confirmed:true injected).
+   */
+  agentWriteApproved?: boolean;
+  /** Soft cap for bulk creates in one agent wave (default 10) */
+  agentMaxCreatesPerWave?: number;
 }
 
 /**

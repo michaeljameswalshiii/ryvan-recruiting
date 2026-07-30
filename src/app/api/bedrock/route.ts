@@ -106,6 +106,18 @@ interface BedrockRequest {
   /** Open-ended chat (General AI Usage) — Sonnet + tools + multi-turn history */
   generalMode?: boolean;
   /**
+   * Agent Desk: multi-step goal run — more tool iterations, structured artifacts.
+   */
+  agentMode?: boolean;
+  /**
+   * Agent Desk: user approved CRM writes for this run (skip preview gates).
+   */
+  agentWriteApproved?: boolean;
+  /** Soft max tool-loop iterations in agent mode (default 10, max 15) */
+  agentMaxIterations?: number;
+  /** Explicit goal string for agent system prompt */
+  agentGoal?: string;
+  /**
    * Optional page/route context from the floating assistant
    * (candidate id, job id, company id, path). Appended to system prompt.
    */
@@ -1574,6 +1586,9 @@ async function runMCPAgent(
     history?: ChatMessage[];
     systemPrompt?: string;
     modelId?: string;
+    maxIterations?: number;
+    agentMode?: boolean;
+    agentGoal?: string;
   }
 ): Promise<{
   text: string;
@@ -1581,6 +1596,9 @@ async function runMCPAgent(
   modelId: string;
   crmMutated: boolean;
   generatedFiles: NonNullable<ToolContext["generatedFiles"]>;
+  /** Structured tool outcomes for Agent Desk results rail */
+  agentArtifacts?: Array<Record<string, unknown>>;
+  toolResultSnippets?: Array<{ tool: string; content: string }>;
 }> {
   const pendingConfirm = historyHasPendingCrmConfirm(options?.history || []);
   const confirming = isUserConfirmation(query) || (
@@ -1607,11 +1625,36 @@ Do NOT reply that something was saved unless the tool result JSON includes statu
 If you are missing company_id or other ids, call internal_data first, then the write tool with confirmed:true.`;
   }
 
+  if (options?.agentMode) {
+    const goal = (options.agentGoal || query || "").slice(0, 2000);
+    systemPrompt += `
+
+=== AGENT DESK MODE (multi-step goal run) ===
+You are executing a multi-step agent run toward this GOAL:
+"""
+${goal}
+"""
+
+Rules:
+1. Make MAXIMUM progress this turn — use tools in parallel when possible.
+2. Prefer batches: create up to 5–8 companies/contacts per wave when the user approved writes.
+3. ${
+      toolContext.agentWriteApproved
+        ? "WRITE APPROVED: CRM write tools are pre-approved for this run. Always pass confirmed:true. Do NOT ask for another yes."
+        : "WRITE NOT YET APPROVED: Preview writes only (no confirmed:true). End by asking the user to click Approve writes on the Agent Desk, then continue."
+    }
+4. After tools, summarize what was done and whether the GOAL is complete or more waves are needed.
+5. End with a clear status line: either "GOAL_COMPLETE" or "GOAL_CONTINUE" on its own line.
+6. Do not invent CRM ids — only use ids returned by tools.
+7. For Apollo/list sourcing, use the appropriate search tools then create CRM records from results.`;
+  }
+
   const tools = getToolSchemasForBedrock();
   const toolsUsed = new Set<string>();
   let crmMutated = false;
   let modelId = options?.modelId || DEFAULT_MODEL;
   if (!toolContext.generatedFiles) toolContext.generatedFiles = [];
+  const toolResultSnippets: Array<{ tool: string; content: string }> = [];
 
   // Prior turns (user/assistant text only), then current user query
   const prior = (options?.history || [])
@@ -1628,7 +1671,10 @@ If you are missing company_id or other ids, call internal_data first, then the w
     { role: "user", content: query },
   ];
 
-  const MAX_ITERATIONS = 5;
+  const MAX_ITERATIONS = Math.min(
+    15,
+    Math.max(5, options?.maxIterations ?? (options?.agentMode ? 10 : 5))
+  );
   let iteration = 0;
 
   while (iteration < MAX_ITERATIONS) {
@@ -1690,6 +1736,7 @@ If you are missing company_id or other ids, call internal_data first, then the w
         modelId,
         crmMutated,
         generatedFiles: toolContext.generatedFiles || [],
+        toolResultSnippets,
       };
     }
 
@@ -1700,7 +1747,13 @@ If you are missing company_id or other ids, call internal_data first, then the w
     const executions = toolUses.map((tool) => executeSingleTool(tool, toolContext));
     const toolResults = await Promise.all(executions);
 
-    for (const r of toolResults) {
+    for (let i = 0; i < toolResults.length; i++) {
+      const r = toolResults[i];
+      const name = toolUses[i]?.name || "tool";
+      toolResultSnippets.push({
+        tool: name,
+        content: (r.content || "").slice(0, 8000),
+      });
       if (
         /"status"\s*:\s*"(created|updated|linked|stage_updated)"/.test(
           r.content || ""
@@ -1724,11 +1777,14 @@ If you are missing company_id or other ids, call internal_data first, then the w
 
   console.log(`[MCP] Max iterations (${MAX_ITERATIONS}) reached`);
   return {
-    text: "Maximum iterations reached. Please refine your query.",
+    text: options?.agentMode
+      ? "Wave complete — more tool iterations may be needed. Click Continue on the Agent Desk if the goal is not done.\nGOAL_CONTINUE"
+      : "Maximum iterations reached. Please refine your query.",
     toolsUsed: Array.from(toolsUsed),
     modelId,
     crmMutated,
     generatedFiles: toolContext.generatedFiles || [],
+    toolResultSnippets,
   };
 }
 
@@ -2030,10 +2086,17 @@ try {
       model: requestedModel,
       useTools = true,
       assistantMode = false,
-      generalMode = false,
+      generalMode: generalModeRaw = false,
+      agentMode = false,
+      agentWriteApproved = false,
+      agentMaxIterations,
+      agentGoal,
       provider: requestedProvider,
       pageContext: rawPageContext,
     } = body;
+
+    // Agent Desk always needs tools + general-style routing
+    const generalMode = !!(generalModeRaw || agentMode);
 
     const pageContext =
       typeof rawPageContext === "string" && rawPageContext.trim()
@@ -2208,6 +2271,8 @@ ${pageContext}`
     let usedModel = selectedModel;
     let crmMutated = false;
     let generatedFiles: NonNullable<ToolContext["generatedFiles"]> = [];
+    /** Agent Desk: raw tool result snippets for artifact extraction */
+    let agentToolSnippets: Array<{ tool: string; content: string }> = [];
     /** Shared accumulator for AgentCore / third-party tool USD spend this turn */
     const toolSpendAcc: NonNullable<ToolContext["toolSpend"]> = [];
 
@@ -2574,11 +2639,18 @@ ${pageContext}`
           requestUrl: appUrl,
           generatedFiles: [],
           toolSpend: toolSpendAcc,
+          agentWriteApproved: !!agentWriteApproved,
         };
         const agentResult = await runMCPAgent(lastUserQuery, toolContextFb, {
           history: conversation.slice(0, -1),
           systemPrompt: generalMode ? generalSystemPrompt : undefined,
           modelId: MODEL_SONNET,
+          agentMode: !!agentMode,
+          agentGoal:
+            typeof agentGoal === "string" && agentGoal.trim()
+              ? agentGoal.trim()
+              : lastUserQuery,
+          maxIterations: agentMode ? 10 : 5,
         });
         completion = agentResult.text;
         usedModel = agentResult.modelId;
@@ -2588,6 +2660,7 @@ ${pageContext}`
         ];
         crmMutated = agentResult.crmMutated;
         generatedFiles = agentResult.generatedFiles || [];
+        agentToolSnippets = agentResult.toolResultSnippets || [];
       }
     }
     // ---------- Platform Bedrock: Amazon Nova ----------
@@ -2640,6 +2713,8 @@ ${pageContext}`
         requestUrl: appUrl,
         generatedFiles: [],
         toolSpend: toolSpendAcc,
+        agentWriteApproved: !!agentWriteApproved,
+        agentMaxCreatesPerWave: agentMode ? 8 : undefined,
       };
 
       const conversation = buildConversationMessages(messages);
@@ -2647,17 +2722,28 @@ ${pageContext}`
       const history = conversation.slice(0, -1);
 
       console.log(
-        generalMode
-          ? `Running General AI agent (${modelLabel} + tools + multi-turn)...`
-          : "Running MCP agent with native tool calling..."
+        agentMode
+          ? `Running Agent Desk wave (${modelLabel} + tools, writeApproved=${!!agentWriteApproved})...`
+          : generalMode
+            ? `Running General AI agent (${modelLabel} + tools + multi-turn)...`
+            : "Running MCP agent with native tool calling..."
       );
 
       const agentResult = await runMCPAgent(lastUserQuery, toolContext, {
         history,
-        systemPrompt: generalMode
-          ? generalSystemPrompt
-          : undefined,
+        systemPrompt: generalMode ? generalSystemPrompt : undefined,
         modelId: usedModel,
+        agentMode: !!agentMode,
+        agentGoal:
+          typeof agentGoal === "string" && agentGoal.trim()
+            ? agentGoal.trim()
+            : lastUserQuery,
+        maxIterations:
+          typeof agentMaxIterations === "number"
+            ? agentMaxIterations
+            : agentMode
+              ? 10
+              : 5,
       });
       completion = agentResult.text;
       usedModel = agentResult.modelId;
@@ -2669,16 +2755,7 @@ ${pageContext}`
           : useTools || generalMode
             ? ["available:apollo,tavily,internal_data"]
             : [];
-      // Ensure UI always knows to refresh when a write tool was invoked
-      if (
-        !crmMutated &&
-        toolsUsed.some((t) =>
-          /^(create_|update_|link_)/.test(String(t))
-        )
-      ) {
-        // Tool ran; may still be needs_confirmation — client invalidates only on created
-        // crmMutated already false unless status created/updated
-      }
+      agentToolSnippets = agentResult.toolResultSnippets || [];
     } else {
       // Simple mode - just invoke without tools
       console.log("Running simple model invocation without tools...");
@@ -2791,6 +2868,34 @@ ${pageContext}`
       console.error('[USAGE] log failed:', usageLog.error);
     }
 
+    // Build agent artifacts for Agent Desk results rail
+    let agentArtifacts: Array<Record<string, unknown>> = [];
+    if (agentMode && agentToolSnippets.length > 0) {
+      try {
+        const { artifactsFromToolPayload } = await import(
+          "@/lib/ai/agent-run-types"
+        );
+        for (const snip of agentToolSnippets) {
+          const arts = artifactsFromToolPayload(snip.tool, snip.content);
+          agentArtifacts.push(...(arts as unknown as Array<Record<string, unknown>>));
+        }
+      } catch (e) {
+        console.warn("[agent] artifact parse failed", e);
+      }
+    }
+
+    const goalComplete =
+      agentMode &&
+      /GOAL_COMPLETE/i.test(completion || "") &&
+      !/GOAL_CONTINUE/i.test(completion || "");
+    const goalContinue =
+      agentMode &&
+      (/GOAL_CONTINUE/i.test(completion || "") ||
+        (!goalComplete &&
+          /next batch|continuing|more companies|still need/i.test(
+            completion || ""
+          )));
+
     const response = NextResponse.json({
       response: completion,
       toolsUsed,
@@ -2804,6 +2909,12 @@ ${pageContext}`
         sizeBytes: f.sizeBytes,
         format: f.format,
       })),
+      /** Agent Desk */
+      agentMode: !!agentMode,
+      agentArtifacts,
+      agentWriteApproved: !!agentWriteApproved,
+      goalComplete: !!goalComplete,
+      goalContinue: !!goalContinue,
       provider,
       model: usedModel,
       modelLabel: friendlyModelLabel(usedModel),

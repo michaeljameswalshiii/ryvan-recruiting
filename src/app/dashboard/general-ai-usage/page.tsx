@@ -30,6 +30,7 @@ import {
   parseAiFetchResponse,
 } from '@/lib/ai/parse-response';
 import { AgentWorkbench } from '@/components/ai/AgentWorkbench';
+import { AgentRunDesk } from '@/components/ai/AgentRunDesk';
 import { ChatHistoryPanel } from '@/components/ai/ChatHistoryPanel';
 import {
   type ChatHistoryThread,
@@ -296,6 +297,29 @@ export default function GeneralAiUsagePage() {
   const PANEL_KEY = 'trio-agent-panel-size-v1';
   // Start collapsed so AgentWorkbench (job polling) is not mounted until needed
   const [agentPanelSize, setAgentPanelSize] = useState<AgentPanelSize>('collapsed');
+
+  /** Chat copilot vs multi-step Agent Desk */
+  type DeskMode = 'agent' | 'chat';
+  const DESK_MODE_KEY = 'trio-ai-desk-mode-v1';
+  const [deskMode, setDeskMode] = useState<DeskMode>('agent');
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DESK_MODE_KEY);
+      if (raw === 'agent' || raw === 'chat') setDeskMode(raw);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const setDeskModePersist = (mode: DeskMode) => {
+    setDeskMode(mode);
+    try {
+      localStorage.setItem(DESK_MODE_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -776,6 +800,45 @@ export default function GeneralAiUsagePage() {
           ? 'lg:w-[min(100%,520px)] xl:w-[560px]'
           : 'lg:w-[min(100%,400px)] xl:w-[420px]';
 
+  const deskModeToggle = (
+    <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5 shadow-sm">
+      <button
+        type="button"
+        onClick={() => setDeskModePersist('agent')}
+        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+          deskMode === 'agent'
+            ? 'bg-violet-700 text-white shadow-sm'
+            : 'text-slate-600 hover:text-slate-900'
+        }`}
+      >
+        Agent Desk
+      </button>
+      <button
+        type="button"
+        onClick={() => setDeskModePersist('chat')}
+        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+          deskMode === 'chat'
+            ? 'bg-slate-900 text-white shadow-sm'
+            : 'text-slate-600 hover:text-slate-900'
+        }`}
+      >
+        Chat
+      </button>
+    </div>
+  );
+
+  // ── Agent Desk (multi-step goal runs) ────────────────────────────
+  if (deskMode === 'agent') {
+    return (
+      <div className="relative">
+        <div className="absolute left-5 top-3.5 z-30 sm:left-6">
+          {deskModeToggle}
+        </div>
+        <AgentRunDesk />
+      </div>
+    );
+  }
+
   return (
     <div className="-m-6 flex h-[calc(100vh-4rem)] flex-col bg-slate-100 lg:flex-row">
       {/* ── Left: interactive chat ─────────────────────────────────── */}
@@ -784,6 +847,7 @@ export default function GeneralAiUsagePage() {
       <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-slate-200/80 bg-white/90 px-5 py-3.5 backdrop-blur sm:px-6">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            {deskModeToggle}
             <h1 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
               Chat
             </h1>
