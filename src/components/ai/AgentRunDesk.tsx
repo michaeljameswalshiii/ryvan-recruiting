@@ -56,6 +56,9 @@ import {
   listAgentRuns,
   saveAgentRun,
 } from '@/lib/ai/agent-run-history';
+import { AgentWorkbench } from '@/components/ai/AgentWorkbench';
+
+type DeskTab = 'companies' | 'fill' | 'goal';
 
 const GOAL_EXAMPLES = [
   'Create CRM companies for: Grace Aerospace, Matrix Composites, Primus Pipe & Tube, Becker Avionics (minimal if websites fail)',
@@ -106,6 +109,8 @@ function kindIcon(kind: AgentArtifact['kind']) {
 
 export function AgentRunDesk() {
   const queryClient = useQueryClient();
+  /** Primary Agent Desk surfaces — list builders live here (not on Chat) */
+  const [deskTab, setDeskTab] = useState<DeskTab>('companies');
   const [goal, setGoal] = useState('');
   const [run, setRun] = useState<AgentRunSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
@@ -592,55 +597,126 @@ export function AgentRunDesk() {
     run.status !== 'completed' &&
     run.status !== 'idle';
 
+  const tabBtn = (id: DeskTab, label: string, icon: React.ReactElement) => (
+    <button
+      type="button"
+      onClick={() => setDeskTab(id)}
+      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+        deskTab === id
+          ? 'bg-violet-700 text-white shadow-sm'
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+
   return (
-    <div className="-m-6 flex h-[calc(100vh-4rem)] flex-col bg-slate-50 lg:flex-row">
-      {/* ── Left: goal + conversation ───────────────────────────── */}
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-slate-200 bg-white">
-        <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-3 pt-12 sm:px-6 sm:pt-12">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-lg font-semibold text-slate-900">Agent Desk</h1>
-              <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-800">
-                <Rocket className="h-3 w-3" />
-                Goal + interactive chat
-              </span>
+    <div className="-m-6 flex h-[calc(100vh-4rem)] flex-col bg-slate-50">
+      {/* Global Agent Desk chrome */}
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 pt-12 sm:px-6 sm:pt-12">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-lg font-semibold text-slate-900">Agent Desk</h1>
+            <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-800">
+              <Rocket className="h-3 w-3" />
+              Companies · Fill job · Goal runs
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-slate-500">
+            All autonomous agents live here — not on Chat. Progress and jobs are
+            saved when you leave.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
+            {tabBtn(
+              'companies',
+              'Companies',
+              <Building2 className="h-3.5 w-3.5" />
+            )}
+            {tabBtn('fill', 'Fill job', <Briefcase className="h-3.5 w-3.5" />)}
+            {tabBtn('goal', 'Goal agent', <Bot className="h-3.5 w-3.5" />)}
+          </div>
+          {deskTab === 'goal' && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  refreshPast();
+                  setHistoryOpen(true);
+                }}
+              >
+                <History className="h-3.5 w-3.5 mr-1.5" />
+                History
+                {pastRuns.length > 0 && (
+                  <span className="ml-1 text-slate-400">{pastRuns.length}</span>
+                )}
+              </Button>
               {run && (
-                <span
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize ${statusBadge(run.status)}`}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={newGoal}
                 >
-                  {run.status.replace(/_/g, ' ')}
-                  {run.wave > 0 ? ` · wave ${run.wave}/${run.maxWaves}` : ''}
-                  {run.writeApproved ? ' · writes on' : ''}
-                </span>
+                  New goal
+                </Button>
               )}
-            </div>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Runs are saved — leave and come back anytime. Reply to the agent
-              below without starting over.
+            </>
+          )}
+        </div>
+      </header>
+
+      {/* ── Companies list builder ──────────────────────────────── */}
+      {deskTab === 'companies' && (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <AgentWorkbench
+            variant="full"
+            defaultMode="companies"
+            theme="light"
+            hideChrome
+          />
+        </div>
+      )}
+
+      {/* ── Fill job / source candidates ────────────────────────── */}
+      {deskTab === 'fill' && (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <AgentWorkbench
+            variant="full"
+            defaultMode="research"
+            theme="light"
+            hideChrome
+          />
+        </div>
+      )}
+
+      {/* ── Goal agent (interactive multi-wave) ─────────────────── */}
+      {deskTab === 'goal' && (
+    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-slate-200 bg-white">
+        <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-2.5 sm:px-6">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-800">
+              Multi-step CRM goals
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Interactive chat mid-run · approve writes once · history saved
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                refreshPast();
-                setHistoryOpen(true);
-              }}
+          {run && (
+            <span
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize ${statusBadge(run.status)}`}
             >
-              <History className="h-3.5 w-3.5 mr-1.5" />
-              History
-              {pastRuns.length > 0 && (
-                <span className="ml-1 text-slate-400">{pastRuns.length}</span>
-              )}
-            </Button>
-            {run && (
-              <Button type="button" variant="outline" size="sm" onClick={newGoal}>
-                New goal
-              </Button>
-            )}
-          </div>
+              {run.status.replace(/_/g, ' ')}
+              {run.wave > 0 ? ` · wave ${run.wave}/${run.maxWaves}` : ''}
+              {run.writeApproved ? ' · writes on' : ''}
+            </span>
+          )}
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6 space-y-4">
@@ -939,6 +1015,8 @@ export function AgentRunDesk() {
           )}
         </div>
       </aside>
+    </div>
+      )}
 
       {/* History drawer */}
       {historyOpen && (

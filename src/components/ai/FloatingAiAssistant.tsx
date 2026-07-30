@@ -34,7 +34,6 @@ import {
   explainAiFetchError,
   parseAiFetchResponse,
 } from '@/lib/ai/parse-response';
-import { AgentWorkbench } from '@/components/ai/AgentWorkbench';
 import {
   AI_UI_RENDER_MESSAGES,
   AI_UI_STORE_MESSAGES,
@@ -58,8 +57,6 @@ interface Message {
 
 const OPEN_KEY = 'trio-floating-ai-open-v1';
 const MESSAGES_KEY = 'trio-floating-ai-messages-v1';
-/** Collapsed by default — AgentWorkbench is heavy (polls jobs) */
-const WORKBENCH_KEY = 'trio-floating-ai-workbench-v1';
 
 // ---------------------------------------------------------------------------
 // Page context from URL
@@ -243,8 +240,6 @@ export function FloatingAiAssistant() {
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  /** Agent list builder — opt-in so chat alone stays light */
-  const [showWorkbench, setShowWorkbench] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -255,8 +250,6 @@ export function FloatingAiAssistant() {
     try {
       const o = sessionStorage.getItem(OPEN_KEY);
       if (o === '1') setOpen(true);
-      const wb = sessionStorage.getItem(WORKBENCH_KEY);
-      if (wb === '1') setShowWorkbench(true);
       const raw = sessionStorage.getItem(MESSAGES_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Message[];
@@ -280,11 +273,10 @@ export function FloatingAiAssistant() {
     if (!hydrated) return;
     try {
       sessionStorage.setItem(OPEN_KEY, open ? '1' : '0');
-      sessionStorage.setItem(WORKBENCH_KEY, showWorkbench ? '1' : '0');
     } catch {
       /* ignore */
     }
-  }, [open, showWorkbench, hydrated]);
+  }, [open, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -604,24 +596,6 @@ export function FloatingAiAssistant() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-          <div className="mb-2">
-            <button
-              type="button"
-              onClick={() => setShowWorkbench((v) => !v)}
-              className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-left text-[11px] font-medium text-slate-600 hover:bg-slate-100"
-            >
-              <span>List builder / agent jobs</span>
-              <span className="text-slate-400">
-                {showWorkbench ? 'Hide' : 'Show'}
-              </span>
-            </button>
-            {showWorkbench && (
-              <div className="mt-1.5 max-h-[min(40vh,320px)] min-h-[200px] overflow-y-auto overscroll-contain rounded-2xl border border-slate-800">
-                {/* Lazy: only mount when expanded — avoids 15s job polling during chat */}
-                <AgentWorkbench variant="compact" />
-              </div>
-            )}
-          </div>
           {messages.length === 0 && (
             <div className="px-2 py-8 text-center">
               <Bot className="mx-auto h-8 w-8 text-slate-300" />
@@ -631,7 +605,14 @@ export function FloatingAiAssistant() {
               <p className="mt-1 text-xs text-slate-500 leading-relaxed">
                 I can see you&apos;re on <strong>{pageCtx.label}</strong>
                 {pageCtx.entityId ? ' detail' : ''}. Ask me to research, draft,
-                or update CRM (writes ask for confirmation).
+                or update CRM. Company lists &amp; Fill job:{' '}
+                <Link
+                  href="/dashboard/general-ai-usage"
+                  className="font-medium text-violet-700 hover:underline"
+                >
+                  Agent Desk
+                </Link>
+                .
               </p>
               <div className="mt-4 flex flex-col gap-1.5">
                 {suggestions.map((s) => (

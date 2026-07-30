@@ -327,15 +327,30 @@ type Props = {
   variant?: 'full' | 'compact';
   /** Default agent mode */
   defaultMode?: AgentMode;
+  /**
+   * Visual theme — light for Agent Desk embed; dark for legacy embeds.
+   */
+  theme?: 'dark' | 'light';
+  /** Hide outer “Autonomous agent” chrome when nested in Agent Desk tabs */
+  hideChrome?: boolean;
 };
 
 export function AgentWorkbench({
   variant = 'full',
   defaultMode = 'companies',
+  theme = 'dark',
+  hideChrome = false,
 }: Props) {
+  const light = theme === 'light';
   const [mode, setMode] = useState<AgentMode>(
     defaultMode === 'research' ? 'research' : 'companies'
   );
+  // Parent tabs (Agent Desk) control mode when hideChrome
+  useEffect(() => {
+    if (hideChrome) {
+      setMode(defaultMode === 'research' ? 'research' : 'companies');
+    }
+  }, [defaultMode, hideChrome]);
   const [jobs, setJobs] = useState<AgentJobDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -710,14 +725,18 @@ export function AgentWorkbench({
   return (
     <div
       className={`flex h-full min-h-0 flex-col ${
-        isCompact
-          ? 'rounded-2xl border border-white/10 bg-slate-950 text-white shadow-xl'
-          : 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white'
+        light
+          ? isCompact
+            ? 'rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm'
+            : 'bg-white text-slate-900'
+          : isCompact
+            ? 'rounded-2xl border border-white/10 bg-slate-950 text-white shadow-xl'
+            : 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white'
       }`}
     >
       {/* Hero header — tighter when Fill job has results so list stays interactive */}
       <div
-        className={`shrink-0 border-b border-white/10 ${
+        className={`shrink-0 border-b ${light ? 'border-slate-200' : 'border-white/10'} ${
           isCompact || (isResearch && researchRuns.length > 0)
             ? 'px-3 py-2.5'
             : 'px-5 py-5'
@@ -725,39 +744,53 @@ export function AgentWorkbench({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-200 ring-1 ring-violet-400/30">
-              <Sparkles className="h-3 w-3" />
-              Autonomous agent
-            </div>
+            {!hideChrome && (
+              <div
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ring-1 ${
+                  light
+                    ? 'bg-violet-50 text-violet-800 ring-violet-200'
+                    : 'bg-violet-500/20 text-violet-200 ring-violet-400/30'
+                }`}
+              >
+                <Sparkles className="h-3 w-3" />
+                Autonomous agent
+              </div>
+            )}
             <h2
-              className={`mt-2 font-semibold tracking-tight text-white ${
-                isCompact ? 'text-sm' : 'text-lg'
-              }`}
+              className={`font-semibold tracking-tight ${hideChrome ? '' : 'mt-2'} ${
+                light ? 'text-slate-900' : 'text-white'
+              } ${isCompact ? 'text-sm' : 'text-lg'}`}
             >
               {isResearch
                 ? 'Source candidates for a job'
                 : 'Company List Builder'}
             </h2>
             {!isCompact && !(isResearch && researchRuns.length > 0) && (
-              <p className="mt-1 text-sm leading-relaxed text-slate-400">
+              <p
+                className={`mt-1 text-sm leading-relaxed ${
+                  light ? 'text-slate-500' : 'text-slate-400'
+                }`}
+              >
                 {isResearch ? (
                   <>
                     Paste a{' '}
-                    <span className="text-slate-200">careers job URL</span> or
-                    role brief. We read the req, then find{' '}
-                    <span className="text-slate-200">real people</span> via
-                    Apollo/PDL when available, otherwise{' '}
-                    <span className="text-slate-200">
-                      LLM + Nova web grounding
-                    </span>
-                    . Cost logs on Usage.
+                    <span className={light ? 'text-slate-800' : 'text-slate-200'}>
+                      careers job URL
+                    </span>{' '}
+                    or role brief. We read the req, then find{' '}
+                    <span className={light ? 'text-slate-800' : 'text-slate-200'}>
+                      real people
+                    </span>{' '}
+                    via Apollo/PDL when available. Cost logs on Usage.
                   </>
                 ) : (
                   <>
-                    Describe a market. Grok on Bedrock browses company sites and
-                    keeps rows with a public{' '}
-                    <span className="text-slate-200">email or phone</span> (both
-                    preferred), while you keep chatting on the left.
+                    Describe a market. The agent browses company sites and keeps
+                    rows with a public{' '}
+                    <span className={light ? 'text-slate-800' : 'text-slate-200'}>
+                      email or phone
+                    </span>{' '}
+                    (both preferred). Runs in the background — pause anytime.
                   </>
                 )}
               </p>
@@ -765,15 +798,24 @@ export function AgentWorkbench({
           </div>
         </div>
 
-        {/* Mode toggle — Companies (BD) | Fill job (candidates for a req) */}
-        <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+        {/* Mode toggle — hidden when Agent Desk parent owns Companies/Fill tabs */}
+        {!hideChrome && (
+        <div
+          className={`mt-3 grid grid-cols-2 gap-1 rounded-xl border p-1 ${
+            light
+              ? 'border-slate-200 bg-slate-50'
+              : 'border-white/10 bg-white/5'
+          }`}
+        >
           <button
             type="button"
             onClick={() => setMode('companies')}
             className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition ${
               mode === 'companies'
                 ? 'bg-violet-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
+                : light
+                  ? 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-400 hover:text-white'
             }`}
           >
             <Building2 className="h-3.5 w-3.5" />
@@ -785,13 +827,16 @@ export function AgentWorkbench({
             className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition ${
               mode === 'research'
                 ? 'bg-sky-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
+                : light
+                  ? 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-400 hover:text-white'
             }`}
           >
             <Target className="h-3.5 w-3.5" />
             Fill job
           </button>
         </div>
+        )}
 
         {isResearch && apolloStatus?.probeOk === false && (
           <p className="mt-2 rounded-lg border border-rose-500/35 bg-rose-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-rose-100">
@@ -840,7 +885,11 @@ export function AgentWorkbench({
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
             rows={isCompact ? 2 : 3}
-            className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none ring-violet-500/0 transition focus:border-violet-400/40 focus:bg-white/[0.07] focus:ring-2 focus:ring-violet-500/30"
+            className={`w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${
+              light
+                ? 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-violet-300 focus:ring-violet-100'
+                : 'border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus:border-violet-400/40 focus:bg-white/[0.07] focus:ring-violet-500/30'
+            }`}
             placeholder={
               isResearch
                 ? 'Careers job URL or full JD — LLM builds Apollo filters (titles/location/keywords), then finds real people'
