@@ -298,14 +298,15 @@ export default function GeneralAiUsagePage() {
   // Start collapsed so AgentWorkbench (job polling) is not mounted until needed
   const [agentPanelSize, setAgentPanelSize] = useState<AgentPanelSize>('collapsed');
 
-  /** Chat copilot vs multi-step Agent Desk */
+  /** Chat (default, interactive) vs multi-step Agent Desk */
   type DeskMode = 'agent' | 'chat';
   const DESK_MODE_KEY = 'trio-ai-desk-mode-v1';
-  const [deskMode, setDeskMode] = useState<DeskMode>('agent');
+  const [deskMode, setDeskMode] = useState<DeskMode>('chat');
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DESK_MODE_KEY);
+      // Default remains chat for interactive use; agent is opt-in
       if (raw === 'agent' || raw === 'chat') setDeskMode(raw);
     } catch {
       /* ignore */
