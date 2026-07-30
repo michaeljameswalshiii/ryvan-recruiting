@@ -1,59 +1,92 @@
-﻿"use client";
+"use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 
-type ThemeMode = "white" | "gray" | "black";
+/** App-wide UI theme. "black" = near-black slate dark mode. */
+export type ThemeMode = "white" | "gray" | "black";
 
 interface ThemeContextType {
   theme: ThemeMode;
   setTheme: (theme: ThemeMode) => void;
+  /** Convenience: true when dark (black) mode is active */
+  isDark: boolean;
+  toggleLightDark: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_STORAGE_KEY = "theme-mode";
 
+function normalizeTheme(raw: string | null): ThemeMode | null {
+  if (!raw) return null;
+  // Migrate Agent Desk-only keys
+  if (raw === "dark") return "black";
+  if (raw === "light") return "white";
+  if (raw === "white" || raw === "gray" || raw === "black") return raw;
+  return null;
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemeMode>("white");
   const [mounted, setMounted] = useState(false);
 
-  // Initialize theme from localStorage on mount
   useEffect(() => {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-    if (stored && ["white", "gray", "black"].includes(stored)) {
-      setThemeState(stored);
-    }
+    const fromApp = normalizeTheme(localStorage.getItem(THEME_STORAGE_KEY));
+    const fromAgent = normalizeTheme(
+      localStorage.getItem("trio-agent-desk-theme-v1")
+    );
+    if (fromApp) setThemeState(fromApp);
+    else if (fromAgent) setThemeState(fromAgent);
     setMounted(true);
   }, []);
 
-  // Apply theme class to html element whenever theme changes
   useEffect(() => {
     if (!mounted) return;
 
     const root = document.documentElement;
-    
-    // Remove all theme classes
     root.classList.remove("dark", "gray-mode");
-    
-    // Apply the current theme class
+
     if (theme === "black") {
       root.classList.add("dark");
     } else if (theme === "gray") {
       root.classList.add("gray-mode");
     }
-    // "white" theme = default, no class needed
-    
-    // Persist to localStorage
+
     localStorage.setItem(THEME_STORAGE_KEY, theme);
+    // Keep Agent Desk in sync if it still reads this key
+    try {
+      localStorage.setItem(
+        "trio-agent-desk-theme-v1",
+        theme === "black" ? "dark" : "light"
+      );
+    } catch {
+      /* ignore */
+    }
   }, [theme, mounted]);
 
   const setTheme = (newTheme: ThemeMode) => {
     setThemeState(newTheme);
   };
 
-  // ALWAYS provide context - even before mount - this prevents "useTheme must be used within ThemeProvider" error
+  const toggleLightDark = () => {
+    setThemeState((prev) => (prev === "black" ? "white" : "black"));
+  };
+
   return (
-    <ThemeContext.Provider value={{ theme, setTheme }}>
+    <ThemeContext.Provider
+      value={{
+        theme,
+        setTheme,
+        isDark: theme === "black",
+        toggleLightDark,
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   );
@@ -61,10 +94,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
 export function useTheme() {
   const context = useContext(ThemeContext);
-  // Return default values instead of throwing if not mounted yet
   if (context === undefined) {
-    // Return a default theme instead of throwing - safe for SSR/hydration
-    return { theme: "white" as ThemeMode, setTheme: () => {} };
+    return {
+      theme: "white" as ThemeMode,
+      setTheme: () => {},
+      isDark: false,
+      toggleLightDark: () => {},
+    };
   }
   return context;
 }

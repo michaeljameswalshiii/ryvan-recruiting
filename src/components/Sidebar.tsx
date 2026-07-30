@@ -19,12 +19,15 @@ import {
   Network,
   ListOrdered,
   Activity,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import {
   hasPermission,
   type Permission,
 } from '@/lib/roles';
 import { isApolloUiEnabled } from '@/lib/ai/apollo-feature';
+import { useTheme } from '@/components/ThemeProvider';
 
 type MenuItem = {
   name: string;
@@ -67,6 +70,7 @@ export default function Sidebar({ role }: SidebarProps) {
   const navRef = useRef<HTMLDivElement>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
+  const { theme, setTheme, isDark } = useTheme();
 
   const visibleMain = menuItems.filter((item) => hasPermission(role, item.permission));
   const visibleAdmin = adminItems.filter((item) => {
@@ -104,42 +108,81 @@ export default function Sidebar({ role }: SidebarProps) {
     const isActive = pathname === href || pathname.startsWith(href + '/');
     if (activeTone === 'orange') {
       return `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-        isActive ? 'bg-orange-50 text-orange-700' : 'text-gray-500 hover:bg-gray-100'
+        isActive
+          ? 'bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300'
+          : 'text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200'
       }`;
     }
     if (activeTone === 'purple') {
       return `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-        isActive ? 'bg-purple-50 text-purple-700' : 'text-gray-500 hover:bg-gray-100'
+        isActive
+          ? 'bg-purple-50 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300'
+          : 'text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200'
       }`;
     }
     return `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-      isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+      isActive
+        ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
+        : 'text-gray-700 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white'
     }`;
   };
 
   return (
-    <div className="w-72 min-w-[280px] bg-white border-r border-gray-200 h-screen flex flex-col fixed left-0 top-0 shadow-sm z-50">
-      <div className="px-3 pt-3 pb-2 border-b">
+    <div className="w-72 min-w-[280px] bg-white dark:bg-slate-950 border-r border-gray-200 dark:border-slate-800 h-screen flex flex-col fixed left-0 top-0 shadow-sm z-50">
+      <div className="px-3 pt-3 pb-3 border-b border-gray-200 dark:border-slate-800">
         <Link
           href="/dashboard"
-          className="block rounded-lg hover:bg-gray-50/80 transition-colors -mx-0.5 px-0.5"
+          className="block rounded-lg hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors -mx-0.5 px-0.5"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/branding/trio-sourcing-logo.png"
             alt="Trio Sourcing — Powered by Ryvan Recruiting"
-            className="w-full h-auto max-h-[5.5rem] object-contain object-left object-top"
+            className="w-full h-auto max-h-[5.5rem] object-contain object-left object-top dark:brightness-110 dark:contrast-95"
           />
         </Link>
+        {/* Global light / dark toggle — under logo */}
+        <div
+          className="mt-2.5 flex rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-0.5"
+          role="group"
+          aria-label="Color theme"
+        >
+          <button
+            type="button"
+            onClick={() => setTheme('white')}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${
+              theme === 'white' || theme === 'gray'
+                ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+            title="Light UI"
+          >
+            <Sun className="h-3.5 w-3.5" />
+            Light
+          </button>
+          <button
+            type="button"
+            onClick={() => setTheme('black')}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${
+              isDark
+                ? 'bg-slate-800 text-white shadow-sm'
+                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+            }`}
+            title="Dark UI (near-black)"
+          >
+            <Moon className="h-3.5 w-3.5" />
+            Dark
+          </button>
+        </div>
       </div>
 
       {canScrollUp && (
         <button
           onClick={() => scrollMenu('up')}
-          className="absolute top-20 left-1/2 -translate-x-1/2 z-10 bg-white border border-gray-200 rounded-full p-1 shadow-md hover:bg-gray-100"
+          className="absolute top-28 left-1/2 -translate-x-1/2 z-10 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-full p-1 shadow-md hover:bg-gray-100 dark:hover:bg-slate-800"
           style={{ left: '50%' }}
         >
-          <ChevronUp className="h-4 w-4" />
+          <ChevronUp className="h-4 w-4 dark:text-slate-300" />
         </button>
       )}
 
@@ -158,8 +201,8 @@ export default function Sidebar({ role }: SidebarProps) {
         </div>
 
         {visibleAdmin.length > 0 && (
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 mb-2">
+          <div className="mt-6 pt-4 border-t border-gray-200 dark:border-slate-800">
+            <div className="text-xs font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-4 mb-2">
               Admin
             </div>
             <div className="space-y-1">
@@ -174,8 +217,8 @@ export default function Sidebar({ role }: SidebarProps) {
         )}
 
         {visibleSite.length > 0 && (
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 mb-2">
+          <div className="mt-6 pt-4 border-t border-gray-200 dark:border-slate-800">
+            <div className="text-xs font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-4 mb-2">
               Site Admin
             </div>
             <div className="space-y-1">
@@ -193,15 +236,17 @@ export default function Sidebar({ role }: SidebarProps) {
       {canScrollDown && (
         <button
           onClick={() => scrollMenu('down')}
-          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 bg-white border border-gray-200 rounded-full p-1 shadow-md hover:bg-gray-100"
+          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-full p-1 shadow-md hover:bg-gray-100 dark:hover:bg-slate-800"
           style={{ left: '50%' }}
         >
-          <ChevronDown className="h-4 w-4" />
+          <ChevronDown className="h-4 w-4 dark:text-slate-300" />
         </button>
       )}
 
-      <div className="p-4 border-t mt-auto">
-        <div className="text-xs text-gray-500 text-center">© 2026 Trio Recruiting</div>
+      <div className="p-4 border-t border-gray-200 dark:border-slate-800 mt-auto">
+        <div className="text-xs text-gray-500 dark:text-slate-500 text-center">
+          © 2026 Trio Recruiting
+        </div>
       </div>
     </div>
   );

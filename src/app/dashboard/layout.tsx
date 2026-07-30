@@ -44,12 +44,14 @@ export default async function DashboardLayout({
 
   return (
     <DragDropProvider>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-foreground">
         <Sidebar role={role} />
         {/* min-w-0 prevents wide tables from expanding past the viewport (right-edge clip) */}
         <div className="ml-72 min-w-0 max-w-full">
           <DashboardHeader user={tenantInfo} />
-          <main className="min-w-0 max-w-full overflow-x-hidden p-6">{children}</main>
+          <main className="min-w-0 max-w-full overflow-x-hidden p-6 bg-gray-50 dark:bg-slate-950">
+            {children}
+          </main>
         </div>
         {/* Global fab + slide-over — same tools as AI Assistant page */}
         <FloatingAiAssistant />

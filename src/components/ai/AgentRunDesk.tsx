@@ -14,13 +14,11 @@ import {
   CircleDashed,
   History,
   Loader2,
-  Moon,
   Pause,
   Play,
   Send,
   ShieldCheck,
   Sparkles,
-  Sun,
   User,
   Briefcase,
   AlertTriangle,
@@ -30,6 +28,7 @@ import {
   Search,
   MessageSquare,
 } from 'lucide-react';
+import { useTheme } from '@/components/ThemeProvider';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -61,9 +60,6 @@ import {
 import { AgentWorkbench } from '@/components/ai/AgentWorkbench';
 
 type DeskTab = 'companies' | 'fill' | 'goal';
-type DeskTheme = 'light' | 'dark';
-
-const THEME_KEY = 'trio-agent-desk-theme-v1';
 
 const GOAL_EXAMPLES = [
   'Create CRM companies for: Grace Aerospace, Matrix Composites, Primus Pipe & Tube, Becker Avionics (minimal if websites fail)',
@@ -121,7 +117,6 @@ export function AgentRunDesk({
   const queryClient = useQueryClient();
   /** Primary Agent Desk surfaces — list builders live here (not on Chat) */
   const [deskTab, setDeskTab] = useState<DeskTab>('companies');
-  const [theme, setTheme] = useState<DeskTheme>('light');
   const [goal, setGoal] = useState('');
   const [run, setRun] = useState<AgentRunSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
@@ -136,28 +131,9 @@ export function AgentRunDesk({
   const bottomRef = useRef<HTMLDivElement>(null);
   const replyRef = useRef<HTMLTextAreaElement>(null);
 
-  const dark = theme === 'dark';
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(THEME_KEY);
-      if (raw === 'dark' || raw === 'light') setTheme(raw);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const toggleTheme = () => {
-    setTheme((prev) => {
-      const next: DeskTheme = prev === 'dark' ? 'light' : 'dark';
-      try {
-        localStorage.setItem(THEME_KEY, next);
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  };
+  // Follow app-wide theme (sidebar Light/Dark under logo)
+  const { isDark } = useTheme();
+  const dark = isDark;
 
   const refreshPast = useCallback(() => {
     setPastRuns(listAgentRuns(userId));
@@ -738,22 +714,6 @@ export function AgentRunDesk({
               {tabBtn('fill', 'Fill job', <Briefcase className="h-3.5 w-3.5" />)}
               {tabBtn('goal', 'Goal agent', <Bot className="h-3.5 w-3.5" />)}
             </div>
-            <button
-              type="button"
-              onClick={toggleTheme}
-              title={dark ? 'Switch to light UI' : 'Switch to dark UI'}
-              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
-                dark
-                  ? 'border-white/15 bg-slate-950/50 text-amber-200 hover:bg-white/10'
-                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {dark ? (
-                <Sun className="h-3.5 w-3.5" />
-              ) : (
-                <Moon className="h-3.5 w-3.5" />
-              )}
-            </button>
             {deskTab === 'goal' && (
               <>
                 <Button
