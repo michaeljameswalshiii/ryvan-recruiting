@@ -25,7 +25,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { invalidateCrmCaches } from '@/lib/hooks/invalidate-crm-cache';
 import {
   explainAiFetchError,
   parseAiFetchResponse,
@@ -41,6 +40,18 @@ import {
   clearChatHistory,
   formatThreadWhen,
 } from '@/lib/ai/chat-history';
+import {
+  AI_UI_RENDER_MESSAGES,
+  AI_UI_STORE_MESSAGES,
+  buildSlimApiHistory,
+  clampMessageContent,
+  downloadFromMeta,
+  materializeGeneratedFiles,
+  revokeGeneratedFileUrls,
+  scheduleCrmCacheInvalidation,
+  stripAttachmentBodies,
+  type GeneratedFileMeta,
+} from '@/lib/ai/chat-client-perf';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,18 +65,13 @@ interface ChatAttachment {
   warning?: string;
 }
 
-interface GeneratedFile {
-  fileName: string;
-  mimeType: string;
-  contentBase64: string;
-  sizeBytes?: number;
-  format?: string;
-}
+/** Downloadable file — base64 is never kept in React state (blob URL only) */
+type GeneratedFile = GeneratedFileMeta;
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
-  /** Full content sent to / used for multi-turn context (includes file bodies) */
+  /** Content for multi-turn context (attachments stripped/capped after first turn) */
   content: string;
   /** Optional shorter text shown in the bubble (user messages with files) */
   displayContent?: string;
@@ -76,7 +82,7 @@ interface Message {
   model?: string;
   /** Friendly name for badge, e.g. "Claude Haiku" */
   modelLabel?: string;
-  /** Files produced by generate_file tool */
+  /** Files produced by generate_file tool (blob URLs, no base64) */
   generatedFiles?: GeneratedFile[];
   /** Model token cost estimate (USD) */
   cost?: number;
@@ -139,20 +145,11 @@ const PLATFORM_MODELS: {
 
 function downloadGeneratedFile(file: GeneratedFile) {
   try {
-    const bin = atob(file.contentBase64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const blob = new Blob([bytes], {
-      type: file.mimeType || 'application/octet-stream',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.fileName || 'download';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    if (!file.downloadUrl) {
+      toast.error('Download expired — ask the assistant to regenerate the file');
+      return;
+    }
+    downloadFromMeta(file);
   } catch (e) {
     console.error('[download]', e);
     toast.error('Could not download file');
@@ -203,7 +200,6 @@ function modelBadgeClass(label?: string): string {
 
 /** Legacy key — cleared on mount so page visits always start a new chat */
 const LEGACY_SESSION_KEY = 'general-ai-usage-messages-v1';
-const MAX_HISTORY_TURNS = 24;
 
 const SUGGESTIONS = [
   'Summarize the attached document in three bullets',
@@ -250,14 +246,21 @@ function formatTime(iso: string) {
   }
 }
 
+const MAX_ATTACH_CHARS = 24_000;
+
 function buildUserContent(text: string, files: ChatAttachment[]): string {
   if (!files.length) return text;
-  const blocks = files.map(
-    (f) =>
-      `--- Attached file: ${f.fileName} (${f.charCount} chars) ---\n${f.text}\n--- End of ${f.fileName} ---`
-  );
-  const body = text.trim() || 'Please review the attached file(s) and provide a useful analysis.';
-  return `${body}\n\n${blocks.join('\n\n')}`;
+  const blocks = files.map((f) => {
+    const body =
+      f.text.length > MAX_ATTACH_CHARS
+        ? `${f.text.slice(0, MAX_ATTACH_CHARS)}\n…[truncated, ${f.charCount} total chars]`
+        : f.text;
+    return `--- Attached file: ${f.fileName} (${f.charCount} chars) ---\n${body}\n--- End of ${f.fileName} ---`;
+  });
+  const body =
+    text.trim() ||
+    'Please review the attached file(s) and provide a useful analysis.';
+  return clampMessageContent(`${body}\n\n${blocks.join('\n\n')}`, 30_000);
 }
 
 // ---------------------------------------------------------------------------
@@ -291,7 +294,8 @@ export default function GeneralAiUsagePage() {
   // Right agent panel size (persisted)
   type AgentPanelSize = 'collapsed' | 'sm' | 'md' | 'lg';
   const PANEL_KEY = 'trio-agent-panel-size-v1';
-  const [agentPanelSize, setAgentPanelSize] = useState<AgentPanelSize>('md');
+  // Start collapsed so AgentWorkbench (job polling) is not mounted until needed
+  const [agentPanelSize, setAgentPanelSize] = useState<AgentPanelSize>('collapsed');
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -397,6 +401,7 @@ export default function GeneralAiUsagePage() {
   const startNewChat = useCallback(() => {
     if (isLoading) return;
     persistCurrentThread();
+    revokeGeneratedFileUrls(messagesRef.current);
     setMessages([]);
     setInput('');
     setPendingFiles([]);
@@ -406,6 +411,13 @@ export default function GeneralAiUsagePage() {
     toast.success('New chat started — prior chat is in History');
     textareaRef.current?.focus();
   }, [isLoading, persistCurrentThread]);
+
+  // Release blob URLs when leaving the page
+  useEffect(() => {
+    return () => {
+      revokeGeneratedFileUrls(messagesRef.current);
+    };
+  }, []);
 
   const openHistoryThread = useCallback(
     (thread: ChatHistoryThread) => {
@@ -430,10 +442,10 @@ export default function GeneralAiUsagePage() {
           cost: m.cost,
           estimatedToolCostUsd: m.estimatedToolCostUsd,
           estimatedTotalCostUsd: m.estimatedTotalCostUsd,
+          // History never stores base64 — downloads require re-generation
           generatedFiles: m.generatedFiles?.map((f) => ({
             fileName: f.fileName,
             mimeType: f.mimeType || 'application/octet-stream',
-            contentBase64: '',
             sizeBytes: f.sizeBytes,
             format: f.format,
           })),
@@ -552,11 +564,8 @@ export default function GeneralAiUsagePage() {
     setPendingFiles([]);
     setIsLoading(true);
 
-    // Full multi-turn payload including attachment text from earlier turns
-    const historyForApi = prior
-      .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .slice(-MAX_HISTORY_TURNS)
-      .map((m) => ({ role: m.role, content: m.content }));
+    // Bounded multi-turn payload — strip old attachment bodies, cap size
+    const historyForApi = buildSlimApiHistory(prior);
 
     try {
       // CRM tools need Claude tool_use; Nova uses Converse chat only.
@@ -602,17 +611,25 @@ export default function GeneralAiUsagePage() {
       }
 
       if (errorMessage || result.error) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `a-${Date.now()}`,
-            role: 'assistant',
-            content:
-              errorMessage ||
-              String(result.message || result.error || `Request failed (${res.status})`),
-            timestamp: nowIso(),
-          },
-        ]);
+        setMessages((prev) => {
+          const next = [
+            ...prev,
+            {
+              id: `a-${Date.now()}`,
+              role: 'assistant' as const,
+              content: clampMessageContent(
+                errorMessage ||
+                  String(
+                    result.message ||
+                      result.error ||
+                      `Request failed (${res.status})`
+                  )
+              ),
+              timestamp: nowIso(),
+            },
+          ];
+          return next.slice(-AI_UI_STORE_MESSAGES);
+        });
       } else {
         const toolsUsed: string[] = Array.isArray(result.toolsUsed)
           ? (result.toolsUsed as string[])
@@ -623,13 +640,12 @@ export default function GeneralAiUsagePage() {
           (typeof result.modelLabel === 'string' && result.modelLabel) ||
           labelFromModelId(modelId);
         setLastMeta({ model: modelId, modelLabel, toolsUsed });
-        const generatedFiles: GeneratedFile[] = Array.isArray(
-          result.generatedFiles
-        )
-          ? (result.generatedFiles as GeneratedFile[]).filter(
-              (f) => f?.fileName && f?.contentBase64
-            )
-          : [];
+        // Convert base64 → blob URLs immediately; never keep base64 in state
+        const generatedFiles = materializeGeneratedFiles(
+          Array.isArray(result.generatedFiles)
+            ? (result.generatedFiles as Array<Record<string, unknown>>)
+            : []
+        );
         const toolCost =
           typeof result.estimatedToolCostUsd === 'number'
             ? result.estimatedToolCostUsd
@@ -642,31 +658,63 @@ export default function GeneralAiUsagePage() {
             : toolCost != null || modelCost != null
               ? (modelCost || 0) + (toolCost || 0)
               : undefined;
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `a-${Date.now()}`,
-            role: 'assistant',
-            content:
-              (typeof result.response === 'string' && result.response) ||
-              'No response generated.',
-            timestamp: nowIso(),
-            toolsUsed,
-            model: modelId,
-            modelLabel,
-            generatedFiles:
-              generatedFiles.length > 0 ? generatedFiles : undefined,
-            cost: modelCost,
-            estimatedToolCostUsd: toolCost,
-            estimatedTotalCostUsd: totalCost,
-          },
-        ]);
-        // CRM tools write on the server — refresh lists immediately
+        setMessages((prev) => {
+          // After the turn is stored, shrink prior attachment bodies in state
+          // so memory doesn't grow unbounded across the session.
+          const compacted = prev.map((m, i) => {
+            if (i === prev.length - 1 && m.role === 'user') {
+              // Keep latest user turn's attachment text (already capped for API)
+              return {
+                ...m,
+                content: clampMessageContent(m.content, 12_000),
+              };
+            }
+            if (m.role === 'user' && /--- Attached file:/.test(m.content)) {
+              return {
+                ...m,
+                content: clampMessageContent(stripAttachmentBodies(m.content)),
+              };
+            }
+            if (m.role === 'assistant' && m.content.length > 8_000) {
+              return { ...m, content: clampMessageContent(m.content, 8_000) };
+            }
+            return m;
+          });
+          const next = [
+            ...compacted,
+            {
+              id: `a-${Date.now()}`,
+              role: 'assistant' as const,
+              content: clampMessageContent(
+                (typeof result.response === 'string' && result.response) ||
+                  'No response generated.',
+                12_000
+              ),
+              timestamp: nowIso(),
+              toolsUsed,
+              model: modelId,
+              modelLabel,
+              generatedFiles:
+                generatedFiles.length > 0 ? generatedFiles : undefined,
+              cost: modelCost,
+              estimatedToolCostUsd: toolCost,
+              estimatedTotalCostUsd: totalCost,
+            },
+          ];
+          return next.slice(-AI_UI_STORE_MESSAGES);
+        });
+        // CRM tools write on the server — refresh lists after paint (debounced)
         const crmMutated = result.crmMutated === true;
-        if (crmMutated || toolsUsed.some((t) => /^(create_|update_|link_)/.test(t))) {
-          void invalidateCrmCaches(queryClient, toolsUsed, {
-            forceClients: crmMutated || toolsUsed.some((t) => /company|contact|client/i.test(t)),
+        if (
+          crmMutated ||
+          toolsUsed.some((t) => /^(create_|update_|link_)/.test(t))
+        ) {
+          scheduleCrmCacheInvalidation(queryClient, toolsUsed, {
+            forceClients:
+              crmMutated ||
+              toolsUsed.some((t) => /company|contact|client/i.test(t)),
             forceAll: crmMutated,
+            delayMs: 800,
           });
         }
       }
@@ -877,7 +925,13 @@ export default function GeneralAiUsagePage() {
             </div>
           ) : (
             <div className="space-y-6">
-              {messages.map((m) => (
+              {messages.length > AI_UI_RENDER_MESSAGES && (
+                <p className="text-center text-xs text-slate-500">
+                  Showing latest {AI_UI_RENDER_MESSAGES} of {messages.length}{' '}
+                  messages (older turns still used for context, capped)
+                </p>
+              )}
+              {messages.slice(-AI_UI_RENDER_MESSAGES).map((m) => (
                 <div
                   key={m.id}
                   className={`flex gap-3 ${
@@ -934,7 +988,7 @@ export default function GeneralAiUsagePage() {
                               Downloads
                             </p>
                             {m.generatedFiles.map((f) =>
-                              f.contentBase64 ? (
+                              f.downloadUrl ? (
                                 <button
                                   key={`${f.fileName}-${f.sizeBytes}`}
                                   type="button"
@@ -1293,6 +1347,7 @@ export default function GeneralAiUsagePage() {
           </button>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col pt-1">
+            {/* Mount only when panel is open — avoids job polling while hidden */}
             <AgentWorkbench variant="full" />
           </div>
         )}

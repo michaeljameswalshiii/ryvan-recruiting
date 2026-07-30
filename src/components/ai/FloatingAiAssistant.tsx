@@ -30,12 +30,18 @@ import {
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { invalidateCrmCaches } from '@/lib/hooks/invalidate-crm-cache';
 import {
   explainAiFetchError,
   parseAiFetchResponse,
 } from '@/lib/ai/parse-response';
 import { AgentWorkbench } from '@/components/ai/AgentWorkbench';
+import {
+  AI_UI_RENDER_MESSAGES,
+  AI_UI_STORE_MESSAGES,
+  buildSlimApiHistory,
+  clampMessageContent,
+  scheduleCrmCacheInvalidation,
+} from '@/lib/ai/chat-client-perf';
 
 // ---------------------------------------------------------------------------
 // Types / storage
@@ -52,7 +58,8 @@ interface Message {
 
 const OPEN_KEY = 'trio-floating-ai-open-v1';
 const MESSAGES_KEY = 'trio-floating-ai-messages-v1';
-const MAX_HISTORY = 20;
+/** Collapsed by default — AgentWorkbench is heavy (polls jobs) */
+const WORKBENCH_KEY = 'trio-floating-ai-workbench-v1';
 
 // ---------------------------------------------------------------------------
 // Page context from URL
@@ -236,6 +243,8 @@ export function FloatingAiAssistant() {
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  /** Agent list builder — opt-in so chat alone stays light */
+  const [showWorkbench, setShowWorkbench] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -246,10 +255,20 @@ export function FloatingAiAssistant() {
     try {
       const o = sessionStorage.getItem(OPEN_KEY);
       if (o === '1') setOpen(true);
+      const wb = sessionStorage.getItem(WORKBENCH_KEY);
+      if (wb === '1') setShowWorkbench(true);
       const raw = sessionStorage.getItem(MESSAGES_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Message[];
-        if (Array.isArray(parsed) && parsed.length) setMessages(parsed);
+        if (Array.isArray(parsed) && parsed.length) {
+          // Cap restored content so sessionStorage never re-hydrates megabytes
+          setMessages(
+            parsed.slice(-AI_UI_STORE_MESSAGES).map((m) => ({
+              ...m,
+              content: clampMessageContent(String(m.content || ''), 8_000),
+            }))
+          );
+        }
       }
     } catch {
       /* ignore */
@@ -261,10 +280,11 @@ export function FloatingAiAssistant() {
     if (!hydrated) return;
     try {
       sessionStorage.setItem(OPEN_KEY, open ? '1' : '0');
+      sessionStorage.setItem(WORKBENCH_KEY, showWorkbench ? '1' : '0');
     } catch {
       /* ignore */
     }
-  }, [open, hydrated]);
+  }, [open, showWorkbench, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -272,13 +292,19 @@ export function FloatingAiAssistant() {
       if (messages.length === 0) {
         sessionStorage.removeItem(MESSAGES_KEY);
       } else {
-        sessionStorage.setItem(
-          MESSAGES_KEY,
-          JSON.stringify(messages.slice(-40))
-        );
+        // Slim payload for sessionStorage (no multi-MB JSON on every turn)
+        const slim = messages.slice(-AI_UI_STORE_MESSAGES).map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: clampMessageContent(m.content, 4_000),
+          timestamp: m.timestamp,
+          toolsUsed: m.toolsUsed,
+          modelLabel: m.modelLabel,
+        }));
+        sessionStorage.setItem(MESSAGES_KEY, JSON.stringify(slim));
       }
     } catch {
-      /* ignore */
+      /* quota / private mode */
     }
   }, [messages, hydrated]);
 
@@ -341,10 +367,7 @@ export function FloatingAiAssistant() {
     setInput('');
     setIsLoading(true);
 
-    const historyForApi = prior
-      .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .slice(-MAX_HISTORY)
-      .map((m) => ({ role: m.role, content: m.content }));
+    const historyForApi = buildSlimApiHistory(prior);
 
     // Abort long-hanging requests so the UI recovers with a clear message
     const controller = new AbortController();
@@ -377,17 +400,20 @@ export function FloatingAiAssistant() {
         await parseAiFetchResponse(res);
 
       if (errorMessage || result.error) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `a-${Date.now()}`,
-            role: 'assistant',
-            content:
-              errorMessage ||
-              String(result.message || result.error || 'Request failed'),
-            timestamp: nowIso(),
-          },
-        ]);
+        setMessages((prev) =>
+          [
+            ...prev,
+            {
+              id: `a-${Date.now()}`,
+              role: 'assistant' as const,
+              content: clampMessageContent(
+                errorMessage ||
+                  String(result.message || result.error || 'Request failed')
+              ),
+              timestamp: nowIso(),
+            },
+          ].slice(-AI_UI_STORE_MESSAGES)
+        );
         if (nonJson) {
           console.warn('[FloatingAi] non-JSON AI response', {
             status: res.status,
@@ -398,45 +424,52 @@ export function FloatingAiAssistant() {
         const toolsUsed: string[] = Array.isArray(result.toolsUsed)
           ? (result.toolsUsed as string[])
           : [];
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `a-${Date.now()}`,
-            role: 'assistant',
-            content:
-              (typeof result.response === 'string' && result.response) ||
-              'No response generated.',
-            timestamp: nowIso(),
-            toolsUsed,
-            modelLabel:
-              (typeof result.modelLabel === 'string' && result.modelLabel) ||
-              undefined,
-          },
-        ]);
+        setMessages((prev) =>
+          [
+            ...prev,
+            {
+              id: `a-${Date.now()}`,
+              role: 'assistant' as const,
+              content: clampMessageContent(
+                (typeof result.response === 'string' && result.response) ||
+                  'No response generated.',
+                12_000
+              ),
+              timestamp: nowIso(),
+              toolsUsed,
+              modelLabel:
+                (typeof result.modelLabel === 'string' && result.modelLabel) ||
+                undefined,
+            },
+          ].slice(-AI_UI_STORE_MESSAGES)
+        );
         const crmMutated = result.crmMutated === true;
         if (
           crmMutated ||
           toolsUsed.some((t) => /^(create_|update_|link_)/.test(t))
         ) {
-          void invalidateCrmCaches(queryClient, toolsUsed, {
+          scheduleCrmCacheInvalidation(queryClient, toolsUsed, {
             forceClients:
               crmMutated ||
               toolsUsed.some((t) => /company|contact|client/i.test(t)),
             forceAll: crmMutated,
+            delayMs: 800,
           });
         }
       }
     } catch (err) {
       const msg = explainAiFetchError(err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `a-${Date.now()}`,
-          role: 'assistant',
-          content: msg,
-          timestamp: nowIso(),
-        },
-      ]);
+      setMessages((prev) =>
+        [
+          ...prev,
+          {
+            id: `a-${Date.now()}`,
+            role: 'assistant' as const,
+            content: clampMessageContent(msg),
+            timestamp: nowIso(),
+          },
+        ].slice(-AI_UI_STORE_MESSAGES)
+      );
     } finally {
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       setIsLoading(false);
@@ -571,8 +604,23 @@ export function FloatingAiAssistant() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-          <div className="mb-2 max-h-[min(70vh,560px)] min-h-[280px] overflow-y-auto overscroll-contain rounded-2xl border border-slate-800">
-            <AgentWorkbench variant="compact" />
+          <div className="mb-2">
+            <button
+              type="button"
+              onClick={() => setShowWorkbench((v) => !v)}
+              className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-left text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+            >
+              <span>List builder / agent jobs</span>
+              <span className="text-slate-400">
+                {showWorkbench ? 'Hide' : 'Show'}
+              </span>
+            </button>
+            {showWorkbench && (
+              <div className="mt-1.5 max-h-[min(40vh,320px)] min-h-[200px] overflow-y-auto overscroll-contain rounded-2xl border border-slate-800">
+                {/* Lazy: only mount when expanded — avoids 15s job polling during chat */}
+                <AgentWorkbench variant="compact" />
+              </div>
+            )}
           </div>
           {messages.length === 0 && (
             <div className="px-2 py-8 text-center">
@@ -600,7 +648,12 @@ export function FloatingAiAssistant() {
             </div>
           )}
 
-          {messages.map((m) => (
+          {messages.length > AI_UI_RENDER_MESSAGES && (
+            <p className="px-1 text-center text-[10px] text-slate-400">
+              Showing latest {AI_UI_RENDER_MESSAGES} messages
+            </p>
+          )}
+          {messages.slice(-AI_UI_RENDER_MESSAGES).map((m) => (
             <div
               key={m.id}
               className={`flex gap-2 ${

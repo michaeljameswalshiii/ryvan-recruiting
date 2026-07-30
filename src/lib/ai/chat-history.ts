@@ -78,8 +78,20 @@ export function titleFromMessages(
   return raw.length > 72 ? raw.slice(0, 69) + '…' : raw;
 }
 
+function stripAttachBodiesForHistory(content: string): string {
+  // Keep history small — full attachment text is only needed live for the current turn
+  return content.replace(
+    /--- Attached file: ([^\n(]+?)(?:\s*\(\d+\s*chars?\))? ---\n[\s\S]*?--- End of \1 ---/gi,
+    (_m, name: string) =>
+      `[Attached file: ${String(name || 'file').trim()} — body omitted from history]`
+  );
+}
+
 export function slimMessage(m: ChatHistoryMessage | Record<string, unknown>): ChatHistoryMessage {
-  const content = String(m.content || '').slice(0, MAX_CONTENT_CHARS);
+  const content = stripAttachBodiesForHistory(String(m.content || '')).slice(
+    0,
+    MAX_CONTENT_CHARS
+  );
   const displayContent =
     typeof m.displayContent === 'string'
       ? m.displayContent.slice(0, 500)
