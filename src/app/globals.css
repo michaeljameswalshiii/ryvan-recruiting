@@ -6,19 +6,21 @@
   :root {
     /* Soft canvas (~gray-50) so light mode matches former bg-gray-50 layout */
     --background: 210 20% 98%;
-    --foreground: 222.2 84% 4.2%;
+    /* Near-black ink — WCAG AAA on light canvas */
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.2%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.2%;
+    --popover-foreground: 222 47% 11%;
     --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary-foreground: 222 47% 11%;
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Secondary copy ≥ ~4.5:1 on light canvas (readable body labels) */
+    --muted-foreground: 215 16% 38%;
     --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent-foreground: 222 47% 11%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
@@ -32,21 +34,22 @@
   .dark {
     /* #1c1f23 overall canvas + sidebar */
     --background: 213 11% 12%;
-    --foreground: 0 0% 96%;
+    /* Near-white primary ink on charcoal (~15:1) */
+    --foreground: 210 40% 98%;
     /* Slightly elevated panels so cards still read on charcoal */
     --card: 213 10% 15%;
-    --card-foreground: 0 0% 96%;
+    --card-foreground: 210 40% 98%;
     --popover: 213 10% 15%;
-    --popover-foreground: 0 0% 96%;
+    --popover-foreground: 210 40% 98%;
     --primary: 214 90% 56%;
     --primary-foreground: 0 0% 100%;
     --secondary: 213 9% 18%;
-    --secondary-foreground: 0 0% 96%;
+    --secondary-foreground: 210 40% 98%;
     --muted: 213 9% 17%;
-    /* Secondary copy: high enough contrast on charcoal cards */
-    --muted-foreground: 220 10% 78%;
+    /* Secondary copy ≥ ~7:1 on charcoal — never “ghost” gray */
+    --muted-foreground: 215 16% 82%;
     --accent: 213 9% 18%;
-    --accent-foreground: 0 0% 96%;
+    --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 40%;
     --destructive-foreground: 0 0% 98%;
     --border: 213 8% 22%;
@@ -58,19 +61,19 @@
   /* Gray Theme (middle ground) */
   .gray-mode {
     --background: 0 0% 96%;
-    --foreground: 222.2 84% 4.2%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 98%;
-    --card-foreground: 222.2 84% 4.2%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.2%;
+    --popover-foreground: 222 47% 11%;
     --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 90%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary-foreground: 222 47% 11%;
     --muted: 210 40% 90%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215 16% 38%;
     --accent: 210 40% 90%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent-foreground: 222 47% 11%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 85%;
@@ -85,42 +88,43 @@
  * Hundreds of page titles use text-gray-900 / text-slate-500 with no dark: variants.
  * Light cards re-force dark ink below so KPI/table panels stay readable.
  */
+/* Prefer near-white primary and high-contrast secondary on charcoal */
 .dark .text-gray-900,
 .dark .text-slate-900,
 .dark .text-zinc-900,
 .dark .text-neutral-900,
 .dark .text-stone-900 {
-  color: #f1f5f9; /* slate-100 */
+  color: #f8fafc; /* slate-50 — primary titles */
 }
 .dark .text-gray-800,
 .dark .text-slate-800,
 .dark .text-zinc-800,
 .dark .text-neutral-800 {
-  color: #e2e8f0; /* slate-200 */
+  color: #f1f5f9; /* slate-100 */
 }
 .dark .text-gray-700,
 .dark .text-slate-700,
 .dark .text-zinc-700,
 .dark .text-neutral-700 {
-  color: #cbd5e1; /* slate-300 */
+  color: #e2e8f0; /* slate-200 */
 }
 .dark .text-gray-600,
 .dark .text-slate-600,
 .dark .text-zinc-600,
 .dark .text-neutral-600 {
-  color: #94a3b8; /* slate-400 */
+  color: #cbd5e1; /* slate-300 — body secondary */
 }
 .dark .text-gray-500,
 .dark .text-slate-500,
 .dark .text-zinc-500,
 .dark .text-neutral-500 {
-  color: #94a3b8; /* slate-400 — readable secondary on charcoal */
+  color: #cbd5e1; /* slate-300 — was too faint at slate-400 */
 }
 .dark .text-gray-400,
 .dark .text-slate-400,
 .dark .text-zinc-400,
 .dark .text-neutral-400 {
-  color: #64748b; /* slate-500 */
+  color: #94a3b8; /* slate-400 — meta only */
 }
 
 /*
@@ -369,18 +373,89 @@
   * {
     @apply border-border;
   }
+
+  html {
+    /* 16px root keeps rem-based scale predictable; UI uses 15px body via text-base */
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans text-base font-normal;
+    line-height: 1.5;
+    letter-spacing: 0.01em;
+    /* Crisp UI type on LCD / OLED */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  }
+
+  /* Headings: slightly tighter tracking, medium+ weight so they never wash out */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-foreground font-semibold tracking-tight;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+
+  h1 {
+    font-size: 1.5rem; /* 24px */
+    font-weight: 600;
+  }
+  h2 {
+    font-size: 1.125rem; /* 18px */
+  }
+  h3 {
+    font-size: 1rem;
+  }
+
+  /* Form controls inherit readable ink + size */
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    letter-spacing: inherit;
+  }
+
+  /* Tiny labels (badges, meta) stay legible — avoid ultra-light weight */
+  small,
+  .text-xs {
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+
+  /* Monospace for API keys / IDs when font-mono is applied */
+  code,
+  kbd,
+  pre,
+  .font-mono {
+    font-feature-settings: "tnum" 1, "liga" 0;
+  }
+
+  /* Placeholder never as faint as body */
+  ::placeholder {
+    color: hsl(var(--muted-foreground));
+    opacity: 0.85;
   }
 }
 
 /*
- * Dark mode readability: light pastel panels without dark: variants become
- * muddy mid-tones over near-black surfaces. Force solid dark surfaces +
- * light copy for the common status/tint patterns used across Settings.
+ * Dark mode: ensure semantic muted tokens always resolve (some utilities
+ * can be ordered after component classes).
  */
 @layer utilities {
   .dark .text-muted-foreground {
+    color: hsl(var(--muted-foreground));
+  }
+  .text-readable {
+    color: hsl(var(--foreground));
+  }
+  .text-readable-muted {
     color: hsl(var(--muted-foreground));
   }
 }

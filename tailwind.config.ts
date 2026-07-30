@@ -9,6 +9,41 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: [
+          "var(--font-sans)",
+          "ui-sans-serif",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "Noto Sans",
+          "sans-serif",
+        ],
+        mono: [
+          "var(--font-mono)",
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "Monaco",
+          "Consolas",
+          "Liberation Mono",
+          "Courier New",
+          "monospace",
+        ],
+      },
+      fontSize: {
+        /* Slightly larger than default so 11–12px UI chrome stays legible */
+        xs: ["0.8125rem", { lineHeight: "1.25rem" }], // 13px
+        sm: ["0.875rem", { lineHeight: "1.375rem" }], // 14px
+        base: ["0.9375rem", { lineHeight: "1.5rem" }], // 15px
+        lg: ["1.0625rem", { lineHeight: "1.625rem" }], // 17px
+        xl: ["1.25rem", { lineHeight: "1.75rem" }],
+        "2xl": ["1.5rem", { lineHeight: "2rem" }],
+        "3xl": ["1.875rem", { lineHeight: "2.25rem" }],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
