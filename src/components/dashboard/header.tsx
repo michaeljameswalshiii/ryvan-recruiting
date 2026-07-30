@@ -87,7 +87,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
           <input
             type="text"
             placeholder="Search candidates, companies, jobs..."
-            className="w-full h-10 pl-10 pr-4 rounded-md border border-input bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full h-10 pl-10 pr-4 rounded-md border border-input bg-background text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
       </div>

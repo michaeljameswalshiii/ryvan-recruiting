@@ -4,7 +4,8 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    /* Soft canvas (~gray-50) so light mode matches former bg-gray-50 layout */
+    --background: 210 20% 98%;
     --foreground: 222.2 84% 4.2%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.2%;
@@ -80,9 +81,53 @@
 }
 
 /*
+ * Dark canvas: light-mode gray/slate ink utilities become light text.
+ * Hundreds of page titles use text-gray-900 / text-slate-500 with no dark: variants.
+ * Light cards re-force dark ink below so KPI/table panels stay readable.
+ */
+.dark .text-gray-900,
+.dark .text-slate-900,
+.dark .text-zinc-900,
+.dark .text-neutral-900,
+.dark .text-stone-900 {
+  color: #f1f5f9; /* slate-100 */
+}
+.dark .text-gray-800,
+.dark .text-slate-800,
+.dark .text-zinc-800,
+.dark .text-neutral-800 {
+  color: #e2e8f0; /* slate-200 */
+}
+.dark .text-gray-700,
+.dark .text-slate-700,
+.dark .text-zinc-700,
+.dark .text-neutral-700 {
+  color: #cbd5e1; /* slate-300 */
+}
+.dark .text-gray-600,
+.dark .text-slate-600,
+.dark .text-zinc-600,
+.dark .text-neutral-600 {
+  color: #94a3b8; /* slate-400 */
+}
+.dark .text-gray-500,
+.dark .text-slate-500,
+.dark .text-zinc-500,
+.dark .text-neutral-500 {
+  color: #94a3b8; /* slate-400 — readable secondary on charcoal */
+}
+.dark .text-gray-400,
+.dark .text-slate-400,
+.dark .text-zinc-400,
+.dark .text-neutral-400 {
+  color: #64748b; /* slate-500 */
+}
+
+/*
  * Dark mode: light / pastel surfaces keep dark ink.
  * Covers white cards, stage chips, search bars, tables across the app.
  * Does NOT target low-opacity overlays like bg-white/5 (dark-panel chrome).
+ * Also does NOT target full-page wrappers (use bg-background, not bg-gray-50).
  */
 .dark .bg-white,
 .dark .bg-white\/70,
@@ -200,6 +245,40 @@
 .dark .bg-gray-50\/80 .text-gray-600,
 .dark .bg-slate-50 .text-gray-600 {
   color: #1e293b !important; /* slate-800 */
+}
+
+/* Primary titles/values on light cards must stay near-black after canvas remap */
+.dark .bg-white .text-gray-900,
+.dark .bg-white .text-slate-900,
+.dark .bg-white .text-zinc-900,
+.dark .bg-gray-50 .text-gray-900,
+.dark .bg-gray-50 .text-slate-900,
+.dark .bg-slate-50 .text-gray-900,
+.dark .bg-slate-50 .text-slate-900,
+.dark .bg-zinc-50 .text-gray-900,
+.dark .bg-zinc-50 .text-slate-900,
+.dark .bg-blue-50 .text-gray-900,
+.dark .bg-blue-50\/80 .text-gray-900,
+.dark .bg-violet-50 .text-gray-900,
+.dark .bg-emerald-50 .text-gray-900,
+.dark .bg-amber-50 .text-gray-900,
+.dark .bg-green-50 .text-gray-900,
+.dark .bg-indigo-50 .text-gray-900,
+.dark .bg-sky-50 .text-gray-900,
+.dark .bg-rose-50 .text-gray-900 {
+  color: #0f172a !important;
+}
+.dark .bg-white .text-gray-800,
+.dark .bg-white .text-slate-800,
+.dark .bg-gray-50 .text-gray-800,
+.dark .bg-slate-50 .text-slate-800 {
+  color: #1e293b !important;
+}
+.dark .bg-white .text-gray-700,
+.dark .bg-white .text-slate-700,
+.dark .bg-gray-50 .text-gray-700,
+.dark .bg-slate-50 .text-slate-700 {
+  color: #334155 !important;
 }
 
 /* Inputs / selects sitting on white surfaces */

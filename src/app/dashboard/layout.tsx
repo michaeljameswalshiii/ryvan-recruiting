@@ -44,12 +44,15 @@ export default async function DashboardLayout({
 
   return (
     <DragDropProvider>
-      <div className="min-h-screen bg-gray-50 dark:bg-background text-foreground">
+      {/* Use semantic bg-background only — dual bg-gray-50 + dark:bg-* leaves
+          bg-gray-50 in the class list, which global dark-ink rules treated as a
+          light panel and forced black text on the whole canvas. */}
+      <div className="min-h-screen bg-background text-foreground">
         <Sidebar role={role} />
         {/* min-w-0 prevents wide tables from expanding past the viewport (right-edge clip) */}
-        <div className="ml-72 min-w-0 max-w-full bg-gray-50 dark:bg-background">
+        <div className="ml-72 min-w-0 max-w-full bg-background">
           <DashboardHeader user={tenantInfo} />
-          <main className="min-w-0 max-w-full overflow-x-hidden p-6 bg-gray-50 dark:bg-background">
+          <main className="min-w-0 max-w-full overflow-x-hidden p-6 bg-background">
             {children}
           </main>
         </div>
