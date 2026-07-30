@@ -432,8 +432,8 @@ export default function SettingsPage() {
               onClick={() => setTab(t.id)}
               className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 tab === t.id
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-600 hover:bg-gray-100'
+                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-200'
+                  : 'text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'
               }`}
             >
               {t.icon}
@@ -465,13 +465,13 @@ export default function SettingsPage() {
       </div>
 
       {/* AI Providers — chat model BYOK (personal keys, not tenant-wide) */}
-      <Card className="border-blue-100 shadow-sm">
+      <Card className="border-blue-100 shadow-sm dark:border-blue-900/50">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-blue-600" />
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <Sparkles className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             AI Providers
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="dark:text-slate-300">
             Choose Platform Bedrock (default), or bring your own Anthropic, OpenAI,
             Gemini, or Grok keys. Keys are encrypted and only used for your chat sessions.
             For people search (Apollo), use the company key section above.
@@ -491,20 +491,20 @@ export default function SettingsPage() {
               onClick={() => setAiProvider('bedrock')}
               className={`text-left rounded-xl border p-4 transition-all ${
                 (aiStatus?.preferredProvider || 'bedrock') === 'bedrock'
-                  ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-100'
-                  : 'border-slate-200 hover:border-slate-300'
+                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100 dark:bg-blue-950/60 dark:ring-blue-900 dark:text-blue-50'
+                  : 'border-slate-200 hover:border-slate-300 dark:border-slate-600 dark:hover:border-slate-500 dark:bg-slate-900/40'
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
-                <Cloud className="h-4 w-4 text-slate-600" />
-                <span className="font-semibold text-sm">Platform</span>
+                <Cloud className="h-4 w-4 text-slate-600 dark:text-slate-300" />
+                <span className="font-semibold text-sm text-foreground">Platform</span>
                 {(aiStatus?.preferredProvider || 'bedrock') === 'bedrock' && (
-                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full dark:text-blue-100 dark:bg-blue-900">
                     Active
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
+              <p className="text-xs text-muted-foreground leading-relaxed dark:text-slate-300">
                 AWS Bedrock Claude. No personal key required.
               </p>
             </button>
@@ -524,28 +524,28 @@ export default function SettingsPage() {
               }}
               className={`text-left rounded-xl border p-4 transition-all ${
                 aiStatus?.preferredProvider === 'anthropic'
-                  ? 'border-violet-500 bg-violet-50/60 ring-2 ring-violet-100'
-                  : 'border-violet-200 hover:border-violet-400 bg-white'
+                  ? 'border-violet-500 bg-violet-50 ring-2 ring-violet-100 dark:bg-violet-950/60 dark:ring-violet-900'
+                  : 'border-violet-200 hover:border-violet-400 bg-white dark:border-violet-800 dark:bg-slate-900/40 dark:hover:border-violet-600'
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
-                <KeyRound className="h-4 w-4 text-violet-600" />
-                <span className="font-semibold text-sm">Anthropic</span>
+                <KeyRound className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                <span className="font-semibold text-sm text-foreground">Anthropic</span>
                 {aiStatus?.preferredProvider === 'anthropic' && (
-                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full">
+                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full dark:text-violet-100 dark:bg-violet-900">
                     Active
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
+              <p className="text-xs text-muted-foreground leading-relaxed dark:text-slate-300">
                 Your Claude API key (BYOK).
               </p>
               {aiStatus?.hasAnthropicKey ? (
-                <p className="text-[11px] text-violet-700 mt-2 font-mono truncate">
+                <p className="text-[11px] text-violet-700 mt-2 font-mono truncate dark:text-violet-300">
                   {aiStatus.anthropicKeyHint}
                 </p>
               ) : (
-                <p className="text-[11px] text-violet-700 mt-2 font-medium">
+                <p className="text-[11px] text-violet-700 mt-2 font-medium dark:text-violet-300">
                   Add key below ↓
                 </p>
               )}
@@ -566,28 +566,28 @@ export default function SettingsPage() {
               }}
               className={`text-left rounded-xl border p-4 transition-all ${
                 aiStatus?.preferredProvider === 'openai'
-                  ? 'border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-100'
-                  : 'border-emerald-200 hover:border-emerald-400 bg-white'
+                  ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-100 dark:bg-emerald-950/60 dark:ring-emerald-900'
+                  : 'border-emerald-200 hover:border-emerald-400 bg-white dark:border-emerald-800 dark:bg-slate-900/40 dark:hover:border-emerald-600'
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
-                <Sparkles className="h-4 w-4 text-emerald-600" />
-                <span className="font-semibold text-sm">OpenAI</span>
+                <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="font-semibold text-sm text-foreground">OpenAI</span>
                 {aiStatus?.preferredProvider === 'openai' && (
-                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full dark:text-emerald-100 dark:bg-emerald-900">
                     Active
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
+              <p className="text-xs text-muted-foreground leading-relaxed dark:text-slate-300">
                 Your OpenAI API key (BYOK).
               </p>
               {aiStatus?.hasOpenaiKey ? (
-                <p className="text-[11px] text-emerald-700 mt-2 font-mono truncate">
+                <p className="text-[11px] text-emerald-700 mt-2 font-mono truncate dark:text-emerald-300">
                   {aiStatus.openaiKeyHint}
                 </p>
               ) : (
-                <p className="text-[11px] text-emerald-700 mt-2 font-medium">
+                <p className="text-[11px] text-emerald-700 mt-2 font-medium dark:text-emerald-300">
                   Add key below ↓
                 </p>
               )}
@@ -608,28 +608,28 @@ export default function SettingsPage() {
               }}
               className={`text-left rounded-xl border p-4 transition-all ${
                 aiStatus?.preferredProvider === 'gemini'
-                  ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-100'
-                  : 'border-sky-200 hover:border-sky-400 bg-white'
+                  ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-100 dark:bg-sky-950/60 dark:ring-sky-900'
+                  : 'border-sky-200 hover:border-sky-400 bg-white dark:border-sky-800 dark:bg-slate-900/40 dark:hover:border-sky-600'
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
-                <Sparkles className="h-4 w-4 text-sky-600" />
-                <span className="font-semibold text-sm">Gemini</span>
+                <Sparkles className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                <span className="font-semibold text-sm text-foreground">Gemini</span>
                 {aiStatus?.preferredProvider === 'gemini' && (
-                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full">
+                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full dark:text-sky-100 dark:bg-sky-900">
                     Active
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
+              <p className="text-xs text-muted-foreground leading-relaxed dark:text-slate-300">
                 Your Google AI Studio key (BYOK).
               </p>
               {aiStatus?.hasGeminiKey ? (
-                <p className="text-[11px] text-sky-700 mt-2 font-mono truncate">
+                <p className="text-[11px] text-sky-700 mt-2 font-mono truncate dark:text-sky-300">
                   {aiStatus.geminiKeyHint}
                 </p>
               ) : (
-                <p className="text-[11px] text-sky-700 mt-2 font-medium">
+                <p className="text-[11px] text-sky-700 mt-2 font-medium dark:text-sky-300">
                   Add key below ↓
                 </p>
               )}
@@ -647,28 +647,28 @@ export default function SettingsPage() {
               }}
               className={`text-left rounded-xl border p-4 transition-all ${
                 aiStatus?.preferredProvider === 'grok'
-                  ? 'border-zinc-900 bg-zinc-50 ring-2 ring-zinc-300'
-                  : 'border-zinc-300 hover:border-zinc-500 bg-white'
+                  ? 'border-zinc-500 bg-zinc-100 ring-2 ring-zinc-300 dark:border-zinc-400 dark:bg-zinc-900 dark:ring-zinc-700'
+                  : 'border-zinc-300 hover:border-zinc-500 bg-white dark:border-zinc-600 dark:bg-slate-900/40 dark:hover:border-zinc-400'
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
-                <Sparkles className="h-4 w-4 text-zinc-900" />
-                <span className="font-semibold text-sm">Grok (xAI)</span>
+                <Sparkles className="h-4 w-4 text-zinc-900 dark:text-zinc-200" />
+                <span className="font-semibold text-sm text-foreground">Grok (xAI)</span>
                 {aiStatus?.preferredProvider === 'grok' && (
-                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-zinc-900 bg-zinc-200 px-2 py-0.5 rounded-full">
+                  <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-zinc-900 bg-zinc-200 px-2 py-0.5 rounded-full dark:text-zinc-100 dark:bg-zinc-700">
                     Active
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
+              <p className="text-xs text-muted-foreground leading-relaxed dark:text-slate-300">
                 Your xAI API key (BYOK).
               </p>
               {aiStatus?.hasGrokKey ? (
-                <p className="text-[11px] text-zinc-800 mt-2 font-mono truncate">
+                <p className="text-[11px] text-zinc-800 mt-2 font-mono truncate dark:text-zinc-200">
                   {aiStatus.grokKeyHint}
                 </p>
               ) : (
-                <p className="text-[11px] text-amber-700 mt-2 font-medium">
+                <p className="text-[11px] text-amber-700 mt-2 font-medium dark:text-amber-300">
                   Add key below ↓
                 </p>
               )}
@@ -678,18 +678,18 @@ export default function SettingsPage() {
           {/* Anthropic key entry — match Grok BYOK card style */}
           <div
             id="anthropic-key-section"
-            className="rounded-xl border-2 border-violet-500/25 p-4 space-y-3 bg-violet-50/50"
+            className="rounded-xl border-2 border-violet-500/25 p-4 space-y-3 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/40"
           >
             <div className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-violet-700" />
-              <Label htmlFor="anthropic-key" className="text-sm font-semibold">
+              <KeyRound className="h-4 w-4 text-violet-700 dark:text-violet-300" />
+              <Label htmlFor="anthropic-key" className="text-sm font-semibold text-foreground">
                 Anthropic API key
               </Label>
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-800 bg-violet-200/80 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-800 bg-violet-200/80 px-2 py-0.5 rounded-full dark:text-violet-100 dark:bg-violet-900">
                 BYOK
               </span>
               {aiStatus?.hasAnthropicKey && (
-                <span className="ml-auto text-[10px] font-mono text-violet-800 truncate max-w-[40%]">
+                <span className="ml-auto text-[10px] font-mono text-violet-800 truncate max-w-[40%] dark:text-violet-200">
                   {aiStatus.anthropicKeyHint}
                 </span>
               )}
@@ -701,15 +701,15 @@ export default function SettingsPage() {
               placeholder="sk-ant-api03-…"
               value={anthropicKeyInput}
               onChange={(e) => setAnthropicKeyInput(e.target.value)}
-              className="font-mono text-sm bg-white border-violet-200"
+              className="font-mono text-sm bg-white border-violet-200 text-slate-900 placeholder:text-slate-500 dark:bg-slate-900 dark:border-violet-700 dark:text-slate-100 dark:placeholder:text-slate-400"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground dark:text-slate-300">
               Create a key at{' '}
               <a
                 href="https://console.anthropic.com/"
                 target="_blank"
                 rel="noreferrer"
-                className="text-blue-600 hover:underline"
+                className="text-blue-600 hover:underline dark:text-sky-300"
               >
                 console.anthropic.com
               </a>
@@ -752,18 +752,18 @@ export default function SettingsPage() {
           {/* OpenAI key entry */}
           <div
             id="openai-key-section"
-            className="rounded-xl border-2 border-emerald-500/25 p-4 space-y-3 bg-emerald-50/50"
+            className="rounded-xl border-2 border-emerald-500/25 p-4 space-y-3 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/40"
           >
             <div className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-emerald-700" />
-              <Label htmlFor="openai-key" className="text-sm font-semibold">
+              <KeyRound className="h-4 w-4 text-emerald-700 dark:text-emerald-300" />
+              <Label htmlFor="openai-key" className="text-sm font-semibold text-foreground">
                 OpenAI API key
               </Label>
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-full dark:text-emerald-100 dark:bg-emerald-900">
                 BYOK
               </span>
               {aiStatus?.hasOpenaiKey && (
-                <span className="ml-auto text-[10px] font-mono text-emerald-800 truncate max-w-[40%]">
+                <span className="ml-auto text-[10px] font-mono text-emerald-800 truncate max-w-[40%] dark:text-emerald-200">
                   {aiStatus.openaiKeyHint}
                 </span>
               )}
@@ -775,15 +775,15 @@ export default function SettingsPage() {
               placeholder="sk-…"
               value={openaiKeyInput}
               onChange={(e) => setOpenaiKeyInput(e.target.value)}
-              className="font-mono text-sm bg-white border-emerald-200"
+              className="font-mono text-sm bg-white border-emerald-200 text-slate-900 placeholder:text-slate-500 dark:bg-slate-900 dark:border-emerald-700 dark:text-slate-100 dark:placeholder:text-slate-400"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground dark:text-slate-300">
               Create a key at{' '}
               <a
                 href="https://platform.openai.com/api-keys"
                 target="_blank"
                 rel="noreferrer"
-                className="text-blue-600 hover:underline"
+                className="text-blue-600 hover:underline dark:text-sky-300"
               >
                 platform.openai.com/api-keys
               </a>
@@ -824,18 +824,18 @@ export default function SettingsPage() {
           {/* Gemini key entry */}
           <div
             id="gemini-key-section"
-            className="rounded-xl border-2 border-sky-500/25 p-4 space-y-3 bg-sky-50/50"
+            className="rounded-xl border-2 border-sky-500/25 p-4 space-y-3 bg-sky-50 dark:border-sky-700 dark:bg-sky-950/40"
           >
             <div className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-sky-700" />
-              <Label htmlFor="gemini-key" className="text-sm font-semibold">
+              <KeyRound className="h-4 w-4 text-sky-700 dark:text-sky-300" />
+              <Label htmlFor="gemini-key" className="text-sm font-semibold text-foreground">
                 Google Gemini API key
               </Label>
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-sky-800 bg-sky-200/80 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-sky-800 bg-sky-200/80 px-2 py-0.5 rounded-full dark:text-sky-100 dark:bg-sky-900">
                 BYOK
               </span>
               {aiStatus?.hasGeminiKey && (
-                <span className="ml-auto text-[10px] font-mono text-sky-800 truncate max-w-[40%]">
+                <span className="ml-auto text-[10px] font-mono text-sky-800 truncate max-w-[40%] dark:text-sky-200">
                   {aiStatus.geminiKeyHint}
                 </span>
               )}
@@ -847,15 +847,15 @@ export default function SettingsPage() {
               placeholder="AIza…"
               value={geminiKeyInput}
               onChange={(e) => setGeminiKeyInput(e.target.value)}
-              className="font-mono text-sm bg-white border-sky-200"
+              className="font-mono text-sm bg-white border-sky-200 text-slate-900 placeholder:text-slate-500 dark:bg-slate-900 dark:border-sky-700 dark:text-slate-100 dark:placeholder:text-slate-400"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground dark:text-slate-300">
               Create a key at{' '}
               <a
                 href="https://aistudio.google.com/apikey"
                 target="_blank"
                 rel="noreferrer"
-                className="text-blue-600 hover:underline"
+                className="text-blue-600 hover:underline dark:text-sky-300"
               >
                 aistudio.google.com/apikey
               </a>
@@ -896,14 +896,14 @@ export default function SettingsPage() {
           {/* Grok key entry — highly visible */}
           <div
             id="grok-key-section"
-            className="rounded-xl border-2 border-zinc-900/20 p-4 space-y-3 bg-zinc-50"
+            className="rounded-xl border-2 border-zinc-900/20 p-4 space-y-3 bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900/60"
           >
             <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-zinc-900" />
-              <Label htmlFor="grok-key" className="text-sm font-semibold">
+              <Sparkles className="h-4 w-4 text-zinc-900 dark:text-zinc-200" />
+              <Label htmlFor="grok-key" className="text-sm font-semibold text-foreground">
                 Grok (xAI) API key
               </Label>
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-700 bg-zinc-200 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-700 bg-zinc-200 px-2 py-0.5 rounded-full dark:text-zinc-100 dark:bg-zinc-700">
                 BYOK
               </span>
             </div>
@@ -914,15 +914,15 @@ export default function SettingsPage() {
               placeholder="xai-…"
               value={grokKeyInput}
               onChange={(e) => setGrokKeyInput(e.target.value)}
-              className="font-mono text-sm bg-white border-zinc-300"
+              className="font-mono text-sm bg-white border-zinc-300 text-slate-900 placeholder:text-slate-500 dark:bg-slate-900 dark:border-zinc-600 dark:text-slate-100 dark:placeholder:text-slate-400"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground dark:text-slate-300">
               Create a key at{' '}
               <a
                 href="https://console.x.ai/"
                 target="_blank"
                 rel="noreferrer"
-                className="text-blue-600 hover:underline"
+                className="text-blue-600 hover:underline dark:text-sky-300"
               >
                 console.x.ai
               </a>

@@ -42,7 +42,8 @@
     --secondary: 213 9% 18%;
     --secondary-foreground: 0 0% 96%;
     --muted: 213 9% 17%;
-    --muted-foreground: 220 5% 68%;
+    /* Secondary copy: high enough contrast on charcoal cards */
+    --muted-foreground: 220 10% 78%;
     --accent: 213 9% 18%;
     --accent-foreground: 0 0% 96%;
     --destructive: 0 62.8% 40%;
@@ -98,21 +99,37 @@
 .dark .bg-neutral-50,
 .dark .bg-stone-50,
 .dark .bg-sky-50,
+.dark .bg-sky-50\/40,
+.dark .bg-sky-50\/50,
+.dark .bg-sky-50\/60,
 .dark .bg-sky-50\/80,
 .dark .bg-blue-50,
 .dark .bg-blue-50\/40,
+.dark .bg-blue-50\/50,
+.dark .bg-blue-50\/60,
 .dark .bg-blue-50\/80,
 .dark .bg-violet-50,
+.dark .bg-violet-50\/40,
+.dark .bg-violet-50\/50,
+.dark .bg-violet-50\/60,
 .dark .bg-violet-50\/80,
 .dark .bg-purple-50,
 .dark .bg-indigo-50,
+.dark .bg-indigo-50\/40,
+.dark .bg-indigo-50\/50,
+.dark .bg-indigo-50\/60,
 .dark .bg-amber-50,
+.dark .bg-amber-50\/50,
 .dark .bg-amber-50\/80,
 .dark .bg-yellow-50,
 .dark .bg-orange-50,
 .dark .bg-emerald-50,
+.dark .bg-emerald-50\/50,
+.dark .bg-emerald-50\/60,
 .dark .bg-emerald-50\/80,
 .dark .bg-green-50,
+.dark .bg-green-50\/50,
+.dark .bg-green-50\/60,
 .dark .bg-teal-50,
 .dark .bg-cyan-50,
 .dark .bg-rose-50,
@@ -120,6 +137,25 @@
 .dark .bg-red-50,
 .dark .bg-pink-50 {
   color: #0f172a; /* slate-900 — primary ink on light surfaces */
+}
+
+/* Nested secondary copy + muted labels inside pastel panels */
+.dark .bg-green-50 .text-muted-foreground,
+.dark .bg-green-50\/60 .text-muted-foreground,
+.dark .bg-indigo-50 .text-muted-foreground,
+.dark .bg-indigo-50\/40 .text-muted-foreground,
+.dark .bg-indigo-50\/50 .text-muted-foreground,
+.dark .bg-violet-50 .text-muted-foreground,
+.dark .bg-violet-50\/50 .text-muted-foreground,
+.dark .bg-emerald-50 .text-muted-foreground,
+.dark .bg-emerald-50\/50 .text-muted-foreground,
+.dark .bg-sky-50 .text-muted-foreground,
+.dark .bg-sky-50\/50 .text-muted-foreground,
+.dark .bg-amber-50 .text-muted-foreground,
+.dark .bg-zinc-50 .text-muted-foreground,
+.dark .bg-blue-50 .text-muted-foreground,
+.dark .bg-blue-50\/60 .text-muted-foreground {
+  color: #334155 !important; /* slate-700 */
 }
 
 /* Secondary labels / subtitles on those light surfaces */
@@ -256,6 +292,17 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/*
+ * Dark mode readability: light pastel panels without dark: variants become
+ * muddy mid-tones over near-black surfaces. Force solid dark surfaces +
+ * light copy for the common status/tint patterns used across Settings.
+ */
+@layer utilities {
+  .dark .text-muted-foreground {
+    color: hsl(var(--muted-foreground));
   }
 }
 

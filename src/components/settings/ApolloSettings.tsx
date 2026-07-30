@@ -149,16 +149,16 @@ export function ApolloSettings() {
         : "Not connected";
 
   return (
-    <Card className="border-indigo-100 shadow-sm">
+    <Card className="border-indigo-200 shadow-sm dark:border-indigo-800/60">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Building2 className="h-5 w-5 text-indigo-600" />
+        <CardTitle className="flex flex-wrap items-center gap-2 text-foreground">
+          <Building2 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
           Apollo.io — company key
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded-full">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded-full dark:text-indigo-100 dark:bg-indigo-900/80">
             Tenant-wide BYOK
           </span>
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="text-muted-foreground dark:text-slate-300">
           Bring your own Apollo master key for this company. Team admins save
           it once; every teammate uses it for Fill job, people search, and AI
           sourcing. Encrypted at rest — never shown in full again.
@@ -166,42 +166,44 @@ export function ApolloSettings() {
       </CardHeader>
       <CardContent className="space-y-4">
         {loading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground dark:text-slate-300">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading Apollo status…
           </div>
         ) : (
           <div
             className={`rounded-xl border p-4 ${
               status?.connected
-                ? "border-green-200 bg-green-50/60"
-                : "border-amber-200 bg-amber-50/50"
+                ? "border-green-300 bg-green-50 text-slate-900"
+                : "border-amber-300 bg-amber-50 text-slate-900"
             }`}
           >
             <div className="flex flex-wrap items-center gap-2">
               {status?.connected ? (
-                <Check className="h-4 w-4 text-green-600" />
+                <Check className="h-4 w-4 shrink-0 text-green-700" />
               ) : (
-                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertCircle className="h-4 w-4 shrink-0 text-amber-700" />
               )}
-              <span className="text-sm font-medium">
+              <span className="text-sm font-semibold text-slate-900">
                 {status?.connected ? "Apollo connected" : "Apollo not connected"}
               </span>
-              <span className="text-[11px] font-medium text-muted-foreground bg-white/80 px-2 py-0.5 rounded-full border">
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-white text-slate-800 border-slate-200">
                 {sourceLabel}
               </span>
             </div>
             {status?.healthMessage && (
-              <p className="text-xs text-muted-foreground mt-1.5">
+              <p className="text-xs mt-1.5 text-slate-700">
                 {status.healthMessage}
               </p>
             )}
             {status?.hasKey && (
-              <div className="mt-2 text-xs text-muted-foreground space-y-0.5">
-                <p className="font-mono">{status.keyHint}</p>
+              <div className="mt-2 text-xs space-y-0.5 text-slate-700">
+                <p className="font-mono font-medium tracking-wide text-slate-900">
+                  {status.keyHint}
+                </p>
                 {(status.providedByEmail || status.providedByUserId) && (
                   <p>
                     Provided by{" "}
-                    <span className="font-medium text-foreground">
+                    <span className="font-semibold text-slate-900">
                       {status.providedByEmail || status.providedByUserId}
                     </span>
                     {status.updatedAt
@@ -212,7 +214,7 @@ export function ApolloSettings() {
               </div>
             )}
             {!status?.hasKey && status?.hasPlatformKey && (
-              <p className="text-xs text-muted-foreground mt-1.5">
+              <p className="text-xs mt-1.5 text-slate-700">
                 Using the platform Apollo key
                 {canManage
                   ? ". Add a company key below to use your own plan and credits."
@@ -224,9 +226,9 @@ export function ApolloSettings() {
 
         {!loading && !canManage && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex gap-3">
-            <Shield className="h-4 w-4 text-slate-500 mt-0.5 shrink-0" />
-            <div className="text-xs text-muted-foreground leading-relaxed">
-              <p className="font-medium text-foreground text-sm mb-1">
+            <Shield className="h-4 w-4 text-slate-600 mt-0.5 shrink-0" />
+            <div className="text-xs text-slate-700 leading-relaxed">
+              <p className="font-semibold text-slate-900 text-sm mb-1">
                 Team admin required to change this key
               </p>
               <p>
@@ -239,7 +241,7 @@ export function ApolloSettings() {
                 variant="ghost"
                 onClick={() => void load()}
                 disabled={loading}
-                className="mt-2 rounded-lg h-8 px-2"
+                className="mt-2 rounded-lg h-8 px-2 text-slate-800"
               >
                 Refresh status
               </Button>
@@ -248,16 +250,16 @@ export function ApolloSettings() {
         )}
 
         {!loading && canManage && (
-          <div className="rounded-xl border-2 border-indigo-500/20 p-4 space-y-3 bg-indigo-50/40">
-            <div className="flex items-center gap-2">
+          <div className="rounded-xl border-2 border-indigo-200 p-4 space-y-3 bg-indigo-50">
+            <div className="flex flex-wrap items-center gap-2">
               <KeyRound className="h-4 w-4 text-indigo-700" />
               <Label
                 htmlFor="apollo-company-key"
-                className="text-sm font-semibold"
+                className="text-sm font-semibold text-slate-900"
               >
                 Company Apollo API key
               </Label>
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 bg-white border px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded-full">
                 Admin only
               </span>
             </div>
@@ -268,15 +270,16 @@ export function ApolloSettings() {
               placeholder="Paste Apollo master API key…"
               value={keyInput}
               onChange={(e) => setKeyInput(e.target.value)}
-              className="font-mono text-sm bg-white border-indigo-200"
+              className="font-mono text-sm bg-white border-indigo-300 text-slate-900 placeholder:text-slate-500"
             />
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Create a <strong>master</strong> key with People Search at{" "}
+            <p className="text-[11px] leading-relaxed text-slate-700">
+              Create a <strong className="font-semibold text-slate-900">master</strong> key
+              with People Search at{" "}
               <a
                 href="https://app.apollo.io/#/settings/integrations/api"
                 target="_blank"
                 rel="noreferrer"
-                className="text-blue-600 hover:underline"
+                className="font-medium text-blue-700 underline-offset-2 hover:underline"
               >
                 app.apollo.io → Settings → Integrations → API
               </a>
@@ -288,7 +291,7 @@ export function ApolloSettings() {
                 size="sm"
                 onClick={saveKey}
                 disabled={saving || !keyInput.trim()}
-                className="rounded-lg bg-indigo-700 hover:bg-indigo-800"
+                className="rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white"
               >
                 {saving ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -303,7 +306,7 @@ export function ApolloSettings() {
                   variant="outline"
                   onClick={removeKey}
                   disabled={removing}
-                  className="rounded-lg text-red-600"
+                  className="rounded-lg text-red-700 border-red-300 bg-white hover:bg-red-50"
                 >
                   {removing ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -320,7 +323,7 @@ export function ApolloSettings() {
                 variant="ghost"
                 onClick={() => void load()}
                 disabled={loading}
-                className="rounded-lg"
+                className="rounded-lg text-slate-800 hover:bg-indigo-100"
               >
                 Refresh status
               </Button>
