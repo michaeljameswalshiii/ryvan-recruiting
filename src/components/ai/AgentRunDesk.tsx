@@ -112,27 +112,41 @@ function kindIcon(kind: AgentArtifact['kind']) {
 export function AgentRunDesk({
   onSwitchToChat,
   initialTab = 'companies',
+  initialRunId = null,
   homeLabel = 'AI home',
 }: {
   /** Optional: back control in the app bar (unified AI home) */
   onSwitchToChat?: () => void;
   /** Which workspace tab to open (from AI home starters) */
   initialTab?: DeskTab;
+  /** Focus a specific fill-job or goal run (from Active runs history) */
+  initialRunId?: string | null;
   /** Label for the back control */
   homeLabel?: string;
 } = {}) {
   const queryClient = useQueryClient();
   /** Primary agent surfaces — list builders + goal live here (not on free chat) */
   const [deskTab, setDeskTab] = useState<DeskTab>(initialTab);
+  const [focusRunId, setFocusRunId] = useState<string | null>(
+    initialRunId || null
+  );
+  const focusedGoalRef = useRef<string | null>(null);
 
   useEffect(() => {
     setDeskTab(initialTab);
   }, [initialTab]);
+
+  useEffect(() => {
+    setFocusRunId(initialRunId || null);
+    focusedGoalRef.current = null;
+  }, [initialRunId, initialTab]);
   const [goal, setGoal] = useState('');
   const [run, setRun] = useState<AgentRunSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [reply, setReply] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [fillHistoryOpen, setFillHistoryOpen] = useState(false);
+  const [fillHistoryCount, setFillHistoryCount] = useState(0);
   const [pastRuns, setPastRuns] = useState<AgentRunSnapshot[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
@@ -753,27 +767,75 @@ export function AgentRunDesk({
     toast.message('Run cancelled — progress is saved in History');
   };
 
-  const openPastRun = (r: AgentRunSnapshot) => {
+  const openPastRun = useCallback(
+    (r: AgentRunSnapshot, opts?: { quiet?: boolean }) => {
+      if (busy) return;
+      if (runRef.current) saveAgentRun(runRef.current, userId);
+      const restored: AgentRunSnapshot = {
+        ...r,
+        status:
+          r.status === 'running' || r.status === 'planning'
+            ? 'paused'
+            : r.status,
+      };
+      setRun(restored);
+      setGoal(restored.goal);
+      if (
+        restored.visibility === 'public' ||
+        restored.visibility === 'private'
+      ) {
+        setDefaultVisibility(restored.visibility);
+      }
+      runRef.current = restored;
+      setHistoryOpen(false);
+      if (!opts?.quiet) {
+        toast.success(
+          restored.isOwner === false
+            ? 'Opened shared team run (view)'
+            : 'Restored agent run'
+        );
+      }
+    },
+    [busy, userId]
+  );
+
+  // Open a specific goal from Active runs history (server + local)
+  useEffect(() => {
+    if (deskTab !== 'goal' || !focusRunId || !hydrated) return;
+    if (focusedGoalRef.current === focusRunId) return;
     if (busy) return;
-    if (runRef.current) saveAgentRun(runRef.current, userId);
-    const restored: AgentRunSnapshot = {
-      ...r,
-      status:
-        r.status === 'running' || r.status === 'planning' ? 'paused' : r.status,
-    };
-    setRun(restored);
-    setGoal(restored.goal);
-    if (restored.visibility === 'public' || restored.visibility === 'private') {
-      setDefaultVisibility(restored.visibility);
+
+    const localMatch =
+      pastRuns.find((r) => r.id === focusRunId) ||
+      (runRef.current?.id === focusRunId ? runRef.current : null);
+
+    if (localMatch) {
+      focusedGoalRef.current = focusRunId;
+      openPastRun(localMatch, { quiet: true });
+      return;
     }
-    runRef.current = restored;
-    setHistoryOpen(false);
-    toast.success(
-      restored.isOwner === false
-        ? 'Opened shared team run (view)'
-        : 'Restored agent run'
-    );
-  };
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/agent/goal-runs/${focusRunId}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json().catch(() => ({}));
+        if (data?.run?.id && !cancelled) {
+          focusedGoalRef.current = focusRunId;
+          openPastRun(data.run as AgentRunSnapshot, { quiet: true });
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [deskTab, focusRunId, hydrated, pastRuns, busy, openPastRun]);
 
   const newGoal = () => {
     if (runRef.current) saveAgentRun(runRef.current, userId);
@@ -892,6 +954,25 @@ export function AgentRunDesk({
               {tabBtn('fill', 'Fill job', <Briefcase className="h-3.5 w-3.5" />)}
               {tabBtn('goal', 'Goal agent', <Bot className="h-3.5 w-3.5" />)}
             </div>
+            {deskTab === 'fill' && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={outlineBtn}
+                onClick={() => setFillHistoryOpen(true)}
+              >
+                <History className="h-3.5 w-3.5 mr-1" />
+                History
+                {fillHistoryCount > 0 && (
+                  <span
+                    className={`ml-1 ${dark ? 'text-slate-500' : 'text-slate-400'}`}
+                  >
+                    {fillHistoryCount}
+                  </span>
+                )}
+              </Button>
+            )}
             {deskTab === 'goal' && (
               <>
                 <Button
@@ -951,6 +1032,12 @@ export function AgentRunDesk({
             defaultMode="research"
             theme={dark ? 'dark' : 'light'}
             hideChrome
+            focusFillRunId={
+              deskTab === 'fill' ? focusRunId || undefined : undefined
+            }
+            fillHistoryOpen={fillHistoryOpen}
+            onFillHistoryOpenChange={setFillHistoryOpen}
+            onFillHistoryCountChange={setFillHistoryCount}
           />
         </div>
       )}

@@ -329,6 +329,8 @@ export default function GeneralAiUsagePage() {
   type AiView = 'chat' | AiWorkspace;
   const AI_VIEW_KEY = 'trio-ai-home-view-v1';
   const [aiView, setAiView] = useState<AiView>('chat');
+  /** When opening Fill/Goal from Active runs history, focus this run id */
+  const [workspaceRunId, setWorkspaceRunId] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -350,17 +352,22 @@ export default function GeneralAiUsagePage() {
     }
   }, []);
 
-  const openWorkspace = useCallback((ws: AiWorkspace) => {
-    setAiView(ws);
-    try {
-      localStorage.setItem(AI_VIEW_KEY, ws);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const openWorkspace = useCallback(
+    (ws: AiWorkspace, opts?: { runId?: string }) => {
+      setWorkspaceRunId(opts?.runId?.trim() || null);
+      setAiView(ws);
+      try {
+        localStorage.setItem(AI_VIEW_KEY, ws);
+      } catch {
+        /* ignore */
+      }
+    },
+    []
+  );
 
   const openChatHome = useCallback(() => {
     setAiView('chat');
+    setWorkspaceRunId(null);
     try {
       localStorage.setItem(AI_VIEW_KEY, 'chat');
     } catch {
@@ -808,6 +815,7 @@ export default function GeneralAiUsagePage() {
       <div className="-m-6 h-[calc(100vh-4rem)]">
         <AgentRunDesk
           initialTab={aiView}
+          initialRunId={workspaceRunId}
           homeLabel="AI home"
           onSwitchToChat={openChatHome}
         />

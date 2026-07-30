@@ -2,8 +2,8 @@
 
 /**
  * Right-rail “Active runs” for the unified AI home.
- * Surfaces list-builder (companies) jobs + goal-agent history so users can
- * resume work without hunting for Agent Desk.
+ * Surfaces company list-builder jobs, fill-job Apollo runs, and goal-agent
+ * history (local + server) so users can resume work without hunting for Desk.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -35,11 +35,30 @@ type ListJob = {
   updatedAt?: string;
 };
 
+type FillRunSummary = {
+  id: string;
+  query: string;
+  jobTitle?: string;
+  jobLocation?: string;
+  count: number;
+  visibility?: 'private' | 'public' | string;
+  isOwner?: boolean;
+  ownerLabel?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  error?: string;
+};
+
 export type AiWorkspace = 'companies' | 'fill' | 'goal';
+
+export type OpenWorkspaceOpts = {
+  /** Open a specific fill-job or goal run when entering the workspace */
+  runId?: string;
+};
 
 type Props = {
   /** Open a workspace from the rail */
-  onOpenWorkspace: (ws: AiWorkspace) => void;
+  onOpenWorkspace: (ws: AiWorkspace, opts?: OpenWorkspaceOpts) => void;
   /** Optional class on the aside */
   className?: string;
 };
@@ -82,15 +101,63 @@ function goalStatusClass(status: AgentRunSnapshot['status']) {
   }
 }
 
+function mergeGoalRuns(
+  local: AgentRunSnapshot[],
+  remote: AgentRunSnapshot[]
+): AgentRunSnapshot[] {
+  const byId = new Map<string, AgentRunSnapshot>();
+  for (const r of remote) byId.set(r.id, r);
+  for (const r of local) {
+    const existing = byId.get(r.id);
+    if (!existing) {
+      byId.set(r.id, r);
+      continue;
+    }
+    if (
+      new Date(r.updatedAt).getTime() > new Date(existing.updatedAt).getTime()
+    ) {
+      byId.set(r.id, {
+        ...r,
+        visibility: r.visibility || existing.visibility,
+        persisted: r.persisted || existing.persisted,
+        isOwner: r.isOwner ?? existing.isOwner,
+        ownerLabel: r.ownerLabel || existing.ownerLabel,
+      });
+    }
+  }
+  return Array.from(byId.values()).sort(
+    (a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  );
+}
+
 export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
   const [jobs, setJobs] = useState<ListJob[]>([]);
+  const [fillRuns, setFillRuns] = useState<FillRunSummary[]>([]);
   const [goals, setGoals] = useState<AgentRunSnapshot[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadGoals = useCallback((uid: string | null) => {
-    setGoals(listAgentRuns(uid).slice(0, 12));
+  const loadGoals = useCallback(async (uid: string | null) => {
+    const local = listAgentRuns(uid);
+    try {
+      const res = await fetch('/api/agent/goal-runs', {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const remote = Array.isArray(data?.runs)
+          ? (data.runs as AgentRunSnapshot[])
+          : [];
+        setGoals(mergeGoalRuns(local, remote).slice(0, 12));
+        return;
+      }
+    } catch {
+      /* local only */
+    }
+    setGoals(local.slice(0, 12));
   }, []);
 
   const loadJobs = useCallback(async () => {
@@ -103,6 +170,49 @@ export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
       const data = await res.json().catch(() => ({}));
       const list = Array.isArray(data?.jobs) ? (data.jobs as ListJob[]) : [];
       setJobs(list.slice(0, 20));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const loadFillRuns = useCallback(async () => {
+    try {
+      const res = await fetch('/api/agent/fill-runs', {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data?.runs) ? data.runs : [];
+      const mapped: FillRunSummary[] = list.map(
+        (r: Record<string, unknown>) => ({
+          id: String(r.id),
+          query: String(r.query || ''),
+          jobTitle: typeof r.jobTitle === 'string' ? r.jobTitle : undefined,
+          jobLocation:
+            typeof r.jobLocation === 'string' ? r.jobLocation : undefined,
+          count: Number(r.count) || 0,
+          visibility:
+            r.visibility === 'public' ? 'public' : 'private',
+          isOwner: r.isOwner === true,
+          ownerLabel:
+            typeof r.ownerLabel === 'string' ? r.ownerLabel : undefined,
+          createdAt:
+            typeof r.createdAt === 'string' ? r.createdAt : undefined,
+          updatedAt:
+            typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
+          error: typeof r.error === 'string' ? r.error : undefined,
+        })
+      );
+      setFillRuns(
+        mapped
+          .sort(
+            (a, b) =>
+              new Date(b.updatedAt || b.createdAt || 0).getTime() -
+              new Date(a.updatedAt || a.createdAt || 0).getTime()
+          )
+          .slice(0, 12)
+      );
     } catch {
       /* ignore */
     }
@@ -130,34 +240,45 @@ export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
       }
       if (cancelled) return;
       setUserId(uid);
-      loadGoals(uid);
-      await loadJobs();
+      await Promise.all([
+        loadGoals(uid),
+        loadJobs(),
+        loadFillRuns(),
+      ]);
       if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [loadGoals, loadJobs]);
+  }, [loadGoals, loadJobs, loadFillRuns]);
 
-  // Poll list-builder while any job is active
+  // Poll while company jobs or goal agents are active
   useEffect(() => {
-    const hasActive = jobs.some((j) => ACTIVE_JOB.has(j.status));
+    const hasActive =
+      jobs.some((j) => ACTIVE_JOB.has(j.status)) ||
+      goals.some((g) => ACTIVE_GOAL.has(g.status));
     if (!hasActive && !loading) {
-      // Still refresh goals occasionally when user returns from workspace
-      const t = window.setInterval(() => loadGoals(userId), 12_000);
+      const t = window.setInterval(() => {
+        void loadGoals(userId);
+        void loadFillRuns();
+      }, 12_000);
       return () => window.clearInterval(t);
     }
     const t = window.setInterval(() => {
       void loadJobs();
-      loadGoals(userId);
+      void loadGoals(userId);
+      void loadFillRuns();
     }, 6_000);
     return () => window.clearInterval(t);
-  }, [jobs, loading, userId, loadJobs, loadGoals]);
+  }, [jobs, goals, loading, userId, loadJobs, loadGoals, loadFillRuns]);
 
   const refresh = async () => {
     setRefreshing(true);
-    await loadJobs();
-    loadGoals(userId);
+    await Promise.all([
+      loadJobs(),
+      loadGoals(userId),
+      loadFillRuns(),
+    ]);
     setRefreshing(false);
   };
 
@@ -165,6 +286,7 @@ export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
   const recentJobs = jobs
     .filter((j) => !ACTIVE_JOB.has(j.status))
     .slice(0, 4);
+  const recentFills = fillRuns.slice(0, 6);
   const activeGoals = goals.filter((g) => ACTIVE_GOAL.has(g.status));
   const recentGoals = goals
     .filter((g) => !ACTIVE_GOAL.has(g.status))
@@ -182,7 +304,7 @@ export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
           <p className="text-[11px] text-slate-500">
             {totalActive > 0
               ? `${totalActive} in progress`
-              : 'Company lists & goal agents'}
+              : 'Companies, fill jobs & goals'}
           </p>
         </div>
         <button
@@ -281,7 +403,7 @@ export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
               )}
             </section>
 
-            {/* Fill job shortcut */}
+            {/* Fill job history (same pattern as companies) */}
             <section>
               <div className="mb-1.5 flex items-center justify-between px-0.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -292,22 +414,85 @@ export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
                   onClick={() => onOpenWorkspace('fill')}
                   className="text-[10px] font-medium text-violet-700 hover:underline"
                 >
-                  Open
+                  New
                 </button>
               </div>
-              <button
-                type="button"
-                onClick={() => onOpenWorkspace('fill')}
-                className="flex w-full items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5 text-left transition hover:border-violet-200 hover:bg-violet-50/40"
-              >
-                <Briefcase className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                <span className="text-xs text-slate-700">
+              {recentFills.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenWorkspace('fill')}
+                  className="w-full rounded-xl border border-dashed border-slate-200 px-3 py-4 text-left text-xs text-slate-500 transition hover:border-violet-300 hover:bg-violet-50/50 hover:text-slate-700"
+                >
+                  <Briefcase className="mb-1 h-4 w-4 text-slate-400" />
                   Source candidates via Apollo
-                </span>
-              </button>
+                </button>
+              ) : (
+                <ul className="space-y-1.5">
+                  {recentFills.map((f) => {
+                    const when = formatRunWhen(
+                      f.updatedAt || f.createdAt || ''
+                    );
+                    return (
+                      <li key={f.id}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onOpenWorkspace('fill', { runId: f.id })
+                          }
+                          className="w-full rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2 text-left transition hover:border-violet-200 hover:bg-violet-50/40"
+                        >
+                          <div className="flex items-start gap-2">
+                            <Briefcase className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                            <div className="min-w-0 flex-1">
+                              <p className="line-clamp-2 text-xs font-medium text-slate-900">
+                                {f.jobTitle || f.query || 'Fill job run'}
+                              </p>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                <span
+                                  className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                                    f.error
+                                      ? 'bg-rose-100 text-rose-800 border-rose-200'
+                                      : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                  }`}
+                                >
+                                  {f.error
+                                    ? 'Failed'
+                                    : `${f.count} people`}
+                                </span>
+                                {f.visibility === 'public' && (
+                                  <span className="rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+                                    Public
+                                    {!f.isOwner && f.ownerLabel
+                                      ? ` · ${f.ownerLabel}`
+                                      : ''}
+                                  </span>
+                                )}
+                                {when && (
+                                  <span className="text-[10px] text-slate-400">
+                                    {when}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => onOpenWorkspace('fill')}
+                      className="w-full rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-violet-700 hover:bg-violet-50"
+                    >
+                      Open fill job →
+                    </button>
+                  </li>
+                </ul>
+              )}
             </section>
 
-            {/* Goal agent */}
+            {/* Goal agent history */}
             <section>
               <div className="mb-1.5 flex items-center justify-between px-0.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -336,11 +521,17 @@ export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
                     <li key={g.id}>
                       <button
                         type="button"
-                        onClick={() => onOpenWorkspace('goal')}
+                        onClick={() =>
+                          onOpenWorkspace('goal', { runId: g.id })
+                        }
                         className="w-full rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2 text-left transition hover:border-violet-200 hover:bg-violet-50/40"
                       >
                         <div className="flex items-start gap-2">
-                          <Bot className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-500" />
+                          {ACTIVE_GOAL.has(g.status) ? (
+                            <Radio className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-600 animate-pulse" />
+                          ) : (
+                            <Bot className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-500" />
+                          )}
                           <div className="min-w-0 flex-1">
                             <p className="line-clamp-2 text-xs font-medium text-slate-900">
                               {g.goal}
@@ -351,6 +542,14 @@ export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
                               >
                                 {g.status.replace(/_/g, ' ')}
                               </span>
+                              {g.visibility === 'public' && (
+                                <span className="rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+                                  Public
+                                  {g.isOwner === false && g.ownerLabel
+                                    ? ` · ${g.ownerLabel}`
+                                    : ''}
+                                </span>
+                              )}
                               {g.wave > 0 && (
                                 <span className="text-[10px] text-slate-500">
                                   wave {g.wave}
@@ -365,6 +564,15 @@ export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
                       </button>
                     </li>
                   ))}
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => onOpenWorkspace('goal')}
+                      className="w-full rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-violet-700 hover:bg-violet-50"
+                    >
+                      Open goal agent →
+                    </button>
+                  </li>
                 </ul>
               )}
             </section>

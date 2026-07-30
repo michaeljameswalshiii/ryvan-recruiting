@@ -28,6 +28,8 @@ import {
   ExternalLink,
   Mail,
   Linkedin,
+  History,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -339,13 +341,53 @@ type Props = {
   theme?: 'dark' | 'light';
   /** Hide outer “Autonomous agent” chrome when nested in Agent Desk tabs */
   hideChrome?: boolean;
+  /** Highlight / scroll to a persisted fill-job run (Active runs history) */
+  focusFillRunId?: string;
+  /** Controlled History drawer (Agent Desk header) */
+  fillHistoryOpen?: boolean;
+  onFillHistoryOpenChange?: (open: boolean) => void;
+  /** Report saved fill-run count to parent (desk History badge) */
+  onFillHistoryCountChange?: (count: number) => void;
 };
+
+function formatFillWhen(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const time = d.toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    const now = new Date();
+    const startToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
+    const startMsg = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round(
+      (startToday.getTime() - startMsg.getTime()) / 86400000
+    );
+    if (diffDays === 0) return `Today, ${time}`;
+    if (diffDays === 1) return `Yesterday, ${time}`;
+    return `${d.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    })}, ${time}`;
+  } catch {
+    return '';
+  }
+}
 
 export function AgentWorkbench({
   variant = 'full',
   defaultMode = 'companies',
   theme = 'dark',
   hideChrome = false,
+  focusFillRunId,
+  fillHistoryOpen: fillHistoryOpenProp,
+  onFillHistoryOpenChange,
+  onFillHistoryCountChange,
 }: Props) {
   const light = theme === 'light';
   const [mode, setMode] = useState<AgentMode>(
@@ -364,6 +406,19 @@ export function AgentWorkbench({
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [seedCsv, setSeedCsv] = useState('');
   const [showCsv, setShowCsv] = useState(false);
+  const [fillHistoryOpenLocal, setFillHistoryOpenLocal] = useState(false);
+  const [fillHistoryLoading, setFillHistoryLoading] = useState(false);
+  const fillHistoryOpen =
+    typeof fillHistoryOpenProp === 'boolean'
+      ? fillHistoryOpenProp
+      : fillHistoryOpenLocal;
+  const setFillHistoryOpen = useCallback(
+    (open: boolean) => {
+      setFillHistoryOpenLocal(open);
+      onFillHistoryOpenChange?.(open);
+    },
+    [onFillHistoryOpenChange]
+  );
   const [sourceConfigured, setSourceConfigured] = useState<boolean | null>(
     null
   );
@@ -383,6 +438,10 @@ export function AgentWorkbench({
     probePeople?: number;
   } | null>(null);
   const [researchRuns, setResearchRuns] = useState<ResearchRun[]>([]);
+  const [highlightedFillRunId, setHighlightedFillRunId] = useState<
+    string | null
+  >(null);
+  const fillRunRefs = useRef<Record<string, HTMLLIElement | null>>({});
   const [researching, setResearching] = useState(false);
   /** Editable Apollo filters — filled after first LLM plan; user can tweak & re-run */
   const [planDraft, setPlanDraft] = useState<PlanDraft>(emptyPlanDraft);
@@ -512,74 +571,157 @@ export function AgentWorkbench({
     }
   };
 
-  // Load own + public fill-job runs for this tenant (team sharing)
-  useEffect(() => {
-    if (mode !== 'research') return;
-    let cancelled = false;
-    (async () => {
+  const mergeServerFillRuns = useCallback((mapped: ResearchRun[]) => {
+    setResearchRuns((prev) => {
+      // Keep any session-only runs (not yet persisted), then server runs
+      const sessionOnly = prev.filter((p) => !p.persisted);
+      const byId = new Map<string, ResearchRun>();
+      for (const m of mapped) byId.set(m.id, m);
+      for (const s of sessionOnly) {
+        if (!byId.has(s.id)) byId.set(s.id, s);
+      }
+      return Array.from(byId.values())
+        .sort(
+          (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()
+        )
+        .slice(0, 20);
+    });
+  }, []);
+
+  const mapFillApiRun = useCallback(
+    (r: Record<string, unknown>): ResearchRun => ({
+      id: String(r.id),
+      query: String(r.query || ''),
+      at: String(r.createdAt || r.updatedAt || new Date().toISOString()),
+      count: Number(r.count) || 0,
+      estimatedCostUsd: Number(r.estimatedCostUsd) || 0,
+      jobTitle: typeof r.jobTitle === 'string' ? r.jobTitle : undefined,
+      jobLocation:
+        typeof r.jobLocation === 'string' ? r.jobLocation : undefined,
+      notes: Array.isArray(r.notes) ? r.notes.map(String) : [],
+      candidates: Array.isArray(r.candidates)
+        ? (r.candidates as SourcedPerson[])
+        : [],
+      error: typeof r.error === 'string' ? r.error : undefined,
+      usageLine: typeof r.usageLine === 'string' ? r.usageLine : undefined,
+      apolloPlan:
+        r.apolloPlan && typeof r.apolloPlan === 'object'
+          ? (r.apolloPlan as ApolloSearchPlanDto)
+          : undefined,
+      apolloPlanSource:
+        r.apolloPlanSource as ResearchRun['apolloPlanSource'],
+      visibility: r.visibility === 'public' ? 'public' : 'private',
+      isOwner: r.isOwner === true,
+      ownerLabel:
+        typeof r.ownerLabel === 'string' ? r.ownerLabel : undefined,
+      persisted: true,
+    }),
+    []
+  );
+
+  const loadFillHistory = useCallback(
+    async (opts?: { quiet?: boolean }) => {
+      if (!opts?.quiet) setFillHistoryLoading(true);
       try {
         const res = await fetch('/api/agent/fill-runs', {
           credentials: 'include',
           cache: 'no-store',
         });
-        if (!res.ok || cancelled) return;
+        if (!res.ok) return;
         const data = await res.json().catch(() => ({}));
         const list = Array.isArray(data?.runs) ? data.runs : [];
-        if (cancelled || !list.length) return;
-        const mapped: ResearchRun[] = list.map(
-          (r: Record<string, unknown>) => ({
-            id: String(r.id),
-            query: String(r.query || ''),
-            at: String(r.createdAt || r.updatedAt || new Date().toISOString()),
-            count: Number(r.count) || 0,
-            estimatedCostUsd: Number(r.estimatedCostUsd) || 0,
-            jobTitle:
-              typeof r.jobTitle === 'string' ? r.jobTitle : undefined,
-            jobLocation:
-              typeof r.jobLocation === 'string' ? r.jobLocation : undefined,
-            notes: Array.isArray(r.notes) ? r.notes.map(String) : [],
-            candidates: Array.isArray(r.candidates)
-              ? (r.candidates as SourcedPerson[])
-              : [],
-            error: typeof r.error === 'string' ? r.error : undefined,
-            usageLine:
-              typeof r.usageLine === 'string' ? r.usageLine : undefined,
-            apolloPlan:
-              r.apolloPlan && typeof r.apolloPlan === 'object'
-                ? (r.apolloPlan as ApolloSearchPlanDto)
-                : undefined,
-            apolloPlanSource: r.apolloPlanSource as ResearchRun['apolloPlanSource'],
-            visibility:
-              r.visibility === 'public' ? 'public' : 'private',
-            isOwner: r.isOwner === true,
-            ownerLabel:
-              typeof r.ownerLabel === 'string' ? r.ownerLabel : undefined,
-            persisted: true,
-          })
+        if (!list.length) {
+          // Don't wipe session-only runs
+          return;
+        }
+        mergeServerFillRuns(
+          list.map((r: Record<string, unknown>) => mapFillApiRun(r))
         );
-        setResearchRuns((prev) => {
-          // Keep any session-only runs (not yet persisted), then server runs
-          const sessionOnly = prev.filter((p) => !p.persisted);
-          const byId = new Map<string, ResearchRun>();
-          for (const m of mapped) byId.set(m.id, m);
-          for (const s of sessionOnly) {
-            if (!byId.has(s.id)) byId.set(s.id, s);
-          }
-          return Array.from(byId.values())
-            .sort(
-              (a, b) =>
-                new Date(b.at).getTime() - new Date(a.at).getTime()
-            )
-            .slice(0, 20);
-        });
       } catch {
         /* ignore */
+      } finally {
+        if (!opts?.quiet) setFillHistoryLoading(false);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [mode]);
+    },
+    [mapFillApiRun, mergeServerFillRuns]
+  );
+
+  // Load own + public fill-job runs for this tenant (team sharing)
+  useEffect(() => {
+    if (mode !== 'research') return;
+    void loadFillHistory({ quiet: true });
+  }, [mode, loadFillHistory]);
+
+  // Keep desk header History badge in sync
+  useEffect(() => {
+    if (mode !== 'research') {
+      onFillHistoryCountChange?.(0);
+      return;
+    }
+    onFillHistoryCountChange?.(researchRuns.length);
+  }, [mode, researchRuns.length, onFillHistoryCountChange]);
+
+  // Parent opened History from desk header — refresh list
+  useEffect(() => {
+    if (mode === 'research' && fillHistoryOpen) {
+      void loadFillHistory({ quiet: true });
+    }
+  }, [fillHistoryOpen, mode, loadFillHistory]);
+
+  const openFillRunFromHistory = useCallback(
+    (run: ResearchRun) => {
+      setHighlightedFillRunId(run.id);
+      if (run.apolloPlan) {
+        setPlanDraft(planToDraft(run.apolloPlan));
+        setPlanSourceLabel(run.apolloPlanSource || null);
+        setPlanExpanded(false);
+      }
+      if (run.query) setBrief(run.query);
+      if (run.visibility === 'public' || run.visibility === 'private') {
+        setVisibility(run.visibility);
+      }
+      setFillHistoryOpen(false);
+      // Ensure run is first in list for visibility
+      setResearchRuns((prev) => {
+        const rest = prev.filter((r) => r.id !== run.id);
+        return [run, ...rest];
+      });
+      requestAnimationFrame(() => {
+        fillRunRefs.current[run.id]?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      });
+      toast.success(
+        run.isOwner === false
+          ? 'Opened shared team fill run'
+          : 'Opened fill-job run from history'
+      );
+    },
+    [setFillHistoryOpen]
+  );
+
+  // Focus a fill-job run opened from Active runs history
+  useEffect(() => {
+    if (mode !== 'research' || !focusFillRunId) {
+      setHighlightedFillRunId(null);
+      return;
+    }
+    setHighlightedFillRunId(focusFillRunId);
+    const el = fillRunRefs.current[focusFillRunId];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+      // Runs may still be loading — retry shortly
+      const t = window.setTimeout(() => {
+        fillRunRefs.current[focusFillRunId]?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      }, 400);
+      return () => window.clearTimeout(t);
+    }
+  }, [mode, focusFillRunId, researchRuns]);
 
   // Sourcing engines status when Research (fill-job) mode is active
   useEffect(() => {
@@ -1175,45 +1317,77 @@ export function AgentWorkbench({
                   {showCsv ? 'Hide CSV seed' : 'Optional: paste CSV seed list'}
                 </button>
               )}
-              <Button
-                type="button"
-                disabled={busyId === 'new' || researching}
-                onClick={() => void startJob()}
-                className={`h-10 rounded-xl text-sm font-semibold text-white shadow-md ${
+              <div
+                className={`flex gap-2 ${
                   light && !isCompact
-                    ? 'w-full sm:w-auto sm:min-w-[200px] px-6'
-                    : 'w-full h-11'
-                } ${
-                  isResearch
-                    ? 'bg-sky-600 hover:bg-sky-500 shadow-sky-900/20'
-                    : 'bg-violet-600 hover:bg-violet-500 shadow-violet-900/20'
+                    ? 'w-full sm:w-auto sm:flex-row'
+                    : 'w-full flex-col'
                 }`}
               >
-                {busyId === 'new' || researching ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {isResearch ? 'Finding candidates…' : 'Launching…'}
-                  </>
-                ) : (
-                  <>
-                    {isResearch ? (
-                      <Target className="mr-2 h-4 w-4" />
-                    ) : (
-                      <Sparkles className="mr-2 h-4 w-4" />
-                    )}
-                    {isResearch
-                      ? 'Find candidates'
-                      : 'Launch company agent'}
-                  </>
+                {isResearch && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={researching}
+                    onClick={() => {
+                      void loadFillHistory();
+                      setFillHistoryOpen(true);
+                    }}
+                    className={`h-10 rounded-xl text-sm font-semibold ${
+                      light && !isCompact
+                        ? 'w-full sm:w-auto px-4'
+                        : 'w-full h-11'
+                    } ${
+                      light
+                        ? 'border-slate-200 bg-white text-slate-800'
+                        : 'border-white/15 bg-transparent text-slate-200 hover:bg-white/10'
+                    }`}
+                  >
+                    <History className="mr-2 h-4 w-4" />
+                    History
+                    {researchRuns.length > 0 ? ` (${researchRuns.length})` : ''}
+                  </Button>
                 )}
-              </Button>
+                <Button
+                  type="button"
+                  disabled={busyId === 'new' || researching}
+                  onClick={() => void startJob()}
+                  className={`h-10 rounded-xl text-sm font-semibold text-white shadow-md ${
+                    light && !isCompact
+                      ? 'w-full sm:w-auto sm:min-w-[200px] px-6'
+                      : 'w-full h-11 flex-1'
+                  } ${
+                    isResearch
+                      ? 'bg-sky-600 hover:bg-sky-500 shadow-sky-900/20'
+                      : 'bg-violet-600 hover:bg-violet-500 shadow-violet-900/20'
+                  }`}
+                >
+                  {busyId === 'new' || researching ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {isResearch ? 'Finding candidates…' : 'Launching…'}
+                    </>
+                  ) : (
+                    <>
+                      {isResearch ? (
+                        <Target className="mr-2 h-4 w-4" />
+                      ) : (
+                        <Sparkles className="mr-2 h-4 w-4" />
+                      )}
+                      {isResearch
+                        ? 'Find candidates'
+                        : 'Launch company agent'}
+                    </>
+                  )}
+                </Button>
+              </div>
               <p
                 className={`text-[10px] text-slate-500 ${
                   light && !isCompact ? 'sm:text-right' : 'text-center'
                 }`}
               >
                 {isResearch
-                  ? '1st run builds Apollo plan · edit → Search again'
+                  ? 'History reopens past runs · 1st run builds Apollo plan'
                   : 'Until usable leads · up to 2 hrs · pause anytime'}
               </p>
             </div>
@@ -1415,25 +1589,62 @@ export function AgentWorkbench({
         >
         {isResearch ? (
           <>
-            <div className="mb-2 flex items-center justify-between px-1">
-              <span
-                className={`text-[10px] font-semibold uppercase tracking-wider ${
-                  light ? 'text-slate-600' : 'text-slate-500'
-                }`}
-              >
-                Candidate matches
-                {researchRuns[0]
-                  ? ` · ${researchRuns[0].count} shown`
-                  : ''}
-                {researchRuns.some((r) => r.visibility === 'public')
-                  ? ' · includes team shares'
-                  : ''}
-              </span>
-              <span
-                className={`text-[10px] ${light ? 'text-slate-600' : 'text-slate-500'}`}
-              >
-                Session ~${researchSpend.toFixed(4)}
-              </span>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1">
+              <div className="min-w-0">
+                <span
+                  className={`text-[10px] font-semibold uppercase tracking-wider ${
+                    light ? 'text-slate-600' : 'text-slate-500'
+                  }`}
+                >
+                  Run history &amp; matches
+                  {researchRuns[0]
+                    ? ` · ${researchRuns[0].count} shown`
+                    : ''}
+                  {researchRuns.some((r) => r.visibility === 'public')
+                    ? ' · includes team shares'
+                    : ''}
+                </span>
+                <p
+                  className={`mt-0.5 text-[10px] ${
+                    light ? 'text-slate-500' : 'text-slate-500'
+                  }`}
+                >
+                  {researchRuns.length > 0
+                    ? `${researchRuns.length} saved run${researchRuns.length === 1 ? '' : 's'} · open History anytime`
+                    : 'Past Fill job runs appear here after you search'}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`text-[10px] ${light ? 'text-slate-600' : 'text-slate-500'}`}
+                >
+                  Session ~${researchSpend.toFixed(4)}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={`h-8 ${
+                    light
+                      ? 'border-slate-200 bg-white text-slate-800'
+                      : 'border-white/15 bg-transparent text-slate-200 hover:bg-white/10'
+                  }`}
+                  onClick={() => {
+                    void loadFillHistory();
+                    setFillHistoryOpen(true);
+                  }}
+                >
+                  <History className="mr-1 h-3.5 w-3.5" />
+                  History
+                  {researchRuns.length > 0 && (
+                    <span
+                      className={`ml-1 ${light ? 'text-slate-500' : 'text-slate-400'}`}
+                    >
+                      {researchRuns.length}
+                    </span>
+                  )}
+                </Button>
+              </div>
             </div>
 
             {researchRuns.length === 0 ? (
@@ -1444,7 +1655,7 @@ export function AgentWorkbench({
                     : 'border-white/10 bg-white/[0.02]'
                 }`}
               >
-                <Target
+                <History
                   className={`mx-auto h-8 w-8 ${light ? 'text-slate-300' : 'text-slate-600'}`}
                 />
                 <p
@@ -1452,13 +1663,27 @@ export function AgentWorkbench({
                     light ? 'text-slate-700' : 'text-slate-300'
                   }`}
                 >
-                  No sourcing runs yet
+                  No fill-job history yet
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   Paste a job from Careers (or a role brief) to find people who
-                  fit the posting. Set Sharing to Public so teammates can open
-                  AI → Fill a job and see your results.
+                  fit the posting. Runs are saved automatically — use{' '}
+                  <span className="font-semibold">History</span> to reopen them.
+                  Set Sharing to Public so teammates can see your results.
                 </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => {
+                    void loadFillHistory();
+                    setFillHistoryOpen(true);
+                  }}
+                >
+                  <History className="mr-1 h-3.5 w-3.5" />
+                  Open history
+                </Button>
               </div>
             ) : (
               <ul className="space-y-3">
@@ -1468,13 +1693,21 @@ export function AgentWorkbench({
                     run.candidates.every(
                       (c) => c.source === 'llm' || c.source === 'web'
                     );
+                  const isFocused = highlightedFillRunId === run.id;
                   return (
                   <li
                     key={run.id}
+                    ref={(node) => {
+                      fillRunRefs.current[run.id] = node;
+                    }}
                     className={`rounded-2xl border p-3 ${
-                      light
-                        ? 'border-slate-200 bg-white shadow-sm'
-                        : 'border-white/10 bg-white/[0.04]'
+                      isFocused
+                        ? light
+                          ? 'border-violet-400 bg-violet-50/60 shadow-md ring-2 ring-violet-200'
+                          : 'border-violet-400/60 bg-violet-500/10 shadow-md ring-2 ring-violet-500/30'
+                        : light
+                          ? 'border-slate-200 bg-white shadow-sm'
+                          : 'border-white/10 bg-white/[0.04]'
                     }`}
                   >
                     <div
@@ -2097,6 +2330,225 @@ export function AgentWorkbench({
         )}
         </div>
       </div>
+
+      {/* Fill-job History drawer (same pattern as Goal agent) */}
+      {isResearch && fillHistoryOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <button
+            type="button"
+            className={`absolute inset-0 ${light ? 'bg-black/30' : 'bg-black/50'}`}
+            aria-label="Close history"
+            onClick={() => setFillHistoryOpen(false)}
+          />
+          <div
+            className={`relative flex h-full w-full max-w-md flex-col shadow-2xl ${
+              light ? 'bg-white text-slate-900' : 'bg-slate-900 text-slate-100'
+            }`}
+          >
+            <div
+              className={`flex items-center justify-between border-b px-4 py-3 ${
+                light ? 'border-slate-100' : 'border-white/10'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <History
+                  className={`h-4 w-4 ${light ? 'text-slate-700' : 'text-slate-300'}`}
+                />
+                <div>
+                  <h2
+                    className={`text-sm font-semibold ${
+                      light ? 'text-slate-900' : 'text-white'
+                    }`}
+                  >
+                    Fill job history
+                  </h2>
+                  <p
+                    className={`text-[11px] ${
+                      light ? 'text-slate-500' : 'text-slate-400'
+                    }`}
+                  >
+                    Your runs + public team shares
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={light ? '' : 'text-slate-300 hover:bg-white/10'}
+                  title="Refresh"
+                  disabled={fillHistoryLoading}
+                  onClick={() => void loadFillHistory()}
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${
+                      fillHistoryLoading ? 'animate-spin' : ''
+                    }`}
+                  />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={light ? '' : 'text-slate-300 hover:bg-white/10'}
+                  onClick={() => setFillHistoryOpen(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-2">
+              {fillHistoryLoading && researchRuns.length === 0 ? (
+                <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading history…
+                </div>
+              ) : researchRuns.length === 0 ? (
+                <p
+                  className={`px-2 py-8 text-center text-sm ${
+                    light ? 'text-slate-500' : 'text-slate-400'
+                  }`}
+                >
+                  No saved fill-job runs yet. Run Find candidates — results are
+                  saved so you can reopen them here.
+                </p>
+              ) : (
+                researchRuns.map((r) => (
+                  <div
+                    key={r.id}
+                    className={`rounded-xl border px-3 py-2.5 ${
+                      highlightedFillRunId === r.id
+                        ? light
+                          ? 'border-sky-300 bg-sky-50'
+                          : 'border-sky-500/40 bg-sky-500/15'
+                        : light
+                          ? 'border-slate-100 bg-white hover:border-slate-200'
+                          : 'border-white/10 bg-slate-950/50 hover:border-white/20'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      className="w-full text-left"
+                      onClick={() => openFillRunFromHistory(r)}
+                    >
+                      <div
+                        className={`line-clamp-2 text-sm font-medium ${
+                          light ? 'text-slate-900' : 'text-white'
+                        }`}
+                      >
+                        {r.jobTitle || r.query || 'Fill job run'}
+                      </div>
+                      {r.jobTitle && r.query && r.jobTitle !== r.query && (
+                        <div
+                          className={`mt-0.5 line-clamp-1 text-[11px] ${
+                            light ? 'text-slate-500' : 'text-slate-400'
+                          }`}
+                        >
+                          {r.query}
+                        </div>
+                      )}
+                      <div
+                        className={`mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] ${
+                          light ? 'text-slate-500' : 'text-slate-400'
+                        }`}
+                      >
+                        <span
+                          className={`rounded-full border px-1.5 py-0.5 font-semibold ${
+                            r.error
+                              ? light
+                                ? 'border-rose-200 bg-rose-50 text-rose-800'
+                                : 'border-rose-500/30 bg-rose-500/15 text-rose-200'
+                              : light
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                : 'border-emerald-500/30 bg-emerald-500/15 text-emerald-200'
+                          }`}
+                        >
+                          {r.error ? 'Failed' : `${r.count} people`}
+                        </span>
+                        <span
+                          className={`rounded-full border px-1.5 py-0.5 font-semibold ${
+                            r.visibility === 'public'
+                              ? light
+                                ? 'border-violet-200 bg-violet-50 text-violet-800'
+                                : 'border-violet-500/40 bg-violet-500/15 text-violet-200'
+                              : light
+                                ? 'border-slate-200 text-slate-600'
+                                : 'border-white/10 text-slate-400'
+                          }`}
+                        >
+                          {r.visibility === 'public' ? 'Public' : 'Private'}
+                          {r.isOwner === false && r.ownerLabel
+                            ? ` · ${r.ownerLabel}`
+                            : ''}
+                        </span>
+                        {typeof r.estimatedCostUsd === 'number' &&
+                          r.estimatedCostUsd > 0 && (
+                            <span>~${r.estimatedCostUsd.toFixed(4)}</span>
+                          )}
+                        <span>{formatFillWhen(r.at)}</span>
+                      </div>
+                    </button>
+                    {r.persisted && r.isOwner && (
+                      <button
+                        type="button"
+                        className={`mt-1.5 text-[11px] font-semibold hover:underline ${
+                          light ? 'text-sky-700' : 'text-sky-300'
+                        }`}
+                        onClick={() => {
+                          const next =
+                            r.visibility === 'public' ? 'private' : 'public';
+                          void (async () => {
+                            try {
+                              const res = await fetch(
+                                `/api/agent/fill-runs/${r.id}`,
+                                {
+                                  method: 'PATCH',
+                                  credentials: 'include',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: JSON.stringify({ visibility: next }),
+                                }
+                              );
+                              const data = await res.json().catch(() => ({}));
+                              if (!res.ok) {
+                                toast.error(
+                                  data.error || 'Could not update sharing'
+                                );
+                                return;
+                              }
+                              setResearchRuns((prev) =>
+                                prev.map((x) =>
+                                  x.id === r.id
+                                    ? { ...x, visibility: next }
+                                    : x
+                                )
+                              );
+                              toast.success(
+                                data.message ||
+                                  (next === 'public'
+                                    ? 'Shared with team'
+                                    : 'Now private')
+                              );
+                            } catch {
+                              toast.error('Could not update sharing');
+                            }
+                          })();
+                        }}
+                      >
+                        {r.visibility === 'public'
+                          ? 'Make private'
+                          : 'Share with team'}
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
