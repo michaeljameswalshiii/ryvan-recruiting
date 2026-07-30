@@ -14,12 +14,13 @@ import {
   CircleDashed,
   History,
   Loader2,
+  Moon,
   Pause,
   Play,
-  Rocket,
   Send,
   ShieldCheck,
   Sparkles,
+  Sun,
   User,
   Briefcase,
   AlertTriangle,
@@ -27,6 +28,7 @@ import {
   RefreshCw,
   Trash2,
   Search,
+  MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -59,6 +61,9 @@ import {
 import { AgentWorkbench } from '@/components/ai/AgentWorkbench';
 
 type DeskTab = 'companies' | 'fill' | 'goal';
+type DeskTheme = 'light' | 'dark';
+
+const THEME_KEY = 'trio-agent-desk-theme-v1';
 
 const GOAL_EXAMPLES = [
   'Create CRM companies for: Grace Aerospace, Matrix Composites, Primus Pipe & Tube, Becker Avionics (minimal if websites fail)',
@@ -107,10 +112,16 @@ function kindIcon(kind: AgentArtifact['kind']) {
   }
 }
 
-export function AgentRunDesk() {
+export function AgentRunDesk({
+  onSwitchToChat,
+}: {
+  /** Optional: show Chat control in the dark/light app bar */
+  onSwitchToChat?: () => void;
+} = {}) {
   const queryClient = useQueryClient();
   /** Primary Agent Desk surfaces — list builders live here (not on Chat) */
   const [deskTab, setDeskTab] = useState<DeskTab>('companies');
+  const [theme, setTheme] = useState<DeskTheme>('light');
   const [goal, setGoal] = useState('');
   const [run, setRun] = useState<AgentRunSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
@@ -124,6 +135,29 @@ export function AgentRunDesk() {
   runRef.current = run;
   const bottomRef = useRef<HTMLDivElement>(null);
   const replyRef = useRef<HTMLTextAreaElement>(null);
+
+  const dark = theme === 'dark';
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(THEME_KEY);
+      if (raw === 'dark' || raw === 'light') setTheme(raw);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    setTheme((prev) => {
+      const next: DeskTheme = prev === 'dark' ? 'light' : 'dark';
+      try {
+        localStorage.setItem(THEME_KEY, next);
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   const refreshPast = useCallback(() => {
     setPastRuns(listAgentRuns(userId));
@@ -603,8 +637,10 @@ export function AgentRunDesk() {
       onClick={() => setDeskTab(id)}
       className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
         deskTab === id
-          ? 'bg-violet-700 text-white shadow-sm'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          ? 'bg-violet-600 text-white shadow-sm'
+          : dark
+            ? 'text-slate-300 hover:bg-white/10 hover:text-white'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
       }`}
     >
       {icon}
@@ -612,29 +648,88 @@ export function AgentRunDesk() {
     </button>
   );
 
+  const outlineBtn = dark
+    ? 'h-8 border-white/15 bg-transparent text-slate-200 hover:bg-white/10 hover:text-white'
+    : 'h-8';
+
   return (
-    <div className="flex h-full min-h-0 flex-col bg-slate-100/80">
+    <div
+      className={`flex h-full min-h-0 flex-col ${
+        dark ? 'bg-slate-950 text-slate-100' : 'bg-slate-100/80 text-slate-900'
+      }`}
+    >
       {/* Single clean app bar */}
-      <header className="shrink-0 border-b border-slate-200/80 bg-white">
+      <header
+        className={`shrink-0 border-b ${
+          dark
+            ? 'border-white/10 bg-slate-900/95'
+            : 'border-slate-200/80 bg-white'
+        }`}
+      >
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-5">
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <h1 className="text-base font-semibold tracking-tight text-slate-900">
-              {deskTab === 'companies'
-                ? 'Company list builder'
-                : deskTab === 'fill'
-                  ? 'Fill a job'
-                  : 'Goal agent'}
-            </h1>
-            <p className="text-[11px] text-slate-500">
-              {deskTab === 'companies'
-                ? 'Background agent finds companies with email or phone'
-                : deskTab === 'fill'
-                  ? 'Source real candidates for a careers URL or JD'
-                  : 'Multi-step CRM goals with mid-run chat'}
-            </p>
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            {onSwitchToChat && (
+              <div
+                className={`inline-flex rounded-lg border p-0.5 ${
+                  dark
+                    ? 'border-white/10 bg-slate-950/80'
+                    : 'border-slate-200 bg-slate-50'
+                }`}
+              >
+                <span
+                  className={`rounded-md px-2.5 py-1.5 text-xs font-semibold ${
+                    dark
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-violet-700 text-white'
+                  }`}
+                >
+                  Agent Desk
+                </span>
+                <button
+                  type="button"
+                  onClick={onSwitchToChat}
+                  className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
+                    dark
+                      ? 'text-slate-400 hover:text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <MessageSquare className="h-3 w-3" />
+                  Chat
+                </button>
+              </div>
+            )}
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <h1
+                className={`text-base font-semibold tracking-tight ${
+                  dark ? 'text-white' : 'text-slate-900'
+                }`}
+              >
+                {deskTab === 'companies'
+                  ? 'Company list builder'
+                  : deskTab === 'fill'
+                    ? 'Fill a job'
+                    : 'Goal agent'}
+              </h1>
+              <p
+                className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}
+              >
+                {deskTab === 'companies'
+                  ? 'Background agent finds companies with email or phone'
+                  : deskTab === 'fill'
+                    ? 'Source real candidates for a careers URL or JD'
+                    : 'Multi-step CRM goals with mid-run chat'}
+              </p>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50/80 p-0.5 shadow-sm">
+            <div
+              className={`inline-flex rounded-lg border p-0.5 shadow-sm ${
+                dark
+                  ? 'border-white/10 bg-slate-950/60'
+                  : 'border-slate-200 bg-slate-50/80'
+              }`}
+            >
               {tabBtn(
                 'companies',
                 'Companies',
@@ -643,13 +738,29 @@ export function AgentRunDesk() {
               {tabBtn('fill', 'Fill job', <Briefcase className="h-3.5 w-3.5" />)}
               {tabBtn('goal', 'Goal agent', <Bot className="h-3.5 w-3.5" />)}
             </div>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={dark ? 'Switch to light UI' : 'Switch to dark UI'}
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                dark
+                  ? 'border-white/15 bg-slate-950/50 text-amber-200 hover:bg-white/10'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {dark ? (
+                <Sun className="h-3.5 w-3.5" />
+              ) : (
+                <Moon className="h-3.5 w-3.5" />
+              )}
+            </button>
             {deskTab === 'goal' && (
               <>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-8"
+                  className={outlineBtn}
                   onClick={() => {
                     refreshPast();
                     setHistoryOpen(true);
@@ -658,7 +769,11 @@ export function AgentRunDesk() {
                   <History className="h-3.5 w-3.5 mr-1" />
                   History
                   {pastRuns.length > 0 && (
-                    <span className="ml-1 text-slate-400">{pastRuns.length}</span>
+                    <span
+                      className={`ml-1 ${dark ? 'text-slate-500' : 'text-slate-400'}`}
+                    >
+                      {pastRuns.length}
+                    </span>
                   )}
                 </Button>
                 {run && (
@@ -666,7 +781,7 @@ export function AgentRunDesk() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-8"
+                    className={outlineBtn}
                     onClick={newGoal}
                   >
                     New goal
@@ -684,7 +799,7 @@ export function AgentRunDesk() {
           <AgentWorkbench
             variant="full"
             defaultMode="companies"
-            theme="light"
+            theme={dark ? 'dark' : 'light'}
             hideChrome
           />
         </div>
@@ -696,7 +811,7 @@ export function AgentRunDesk() {
           <AgentWorkbench
             variant="full"
             defaultMode="research"
-            theme="light"
+            theme={dark ? 'dark' : 'light'}
             hideChrome
           />
         </div>
@@ -705,13 +820,25 @@ export function AgentRunDesk() {
       {/* ── Goal agent (interactive multi-wave) ─────────────────── */}
       {deskTab === 'goal' && (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-slate-200 bg-white">
-        <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-2.5 sm:px-6">
+      <section
+        className={`flex min-h-0 min-w-0 flex-1 flex-col border-r ${
+          dark ? 'border-white/10 bg-slate-950' : 'border-slate-200 bg-white'
+        }`}
+      >
+        <header
+          className={`flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-2.5 sm:px-6 ${
+            dark ? 'border-white/10' : 'border-slate-100'
+          }`}
+        >
           <div className="min-w-0">
-            <p className="text-sm font-medium text-slate-800">
+            <p
+              className={`text-sm font-medium ${dark ? 'text-slate-100' : 'text-slate-800'}`}
+            >
               Multi-step CRM goals
             </p>
-            <p className="text-[11px] text-slate-500">
+            <p
+              className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}
+            >
               Interactive chat mid-run · approve writes once · history saved
             </p>
           </div>
@@ -728,8 +855,18 @@ export function AgentRunDesk() {
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6 space-y-4">
           {/* Goal — editable before start; locked during run */}
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          <div
+            className={`rounded-2xl border p-4 ${
+              dark
+                ? 'border-white/10 bg-slate-900/80'
+                : 'border-slate-200 bg-slate-50/80'
+            }`}
+          >
+            <label
+              className={`text-[11px] font-semibold uppercase tracking-wide ${
+                dark ? 'text-slate-400' : 'text-slate-500'
+              }`}
+            >
               Goal
             </label>
             <textarea
@@ -738,7 +875,11 @@ export function AgentRunDesk() {
               rows={2}
               disabled={busy || (!!run && run.status === 'running')}
               placeholder="What should the agent accomplish? e.g. Search Apollo for X, create companies…"
-              className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100 disabled:opacity-70"
+              className={`mt-1.5 w-full resize-y rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 disabled:opacity-70 ${
+                dark
+                  ? 'border-white/10 bg-slate-950 text-slate-100 placeholder:text-slate-500 focus:border-violet-500/40 focus:ring-violet-500/20'
+                  : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-violet-300 focus:ring-violet-100'
+              }`}
             />
             <div className="mt-2 flex flex-wrap gap-2">
               {!run ||
@@ -798,7 +939,11 @@ export function AgentRunDesk() {
                     key={ex}
                     type="button"
                     onClick={() => setGoal(ex)}
-                    className="block w-full rounded-lg border border-transparent px-2 py-1.5 text-left text-xs text-slate-600 hover:border-violet-100 hover:bg-violet-50"
+                    className={`block w-full rounded-lg border border-transparent px-2 py-1.5 text-left text-xs ${
+                      dark
+                        ? 'text-slate-400 hover:border-violet-500/30 hover:bg-violet-500/10 hover:text-slate-200'
+                        : 'text-slate-600 hover:border-violet-100 hover:bg-violet-50'
+                    }`}
                   >
                     {ex}
                   </button>
@@ -810,7 +955,11 @@ export function AgentRunDesk() {
           {/* Interactive conversation thread */}
           {run && run.messages.length > 0 && (
             <div className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <h2
+                className={`text-xs font-semibold uppercase tracking-wide ${
+                  dark ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
                 Conversation
               </h2>
               {run.messages.map((m, i) => (
@@ -821,15 +970,25 @@ export function AgentRunDesk() {
                   }`}
                 >
                   {m.role === 'assistant' && (
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100">
-                      <Bot className="h-3.5 w-3.5 text-violet-700" />
+                    <div
+                      className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                        dark ? 'bg-violet-500/20' : 'bg-violet-100'
+                      }`}
+                    >
+                      <Bot
+                        className={`h-3.5 w-3.5 ${dark ? 'text-violet-300' : 'text-violet-700'}`}
+                      />
                     </div>
                   )}
                   <div
                     className={`max-w-[min(100%,36rem)] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
                       m.role === 'user'
-                        ? 'bg-slate-900 text-white'
-                        : 'border border-slate-200 bg-white text-slate-800'
+                        ? dark
+                          ? 'bg-violet-600 text-white'
+                          : 'bg-slate-900 text-white'
+                        : dark
+                          ? 'border border-white/10 bg-slate-900 text-slate-100'
+                          : 'border border-slate-200 bg-white text-slate-800'
                     }`}
                   >
                     <p className="whitespace-pre-wrap break-words">
@@ -839,7 +998,11 @@ export function AgentRunDesk() {
                 </div>
               ))}
               {busy && (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
+                <div
+                  className={`flex items-center gap-2 text-xs ${
+                    dark ? 'text-slate-400' : 'text-slate-500'
+                  }`}
+                >
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Agent working…
                 </div>
@@ -850,28 +1013,45 @@ export function AgentRunDesk() {
 
           {/* Compact step chips */}
           {run && run.steps.length > 0 && (
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+            <div
+              className={`rounded-xl border p-3 ${
+                dark
+                  ? 'border-white/10 bg-slate-900/60'
+                  : 'border-slate-200 bg-white'
+              }`}
+            >
+              <h2
+                className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${
+                  dark ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
                 Run log
               </h2>
               <ol className="space-y-1.5">
                 {run.steps.slice(-8).map((s) => (
-                  <li key={s.id} className="flex gap-2 text-xs text-slate-600">
+                  <li
+                    key={s.id}
+                    className={`flex gap-2 text-xs ${
+                      dark ? 'text-slate-400' : 'text-slate-600'
+                    }`}
+                  >
                     {s.status === 'running' ? (
-                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-600" />
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-500" />
                     ) : s.status === 'done' ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
                     ) : s.status === 'error' ? (
-                      <XCircle className="h-3.5 w-3.5 shrink-0 text-rose-600" />
+                      <XCircle className="h-3.5 w-3.5 shrink-0 text-rose-500" />
                     ) : (
                       <CircleDashed className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                     )}
                     <span className="min-w-0">
-                      <span className="font-medium text-slate-800">
+                      <span
+                        className={`font-medium ${dark ? 'text-slate-200' : 'text-slate-800'}`}
+                      >
                         {s.index}. {s.title}
                       </span>
                       {!!s.toolsUsed?.length && (
-                        <span className="ml-1 text-slate-400">
+                        <span className="ml-1 text-slate-500">
                           ({s.toolsUsed.slice(0, 4).join(', ')})
                         </span>
                       )}
@@ -885,8 +1065,20 @@ export function AgentRunDesk() {
 
         {/* Mid-run reply — interactive chat with the agent */}
         {showChatComposer && (
-          <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
-            <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 shadow-sm focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-100">
+          <div
+            className={`shrink-0 border-t px-4 py-3 sm:px-6 ${
+              dark
+                ? 'border-white/10 bg-slate-900/80'
+                : 'border-slate-200 bg-white'
+            }`}
+          >
+            <div
+              className={`flex items-end gap-2 rounded-2xl border px-3 py-2 shadow-sm focus-within:ring-2 ${
+                dark
+                  ? 'border-white/10 bg-slate-950 focus-within:border-violet-500/40 focus-within:ring-violet-500/20'
+                  : 'border-slate-200 bg-slate-50 focus-within:border-violet-300 focus-within:ring-violet-100'
+              }`}
+            >
               <textarea
                 ref={replyRef}
                 value={reply}
@@ -904,12 +1096,16 @@ export function AgentRunDesk() {
                     ? 'Reply, or click Approve writes…'
                     : 'Reply to the agent (Enter to send)…'
                 }
-                className="max-h-28 min-h-[2.25rem] flex-1 resize-none bg-transparent py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none disabled:opacity-60"
+                className={`max-h-28 min-h-[2.25rem] flex-1 resize-none bg-transparent py-1.5 text-sm focus:outline-none disabled:opacity-60 ${
+                  dark
+                    ? 'text-slate-100 placeholder:text-slate-500'
+                    : 'text-slate-900 placeholder:text-slate-400'
+                }`}
               />
               <Button
                 type="button"
                 size="icon"
-                className="h-9 w-9 shrink-0 rounded-xl bg-violet-700 hover:bg-violet-800"
+                className="h-9 w-9 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-500"
                 disabled={busy || !reply.trim()}
                 onClick={() => void sendToAgent({ message: reply })}
                 title="Send reply"
@@ -921,40 +1117,82 @@ export function AgentRunDesk() {
                 )}
               </Button>
             </div>
-            <p className="mt-1.5 text-[11px] text-slate-400">
+            <p
+              className={`mt-1.5 text-[11px] ${dark ? 'text-slate-500' : 'text-slate-400'}`}
+            >
               Ask questions, change direction, or say “yes” — same run, no restart.
             </p>
           </div>
         )}
       </section>
 
-      {/* ── Right: light results rail ─────────────────────────────── */}
-      <aside className="flex min-h-0 w-full shrink-0 flex-col border-t border-slate-200 bg-white lg:w-[min(100%,400px)] lg:border-l lg:border-t-0 xl:w-[440px]">
-        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-4 py-3">
+      {/* ── Right: results rail ───────────────────────────────────── */}
+      <aside
+        className={`flex min-h-0 w-full shrink-0 flex-col border-t lg:w-[min(100%,400px)] lg:border-l lg:border-t-0 xl:w-[440px] ${
+          dark
+            ? 'border-white/10 bg-slate-900'
+            : 'border-slate-200 bg-white'
+        }`}
+      >
+        <div
+          className={`flex shrink-0 items-center justify-between border-b px-4 py-3 ${
+            dark ? 'border-white/10' : 'border-slate-100'
+          }`}
+        >
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">Results</h2>
-            <p className="text-[11px] text-slate-500">
+            <h2
+              className={`text-sm font-semibold ${dark ? 'text-white' : 'text-slate-900'}`}
+            >
+              Results
+            </h2>
+            <p
+              className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}
+            >
               CRM creates + Apollo / search hits from this run
             </p>
           </div>
-          <div className="flex flex-wrap justify-end gap-2 text-[11px] text-slate-500">
+          <div className="flex flex-wrap justify-end gap-2 text-[11px]">
             {companies.length > 0 && (
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-800">
+              <span
+                className={`rounded-full px-2 py-0.5 ${
+                  dark
+                    ? 'bg-emerald-500/15 text-emerald-300'
+                    : 'bg-emerald-50 text-emerald-800'
+                }`}
+              >
                 {companies.length} companies
               </span>
             )}
             {apolloHits.length > 0 && (
-              <span className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-800">
+              <span
+                className={`rounded-full px-2 py-0.5 ${
+                  dark
+                    ? 'bg-sky-500/15 text-sky-300'
+                    : 'bg-sky-50 text-sky-800'
+                }`}
+              >
                 {apolloHits.length} Apollo
               </span>
             )}
             {people.length > 0 && (
-              <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-800">
+              <span
+                className={`rounded-full px-2 py-0.5 ${
+                  dark
+                    ? 'bg-violet-500/15 text-violet-300'
+                    : 'bg-violet-50 text-violet-800'
+                }`}
+              >
                 {people.length} people
               </span>
             )}
             {errors.length > 0 && (
-              <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">
+              <span
+                className={`rounded-full px-2 py-0.5 ${
+                  dark
+                    ? 'bg-rose-500/15 text-rose-300'
+                    : 'bg-rose-50 text-rose-700'
+                }`}
+              >
                 {errors.length} errors
               </span>
             )}
@@ -963,12 +1201,22 @@ export function AgentRunDesk() {
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 space-y-2">
           {!run || run.artifacts.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 px-4 py-12 text-center">
-              <Search className="mx-auto h-7 w-7 text-slate-300" />
-              <p className="mt-2 text-sm text-slate-500">
+            <div
+              className={`rounded-xl border border-dashed px-4 py-12 text-center ${
+                dark ? 'border-white/10' : 'border-slate-200'
+              }`}
+            >
+              <Search
+                className={`mx-auto h-7 w-7 ${dark ? 'text-slate-600' : 'text-slate-300'}`}
+              />
+              <p
+                className={`mt-2 text-sm ${dark ? 'text-slate-400' : 'text-slate-500'}`}
+              >
                 Apollo hits and CRM records appear here as the agent works.
               </p>
-              <p className="mt-1 text-xs text-slate-400">
+              <p
+                className={`mt-1 text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}
+              >
                 Tip: mention “search Apollo” or “find companies” in your goal.
               </p>
             </div>
@@ -979,31 +1227,49 @@ export function AgentRunDesk() {
                 <div
                   className={`flex gap-2.5 rounded-xl border px-3 py-2.5 transition ${
                     a.kind === 'error'
-                      ? 'border-rose-100 bg-rose-50/50'
+                      ? dark
+                        ? 'border-rose-500/30 bg-rose-500/10'
+                        : 'border-rose-100 bg-rose-50/50'
                       : a.kind === 'apollo_hit'
-                        ? 'border-sky-100 bg-sky-50/40 hover:bg-sky-50'
-                        : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50'
+                        ? dark
+                          ? 'border-sky-500/25 bg-sky-500/10 hover:bg-sky-500/15'
+                          : 'border-sky-100 bg-sky-50/40 hover:bg-sky-50'
+                        : dark
+                          ? 'border-white/10 bg-white/5 hover:bg-white/[0.07]'
+                          : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50'
                   }`}
                 >
                   <Icon
                     className={`mt-0.5 h-4 w-4 shrink-0 ${
                       a.kind === 'error'
-                        ? 'text-rose-500'
+                        ? 'text-rose-400'
                         : a.kind === 'apollo_hit'
-                          ? 'text-sky-600'
-                          : 'text-violet-600'
+                          ? 'text-sky-400'
+                          : 'text-violet-400'
                     }`}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-slate-900">
+                    <div
+                      className={`truncate text-sm font-medium ${
+                        dark ? 'text-white' : 'text-slate-900'
+                      }`}
+                    >
                       {a.title}
                     </div>
                     {a.subtitle && (
-                      <div className="truncate text-[11px] text-slate-500">
+                      <div
+                        className={`truncate text-[11px] ${
+                          dark ? 'text-slate-400' : 'text-slate-500'
+                        }`}
+                      >
                         {a.subtitle}
                       </div>
                     )}
-                    <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                    <div
+                      className={`mt-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                        dark ? 'text-slate-500' : 'text-slate-400'
+                      }`}
+                    >
                       {a.kind === 'apollo_hit'
                         ? 'Apollo / search'
                         : a.kind.replace(/_/g, ' ')}
@@ -1030,15 +1296,29 @@ export function AgentRunDesk() {
         <div className="fixed inset-0 z-50 flex justify-end">
           <button
             type="button"
-            className="absolute inset-0 bg-black/30"
+            className={`absolute inset-0 ${dark ? 'bg-black/50' : 'bg-black/30'}`}
             aria-label="Close history"
             onClick={() => setHistoryOpen(false)}
           />
-          <div className="relative flex h-full w-full max-w-md flex-col bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <div
+            className={`relative flex h-full w-full max-w-md flex-col shadow-2xl ${
+              dark ? 'bg-slate-900 text-slate-100' : 'bg-white'
+            }`}
+          >
+            <div
+              className={`flex items-center justify-between border-b px-4 py-3 ${
+                dark ? 'border-white/10' : 'border-slate-100'
+              }`}
+            >
               <div className="flex items-center gap-2">
-                <History className="h-4 w-4 text-slate-700" />
-                <h2 className="text-sm font-semibold text-slate-900">
+                <History
+                  className={`h-4 w-4 ${dark ? 'text-slate-300' : 'text-slate-700'}`}
+                />
+                <h2
+                  className={`text-sm font-semibold ${
+                    dark ? 'text-white' : 'text-slate-900'
+                  }`}
+                >
                   Agent run history
                 </h2>
               </div>
@@ -1046,6 +1326,7 @@ export function AgentRunDesk() {
                 type="button"
                 variant="ghost"
                 size="sm"
+                className={dark ? 'text-slate-300 hover:bg-white/10' : ''}
                 onClick={() => setHistoryOpen(false)}
               >
                 Close
@@ -1053,7 +1334,11 @@ export function AgentRunDesk() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-2">
               {pastRuns.length === 0 ? (
-                <p className="px-2 py-8 text-center text-sm text-slate-500">
+                <p
+                  className={`px-2 py-8 text-center text-sm ${
+                    dark ? 'text-slate-400' : 'text-slate-500'
+                  }`}
+                >
                   No saved runs yet. Start a goal — progress is saved
                   automatically.
                 </p>
@@ -1063,8 +1348,12 @@ export function AgentRunDesk() {
                     key={r.id}
                     className={`rounded-xl border px-3 py-2.5 ${
                       run?.id === r.id
-                        ? 'border-violet-300 bg-violet-50'
-                        : 'border-slate-100 bg-white hover:border-slate-200'
+                        ? dark
+                          ? 'border-violet-500/40 bg-violet-500/15'
+                          : 'border-violet-300 bg-violet-50'
+                        : dark
+                          ? 'border-white/10 bg-slate-950/50 hover:border-white/20'
+                          : 'border-slate-100 bg-white hover:border-slate-200'
                     }`}
                   >
                     <button
@@ -1072,10 +1361,18 @@ export function AgentRunDesk() {
                       className="w-full text-left"
                       onClick={() => openPastRun(r)}
                     >
-                      <div className="truncate text-sm font-medium text-slate-900">
+                      <div
+                        className={`truncate text-sm font-medium ${
+                          dark ? 'text-white' : 'text-slate-900'
+                        }`}
+                      >
                         {r.goal}
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                      <div
+                        className={`mt-1 flex flex-wrap items-center gap-2 text-[11px] ${
+                          dark ? 'text-slate-400' : 'text-slate-500'
+                        }`}
+                      >
                         <span
                           className={`rounded-full border px-1.5 py-0.5 capitalize ${statusBadge(r.status)}`}
                         >
@@ -1088,7 +1385,7 @@ export function AgentRunDesk() {
                     </button>
                     <button
                       type="button"
-                      className="mt-1.5 text-[11px] text-rose-600 hover:underline"
+                      className="mt-1.5 text-[11px] text-rose-500 hover:underline"
                       onClick={() => {
                         if (confirm('Delete this agent run from history?')) {
                           deleteAgentRun(r.id, userId);
@@ -1105,12 +1402,16 @@ export function AgentRunDesk() {
               )}
             </div>
             {pastRuns.length > 0 && (
-              <div className="border-t border-slate-100 p-3">
+              <div
+                className={`border-t p-3 ${dark ? 'border-white/10' : 'border-slate-100'}`}
+              >
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="w-full text-rose-600"
+                  className={`w-full text-rose-500 ${
+                    dark ? 'border-white/15 hover:bg-white/5' : ''
+                  }`}
                   onClick={() => {
                     if (confirm('Clear all agent run history?')) {
                       clearAgentRuns(userId);

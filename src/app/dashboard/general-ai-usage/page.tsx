@@ -775,16 +775,8 @@ export default function GeneralAiUsagePage() {
   // ── Agent Desk (multi-step goal runs) ────────────────────────────
   if (deskMode === 'agent') {
     return (
-      <div className="relative flex h-[calc(100vh-4rem)] flex-col -m-6">
-        <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-2 sm:px-5">
-          {deskModeToggle}
-          <span className="hidden text-xs text-slate-400 sm:inline">
-            Autonomous agents · jobs keep running if you leave
-          </span>
-        </div>
-        <div className="min-h-0 flex-1">
-          <AgentRunDesk />
-        </div>
+      <div className="-m-6 h-[calc(100vh-4rem)]">
+        <AgentRunDesk onSwitchToChat={() => setDeskModePersist('chat')} />
       </div>
     );
   }
