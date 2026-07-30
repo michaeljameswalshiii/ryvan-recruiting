@@ -147,6 +147,12 @@ type ResearchRun = {
     };
     totalEstimatedUsd: number;
   };
+  /** Persisted sharing — private only you; public = whole tenant */
+  visibility?: 'private' | 'public';
+  isOwner?: boolean;
+  ownerLabel?: string;
+  /** Server-persisted (shareable) vs session-only */
+  persisted?: boolean;
 };
 
 export type AgentJobDto = {
@@ -506,6 +512,75 @@ export function AgentWorkbench({
     }
   };
 
+  // Load own + public fill-job runs for this tenant (team sharing)
+  useEffect(() => {
+    if (mode !== 'research') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/agent/fill-runs', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data?.runs) ? data.runs : [];
+        if (cancelled || !list.length) return;
+        const mapped: ResearchRun[] = list.map(
+          (r: Record<string, unknown>) => ({
+            id: String(r.id),
+            query: String(r.query || ''),
+            at: String(r.createdAt || r.updatedAt || new Date().toISOString()),
+            count: Number(r.count) || 0,
+            estimatedCostUsd: Number(r.estimatedCostUsd) || 0,
+            jobTitle:
+              typeof r.jobTitle === 'string' ? r.jobTitle : undefined,
+            jobLocation:
+              typeof r.jobLocation === 'string' ? r.jobLocation : undefined,
+            notes: Array.isArray(r.notes) ? r.notes.map(String) : [],
+            candidates: Array.isArray(r.candidates)
+              ? (r.candidates as SourcedPerson[])
+              : [],
+            error: typeof r.error === 'string' ? r.error : undefined,
+            usageLine:
+              typeof r.usageLine === 'string' ? r.usageLine : undefined,
+            apolloPlan:
+              r.apolloPlan && typeof r.apolloPlan === 'object'
+                ? (r.apolloPlan as ApolloSearchPlanDto)
+                : undefined,
+            apolloPlanSource: r.apolloPlanSource as ResearchRun['apolloPlanSource'],
+            visibility:
+              r.visibility === 'public' ? 'public' : 'private',
+            isOwner: r.isOwner === true,
+            ownerLabel:
+              typeof r.ownerLabel === 'string' ? r.ownerLabel : undefined,
+            persisted: true,
+          })
+        );
+        setResearchRuns((prev) => {
+          // Keep any session-only runs (not yet persisted), then server runs
+          const sessionOnly = prev.filter((p) => !p.persisted);
+          const byId = new Map<string, ResearchRun>();
+          for (const m of mapped) byId.set(m.id, m);
+          for (const s of sessionOnly) {
+            if (!byId.has(s.id)) byId.set(s.id, s);
+          }
+          return Array.from(byId.values())
+            .sort(
+              (a, b) =>
+                new Date(b.at).getTime() - new Date(a.at).getTime()
+            )
+            .slice(0, 20);
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mode]);
+
   // Sourcing engines status when Research (fill-job) mode is active
   useEffect(() => {
     if (mode !== 'research') return;
@@ -621,7 +696,7 @@ export function AgentWorkbench({
         setPlanSourceLabel(sourceLabel || null);
       }
 
-      const run: ResearchRun = {
+      let run: ResearchRun = {
         id: `r-${Date.now()}`,
         query: brief.trim(),
         at: new Date().toISOString(),
@@ -640,8 +715,52 @@ export function AgentWorkbench({
         usageBreakdown: data.usageBreakdown || undefined,
         apolloPlan: returnedPlan,
         apolloPlanSource: sourceLabel as ResearchRun['apolloPlanSource'],
+        visibility,
+        isOwner: true,
+        persisted: false,
       };
-      setResearchRuns((prev) => [run, ...prev].slice(0, 12));
+
+      // Persist so teammates can open Fill a job and see public runs
+      if (res.ok && people.length) {
+        try {
+          const saveRes = await fetch('/api/agent/fill-runs', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: run.query,
+              visibility,
+              jobTitle: run.jobTitle,
+              jobLocation: run.jobLocation,
+              estimatedCostUsd: cost,
+              notes: run.notes,
+              candidates: people,
+              apolloPlan: returnedPlan,
+              apolloPlanSource: sourceLabel,
+              usageLine: run.usageLine,
+            }),
+          });
+          const saveData = await saveRes.json().catch(() => ({}));
+          if (saveRes.ok && saveData.run?.id) {
+            run = {
+              ...run,
+              id: String(saveData.run.id),
+              visibility:
+                saveData.run.visibility === 'public' ? 'public' : 'private',
+              isOwner: true,
+              ownerLabel:
+                typeof saveData.run.ownerLabel === 'string'
+                  ? saveData.run.ownerLabel
+                  : undefined,
+              persisted: true,
+            };
+          }
+        } catch {
+          /* still show session results */
+        }
+      }
+
+      setResearchRuns((prev) => [run, ...prev].slice(0, 20));
       if (!res.ok || !people.length) {
         const authHint =
           data.apolloHttpStatus === 401 || data.apolloHttpStatus === 403
@@ -656,9 +775,16 @@ export function AgentWorkbench({
       } else {
         // Collapse plan so results + links are fully interactive (not buried)
         setPlanExpanded(false);
+        const shareNote =
+          run.persisted && run.visibility === 'public'
+            ? ' · Shared with your team'
+            : run.persisted
+              ? ' · Private (switch to Public to share)'
+              : '';
         toast.success(
-          run.usageLine ||
-            `Found ${run.count} candidate(s) for ${data.job?.title || 'this role'} · ~$${cost.toFixed(4)}`
+          (run.usageLine ||
+            `Found ${run.count} candidate(s) for ${data.job?.title || 'this role'} · ~$${cost.toFixed(4)}`) +
+            shareNote
         );
       }
     } catch {
@@ -978,52 +1104,58 @@ export function AgentWorkbench({
                 : ''
             }`}
           >
-            {!isResearch && (
-              <div className={light ? 'sm:max-w-[220px]' : ''}>
-                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                  Sharing
-                </label>
-                <div
-                  className={`inline-flex rounded-lg border p-0.5 ${
-                    light
-                      ? 'border-slate-200 bg-slate-50'
-                      : 'w-full grid grid-cols-2 gap-1.5 border-white/10 bg-white/5 p-1'
+            <div className={light ? 'sm:max-w-[220px]' : ''}>
+              <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                Sharing
+              </label>
+              <div
+                className={`inline-flex rounded-lg border p-0.5 ${
+                  light
+                    ? 'border-slate-200 bg-slate-50'
+                    : 'w-full grid grid-cols-2 gap-1.5 border-white/10 bg-white/5 p-1'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setVisibility('private')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    visibility === 'private'
+                      ? isResearch
+                        ? 'bg-sky-600 text-white shadow-sm'
+                        : 'bg-violet-600 text-white shadow-sm'
+                      : light
+                        ? 'text-slate-600 hover:bg-white hover:text-slate-900'
+                        : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => setVisibility('private')}
-                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                      visibility === 'private'
-                        ? 'bg-violet-600 text-white shadow-sm'
-                        : light
-                          ? 'text-slate-600 hover:bg-white hover:text-slate-900'
-                          : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Private
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setVisibility('public')}
-                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                      visibility === 'public'
-                        ? 'bg-violet-600 text-white shadow-sm'
-                        : light
-                          ? 'text-slate-600 hover:bg-white hover:text-slate-900'
-                          : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Public
-                  </button>
-                </div>
-                <p className="mt-1 text-[10px] text-slate-500">
-                  {visibility === 'public'
+                  Private
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisibility('public')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    visibility === 'public'
+                      ? isResearch
+                        ? 'bg-sky-600 text-white shadow-sm'
+                        : 'bg-violet-600 text-white shadow-sm'
+                      : light
+                        ? 'text-slate-600 hover:bg-white hover:text-slate-900'
+                        : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Public
+                </button>
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">
+                {isResearch
+                  ? visibility === 'public'
+                    ? 'Teammates see this run under AI → Fill a job.'
+                    : 'Only you see this run (default). Choose Public to share.'
+                  : visibility === 'public'
                     ? 'Teammates can view and import this list.'
                     : 'Only you can see this list.'}
-                </p>
-              </div>
-            )}
+              </p>
+            </div>
             <div
               className={`flex flex-col gap-1.5 ${
                 light && !isCompact ? 'sm:items-end' : ''
@@ -1284,13 +1416,22 @@ export function AgentWorkbench({
         {isResearch ? (
           <>
             <div className="mb-2 flex items-center justify-between px-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              <span
+                className={`text-[10px] font-semibold uppercase tracking-wider ${
+                  light ? 'text-slate-600' : 'text-slate-500'
+                }`}
+              >
                 Candidate matches
                 {researchRuns[0]
                   ? ` · ${researchRuns[0].count} shown`
                   : ''}
+                {researchRuns.some((r) => r.visibility === 'public')
+                  ? ' · includes team shares'
+                  : ''}
               </span>
-              <span className="text-[10px] text-slate-500">
+              <span
+                className={`text-[10px] ${light ? 'text-slate-600' : 'text-slate-500'}`}
+              >
                 Session ~${researchSpend.toFixed(4)}
               </span>
             </div>
@@ -1315,7 +1456,8 @@ export function AgentWorkbench({
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   Paste a job from Careers (or a role brief) to find people who
-                  fit the posting.
+                  fit the posting. Set Sharing to Public so teammates can open
+                  AI → Fill a job and see your results.
                 </p>
               </div>
             ) : (
@@ -1329,21 +1471,126 @@ export function AgentWorkbench({
                   return (
                   <li
                     key={run.id}
-                    className="rounded-2xl border border-white/10 bg-white/[0.04] p-3"
+                    className={`rounded-2xl border p-3 ${
+                      light
+                        ? 'border-slate-200 bg-white shadow-sm'
+                        : 'border-white/10 bg-white/[0.04]'
+                    }`}
                   >
-                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                      <span className="font-medium text-slate-200 line-clamp-1">
+                    <div
+                      className={`flex flex-wrap items-center gap-2 text-[11px] ${
+                        light ? 'text-slate-800' : 'text-slate-200'
+                      }`}
+                    >
+                      <span className="font-semibold line-clamp-1">
                         {run.jobTitle || run.query}
                       </span>
                       {run.jobLocation && (
-                        <span className="text-slate-500">{run.jobLocation}</span>
+                        <span className={light ? 'text-slate-600' : 'text-slate-500'}>
+                          {run.jobLocation}
+                        </span>
                       )}
-                      <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-sky-200 ring-1 ring-sky-500/25">
+                      <span
+                        className={`rounded-full px-2 py-0.5 ring-1 ${
+                          light
+                            ? 'bg-sky-50 text-sky-800 ring-sky-200'
+                            : 'bg-sky-500/15 text-sky-200 ring-sky-500/25'
+                        }`}
+                      >
                         {run.count} people
                       </span>
-                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-200 ring-1 ring-emerald-500/20">
+                      <span
+                        className={`rounded-full px-2 py-0.5 ring-1 ${
+                          light
+                            ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                            : 'bg-emerald-500/10 text-emerald-200 ring-emerald-500/20'
+                        }`}
+                      >
                         ~${run.estimatedCostUsd.toFixed(4)}
                       </span>
+                      {run.visibility === 'public' ? (
+                        <span
+                          className={`rounded-full px-2 py-0.5 font-semibold ring-1 ${
+                            light
+                              ? 'bg-violet-50 text-violet-800 ring-violet-200'
+                              : 'bg-violet-500/15 text-violet-200 ring-violet-500/25'
+                          }`}
+                        >
+                          Public
+                          {!run.isOwner && run.ownerLabel
+                            ? ` · ${run.ownerLabel}`
+                            : run.isOwner
+                              ? ' · team'
+                              : ''}
+                        </span>
+                      ) : (
+                        <span
+                          className={`rounded-full px-2 py-0.5 ${
+                            light
+                              ? 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'
+                              : 'bg-white/5 text-slate-400 ring-1 ring-white/10'
+                          }`}
+                        >
+                          Private
+                        </span>
+                      )}
+                      {run.persisted && run.isOwner && (
+                        <button
+                          type="button"
+                          className={`text-[10px] font-semibold underline-offset-2 hover:underline ${
+                            light ? 'text-sky-700' : 'text-sky-300'
+                          }`}
+                          onClick={() => {
+                            const next =
+                              run.visibility === 'public'
+                                ? 'private'
+                                : 'public';
+                            void (async () => {
+                              try {
+                                const res = await fetch(
+                                  `/api/agent/fill-runs/${run.id}`,
+                                  {
+                                    method: 'PATCH',
+                                    credentials: 'include',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                      visibility: next,
+                                    }),
+                                  }
+                                );
+                                const data = await res.json().catch(() => ({}));
+                                if (!res.ok) {
+                                  toast.error(
+                                    data.error || 'Could not update sharing'
+                                  );
+                                  return;
+                                }
+                                setResearchRuns((prev) =>
+                                  prev.map((r) =>
+                                    r.id === run.id
+                                      ? { ...r, visibility: next }
+                                      : r
+                                  )
+                                );
+                                toast.success(
+                                  data.message ||
+                                    (next === 'public'
+                                      ? 'Shared with team'
+                                      : 'Now private')
+                                );
+                              } catch {
+                                toast.error('Could not update sharing');
+                              }
+                            })();
+                          }}
+                        >
+                          {run.visibility === 'public'
+                            ? 'Make private'
+                            : 'Share with team'}
+                        </button>
+                      )}
                     </div>
                     {run.apolloPlan && (
                       <p className="mt-1.5 text-[10px] leading-snug text-slate-500">
