@@ -165,10 +165,10 @@ export default function Sidebar({ role }: SidebarProps) {
             onClick={() => setTheme('black')}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${
               isDark
-                ? 'bg-[#1c1f23] text-white shadow-sm ring-1 ring-white/10'
+                ? 'bg-[#2a2e34] text-white shadow-sm ring-1 ring-white/10'
                 : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
             }`}
-            title="Dark UI (charcoal)"
+            title="Dark UI (charcoal background)"
           >
             <Moon className="h-3.5 w-3.5" />
             Dark
