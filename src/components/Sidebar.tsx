@@ -44,7 +44,7 @@ const menuItems: MenuItem[] = [
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase, permission: 'core_ats' },
   { name: 'Talent Graph', href: '/dashboard/talent-graph', icon: Network, permission: 'core_ats' },
   { name: 'Sequences', href: '/dashboard/sequences', icon: ListOrdered, permission: 'core_ats' },
-  { name: 'AI Assistant', href: '/dashboard/general-ai-usage', icon: MessageSquare, permission: 'core_ats' },
+  { name: 'AI', href: '/dashboard/general-ai-usage', icon: MessageSquare, permission: 'core_ats' },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings, permission: 'settings' },
 ];
 

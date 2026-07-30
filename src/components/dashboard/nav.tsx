@@ -45,7 +45,7 @@ const allNavItems = [
   { href: "/dashboard/talent-graph", label: "Talent Graph", icon: Network },
   { href: "/dashboard/sequences", label: "Sequences", icon: ListOrdered },
   { href: "/dashboard/scheduling", label: "Scheduling", icon: CalendarClock },
-  { href: "/dashboard/general-ai-usage", label: "AI Assistant", icon: MessageSquare },
+  { href: "/dashboard/general-ai-usage", label: "AI", icon: MessageSquare },
   { href: "/dashboard/ai-reliability", label: "AI Reliability", icon: Activity },
   { href: "/dashboard/issues", label: "Issues", icon: AlertCircle },
   // AI Apollo: only when NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true

@@ -605,12 +605,12 @@ export function FloatingAiAssistant() {
               <p className="mt-1 text-xs text-slate-500 leading-relaxed">
                 I can see you&apos;re on <strong>{pageCtx.label}</strong>
                 {pageCtx.entityId ? ' detail' : ''}. Ask me to research, draft,
-                or update CRM. Company lists &amp; Fill job:{' '}
+                or update CRM. Company lists &amp; Fill job live on the{' '}
                 <Link
                   href="/dashboard/general-ai-usage"
                   className="font-medium text-violet-700 hover:underline"
                 >
-                  Agent Desk
+                  AI home
                 </Link>
                 .
               </p>

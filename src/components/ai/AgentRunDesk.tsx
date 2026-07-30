@@ -110,13 +110,23 @@ function kindIcon(kind: AgentArtifact['kind']) {
 
 export function AgentRunDesk({
   onSwitchToChat,
+  initialTab = 'companies',
+  homeLabel = 'AI home',
 }: {
-  /** Optional: show Chat control in the dark/light app bar */
+  /** Optional: back control in the app bar (unified AI home) */
   onSwitchToChat?: () => void;
+  /** Which workspace tab to open (from AI home starters) */
+  initialTab?: DeskTab;
+  /** Label for the back control */
+  homeLabel?: string;
 } = {}) {
   const queryClient = useQueryClient();
-  /** Primary Agent Desk surfaces — list builders live here (not on Chat) */
-  const [deskTab, setDeskTab] = useState<DeskTab>('companies');
+  /** Primary agent surfaces — list builders + goal live here (not on free chat) */
+  const [deskTab, setDeskTab] = useState<DeskTab>(initialTab);
+
+  useEffect(() => {
+    setDeskTab(initialTab);
+  }, [initialTab]);
   const [goal, setGoal] = useState('');
   const [run, setRun] = useState<AgentRunSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
@@ -645,35 +655,18 @@ export function AgentRunDesk({
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-5">
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             {onSwitchToChat && (
-              <div
-                className={`inline-flex rounded-lg border p-0.5 ${
+              <button
+                type="button"
+                onClick={onSwitchToChat}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
                   dark
-                    ? 'border-white/10 bg-slate-950/80'
-                    : 'border-slate-200 bg-slate-50'
+                    ? 'border-white/10 bg-slate-950/80 text-slate-200 hover:bg-white/10 hover:text-white'
+                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white hover:text-slate-900'
                 }`}
               >
-                <span
-                  className={`rounded-md px-2.5 py-1.5 text-xs font-semibold ${
-                    dark
-                      ? 'bg-violet-600 text-white'
-                      : 'bg-violet-700 text-white'
-                  }`}
-                >
-                  Agent Desk
-                </span>
-                <button
-                  type="button"
-                  onClick={onSwitchToChat}
-                  className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
-                    dark
-                      ? 'text-slate-400 hover:text-white'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <MessageSquare className="h-3 w-3" />
-                  Chat
-                </button>
-              </div>
+                <MessageSquare className="h-3.5 w-3.5" />
+                {homeLabel}
+              </button>
             )}
             <div className="flex min-w-0 flex-col gap-0.5">
               <h1

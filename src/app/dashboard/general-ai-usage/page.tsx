@@ -13,11 +13,13 @@ import {
   FileText,
   Loader2,
   Sparkles,
-  Cloud,
   Wrench,
   Trash2,
   Download,
   History,
+  Building2,
+  Briefcase,
+  Target,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -27,6 +29,10 @@ import {
   parseAiFetchResponse,
 } from '@/lib/ai/parse-response';
 import { AgentRunDesk } from '@/components/ai/AgentRunDesk';
+import {
+  ActiveRunsRail,
+  type AiWorkspace,
+} from '@/components/ai/ActiveRunsRail';
 import { ChatHistoryPanel } from '@/components/ai/ChatHistoryPanel';
 import {
   type ChatHistoryThread,
@@ -206,6 +212,33 @@ const SUGGESTIONS = [
   'Help me revise and improve the previous response',
 ];
 
+/** Agentic workspaces launched from the AI home empty state */
+const WORKSPACE_STARTERS: {
+  id: AiWorkspace;
+  title: string;
+  description: string;
+  icon: typeof Building2;
+}[] = [
+  {
+    id: 'companies',
+    title: 'Find companies',
+    description: 'Background list builder with email/phone for BD',
+    icon: Building2,
+  },
+  {
+    id: 'fill',
+    title: 'Fill a job',
+    description: 'Apollo-aided sourcing for a careers URL or JD',
+    icon: Briefcase,
+  },
+  {
+    id: 'goal',
+    title: 'CRM goal',
+    description: 'Multi-step agent with mid-run chat & write approval',
+    icon: Target,
+  },
+];
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -288,28 +321,52 @@ export default function GeneralAiUsagePage() {
   );
   const [historyUserId, setHistoryUserId] = useState<string | null>(null);
 
-  /** Chat (default) vs Agent Desk (Companies / Fill job / Goal runs) */
-  type DeskMode = 'agent' | 'chat';
-  const DESK_MODE_KEY = 'trio-ai-desk-mode-v1';
-  const [deskMode, setDeskMode] = useState<DeskMode>('chat');
+  /**
+   * Unified AI home:
+   * - chat = interactive assistant (default)
+   * - companies | fill | goal = agent workspaces
+   */
+  type AiView = 'chat' | AiWorkspace;
+  const AI_VIEW_KEY = 'trio-ai-home-view-v1';
+  const [aiView, setAiView] = useState<AiView>('chat');
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(DESK_MODE_KEY);
-      if (raw === 'agent' || raw === 'chat') setDeskMode(raw);
+      const raw = localStorage.getItem(AI_VIEW_KEY);
+      if (
+        raw === 'chat' ||
+        raw === 'companies' ||
+        raw === 'fill' ||
+        raw === 'goal'
+      ) {
+        // Always land on chat when opening the page; workspaces are opt-in
+        // via starters / Active runs (still allow deep resume if mid-session)
+        if (raw !== 'chat') {
+          /* keep chat default on hard load */
+        }
+      }
     } catch {
       /* ignore */
     }
   }, []);
 
-  const setDeskModePersist = (mode: DeskMode) => {
-    setDeskMode(mode);
+  const openWorkspace = useCallback((ws: AiWorkspace) => {
+    setAiView(ws);
     try {
-      localStorage.setItem(DESK_MODE_KEY, mode);
+      localStorage.setItem(AI_VIEW_KEY, ws);
     } catch {
       /* ignore */
     }
-  };
+  }, []);
+
+  const openChatHome = useCallback(() => {
+    setAiView('chat');
+    try {
+      localStorage.setItem(AI_VIEW_KEY, 'chat');
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -745,53 +802,29 @@ export default function GeneralAiUsagePage() {
 
   const isEmpty = messages.length === 0;
 
-  const deskModeToggle = (
-    <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5 shadow-sm">
-      <button
-        type="button"
-        onClick={() => setDeskModePersist('agent')}
-        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-          deskMode === 'agent'
-            ? 'bg-violet-700 text-white shadow-sm'
-            : 'text-slate-600 hover:text-slate-900'
-        }`}
-      >
-        Agent Desk
-      </button>
-      <button
-        type="button"
-        onClick={() => setDeskModePersist('chat')}
-        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-          deskMode === 'chat'
-            ? 'bg-slate-900 text-white shadow-sm'
-            : 'text-slate-600 hover:text-slate-900'
-        }`}
-      >
-        Chat
-      </button>
-    </div>
-  );
-
-  // ── Agent Desk (multi-step goal runs) ────────────────────────────
-  if (deskMode === 'agent') {
+  // ── Agent workspaces (Find companies / Fill job / CRM goal) ────
+  if (aiView !== 'chat') {
     return (
       <div className="-m-6 h-[calc(100vh-4rem)]">
-        <AgentRunDesk onSwitchToChat={() => setDeskModePersist('chat')} />
+        <AgentRunDesk
+          initialTab={aiView}
+          homeLabel="AI home"
+          onSwitchToChat={openChatHome}
+        />
       </div>
     );
   }
 
   return (
-    <div className="-m-6 flex h-[calc(100vh-4rem)] flex-col bg-slate-100">
-      {/* Full-width interactive chat — list agents live on Agent Desk only */}
+    <div className="-m-6 flex h-[calc(100vh-4rem)] bg-slate-100">
+      {/* Interactive chat (default) + Active runs rail */}
       <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-gradient-to-b from-slate-50 to-white">
       {/* Header */}
       <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-slate-200/80 bg-white/90 px-5 py-3.5 backdrop-blur sm:px-6">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            {deskModeToggle}
             <h1 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
-              Chat
+              AI
             </h1>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
               <Sparkles className="h-3 w-3" />
@@ -802,20 +835,12 @@ export default function GeneralAiUsagePage() {
             </span>
             <span className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600 sm:inline-flex">
               <Wrench className="h-3 w-3" />
-              Quick tasks & CRM
+              Chat · agents · Apollo
             </span>
           </div>
           <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
-            Interactive chat for notes, research, and CRM. Company list builder
-            &amp; Fill job live under{' '}
-            <button
-              type="button"
-              className="font-medium text-violet-700 underline-offset-2 hover:underline"
-              onClick={() => setDeskModePersist('agent')}
-            >
-              Agent Desk
-            </button>
-            .
+            Chat for quick work. Use starters or Active runs for company lists,
+            fill-a-job, and multi-step CRM goals.
           </p>
           {/* Model strategy — default Most Efficient, optional lock */}
           <div className="mt-2.5 inline-flex flex-wrap rounded-xl border border-orange-200 bg-orange-50/50 p-1 shadow-sm gap-0.5">
@@ -844,6 +869,36 @@ export default function GeneralAiUsagePage() {
           </div>
         </div>
         <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
+          <div className="hidden items-center gap-1 sm:flex">
+            {WORKSPACE_STARTERS.map((s) => {
+              const Icon = s.icon;
+              return (
+                <Button
+                  key={s.id}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openWorkspace(s.id)}
+                  className="gap-1.5 border-violet-200 text-violet-800 hover:bg-violet-50"
+                  title={s.description}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="hidden xl:inline">{s.title}</span>
+                </Button>
+              );
+            })}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => openWorkspace('companies')}
+            className="gap-1.5 border-violet-200 text-violet-800 sm:hidden"
+            title="Open agents"
+          >
+            <Target className="h-4 w-4" />
+            Agents
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -911,7 +966,7 @@ export default function GeneralAiUsagePage() {
       <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
         <div className="mx-auto max-w-2xl space-y-4">
           {isEmpty ? (
-            <div className="flex flex-col items-center px-4 py-12 text-center">
+            <div className="flex flex-col items-center px-4 py-10 text-center">
               <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg shadow-slate-900/10">
                 <Sparkles className="h-7 w-7" />
               </div>
@@ -919,12 +974,45 @@ export default function GeneralAiUsagePage() {
                 How can I help?
               </h2>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-500">
-                Ask anything, attach documents for analysis, or request
-                revisions in the same thread. Each visit starts a new chat;
-                use History for prior conversations with date and time.
+                Chat for notes, research, and CRM. Launch an agent for company
+                lists, fill-a-job, or multi-step goals. History keeps past
+                chats with date and time.
               </p>
 
-              <div className="mt-8 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
+              {/* Agentic starters */}
+              <div className="mt-8 w-full max-w-2xl">
+                <p className="mb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Start an agent
+                </p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {WORKSPACE_STARTERS.map((s) => {
+                    const Icon = s.icon;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => openWorkspace(s.id)}
+                        className="rounded-xl border border-violet-200/80 bg-gradient-to-b from-violet-50 to-white px-3.5 py-3.5 text-left shadow-sm transition hover:border-violet-300 hover:shadow-md"
+                      >
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <p className="mt-2.5 text-sm font-semibold text-slate-900">
+                          {s.title}
+                        </p>
+                        <p className="mt-0.5 text-[11px] leading-snug text-slate-500">
+                          {s.description}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-6 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
+                <p className="col-span-full text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Or chat
+                </p>
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s}
@@ -1270,6 +1358,11 @@ export default function GeneralAiUsagePage() {
         </div>
       </div>
       </section>
+
+      {/* Active runs — list builder + goal history */}
+      <div className="hidden min-h-0 lg:flex">
+        <ActiveRunsRail onOpenWorkspace={openWorkspace} />
+      </div>
 
       <ChatHistoryPanel
         open={historyOpen}
