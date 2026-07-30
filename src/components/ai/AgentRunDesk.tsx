@@ -613,67 +613,74 @@ export function AgentRunDesk() {
   );
 
   return (
-    <div className="-m-6 flex h-[calc(100vh-4rem)] flex-col bg-slate-50">
-      {/* Global Agent Desk chrome */}
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 pt-12 sm:px-6 sm:pt-12">
-        <div className="min-w-0">
+    <div className="flex h-full min-h-0 flex-col bg-slate-100/80">
+      {/* Single clean app bar */}
+      <header className="shrink-0 border-b border-slate-200/80 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-5">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <h1 className="text-base font-semibold tracking-tight text-slate-900">
+              {deskTab === 'companies'
+                ? 'Company list builder'
+                : deskTab === 'fill'
+                  ? 'Fill a job'
+                  : 'Goal agent'}
+            </h1>
+            <p className="text-[11px] text-slate-500">
+              {deskTab === 'companies'
+                ? 'Background agent finds companies with email or phone'
+                : deskTab === 'fill'
+                  ? 'Source real candidates for a careers URL or JD'
+                  : 'Multi-step CRM goals with mid-run chat'}
+            </p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-lg font-semibold text-slate-900">Agent Desk</h1>
-            <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-800">
-              <Rocket className="h-3 w-3" />
-              Companies · Fill job · Goal runs
-            </span>
-          </div>
-          <p className="mt-0.5 text-xs text-slate-500">
-            All autonomous agents live here — not on Chat. Progress and jobs are
-            saved when you leave.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
-            {tabBtn(
-              'companies',
-              'Companies',
-              <Building2 className="h-3.5 w-3.5" />
-            )}
-            {tabBtn('fill', 'Fill job', <Briefcase className="h-3.5 w-3.5" />)}
-            {tabBtn('goal', 'Goal agent', <Bot className="h-3.5 w-3.5" />)}
-          </div>
-          {deskTab === 'goal' && (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  refreshPast();
-                  setHistoryOpen(true);
-                }}
-              >
-                <History className="h-3.5 w-3.5 mr-1.5" />
-                History
-                {pastRuns.length > 0 && (
-                  <span className="ml-1 text-slate-400">{pastRuns.length}</span>
-                )}
-              </Button>
-              {run && (
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50/80 p-0.5 shadow-sm">
+              {tabBtn(
+                'companies',
+                'Companies',
+                <Building2 className="h-3.5 w-3.5" />
+              )}
+              {tabBtn('fill', 'Fill job', <Briefcase className="h-3.5 w-3.5" />)}
+              {tabBtn('goal', 'Goal agent', <Bot className="h-3.5 w-3.5" />)}
+            </div>
+            {deskTab === 'goal' && (
+              <>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={newGoal}
+                  className="h-8"
+                  onClick={() => {
+                    refreshPast();
+                    setHistoryOpen(true);
+                  }}
                 >
-                  New goal
+                  <History className="h-3.5 w-3.5 mr-1" />
+                  History
+                  {pastRuns.length > 0 && (
+                    <span className="ml-1 text-slate-400">{pastRuns.length}</span>
+                  )}
                 </Button>
-              )}
-            </>
-          )}
+                {run && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={newGoal}
+                  >
+                    New goal
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </header>
 
       {/* ── Companies list builder ──────────────────────────────── */}
       {deskTab === 'companies' && (
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <AgentWorkbench
             variant="full"
             defaultMode="companies"
@@ -685,7 +692,7 @@ export function AgentRunDesk() {
 
       {/* ── Fill job / source candidates ────────────────────────── */}
       {deskTab === 'fill' && (
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <AgentWorkbench
             variant="full"
             defaultMode="research"

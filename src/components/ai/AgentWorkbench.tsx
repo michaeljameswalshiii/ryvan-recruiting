@@ -734,17 +734,26 @@ export function AgentWorkbench({
             : 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white'
       }`}
     >
-      {/* Hero header — tighter when Fill job has results so list stays interactive */}
+      {/* Launch form — constrained card on light Agent Desk */}
       <div
-        className={`shrink-0 border-b ${light ? 'border-slate-200' : 'border-white/10'} ${
-          isCompact || (isResearch && researchRuns.length > 0)
-            ? 'px-3 py-2.5'
-            : 'px-5 py-5'
+        className={`shrink-0 ${
+          light && !isCompact
+            ? 'border-b border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 px-4 py-4 sm:px-6'
+            : `border-b ${light ? 'border-slate-200' : 'border-white/10'} ${
+                isCompact || (isResearch && researchRuns.length > 0)
+                  ? 'px-3 py-2.5'
+                  : 'px-5 py-5'
+              }`
         }`}
       >
-        <div className="flex items-start justify-between gap-3">
+        <div
+          className={
+            light && !isCompact ? 'mx-auto w-full max-w-2xl' : undefined
+          }
+        >
+        {!hideChrome && (
+        <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0 flex-1">
-            {!hideChrome && (
               <div
                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ring-1 ${
                   light
@@ -755,9 +764,8 @@ export function AgentWorkbench({
                 <Sparkles className="h-3 w-3" />
                 Autonomous agent
               </div>
-            )}
             <h2
-              className={`font-semibold tracking-tight ${hideChrome ? '' : 'mt-2'} ${
+              className={`mt-2 font-semibold tracking-tight ${
                 light ? 'text-slate-900' : 'text-white'
               } ${isCompact ? 'text-sm' : 'text-lg'}`}
             >
@@ -797,6 +805,7 @@ export function AgentWorkbench({
             )}
           </div>
         </div>
+        )}
 
         {/* Mode toggle — hidden when Agent Desk parent owns Companies/Fill tabs */}
         {!hideChrome && (
@@ -880,19 +889,27 @@ export function AgentWorkbench({
         )}
 
         {/* Launch form */}
-        <div className={`mt-4 space-y-2.5 ${isCompact ? 'mt-3' : ''}`}>
+        <div
+          className={`space-y-3 ${
+            light && !isCompact
+              ? 'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm'
+              : isCompact
+                ? 'mt-3'
+                : 'mt-4'
+          }`}
+        >
           <textarea
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
-            rows={isCompact ? 2 : 3}
+            rows={isCompact ? 2 : light ? 3 : 3}
             className={`w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${
               light
-                ? 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-violet-300 focus:ring-violet-100'
+                ? 'border-slate-200 bg-slate-50/80 text-slate-900 placeholder:text-slate-400 focus:border-violet-300 focus:bg-white focus:ring-violet-100'
                 : 'border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus:border-violet-400/40 focus:bg-white/[0.07] focus:ring-violet-500/30'
             }`}
             placeholder={
               isResearch
-                ? 'Careers job URL or full JD — LLM builds Apollo filters (titles/location/keywords), then finds real people'
+                ? 'Careers job URL or full JD — Apollo filters, then real people'
                 : 'e.g. Construction companies in Palm Beach County under 300 employees — HR or owners…'
             }
           />
@@ -901,7 +918,13 @@ export function AgentWorkbench({
               <label className="block text-[10px] font-medium uppercase tracking-wide text-slate-500">
                 Location (optional)
               </label>
-              <div className="grid grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+              <div
+                className={`inline-flex max-w-full flex-wrap gap-0.5 rounded-lg border p-0.5 ${
+                  light
+                    ? 'border-slate-200 bg-slate-50'
+                    : 'border-white/10 bg-white/5'
+                }`}
+              >
                 {(
                   [
                     { id: 'job' as const, label: 'From job' },
@@ -913,10 +936,12 @@ export function AgentWorkbench({
                     key={opt.id}
                     type="button"
                     onClick={() => setFillLocationMode(opt.id)}
-                    className={`rounded-md px-1.5 py-1.5 text-[11px] font-medium transition ${
+                    className={`rounded-md px-2.5 py-1.5 text-[11px] font-medium transition ${
                       fillLocationMode === opt.id
-                        ? 'bg-sky-600 text-white shadow'
-                        : 'text-slate-400 hover:text-white'
+                        ? 'bg-sky-600 text-white shadow-sm'
+                        : light
+                          ? 'text-slate-600 hover:bg-white hover:text-slate-900'
+                          : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     {opt.label}
@@ -929,7 +954,11 @@ export function AgentWorkbench({
                   value={fillLocation}
                   onChange={(e) => setFillLocation(e.target.value)}
                   placeholder="e.g. Miami, FL · Remote · Texas"
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 outline-none focus:border-sky-400/40"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm outline-none ${
+                    light
+                      ? 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-sky-300'
+                      : 'border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus:border-sky-400/40'
+                  }`}
                 />
               )}
               <p className="text-[10px] text-slate-500">
@@ -941,96 +970,137 @@ export function AgentWorkbench({
               </p>
             </div>
           )}
-          {!isResearch && (
-            <div>
-              <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                Sharing
-              </label>
-              <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-white/10 bg-white/5 p-1">
-                <button
-                  type="button"
-                  onClick={() => setVisibility('private')}
-                  className={`rounded-md px-2 py-1.5 text-xs font-medium transition ${
-                    visibility === 'private'
-                      ? 'bg-violet-600 text-white shadow'
-                      : 'text-slate-400 hover:text-white'
+          {/* Actions row: sharing + launch — not full-bleed purple bars */}
+          <div
+            className={`flex flex-col gap-3 ${
+              light && !isCompact
+                ? 'sm:flex-row sm:items-end sm:justify-between'
+                : ''
+            }`}
+          >
+            {!isResearch && (
+              <div className={light ? 'sm:max-w-[220px]' : ''}>
+                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                  Sharing
+                </label>
+                <div
+                  className={`inline-flex rounded-lg border p-0.5 ${
+                    light
+                      ? 'border-slate-200 bg-slate-50'
+                      : 'w-full grid grid-cols-2 gap-1.5 border-white/10 bg-white/5 p-1'
                   }`}
                 >
-                  Private
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVisibility('public')}
-                  className={`rounded-md px-2 py-1.5 text-xs font-medium transition ${
-                    visibility === 'public'
-                      ? 'bg-violet-600 text-white shadow'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Public
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setVisibility('private')}
+                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                      visibility === 'private'
+                        ? 'bg-violet-600 text-white shadow-sm'
+                        : light
+                          ? 'text-slate-600 hover:bg-white hover:text-slate-900'
+                          : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Private
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVisibility('public')}
+                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                      visibility === 'public'
+                        ? 'bg-violet-600 text-white shadow-sm'
+                        : light
+                          ? 'text-slate-600 hover:bg-white hover:text-slate-900'
+                          : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Public
+                  </button>
+                </div>
+                <p className="mt-1 text-[10px] text-slate-500">
+                  {visibility === 'public'
+                    ? 'Teammates can view and import this list.'
+                    : 'Only you can see this list.'}
+                </p>
               </div>
-              <p className="mt-1 text-[10px] text-slate-500">
-                {visibility === 'public'
-                  ? 'Any teammate on your tenant can view and import this list.'
-                  : 'Only you can see this list.'}
+            )}
+            <div
+              className={`flex flex-col gap-1.5 ${
+                light && !isCompact ? 'sm:items-end' : ''
+              }`}
+            >
+              {!isCompact && !isResearch && (
+                <button
+                  type="button"
+                  onClick={() => setShowCsv((v) => !v)}
+                  className={`inline-flex items-center gap-1.5 text-xs ${
+                    light
+                      ? 'text-slate-500 hover:text-violet-700'
+                      : 'text-slate-400 hover:text-violet-200'
+                  }`}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  {showCsv ? 'Hide CSV seed' : 'Optional: paste CSV seed list'}
+                </button>
+              )}
+              <Button
+                type="button"
+                disabled={busyId === 'new' || researching}
+                onClick={() => void startJob()}
+                className={`h-10 rounded-xl text-sm font-semibold text-white shadow-md ${
+                  light && !isCompact
+                    ? 'w-full sm:w-auto sm:min-w-[200px] px-6'
+                    : 'w-full h-11'
+                } ${
+                  isResearch
+                    ? 'bg-sky-600 hover:bg-sky-500 shadow-sky-900/20'
+                    : 'bg-violet-600 hover:bg-violet-500 shadow-violet-900/20'
+                }`}
+              >
+                {busyId === 'new' || researching ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {isResearch ? 'Finding candidates…' : 'Launching…'}
+                  </>
+                ) : (
+                  <>
+                    {isResearch ? (
+                      <Target className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Sparkles className="mr-2 h-4 w-4" />
+                    )}
+                    {isResearch
+                      ? 'Find candidates'
+                      : 'Launch company agent'}
+                  </>
+                )}
+              </Button>
+              <p
+                className={`text-[10px] text-slate-500 ${
+                  light && !isCompact ? 'sm:text-right' : 'text-center'
+                }`}
+              >
+                {isResearch
+                  ? '1st run builds Apollo plan · edit → Search again'
+                  : 'Until usable leads · up to 2 hrs · pause anytime'}
               </p>
             </div>
-          )}
-          {!isCompact && !isResearch && (
-            <button
-              type="button"
-              onClick={() => setShowCsv((v) => !v)}
-              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-violet-200"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              {showCsv ? 'Hide CSV seed' : 'Optional: paste CSV seed list'}
-            </button>
-          )}
+          </div>
           {showCsv && !isCompact && !isResearch && (
             <textarea
               value={seedCsv}
               onChange={(e) => setSeedCsv(e.target.value)}
               rows={3}
-              className="w-full rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 font-mono text-[11px] text-slate-300 outline-none"
+              className={`w-full rounded-lg border px-2.5 py-2 font-mono text-[11px] outline-none ${
+                light
+                  ? 'border-slate-200 bg-slate-50 text-slate-800'
+                  : 'border-white/10 bg-black/20 text-slate-300'
+              }`}
               placeholder={
                 'company,website,city,contact,email,phone\nAcme Inc,acme.com,Miami,,,'
               }
             />
           )}
-          <Button
-            type="button"
-            disabled={busyId === 'new' || researching}
-            onClick={() => void startJob()}
-            className={`h-11 w-full rounded-xl text-sm font-semibold text-white shadow-lg ${
-              isResearch
-                ? 'bg-gradient-to-r from-sky-600 to-cyan-600 shadow-sky-900/40 hover:from-sky-500 hover:to-cyan-500'
-                : 'bg-gradient-to-r from-violet-600 to-indigo-600 shadow-violet-900/40 hover:from-violet-500 hover:to-indigo-500'
-            }`}
-          >
-            {busyId === 'new' || researching ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {isResearch ? 'Finding candidates…' : 'Launching…'}
-              </>
-            ) : (
-              <>
-                {isResearch ? (
-                  <Target className="mr-2 h-4 w-4" />
-                ) : (
-                  <Sparkles className="mr-2 h-4 w-4" />
-                )}
-                {isResearch
-                  ? 'Find candidates for this job'
-                  : 'Launch company agent'}
-              </>
-            )}
-          </Button>
-          <p className="text-center text-[10px] text-slate-500">
-            {isResearch
-              ? '1st run: LLM builds Apollo plan below · edit plan → Search again'
-              : 'Runs until target usable leads (email or phone) · up to 2 hours · pause anytime'}
-          </p>
 
           {/* Editable Apollo plan — collapses after results so list/links stay usable */}
           {isResearch && (
@@ -1197,10 +1267,20 @@ export function AgentWorkbench({
             </div>
           )}
         </div>
+        </div>
       </div>
 
       {/* Results — always scrollable and above any clipped form */}
-      <div className="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
+      <div
+        className={`relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-contain ${
+          light && !isCompact ? 'bg-slate-50/50 px-4 py-4 sm:px-6' : 'px-3 py-3'
+        }`}
+      >
+        <div
+          className={
+            light && !isCompact ? 'mx-auto w-full max-w-3xl' : undefined
+          }
+        >
         {isResearch ? (
           <>
             <div className="mb-2 flex items-center justify-between px-1">
@@ -1216,9 +1296,21 @@ export function AgentWorkbench({
             </div>
 
             {researchRuns.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-10 text-center">
-                <Target className="mx-auto h-8 w-8 text-slate-600" />
-                <p className="mt-3 text-sm font-medium text-slate-300">
+              <div
+                className={`rounded-2xl border border-dashed px-4 py-10 text-center ${
+                  light
+                    ? 'border-slate-200 bg-white'
+                    : 'border-white/10 bg-white/[0.02]'
+                }`}
+              >
+                <Target
+                  className={`mx-auto h-8 w-8 ${light ? 'text-slate-300' : 'text-slate-600'}`}
+                />
+                <p
+                  className={`mt-3 text-sm font-medium ${
+                    light ? 'text-slate-700' : 'text-slate-300'
+                  }`}
+                >
                   No sourcing runs yet
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
@@ -1534,14 +1626,18 @@ export function AgentWorkbench({
           </>
         ) : (
           <>
-        <div className="mb-2 flex items-center justify-between px-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+        <div className="mb-3 flex items-center justify-between px-0.5">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Active & recent
           </span>
           <button
             type="button"
             onClick={() => void load()}
-            className="text-[10px] text-slate-500 hover:text-slate-300"
+            className={`text-[11px] font-medium ${
+              light
+                ? 'text-slate-500 hover:text-violet-700'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
           >
             Refresh
           </button>
@@ -1553,9 +1649,21 @@ export function AgentWorkbench({
             Loading agents…
           </div>
         ) : jobs.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-10 text-center">
-            <Clock3 className="mx-auto h-8 w-8 text-slate-600" />
-            <p className="mt-3 text-sm font-medium text-slate-300">
+          <div
+            className={`rounded-2xl border border-dashed px-4 py-10 text-center ${
+              light
+                ? 'border-slate-200 bg-white'
+                : 'border-white/10 bg-white/[0.02]'
+            }`}
+          >
+            <Clock3
+              className={`mx-auto h-8 w-8 ${light ? 'text-slate-300' : 'text-slate-600'}`}
+            />
+            <p
+              className={`mt-3 text-sm font-medium ${
+                light ? 'text-slate-700' : 'text-slate-300'
+              }`}
+            >
               No agents yet
             </p>
             <p className="mt-1 text-xs text-slate-500">
@@ -1563,7 +1671,7 @@ export function AgentWorkbench({
             </p>
           </div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-2.5">
             {jobs.map((j) => {
               const meta = statusMeta(j.status);
               const Icon = meta.Icon;
@@ -1592,7 +1700,11 @@ export function AgentWorkbench({
               return (
                 <li
                   key={j.id}
-                  className="group rounded-2xl border border-white/10 bg-white/[0.04] p-3 shadow-sm transition hover:border-violet-400/30 hover:bg-white/[0.06]"
+                  className={`group rounded-xl border p-3.5 shadow-sm transition ${
+                    light
+                      ? 'border-slate-200 bg-white hover:border-violet-200 hover:shadow-md'
+                      : 'border-white/10 bg-white/[0.04] hover:border-violet-400/30 hover:bg-white/[0.06]'
+                  }`}
                 >
                   <div className="flex items-start gap-2.5">
                     <div
@@ -1718,7 +1830,11 @@ export function AgentWorkbench({
                     {(isDone || found > 0 || j.status === 'cancelled') && (
                       <Link
                         href={resultsPath(mode, j.id)}
-                        className="ml-auto inline-flex h-7 items-center gap-1 rounded-lg bg-white px-2.5 text-[11px] font-semibold text-slate-900 shadow-sm transition hover:bg-violet-100"
+                        className={`ml-auto inline-flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold shadow-sm transition ${
+                          light
+                            ? 'bg-violet-600 text-white hover:bg-violet-500'
+                            : 'bg-white text-slate-900 hover:bg-violet-100'
+                        }`}
                       >
                         View results
                         <ArrowUpRight className="h-3 w-3" />
@@ -1732,6 +1848,7 @@ export function AgentWorkbench({
         )}
           </>
         )}
+        </div>
       </div>
     </div>
   );
