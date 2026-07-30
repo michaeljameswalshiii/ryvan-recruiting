@@ -642,10 +642,10 @@ export function CompaniesClient() {
               }`}
             >
               <div className={`text-2xl font-semibold tabular-nums ${card.text}`}>{card.count}</div>
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mt-1">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-800 mt-1">
                 {card.label}
               </div>
-              <div className="text-[11px] text-gray-400 mt-0.5">{card.sub}</div>
+              <div className="text-[11px] text-slate-600 mt-0.5">{card.sub}</div>
             </button>
           );
         })}
