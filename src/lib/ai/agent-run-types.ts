@@ -44,6 +44,8 @@ export type AgentStep = {
   at: string;
 };
 
+export type AgentRunVisibility = 'private' | 'public';
+
 export type AgentRunSnapshot = {
   id: string;
   goal: string;
@@ -59,6 +61,13 @@ export type AgentRunSnapshot = {
   error?: string;
   createdAt: string;
   updatedAt: string;
+  /** private = only owner; public = whole tenant can open in Goal agent history */
+  visibility?: AgentRunVisibility;
+  /** Server-persisted (shareable) */
+  persisted?: boolean;
+  isOwner?: boolean;
+  ownerLabel?: string;
+  userId?: string;
 };
 
 export function newAgentId(prefix = 'run'): string {
@@ -68,7 +77,10 @@ export function newAgentId(prefix = 'run'): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function emptyAgentRun(goal: string): AgentRunSnapshot {
+export function emptyAgentRun(
+  goal: string,
+  opts?: { visibility?: AgentRunVisibility }
+): AgentRunSnapshot {
   const now = new Date().toISOString();
   return {
     id: newAgentId('run'),
@@ -82,6 +94,9 @@ export function emptyAgentRun(goal: string): AgentRunSnapshot {
     messages: [],
     createdAt: now,
     updatedAt: now,
+    visibility: opts?.visibility === 'public' ? 'public' : 'private',
+    isOwner: true,
+    persisted: false,
   };
 }
 

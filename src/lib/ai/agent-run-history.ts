@@ -24,6 +24,7 @@ function slimRun(run: AgentRunSnapshot): AgentRunSnapshot {
       ? String(run.lastAssistantText).slice(0, MAX_MSG_CHARS)
       : undefined,
     error: run.error ? String(run.error).slice(0, 500) : undefined,
+    visibility: run.visibility === 'public' ? 'public' : 'private',
     messages: (run.messages || [])
       .slice(-MAX_MESSAGES)
       .map((m) => ({

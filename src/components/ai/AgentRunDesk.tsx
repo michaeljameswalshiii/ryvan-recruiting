@@ -48,6 +48,7 @@ import {
   assistantSuggestsMoreWork,
   emptyAgentRun,
   newAgentId,
+  type AgentRunVisibility,
 } from '@/lib/ai/agent-run-types';
 import {
   clearAgentRuns,
@@ -135,18 +136,109 @@ export function AgentRunDesk({
   const [pastRuns, setPastRuns] = useState<AgentRunSnapshot[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  /** Default sharing for new goal runs */
+  const [defaultVisibility, setDefaultVisibility] =
+    useState<AgentRunVisibility>('private');
   const abortRef = useRef(false);
   const runRef = useRef(run);
   runRef.current = run;
   const bottomRef = useRef<HTMLDivElement>(null);
   const replyRef = useRef<HTMLTextAreaElement>(null);
+  const serverSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Follow app-wide theme (sidebar Light/Dark under logo)
   const { isDark } = useTheme();
   const dark = isDark;
 
-  const refreshPast = useCallback(() => {
-    setPastRuns(listAgentRuns(userId));
+  const mergePastRuns = useCallback(
+    (local: AgentRunSnapshot[], remote: AgentRunSnapshot[]) => {
+      const byId = new Map<string, AgentRunSnapshot>();
+      for (const r of remote) byId.set(r.id, r);
+      for (const r of local) {
+        const existing = byId.get(r.id);
+        if (!existing) {
+          byId.set(r.id, r);
+          continue;
+        }
+        // Prefer newer updatedAt
+        if (
+          new Date(r.updatedAt).getTime() >
+          new Date(existing.updatedAt).getTime()
+        ) {
+          byId.set(r.id, {
+            ...r,
+            visibility: r.visibility || existing.visibility,
+            persisted: r.persisted || existing.persisted,
+            isOwner: r.isOwner ?? existing.isOwner,
+            ownerLabel: r.ownerLabel || existing.ownerLabel,
+          });
+        }
+      }
+      return Array.from(byId.values()).sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+    },
+    []
+  );
+
+  const refreshPast = useCallback(async () => {
+    const local = listAgentRuns(userId);
+    try {
+      const res = await fetch('/api/agent/goal-runs', {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const remote = Array.isArray(data?.runs)
+          ? (data.runs as AgentRunSnapshot[])
+          : [];
+        setPastRuns(mergePastRuns(local, remote));
+        return;
+      }
+    } catch {
+      /* local only */
+    }
+    setPastRuns(local);
+  }, [userId, mergePastRuns]);
+
+  const syncRunToServer = useCallback(async (snapshot: AgentRunSnapshot) => {
+    try {
+      const res = await fetch('/api/agent/goal-runs', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          run: {
+            ...snapshot,
+            visibility: snapshot.visibility === 'public' ? 'public' : 'private',
+          },
+        }),
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      if (data?.run?.id && runRef.current?.id === data.run.id) {
+        const next: AgentRunSnapshot = {
+          ...runRef.current,
+          ...data.run,
+          persisted: true,
+          isOwner: true,
+        };
+        // Don't clobber in-flight status with paused from server mid-wave
+        if (
+          runRef.current.status === 'running' ||
+          runRef.current.status === 'planning'
+        ) {
+          next.status = runRef.current.status;
+        }
+        runRef.current = next;
+        setRun(next);
+        saveAgentRun(next, userId);
+      }
+    } catch {
+      /* offline ok */
+    }
   }, [userId]);
 
   // Resolve user + restore last active / most recent run
@@ -177,27 +269,69 @@ export function AgentRunDesk({
         };
         setRun(restored);
         setGoal(restored.goal);
+        if (restored.visibility === 'public' || restored.visibility === 'private') {
+          setDefaultVisibility(restored.visibility);
+        }
         runRef.current = restored;
       }
-      setPastRuns(listAgentRuns(uid));
-      setHydrated(true);
+      const local = listAgentRuns(uid);
+      try {
+        const res = await fetch('/api/agent/goal-runs', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const remote = Array.isArray(data?.runs)
+            ? (data.runs as AgentRunSnapshot[])
+            : [];
+          if (!cancelled) {
+            setPastRuns(mergePastRuns(local, remote));
+            setHydrated(true);
+            return;
+          }
+        }
+      } catch {
+        /* local */
+      }
+      if (!cancelled) {
+        setPastRuns(local);
+        setHydrated(true);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mergePastRuns]);
 
-  // Persist on every run change
+  // Persist on every run change (local + debounced server)
   useEffect(() => {
     if (!hydrated || !run) return;
     saveAgentRun(run, userId);
-    refreshPast();
-  }, [run, hydrated, userId, refreshPast]);
+    void refreshPast();
+    if (serverSyncTimer.current) clearTimeout(serverSyncTimer.current);
+    serverSyncTimer.current = setTimeout(() => {
+      void syncRunToServer(run);
+    }, 1200);
+    return () => {
+      if (serverSyncTimer.current) clearTimeout(serverSyncTimer.current);
+    };
+  }, [run, hydrated, userId, refreshPast, syncRunToServer]);
 
   // Persist on leave
   useEffect(() => {
     const flush = () => {
-      if (runRef.current) saveAgentRun(runRef.current, userId);
+      if (runRef.current) {
+        saveAgentRun(runRef.current, userId);
+        // fire-and-forget beacon-style save
+        void fetch('/api/agent/goal-runs', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ run: runRef.current }),
+          keepalive: true,
+        }).catch(() => {});
+      }
     };
     window.addEventListener('pagehide', flush);
     window.addEventListener('beforeunload', flush);
@@ -400,14 +534,58 @@ export function AgentRunDesk({
     []
   );
 
+  const setRunVisibility = async (next: AgentRunVisibility) => {
+    if (!run) {
+      setDefaultVisibility(next);
+      return;
+    }
+    const updated: AgentRunSnapshot = {
+      ...run,
+      visibility: next,
+      updatedAt: nowIso(),
+    };
+    setRun(updated);
+    runRef.current = updated;
+    saveAgentRun(updated, userId);
+    if (run.persisted || run.id) {
+      try {
+        const res = await fetch(`/api/agent/goal-runs/${run.id}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ visibility: next }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error(data.error || 'Could not update sharing');
+          return;
+        }
+        toast.success(
+          data.message ||
+            (next === 'public' ? 'Shared with team' : 'Now private')
+        );
+        if (data.run) {
+          const merged = { ...updated, ...data.run, visibility: next };
+          setRun(merged);
+          runRef.current = merged;
+          saveAgentRun(merged, userId);
+        }
+        void refreshPast();
+      } catch {
+        toast.error('Could not update sharing');
+      }
+    }
+  };
+
   const startRun = async () => {
     const g = goal.trim();
     if (!g || busy) return;
     abortRef.current = false;
-    const base = emptyAgentRun(g);
+    const base = emptyAgentRun(g, { visibility: defaultVisibility });
     base.status = 'running';
     base.wave = 1;
     base.messages = [{ role: 'user', content: g }];
+    base.isOwner = true;
     setRun(base);
     runRef.current = base;
     setBusy(true);
@@ -585,9 +763,16 @@ export function AgentRunDesk({
     };
     setRun(restored);
     setGoal(restored.goal);
+    if (restored.visibility === 'public' || restored.visibility === 'private') {
+      setDefaultVisibility(restored.visibility);
+    }
     runRef.current = restored;
     setHistoryOpen(false);
-    toast.success('Restored agent run');
+    toast.success(
+      restored.isOwner === false
+        ? 'Opened shared team run (view)'
+        : 'Restored agent run'
+    );
   };
 
   const newGoal = () => {
@@ -834,6 +1019,67 @@ export function AgentRunDesk({
                   : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-violet-300 focus:ring-violet-100'
               }`}
             />
+            {/* Sharing — private or public to tenant (same as Fill job / list builder) */}
+            <div className="mt-3">
+              <label
+                className={`text-[10px] font-semibold uppercase tracking-wide ${
+                  dark ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
+                Sharing
+              </label>
+              <div
+                className={`mt-1 inline-flex rounded-lg border p-0.5 ${
+                  dark
+                    ? 'border-white/10 bg-slate-950/60'
+                    : 'border-slate-200 bg-slate-50'
+                }`}
+              >
+                <button
+                  type="button"
+                  disabled={busy || (!!run && run.isOwner === false)}
+                  onClick={() =>
+                    void setRunVisibility('private')
+                  }
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
+                    (run?.visibility || defaultVisibility) === 'private'
+                      ? 'bg-violet-600 text-white shadow-sm'
+                      : dark
+                        ? 'text-slate-400 hover:text-white'
+                        : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Private
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || (!!run && run.isOwner === false)}
+                  onClick={() => void setRunVisibility('public')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
+                    (run?.visibility || defaultVisibility) === 'public'
+                      ? 'bg-violet-600 text-white shadow-sm'
+                      : dark
+                        ? 'text-slate-400 hover:text-white'
+                        : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Public
+                </button>
+              </div>
+              <p
+                className={`mt-1 text-[10px] ${
+                  dark ? 'text-slate-500' : 'text-slate-500'
+                }`}
+              >
+                {(run?.visibility || defaultVisibility) === 'public'
+                  ? 'Teammates open AI → CRM goal → History to view this run.'
+                  : 'Only you can see this run. Switch to Public to share.'}
+                {run?.isOwner === false && run?.ownerLabel
+                  ? ` Shared by ${run.ownerLabel}.`
+                  : ''}
+              </p>
+            </div>
+
             <div className="mt-2 flex flex-wrap gap-2">
               {!run ||
               ['completed', 'cancelled', 'failed', 'idle'].includes(
@@ -1331,25 +1577,127 @@ export function AgentRunDesk({
                         >
                           {r.status.replace(/_/g, ' ')}
                         </span>
+                        <span
+                          className={`rounded-full border px-1.5 py-0.5 font-semibold ${
+                            r.visibility === 'public'
+                              ? dark
+                                ? 'border-violet-500/40 bg-violet-500/15 text-violet-200'
+                                : 'border-violet-200 bg-violet-50 text-violet-800'
+                              : dark
+                                ? 'border-white/10 text-slate-400'
+                                : 'border-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {r.visibility === 'public' ? 'Public' : 'Private'}
+                          {r.isOwner === false && r.ownerLabel
+                            ? ` · ${r.ownerLabel}`
+                            : ''}
+                        </span>
                         <span>wave {r.wave}</span>
                         <span>{r.artifacts?.length || 0} results</span>
                         <span>{formatRunWhen(r.updatedAt)}</span>
                       </div>
                     </button>
-                    <button
-                      type="button"
-                      className="mt-1.5 text-[11px] text-rose-500 hover:underline"
-                      onClick={() => {
-                        if (confirm('Delete this agent run from history?')) {
-                          deleteAgentRun(r.id, userId);
-                          if (run?.id === r.id) setRun(null);
-                          refreshPast();
-                        }
-                      }}
-                    >
-                      <Trash2 className="inline h-3 w-3 mr-0.5" />
-                      Delete
-                    </button>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-3">
+                      {r.isOwner !== false && (
+                        <button
+                          type="button"
+                          className={`text-[11px] font-semibold hover:underline ${
+                            dark ? 'text-violet-300' : 'text-violet-700'
+                          }`}
+                          onClick={() => {
+                            const next =
+                              r.visibility === 'public' ? 'private' : 'public';
+                            void (async () => {
+                              try {
+                                const res = await fetch(
+                                  `/api/agent/goal-runs/${r.id}`,
+                                  {
+                                    method: 'PATCH',
+                                    credentials: 'include',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                      visibility: next,
+                                    }),
+                                  }
+                                );
+                                const data = await res
+                                  .json()
+                                  .catch(() => ({}));
+                                if (!res.ok) {
+                                  // Still update local if never persisted
+                                  const local = {
+                                    ...r,
+                                    visibility: next as AgentRunVisibility,
+                                  };
+                                  saveAgentRun(local, userId);
+                                  if (run?.id === r.id) {
+                                    setRun(local);
+                                    runRef.current = local;
+                                  }
+                                  await syncRunToServer(local);
+                                  void refreshPast();
+                                  toast.success(
+                                    next === 'public'
+                                      ? 'Shared with team'
+                                      : 'Now private'
+                                  );
+                                  return;
+                                }
+                                toast.success(
+                                  data.message ||
+                                    (next === 'public'
+                                      ? 'Shared with team'
+                                      : 'Now private')
+                                );
+                                if (run?.id === r.id && data.run) {
+                                  const merged = {
+                                    ...run,
+                                    ...data.run,
+                                    visibility: next,
+                                  };
+                                  setRun(merged);
+                                  runRef.current = merged;
+                                  saveAgentRun(merged, userId);
+                                } else {
+                                  saveAgentRun(
+                                    { ...r, visibility: next },
+                                    userId
+                                  );
+                                }
+                                void refreshPast();
+                              } catch {
+                                toast.error('Could not update sharing');
+                              }
+                            })();
+                          }}
+                        >
+                          {r.visibility === 'public'
+                            ? 'Make private'
+                            : 'Share with team'}
+                        </button>
+                      )}
+                      {r.isOwner !== false && (
+                        <button
+                          type="button"
+                          className="text-[11px] text-rose-500 hover:underline"
+                          onClick={() => {
+                            if (
+                              confirm('Delete this agent run from history?')
+                            ) {
+                              deleteAgentRun(r.id, userId);
+                              if (run?.id === r.id) setRun(null);
+                              void refreshPast();
+                            }
+                          }}
+                        >
+                          <Trash2 className="inline h-3 w-3 mr-0.5" />
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))
               )}
@@ -1366,14 +1714,14 @@ export function AgentRunDesk({
                     dark ? 'border-white/15 hover:bg-white/5' : ''
                   }`}
                   onClick={() => {
-                    if (confirm('Clear all agent run history?')) {
+                    if (confirm('Clear all local agent run history?')) {
                       clearAgentRuns(userId);
                       setRun(null);
-                      refreshPast();
+                      void refreshPast();
                     }
                   }}
                 >
-                  Clear all history
+                  Clear local history
                 </Button>
               </div>
             )}
