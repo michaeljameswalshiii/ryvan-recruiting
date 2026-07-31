@@ -17,6 +17,18 @@ export interface FitScoreResult {
   skillsMissing: string[];
 }
 
+export interface FitReviewAssessment {
+  score: number;
+  grade: FitGrade;
+  headline: string;
+  summary: string;
+  strengths: string[];
+  gaps: string[];
+  matchedSkills: string[];
+  missingSkills: string[];
+  confidence: "high" | "medium" | "low";
+}
+
 export interface FitCandidateInput {
   skills?: string[];
   title?: string;
@@ -1584,46 +1596,85 @@ function summarizeDomainHits(hits: string[]): string {
 }
 
 /**
+ * Build a structured reviewer-facing assessment from a fit score result.
+ */
+export function buildReviewerAssessment(
+  result: FitScoreResult
+): FitReviewAssessment {
+  const headline =
+    result.score >= 85
+      ? "Strong fit — likely worth advancing"
+      : result.score >= 70
+        ? "Good fit — promising with a few checks"
+        : result.score >= 55
+          ? "Partial fit — useful but needs validation"
+          : result.score >= 40
+            ? "Weak fit — likely not a top priority"
+            : "Poor fit — not a strong match on paper";
+
+  const summary =
+    result.score >= 85
+      ? "The profile shows strong alignment with the role and the resume reads as a credible match."
+      : result.score >= 70
+        ? "The candidate shows solid overlap with the role, with a few areas that deserve verification."
+        : result.score >= 55
+          ? "There is some alignment, but the case is not yet strong enough to move forward without checking gaps."
+          : result.score >= 40
+            ? "The profile appears only loosely aligned to the role and should be handled cautiously."
+            : "The fit is weak based on the current profile and resume signals.";
+
+  const confidence: FitReviewAssessment["confidence"] =
+    result.score >= 80 ? "high" : result.score >= 60 ? "medium" : "low";
+
+  return {
+    score: result.score,
+    grade: result.grade,
+    headline,
+    summary,
+    strengths: result.strengths.slice(0, 5),
+    gaps: result.gaps.slice(0, 4),
+    matchedSkills: result.skillsMatched.slice(0, 8),
+    missingSkills: result.skillsMissing.slice(0, 6),
+    confidence,
+  };
+}
+
+/**
  * Human-readable fit summary for activity notes + expandable UI.
  */
 export function formatFitSummary(result: FitScoreResult): string {
-  const tone =
-    result.score >= 85
-      ? "Strong overall fit"
-      : result.score >= 70
-        ? "Good fit with a few gaps to validate"
-        : result.score >= 55
-          ? "Partial fit — review gaps carefully"
-          : result.score >= 40
-            ? "Weak fit on paper"
-            : "Poor fit on paper";
-
+  const assessment = buildReviewerAssessment(result);
   const lines: string[] = [
-    `Fit ${result.score}/100 · Grade ${result.grade}`,
-    tone,
+    `Fit ${assessment.score}/100 · Grade ${assessment.grade}`,
+    assessment.headline,
+    "",
+    assessment.summary,
   ];
 
-  if (result.strengths.length) {
+  if (assessment.strengths.length) {
     lines.push("");
     lines.push("Why it fits");
-    for (const s of result.strengths.slice(0, 5)) {
+    for (const s of assessment.strengths) {
       lines.push(`• ${s}`);
     }
   }
 
-  if (result.gaps.length) {
+  if (assessment.gaps.length) {
     lines.push("");
     lines.push("Worth checking");
-    for (const g of result.gaps.slice(0, 4)) {
+    for (const g of assessment.gaps) {
       lines.push(`• ${g}`);
     }
   }
 
-  if (result.skillsMatched.length && result.strengths.length < 2) {
+  if (assessment.matchedSkills.length) {
     lines.push("");
-    lines.push(
-      `Skills evidenced: ${result.skillsMatched.slice(0, 8).join(", ")}`
-    );
+    lines.push(`Skills evidenced: ${assessment.matchedSkills.join(", ")}`);
+  }
+
+  if (assessment.missingSkills.length) {
+    lines.push("");
+    lines.push(`Potential gaps: ${assessment.missingSkills.join(", ")}`);
   }
 
   return lines.join("\n");
