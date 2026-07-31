@@ -41,11 +41,27 @@ Use the built-in smoke script to validate the fit-scoring reviewer path:
 npm run review:smoke
 ```
 
+You can also run the structured reviewer output test:
+
+```bash
+npm run review:structured
+```
+
 You can also run the resume parsing smoke test:
 
 ```bash
 npm run review:resume
 ```
+
+## Contact extraction utility
+
+This repo now includes a reusable contact extraction helper for pages like `https://byvertek.com/contact-us/`.
+
+```bash
+npm run contact:verify
+```
+
+It normalizes contact page HTML into a clean business record shape with company name, website, email, phone, addresses, and description.
 
 ## Security
 
