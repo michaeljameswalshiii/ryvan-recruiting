@@ -105,7 +105,10 @@ function inferCompanyName(
     const normalized = normalizeWhitespace(candidate).toLowerCase();
     if (genericTitles.has(normalized)) continue;
 
-    const cleaned = candidate.replace(/\s*[-|–|—]\s*.*$/, "").trim();
+    // Strip common title suffixes after -, |, :, en-dash, or em-dash.
+    const cleaned = candidate
+      .replace(/\s*[-|:\u2013\u2014]\s*.*$/u, "")
+      .trim();
     const cleanedNormalized = normalizeWhitespace(cleaned).toLowerCase();
     if (genericTitles.has(cleanedNormalized)) continue;
 
@@ -152,7 +155,9 @@ function extractDescription(text: string, html?: string): string {
   return general ? normalizeWhitespace(general[0]) : "";
 }
 
-export async function extractContactRecordFromUrl(sourceUrl: string): Promise<ContactExtractionResult> {
+export async function extractContactRecordFromUrl(
+  sourceUrl: string,
+): Promise<ContactExtractionResult> {
   const response = await fetch(sourceUrl, {
     headers: {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -187,7 +192,14 @@ export async function extractContactRecordFromUrl(sourceUrl: string): Promise<Co
   }
 
   const homepageText = stripHtml(homepageHtml);
-  const companyName = inferCompanyName(title, h1, ogTitle, sourceUrl, homepageText, homepageHtml);
+  const companyName = inferCompanyName(
+    title,
+    h1,
+    ogTitle,
+    sourceUrl,
+    homepageText,
+    homepageHtml,
+  );
   const emails = extractEmails(html, text);
   const phones = extractPhones(html, text);
   const urls = extractUrls(text);
