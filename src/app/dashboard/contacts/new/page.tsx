@@ -41,10 +41,12 @@ export default function NewContactPage() {
     name: "",
     title: "",
     email: "",
+    website: "",
     isPrimary: false,
     notes: "",
     companyId: "",
   });
+  const [isExtracting, setIsExtracting] = useState(false);
 
   const [phones, setPhones] = useState<PhoneEntry[]>([
     { id: generateId(), type: "work", number: "", isPreferred: true },
@@ -71,6 +73,62 @@ const handleAddPhone = () => {
       setPhones(phones.map((p) => (p.id === id ? { ...p, isPreferred: true } : { ...p, isPreferred: false })));
     } else {
       setPhones(phones.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
+    }
+  };
+
+  const handleExtractFromWebsite = async () => {
+    if (!formData.website.trim()) {
+      toast.error("Please enter a website URL first");
+      return;
+    }
+
+    setIsExtracting(true);
+
+    try {
+      const response = await fetch("/api/contact/extract", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url: formData.website.trim() }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || "Unable to extract contact details");
+      }
+
+      const { record } = payload;
+
+      if (record.email && !formData.email.trim()) {
+        setFormData((current) => ({ ...current, email: record.email }));
+      }
+
+      if (record.phone) {
+        setPhones((current) => {
+          const next = [...current];
+          const firstPhone = next[0] ?? {
+            id: generateId(),
+            type: "work",
+            number: "",
+            isPreferred: true,
+          };
+          firstPhone.number = firstPhone.number || record.phone;
+          if (!next.length) next.push(firstPhone);
+          else next[0] = { ...firstPhone, id: next[0].id };
+          return next;
+        });
+      }
+
+      if (record.companyName) {
+        toast.success(`Extracted contact details from ${record.companyName}`);
+      } else {
+        toast.success("Contact details extracted from website");
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Unable to extract contact details");
+    } finally {
+      setIsExtracting(false);
     }
   };
 
@@ -202,6 +260,28 @@ const handleAddPhone = () => {
                 placeholder="john@company.com"
                 required
               />
+            </div>
+
+            <div>
+              <Label htmlFor="website">Company Website URL</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="website"
+                  type="url"
+                  value={formData.website}
+                  onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                  placeholder="https://example.com/contact-us"
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleExtractFromWebsite}
+                  disabled={isExtracting}
+                >
+                  {isExtracting ? "Extracting..." : "Autofill"}
+                </Button>
+              </div>
             </div>
 
             {/* Phone Numbers Section */}
