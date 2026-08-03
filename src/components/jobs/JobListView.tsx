@@ -259,16 +259,15 @@ export function JobListView({ jobs }: JobListViewProps) {
     });
   };
 
-  // Note: avoid light pastel classes (bg-emerald-50 etc.) on dark UI — they stay in
-  // the class list and global CSS maps them to near-black ink on charcoal.
+  // Light: white cards. Dark: slate-800 + data-dark-panel → pure white labels.
+  // Never leave pastel bg-*-50 classes on dark surfaces (global ink remap).
   const statCards: {
     key: JobBucket;
     label: string;
     sub: string;
     count: number;
     ring: string;
-    bg: string;
-    countClass: string;
+    countLight: string;
   }[] = [
     {
       key: 'all',
@@ -276,8 +275,7 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Click to show all',
       count: stats.all,
       ring: 'ring-blue-400',
-      bg: 'bg-white dark:bg-slate-800',
-      countClass: 'text-slate-900 dark:text-white',
+      countLight: 'text-slate-900',
     },
     {
       key: 'open',
@@ -285,8 +283,7 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Actively hiring',
       count: stats.open,
       ring: 'ring-emerald-400',
-      bg: 'bg-white dark:bg-slate-800',
-      countClass: 'text-emerald-700 dark:text-emerald-300',
+      countLight: 'text-emerald-700',
     },
     {
       key: 'paused',
@@ -294,8 +291,7 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Temporarily on hold',
       count: stats.paused,
       ring: 'ring-amber-400',
-      bg: 'bg-white dark:bg-slate-800',
-      countClass: 'text-amber-700 dark:text-amber-300',
+      countLight: 'text-amber-700',
     },
     {
       key: 'filled',
@@ -303,8 +299,7 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Placed / won',
       count: stats.filled,
       ring: 'ring-sky-400',
-      bg: 'bg-white dark:bg-slate-800',
-      countClass: 'text-sky-700 dark:text-sky-300',
+      countLight: 'text-sky-700',
     },
     {
       key: 'lost',
@@ -312,8 +307,7 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Lost the req',
       count: stats.lost,
       ring: 'ring-rose-400',
-      bg: 'bg-white dark:bg-slate-800',
-      countClass: 'text-rose-700 dark:text-rose-300',
+      countLight: 'text-rose-700',
     },
     {
       key: 'closed',
@@ -321,8 +315,7 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Closed out',
       count: stats.closed,
       ring: 'ring-slate-400',
-      bg: 'bg-white dark:bg-slate-800',
-      countClass: 'text-slate-800 dark:text-slate-200',
+      countLight: 'text-slate-800',
     },
     {
       key: 'with_candidates',
@@ -330,8 +323,7 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Has candidates',
       count: stats.with_candidates,
       ring: 'ring-indigo-400',
-      bg: 'bg-white dark:bg-slate-800',
-      countClass: 'text-indigo-700 dark:text-indigo-300',
+      countLight: 'text-indigo-700',
     },
     {
       key: 'no_candidates',
@@ -339,8 +331,7 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'No candidates yet',
       count: stats.no_candidates,
       ring: 'ring-violet-400',
-      bg: 'bg-white dark:bg-slate-800',
-      countClass: 'text-violet-700 dark:text-violet-300',
+      countLight: 'text-violet-700',
     },
   ];
 
@@ -354,20 +345,23 @@ export function JobListView({ jobs }: JobListViewProps) {
             <button
               key={card.key}
               type="button"
+              data-dark-panel
               onClick={() => setBucket(card.key)}
-              className={`text-left rounded-2xl border px-4 py-3.5 shadow-sm transition-all ${card.bg} ${
+              className={`text-left rounded-2xl border px-4 py-3.5 shadow-sm transition-all bg-white dark:bg-slate-800 ${
                 active
-                  ? `ring-2 ${card.ring} border-blue-400 dark:border-blue-400 shadow-md`
-                  : 'border-gray-200 dark:border-slate-600 hover:border-gray-300 dark:hover:border-slate-500 hover:shadow'
+                  ? `ring-2 ${card.ring} border-blue-400 shadow-md`
+                  : 'border-gray-200 dark:border-slate-500 hover:border-gray-300 dark:hover:border-slate-400 hover:shadow'
               }`}
             >
-              <div className={`text-2xl font-semibold tabular-nums ${card.countClass}`}>
+              <div
+                className={`text-2xl font-semibold tabular-nums ${card.countLight} dark:!text-white`}
+              >
                 {card.count}
               </div>
-              <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-800 dark:text-white">
+              <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-800 dark:!text-white">
                 {card.label}
               </div>
-              <div className="mt-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-200">
+              <div className="mt-0.5 text-[11px] font-medium text-slate-600 dark:!text-white/90">
                 {card.sub}
               </div>
             </button>
@@ -378,19 +372,20 @@ export function JobListView({ jobs }: JobListViewProps) {
       {/* Search / sort */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
         <div className="relative w-full sm:max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-white/70" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search jobs..."
-            className="pl-9 bg-white"
+            className="pl-9 bg-white dark:bg-slate-800 dark:text-white dark:border-slate-500 dark:placeholder:text-white/60"
           />
         </div>
         <div className="flex items-center gap-3">
           <select
+            data-dark-panel
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as SortKey)}
-            className="border border-gray-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+            className="border border-gray-200 dark:border-slate-500 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:!text-white shadow-sm"
             aria-label="Sort jobs"
           >
             <option value="last_activity">Sort: Last Action</option>
@@ -399,7 +394,7 @@ export function JobListView({ jobs }: JobListViewProps) {
             <option value="candidates">Sort: Candidates</option>
             <option value="status">Sort: Status</option>
           </select>
-          <span className="text-xs font-medium text-slate-600 dark:text-slate-200 whitespace-nowrap">
+          <span className="text-xs font-medium text-slate-600 dark:!text-white whitespace-nowrap">
             {filtered.length} job{filtered.length === 1 ? '' : 's'}
             {filtered.length > DEFAULT_PAGE_SIZE
               ? ` · page ${paged.page}/${paged.totalPages}`
@@ -415,7 +410,7 @@ export function JobListView({ jobs }: JobListViewProps) {
           total={paged.total}
           onPageChange={setPage}
           itemLabel={paged.total === 1 ? 'job' : 'jobs'}
-          className="rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 shadow-sm"
+          className="rounded-xl border border-gray-200 dark:border-slate-500 bg-white dark:bg-slate-800 px-3 py-2 shadow-sm"
         />
       )}
 

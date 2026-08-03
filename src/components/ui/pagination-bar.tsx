@@ -1,11 +1,8 @@
 'use client';
 
 /**
- * Top-of-list numbered pagination (5 items per page by default).
- * Place above tables / timelines so users can jump without scrolling first.
- *
- * Contrast: never rely on text-foreground / muted-foreground alone on white
- * bars in dark mode (those tokens are near-white on charcoal canvas).
+ * Top-of-list numbered pagination.
+ * Dark mode: white text on dark panels (data-dark-panel + explicit classes).
  */
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -68,10 +65,8 @@ export type PaginationBarProps = {
   total: number;
   pageSize?: number;
   onPageChange: (page: number) => void;
-  /** e.g. "companies", "activities" */
   itemLabel?: string;
   className?: string;
-  /** Hide entirely when only one page (default true) */
   hideWhenSinglePage?: boolean;
 };
 
@@ -89,7 +84,8 @@ export function PaginationBar({
   if (hideWhenSinglePage && totalPages <= 1) {
     return (
       <div
-        className={`flex items-center justify-between gap-2 text-xs font-medium text-slate-700 dark:text-slate-100 ${className}`}
+        data-dark-panel
+        className={`flex items-center justify-between gap-2 text-xs font-medium text-slate-800 dark:!text-white ${className}`}
       >
         <span>
           {total} {itemLabel}
@@ -104,17 +100,18 @@ export function PaginationBar({
 
   return (
     <div
+      data-dark-panel
       className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${className}`}
       role="navigation"
       aria-label="Pagination"
     >
-      <p className="text-xs font-medium tabular-nums text-slate-700 dark:text-slate-100">
+      <p className="text-xs font-medium tabular-nums text-slate-800 dark:!text-white">
         Showing{' '}
-        <span className="font-semibold text-slate-900 dark:text-white">
+        <span className="font-bold text-slate-900 dark:!text-white">
           {start}–{end}
         </span>{' '}
         of{' '}
-        <span className="font-semibold text-slate-900 dark:text-white">{total}</span>{' '}
+        <span className="font-bold text-slate-900 dark:!text-white">{total}</span>{' '}
         {itemLabel}
       </p>
       <div className="flex flex-wrap items-center gap-1">
@@ -122,7 +119,7 @@ export function PaginationBar({
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 w-8 p-0 border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-700 text-slate-800 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-600"
+          className="h-8 w-8 p-0 border-slate-300 dark:border-white/40 bg-white dark:bg-slate-700 text-slate-900 dark:!text-white hover:bg-slate-100 dark:hover:bg-slate-600"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
           aria-label="Previous page"
@@ -133,7 +130,7 @@ export function PaginationBar({
           n === '…' ? (
             <span
               key={`e-${i}`}
-              className="px-1.5 text-xs font-medium text-slate-600 dark:text-slate-200 select-none"
+              className="px-1.5 text-xs font-medium text-slate-600 dark:!text-white select-none"
             >
               …
             </span>
@@ -141,12 +138,11 @@ export function PaginationBar({
             <Button
               key={n}
               type="button"
-              variant={n === page ? 'default' : 'outline'}
               size="sm"
-              className={`h-8 min-w-8 px-2 text-xs font-semibold tabular-nums ${
+              className={`h-8 min-w-8 px-2 text-xs font-bold tabular-nums ${
                 n === page
-                  ? 'pointer-events-none bg-blue-600 text-white border-blue-600'
-                  : 'border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-700 text-slate-800 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-600'
+                  ? 'pointer-events-none bg-blue-600 text-white border-blue-600 hover:bg-blue-600'
+                  : 'border border-slate-300 dark:border-white/40 bg-white dark:bg-slate-700 text-slate-900 dark:!text-white hover:bg-slate-100 dark:hover:bg-slate-600'
               }`}
               onClick={() => onPageChange(n)}
               aria-label={`Page ${n}`}
@@ -160,7 +156,7 @@ export function PaginationBar({
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 w-8 p-0 border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-700 text-slate-800 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-600"
+          className="h-8 w-8 p-0 border-slate-300 dark:border-white/40 bg-white dark:bg-slate-700 text-slate-900 dark:!text-white hover:bg-slate-100 dark:hover:bg-slate-600"
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
           aria-label="Next page"

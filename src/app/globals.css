@@ -171,63 +171,105 @@
 
 /*
  * Dark mode: light / pastel surfaces keep dark ink.
- * Covers white cards, stage chips, search bars, tables across the app.
- * Does NOT target low-opacity overlays like bg-white/5 (dark-panel chrome).
- * Also does NOT target full-page wrappers (use bg-background, not bg-gray-50).
+ * CRITICAL: only when the element is ACTUALLY light. If Tailwind also has
+ * dark:bg-* (class name still includes bg-white), do NOT force black ink —
+ * that made Jobs filter cards / pagination unreadable.
  */
-.dark .bg-white,
-.dark .bg-white\/70,
-.dark .bg-white\/80,
-.dark .bg-white\/90,
-.dark .bg-gray-50,
-.dark .bg-gray-50\/50,
-.dark .bg-gray-50\/80,
-.dark .bg-slate-50,
-.dark .bg-slate-50\/50,
-.dark .bg-slate-50\/60,
-.dark .bg-slate-50\/80,
-.dark .bg-zinc-50,
-.dark .bg-neutral-50,
-.dark .bg-stone-50,
-.dark .bg-sky-50,
-.dark .bg-sky-50\/40,
-.dark .bg-sky-50\/50,
-.dark .bg-sky-50\/60,
-.dark .bg-sky-50\/80,
-.dark .bg-blue-50,
-.dark .bg-blue-50\/40,
-.dark .bg-blue-50\/50,
-.dark .bg-blue-50\/60,
-.dark .bg-blue-50\/80,
-.dark .bg-violet-50,
-.dark .bg-violet-50\/40,
-.dark .bg-violet-50\/50,
-.dark .bg-violet-50\/60,
-.dark .bg-violet-50\/80,
-.dark .bg-purple-50,
-.dark .bg-indigo-50,
-.dark .bg-indigo-50\/40,
-.dark .bg-indigo-50\/50,
-.dark .bg-indigo-50\/60,
-.dark .bg-amber-50,
-.dark .bg-amber-50\/50,
-.dark .bg-amber-50\/80,
-.dark .bg-yellow-50,
-.dark .bg-orange-50,
-.dark .bg-emerald-50,
-.dark .bg-emerald-50\/50,
-.dark .bg-emerald-50\/60,
-.dark .bg-emerald-50\/80,
-.dark .bg-green-50,
-.dark .bg-green-50\/50,
-.dark .bg-green-50\/60,
-.dark .bg-teal-50,
-.dark .bg-cyan-50,
-.dark .bg-rose-50,
-.dark .bg-rose-50\/70,
-.dark .bg-red-50,
-.dark .bg-pink-50 {
-  color: #0f172a; /* slate-900 — primary ink on light surfaces */
+.dark .bg-white:not([class*="dark:bg-"]),
+.dark .bg-white\/70:not([class*="dark:bg-"]),
+.dark .bg-white\/80:not([class*="dark:bg-"]),
+.dark .bg-white\/90:not([class*="dark:bg-"]),
+.dark .bg-gray-50:not([class*="dark:bg-"]),
+.dark .bg-gray-50\/50:not([class*="dark:bg-"]),
+.dark .bg-gray-50\/80:not([class*="dark:bg-"]),
+.dark .bg-slate-50:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/50:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/60:not([class*="dark:bg-"]),
+.dark .bg-slate-50\/80:not([class*="dark:bg-"]),
+.dark .bg-zinc-50:not([class*="dark:bg-"]),
+.dark .bg-neutral-50:not([class*="dark:bg-"]),
+.dark .bg-stone-50:not([class*="dark:bg-"]),
+.dark .bg-sky-50:not([class*="dark:bg-"]),
+.dark .bg-sky-50\/40:not([class*="dark:bg-"]),
+.dark .bg-sky-50\/50:not([class*="dark:bg-"]),
+.dark .bg-sky-50\/60:not([class*="dark:bg-"]),
+.dark .bg-sky-50\/80:not([class*="dark:bg-"]),
+.dark .bg-blue-50:not([class*="dark:bg-"]),
+.dark .bg-blue-50\/40:not([class*="dark:bg-"]),
+.dark .bg-blue-50\/50:not([class*="dark:bg-"]),
+.dark .bg-blue-50\/60:not([class*="dark:bg-"]),
+.dark .bg-blue-50\/80:not([class*="dark:bg-"]),
+.dark .bg-violet-50:not([class*="dark:bg-"]),
+.dark .bg-violet-50\/40:not([class*="dark:bg-"]),
+.dark .bg-violet-50\/50:not([class*="dark:bg-"]),
+.dark .bg-violet-50\/60:not([class*="dark:bg-"]),
+.dark .bg-violet-50\/80:not([class*="dark:bg-"]),
+.dark .bg-purple-50:not([class*="dark:bg-"]),
+.dark .bg-indigo-50:not([class*="dark:bg-"]),
+.dark .bg-indigo-50\/40:not([class*="dark:bg-"]),
+.dark .bg-indigo-50\/50:not([class*="dark:bg-"]),
+.dark .bg-indigo-50\/60:not([class*="dark:bg-"]),
+.dark .bg-amber-50:not([class*="dark:bg-"]),
+.dark .bg-amber-50\/50:not([class*="dark:bg-"]),
+.dark .bg-amber-50\/80:not([class*="dark:bg-"]),
+.dark .bg-yellow-50:not([class*="dark:bg-"]),
+.dark .bg-orange-50:not([class*="dark:bg-"]),
+.dark .bg-emerald-50:not([class*="dark:bg-"]),
+.dark .bg-emerald-50\/50:not([class*="dark:bg-"]),
+.dark .bg-emerald-50\/60:not([class*="dark:bg-"]),
+.dark .bg-emerald-50\/80:not([class*="dark:bg-"]),
+.dark .bg-green-50:not([class*="dark:bg-"]),
+.dark .bg-green-50\/50:not([class*="dark:bg-"]),
+.dark .bg-green-50\/60:not([class*="dark:bg-"]),
+.dark .bg-teal-50:not([class*="dark:bg-"]),
+.dark .bg-cyan-50:not([class*="dark:bg-"]),
+.dark .bg-rose-50:not([class*="dark:bg-"]),
+.dark .bg-rose-50\/70:not([class*="dark:bg-"]),
+.dark .bg-red-50:not([class*="dark:bg-"]),
+.dark .bg-pink-50:not([class*="dark:bg-"]) {
+  color: #0f172a; /* slate-900 — primary ink on truly light surfaces only */
+}
+
+/*
+ * Dual-theme panels: light fill + dark:bg-* → white text in dark mode.
+ * User rule: on dark chrome, labels and counts must be white / near-white.
+ */
+.dark [data-dark-panel],
+.dark .bg-white[class*="dark:bg-slate"],
+.dark .bg-white[class*="dark:bg-gray"],
+.dark .bg-white[class*="dark:bg-zinc"],
+.dark .bg-white[class*="dark:bg-neutral"],
+.dark .bg-white[class*="dark:bg-card"] {
+  color: #ffffff !important;
+}
+.dark [data-dark-panel] *,
+.dark .bg-white[class*="dark:bg-slate"] *:not(a):not(button),
+.dark .bg-white[class*="dark:bg-slate"] button {
+  /* Keep buttons able to set their own colors; force body copy white */
+}
+.dark [data-dark-panel] {
+  color: #ffffff !important;
+}
+.dark [data-dark-panel] .text-slate-800,
+.dark [data-dark-panel] .text-slate-700,
+.dark [data-dark-panel] .text-slate-600,
+.dark [data-dark-panel] .text-slate-500,
+.dark [data-dark-panel] .text-slate-400,
+.dark [data-dark-panel] .text-slate-300,
+.dark [data-dark-panel] .text-slate-200,
+.dark [data-dark-panel] .text-gray-900,
+.dark [data-dark-panel] .text-gray-800,
+.dark [data-dark-panel] .text-gray-700,
+.dark [data-dark-panel] .text-gray-600,
+.dark [data-dark-panel] .text-gray-500,
+.dark [data-dark-panel] .text-gray-400,
+.dark [data-dark-panel] .text-muted-foreground,
+.dark [data-dark-panel] .text-foreground {
+  color: #ffffff !important;
+}
+.dark [data-dark-panel] svg {
+  color: #ffffff !important;
+  stroke: currentColor;
 }
 
 /* Nested secondary copy + muted labels inside pastel panels */
