@@ -1283,11 +1283,34 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 )}
               </div>
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {primaryJob && (
-                  <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-800">
-                    {primaryJob.jobTitle || 'Linked job'}
-                  </span>
-                )}
+                {linkedJobs.map((job: any) => {
+                  const jid = job.jobId || job.id;
+                  const title = job.jobTitle || job.title || 'Linked job';
+                  if (!jid) {
+                    return (
+                      <span
+                        key={`job-tag-${title}`}
+                        className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-800"
+                      >
+                        {title}
+                      </span>
+                    );
+                  }
+                  return (
+                    <Link
+                      key={jid}
+                      href={`/dashboard/jobs/${jid}`}
+                      title={
+                        job.companyName
+                          ? `Open job: ${title} · ${job.companyName}`
+                          : `Open job: ${title}`
+                      }
+                      className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-800 hover:bg-indigo-100 hover:border-indigo-300 hover:underline"
+                    >
+                      {title}
+                    </Link>
+                  );
+                })}
                 <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-800">
                   {currentStepLabel}
                 </span>
