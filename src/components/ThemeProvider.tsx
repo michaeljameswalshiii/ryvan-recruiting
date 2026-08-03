@@ -32,9 +32,13 @@ function normalizeTheme(raw: string | null): ThemeMode | null {
   return null;
 }
 
-/** Injected at runtime so contrast rules always apply (bypass CSS build quirks). */
+/**
+ * Injected into document.head (always last).
+ * Dark mode only for light-panel black text — light mode uses normal Tailwind.
+ * Black/dark boxes → white text in BOTH themes.
+ */
 const CONTRAST_LAW_CSS = `
-/* Black / dark solid box → WHITE writing (self + children) */
+/* ===== BLACK / DARK BOX → WHITE TEXT (always) ===== */
 .bg-black,.bg-black *,
 .bg-slate-950,.bg-slate-950 *,.bg-slate-900,.bg-slate-900 *,.bg-slate-800,.bg-slate-800 *,
 .bg-gray-950,.bg-gray-950 *,.bg-gray-900,.bg-gray-900 *,.bg-gray-800,.bg-gray-800 *,
@@ -52,54 +56,65 @@ const CONTRAST_LAW_CSS = `
   color:#ffffff !important;
   -webkit-text-fill-color:#ffffff !important;
 }
-/* Light solid box → BLACK writing (self + children) */
-.bg-white,.bg-white *,
-.bg-gray-50,.bg-gray-50 *,.bg-gray-100,.bg-gray-100 *,
-.bg-slate-50,.bg-slate-50 *,.bg-slate-100,.bg-slate-100 *,
-.bg-zinc-50,.bg-zinc-50 *,.bg-neutral-50,.bg-neutral-50 *,.bg-stone-50,.bg-stone-50 *,
-.bg-sky-50,.bg-sky-50 *,.bg-blue-50,.bg-blue-50 *,.bg-violet-50,.bg-violet-50 *,
-.bg-purple-50,.bg-purple-50 *,.bg-indigo-50,.bg-indigo-50 *,
-.bg-amber-50,.bg-amber-50 *,.bg-yellow-50,.bg-yellow-50 *,.bg-orange-50,.bg-orange-50 *,
-.bg-emerald-50,.bg-emerald-50 *,.bg-green-50,.bg-green-50 *,.bg-teal-50,.bg-teal-50 *,
-.bg-cyan-50,.bg-cyan-50 *,.bg-rose-50,.bg-rose-50 *,.bg-red-50,.bg-red-50 *,.bg-pink-50,.bg-pink-50 *,
-[data-ink-on-light],[data-ink-on-light] *{
+
+/* ===== DARK MODE ONLY: light box → BLACK text ===== */
+html.dark .bg-white,html.dark .bg-white *,
+html.dark .bg-gray-50,html.dark .bg-gray-50 *,
+html.dark .bg-gray-100,html.dark .bg-gray-100 *,
+html.dark .bg-slate-50,html.dark .bg-slate-50 *,
+html.dark .bg-slate-100,html.dark .bg-slate-100 *,
+html.dark .bg-zinc-50,html.dark .bg-zinc-50 *,
+html.dark .bg-neutral-50,html.dark .bg-neutral-50 *,
+html.dark .bg-stone-50,html.dark .bg-stone-50 *,
+html.dark .bg-sky-50,html.dark .bg-sky-50 *,
+html.dark .bg-blue-50,html.dark .bg-blue-50 *,
+html.dark .bg-violet-50,html.dark .bg-violet-50 *,
+html.dark .bg-purple-50,html.dark .bg-purple-50 *,
+html.dark .bg-indigo-50,html.dark .bg-indigo-50 *,
+html.dark .bg-amber-50,html.dark .bg-amber-50 *,
+html.dark .bg-yellow-50,html.dark .bg-yellow-50 *,
+html.dark .bg-orange-50,html.dark .bg-orange-50 *,
+html.dark .bg-emerald-50,html.dark .bg-emerald-50 *,
+html.dark .bg-green-50,html.dark .bg-green-50 *,
+html.dark .bg-teal-50,html.dark .bg-teal-50 *,
+html.dark .bg-cyan-50,html.dark .bg-cyan-50 *,
+html.dark .bg-rose-50,html.dark .bg-rose-50 *,
+html.dark .bg-red-50,html.dark .bg-red-50 *,
+html.dark .bg-pink-50,html.dark .bg-pink-50 *,
+html.dark [data-ink-on-light],html.dark [data-ink-on-light] *{
   color:#0f172a !important;
   -webkit-text-fill-color:#0f172a !important;
 }
-/* Dark buttons inside light panels stay WHITE (must come after light rule) */
-.bg-white .bg-black,.bg-white .bg-black *,
-.bg-white .bg-slate-900,.bg-white .bg-slate-900 *,
-.bg-white .bg-slate-800,.bg-white .bg-slate-800 *,
-.bg-white .bg-gray-900,.bg-white .bg-gray-900 *,
-.bg-white .bg-blue-600,.bg-white .bg-blue-600 *,
-.bg-white .bg-blue-700,.bg-white .bg-blue-700 *,
-.bg-white .bg-emerald-600,.bg-white .bg-emerald-600 *,
-.bg-white .bg-emerald-700,.bg-white .bg-emerald-700 *,
-.bg-white .bg-indigo-600,.bg-white .bg-indigo-600 *,
-.bg-white .bg-violet-600,.bg-white .bg-violet-600 *,
-.bg-white .bg-primary,.bg-white .bg-primary *,
-.bg-amber-50 .bg-slate-900,.bg-amber-50 .bg-slate-900 *,
-.bg-amber-50 .bg-slate-800,.bg-amber-50 .bg-slate-800 *,
-.bg-amber-50 .bg-blue-600,.bg-amber-50 .bg-blue-600 *,
-.bg-amber-50 .bg-emerald-700,.bg-amber-50 .bg-emerald-700 *,
-[data-ink-on-light] .bg-black,[data-ink-on-light] .bg-black *,
-[data-ink-on-light] .bg-slate-900,[data-ink-on-light] .bg-slate-900 *,
-[data-ink-on-light] .bg-slate-800,[data-ink-on-light] .bg-slate-800 *,
-[data-ink-on-light] .bg-gray-900,[data-ink-on-light] .bg-gray-900 *,
-[data-ink-on-light] .bg-blue-600,[data-ink-on-light] .bg-blue-600 *,
-[data-ink-on-light] .bg-blue-700,[data-ink-on-light] .bg-blue-700 *,
-[data-ink-on-light] .bg-emerald-600,[data-ink-on-light] .bg-emerald-600 *,
-[data-ink-on-light] .bg-emerald-700,[data-ink-on-light] .bg-emerald-700 *,
-[data-ink-on-light] .bg-indigo-600,[data-ink-on-light] .bg-indigo-600 *,
-[data-ink-on-light] .bg-violet-600,[data-ink-on-light] .bg-violet-600 *,
-[data-ink-on-light] .bg-primary,[data-ink-on-light] .bg-primary *,
-[data-ink-on-light] [data-ink-keep],[data-ink-on-light] [data-ink-keep] *{
+
+/* Dark buttons inside light panels: WHITE (after light rule) */
+html.dark .bg-white .bg-slate-900,html.dark .bg-white .bg-slate-900 *,
+html.dark .bg-white .bg-slate-800,html.dark .bg-white .bg-slate-800 *,
+html.dark .bg-white .bg-gray-900,html.dark .bg-white .bg-gray-900 *,
+html.dark .bg-white .bg-black,html.dark .bg-white .bg-black *,
+html.dark .bg-white .bg-blue-600,html.dark .bg-white .bg-blue-600 *,
+html.dark .bg-white .bg-blue-700,html.dark .bg-white .bg-blue-700 *,
+html.dark .bg-white .bg-emerald-600,html.dark .bg-white .bg-emerald-600 *,
+html.dark .bg-white .bg-emerald-700,html.dark .bg-white .bg-emerald-700 *,
+html.dark .bg-white .bg-indigo-600,html.dark .bg-white .bg-indigo-600 *,
+html.dark .bg-white .bg-violet-600,html.dark .bg-white .bg-violet-600 *,
+html.dark .bg-white .bg-primary,html.dark .bg-white .bg-primary *,
+html.dark .bg-amber-50 .bg-slate-900,html.dark .bg-amber-50 .bg-slate-900 *,
+html.dark .bg-amber-50 .bg-slate-800,html.dark .bg-amber-50 .bg-slate-800 *,
+html.dark .bg-amber-50 .bg-blue-600,html.dark .bg-amber-50 .bg-blue-600 *,
+html.dark .bg-amber-50 .bg-emerald-700,html.dark .bg-amber-50 .bg-emerald-700 *,
+html.dark [data-ink-on-light] .bg-slate-900,html.dark [data-ink-on-light] .bg-slate-900 *,
+html.dark [data-ink-on-light] .bg-slate-800,html.dark [data-ink-on-light] .bg-slate-800 *,
+html.dark [data-ink-on-light] .bg-blue-600,html.dark [data-ink-on-light] .bg-blue-600 *,
+html.dark [data-ink-on-light] .bg-blue-700,html.dark [data-ink-on-light] .bg-blue-700 *,
+html.dark [data-ink-on-light] .bg-emerald-700,html.dark [data-ink-on-light] .bg-emerald-700 *,
+html.dark [data-ink-on-light] [data-ink-keep],html.dark [data-ink-on-light] [data-ink-keep] *{
   color:#ffffff !important;
   -webkit-text-fill-color:#ffffff !important;
 }
-/* Blue links on light panels */
-.bg-white a,.bg-white .text-blue-600,.bg-white .text-blue-700,
-[data-ink-on-light] a:not([data-ink-keep]),[data-ink-on-light] .text-blue-600{
+
+/* Blue links on light cards in dark mode */
+html.dark .bg-white a,html.dark .bg-white .text-blue-600,html.dark .bg-white .text-blue-700,
+html.dark [data-ink-on-light] a,html.dark [data-ink-on-light] .text-blue-600{
   color:#2563eb !important;
   -webkit-text-fill-color:#2563eb !important;
 }
@@ -119,17 +134,25 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setMounted(true);
   }, []);
 
-  // Inject contrast law into document head (always last, always present)
+  // Inject contrast law into document head LAST (after any CSS from the build)
   useEffect(() => {
     const id = "trio-contrast-law";
-    let el = document.getElementById(id) as HTMLStyleElement | null;
-    if (!el) {
-      el = document.createElement("style");
-      el.id = id;
+    const ensure = () => {
+      let el = document.getElementById(id) as HTMLStyleElement | null;
+      if (!el) {
+        el = document.createElement("style");
+        el.id = id;
+        document.head.appendChild(el);
+      }
+      // Move to end of head so we win the cascade
       document.head.appendChild(el);
-    }
-    el.textContent = CONTRAST_LAW_CSS;
-  }, []);
+      el.textContent = CONTRAST_LAW_CSS;
+    };
+    ensure();
+    // Re-assert after theme paint / late stylesheets
+    const t = window.setTimeout(ensure, 0);
+    return () => window.clearTimeout(t);
+  }, [theme]);
 
   useEffect(() => {
     if (!mounted) return;
