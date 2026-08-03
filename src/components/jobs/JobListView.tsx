@@ -27,6 +27,7 @@ import {
   PaginationBar,
   paginateItems,
 } from '@/components/ui/pagination-bar';
+import { FilterStatCards } from '@/components/ui/filter-stat-cards';
 import { useTheme } from '@/components/ThemeProvider';
 
 export type JobListItem = {
@@ -261,160 +262,74 @@ export function JobListView({ jobs }: JobListViewProps) {
     });
   };
 
-  // Light: pastel fills + dark ink. Dark: solid tinted fills + pure white ink
-  // (inline styles — never bg-white + dark:bg together; global CSS remaps ink).
-  const statCards: {
-    key: JobBucket;
-    label: string;
-    sub: string;
-    count: number;
-    ring: string;
-    lightBg: string;
-    lightCount: string;
-    darkBg: string;
-  }[] = [
+  // Same pastel + dark-ink scheme as Candidates (shared FilterStatCards)
+  const statCards = [
     {
       key: 'all',
       label: 'All Jobs',
       sub: 'Click to show all',
       count: stats.all,
-      ring: 'ring-blue-400',
-      lightBg: 'bg-white border-gray-200',
-      lightCount: 'text-slate-900',
-      darkBg: '#1e3a5f',
+      tone: 'neutral' as const,
     },
     {
       key: 'open',
       label: 'Open',
       sub: 'Actively hiring',
       count: stats.open,
-      ring: 'ring-emerald-400',
-      lightBg: 'bg-emerald-50 border-emerald-100',
-      lightCount: 'text-emerald-800',
-      darkBg: '#065f46',
+      tone: 'emerald' as const,
     },
     {
       key: 'paused',
       label: 'Paused',
       sub: 'Temporarily on hold',
       count: stats.paused,
-      ring: 'ring-amber-400',
-      lightBg: 'bg-amber-50 border-amber-100',
-      lightCount: 'text-amber-900',
-      darkBg: '#92400e',
+      tone: 'amber' as const,
     },
     {
       key: 'filled',
       label: 'Filled',
       sub: 'Placed / won',
       count: stats.filled,
-      ring: 'ring-sky-400',
-      lightBg: 'bg-sky-50 border-sky-100',
-      lightCount: 'text-sky-900',
-      darkBg: '#0369a1',
+      tone: 'sky' as const,
     },
     {
       key: 'lost',
       label: 'Lost',
       sub: 'Lost the req',
       count: stats.lost,
-      ring: 'ring-rose-400',
-      lightBg: 'bg-rose-50 border-rose-100',
-      lightCount: 'text-rose-900',
-      darkBg: '#9f1239',
+      tone: 'rose' as const,
     },
     {
       key: 'closed',
       label: 'Closed',
       sub: 'Closed out',
       count: stats.closed,
-      ring: 'ring-slate-400',
-      lightBg: 'bg-slate-100 border-slate-200',
-      lightCount: 'text-slate-900',
-      darkBg: '#475569',
+      tone: 'slate' as const,
     },
     {
       key: 'with_candidates',
       label: 'With Pipeline',
       sub: 'Has candidates',
       count: stats.with_candidates,
-      ring: 'ring-indigo-400',
-      lightBg: 'bg-indigo-50 border-indigo-100',
-      lightCount: 'text-indigo-900',
-      darkBg: '#3730a3',
+      tone: 'indigo' as const,
     },
     {
       key: 'no_candidates',
       label: 'Empty',
       sub: 'No candidates yet',
       count: stats.no_candidates,
-      ring: 'ring-violet-400',
-      lightBg: 'bg-violet-50 border-violet-100',
-      lightCount: 'text-violet-900',
-      darkBg: '#6b21a8',
+      tone: 'violet' as const,
     },
   ];
 
   return (
     <div className="space-y-5">
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-8 gap-3">
-        {statCards.map((card) => {
-          const active = bucket === card.key;
-          return (
-            <button
-              key={card.key}
-              type="button"
-              onClick={() => setBucket(card.key)}
-              style={
-                isDark
-                  ? {
-                      color: '#ffffff',
-                      backgroundColor: card.darkBg,
-                      borderColor: active ? '#60a5fa' : 'rgba(255,255,255,0.2)',
-                    }
-                  : undefined
-              }
-              className={`text-left rounded-2xl border px-4 py-3.5 shadow-sm transition-all ${
-                isDark
-                  ? active
-                    ? 'ring-2 ring-blue-400 shadow-md'
-                    : 'hover:brightness-110'
-                  : `${card.lightBg} ${
-                      active
-                        ? `ring-2 ${card.ring} border-blue-400 shadow-md`
-                        : 'hover:border-gray-300 hover:shadow'
-                    }`
-              }`}
-            >
-              <div
-                className={`text-2xl font-semibold tabular-nums ${
-                  isDark ? '' : card.lightCount
-                }`}
-                style={isDark ? { color: '#ffffff' } : undefined}
-              >
-                {card.count}
-              </div>
-              <div
-                className={`mt-1 text-[11px] font-bold uppercase tracking-wide ${
-                  isDark ? '' : 'text-slate-800'
-                }`}
-                style={isDark ? { color: '#ffffff' } : undefined}
-              >
-                {card.label}
-              </div>
-              <div
-                className={`mt-0.5 text-[11px] font-medium ${
-                  isDark ? '' : 'text-slate-600'
-                }`}
-                style={isDark ? { color: 'rgba(255,255,255,0.92)' } : undefined}
-              >
-                {card.sub}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+      <FilterStatCards
+        cards={statCards}
+        activeKey={bucket}
+        onSelect={(key) => setBucket(key as JobBucket)}
+        className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-8 gap-3"
+      />
 
       {/* Search / sort */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
@@ -472,12 +387,7 @@ export function JobListView({ jobs }: JobListViewProps) {
           total={paged.total}
           onPageChange={setPage}
           itemLabel={paged.total === 1 ? 'job' : 'jobs'}
-          forceLightText={isDark}
-          className={
-            isDark
-              ? 'rounded-xl border border-slate-500 bg-[#1e293b] px-3 py-2 shadow-sm text-white'
-              : 'rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm'
-          }
+          className="rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm"
         />
       )}
 

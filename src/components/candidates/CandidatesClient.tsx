@@ -17,6 +17,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { FilterStatCards } from '@/components/ui/filter-stat-cards';
 import { Input } from '@/components/ui/input';
 import {
   DEFAULT_PAGE_SIZE,
@@ -583,68 +584,48 @@ export function CandidatesClient() {
     }
   };
 
-  const statCards: {
-    key: StageBucket;
-    label: string;
-    sub: string;
-    count: number;
-    ring: string;
-    bg: string;
-    text: string;
-  }[] = [
+  const statCards = [
     {
       key: 'all',
       label: 'All Candidates',
       sub: 'Click to show all',
       count: stats.all,
-      ring: 'ring-blue-200',
-      bg: 'bg-white',
-      text: 'text-gray-900',
+      tone: 'neutral' as const,
     },
     {
       key: 'submitted',
       label: 'Submitted',
       sub: 'Awaiting feedback',
       count: stats.submitted,
-      ring: 'ring-sky-100',
-      bg: 'bg-sky-50/80',
-      text: 'text-sky-900',
+      tone: 'sky' as const,
     },
     {
       key: 'interviewing',
       label: 'Interviewing',
       sub: 'In process',
       count: stats.interviewing,
-      ring: 'ring-violet-100',
-      bg: 'bg-violet-50/80',
-      text: 'text-violet-900',
+      tone: 'violet' as const,
     },
     {
       key: 'offer_out',
       label: 'Offer Out',
       sub: 'Pending decision',
       count: stats.offer_out,
-      ring: 'ring-amber-100',
-      bg: 'bg-amber-50/80',
-      text: 'text-amber-900',
+      tone: 'amber' as const,
     },
     {
       key: 'placed',
       label: 'Placed YTD',
       sub: 'Closed wins',
       count: stats.placed,
-      ring: 'ring-emerald-100',
-      bg: 'bg-emerald-50/80',
-      text: 'text-emerald-900',
+      tone: 'emerald' as const,
     },
     {
       key: 'rejected',
       label: 'Rejected',
       sub: 'This period',
       count: stats.rejected,
-      ring: 'ring-rose-100',
-      bg: 'bg-rose-50/70',
-      text: 'text-rose-900',
+      tone: 'rose' as const,
     },
   ];
 
@@ -727,30 +708,13 @@ export function CandidatesClient() {
 
       <DeskNextActions compact limit={8} />
 
-      {/* Pipeline stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        {statCards.map((card) => {
-          const active = bucket === card.key;
-          return (
-            <button
-              key={card.key}
-              type="button"
-              onClick={() => setBucket(card.key)}
-              className={`text-left rounded-2xl border px-4 py-3.5 shadow-sm transition-all ${card.bg} ${
-                active
-                  ? `ring-2 ${card.ring} border-blue-300 shadow-md`
-                  : 'border-gray-200 hover:border-gray-300 hover:shadow'
-              }`}
-            >
-              <div className={`text-2xl font-semibold tabular-nums ${card.text}`}>{card.count}</div>
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-800 mt-1">
-                {card.label}
-              </div>
-              <div className="text-[11px] text-slate-600 mt-0.5">{card.sub}</div>
-            </button>
-          );
-        })}
-      </div>
+      {/* Pipeline stat cards — shared pastel + dark-ink scheme (works in dark mode) */}
+      <FilterStatCards
+        cards={statCards}
+        activeKey={bucket}
+        onSelect={(key) => setBucket(key as StageBucket)}
+        className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3"
+      />
 
       {/* Search / sort bar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">

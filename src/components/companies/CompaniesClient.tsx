@@ -36,6 +36,7 @@ import {
   PaginationBar,
   paginateItems,
 } from '@/components/ui/pagination-bar';
+import { FilterStatCards } from '@/components/ui/filter-stat-cards';
 import { useTheme } from '@/components/ThemeProvider';
 
 type SortKey = 'last_activity' | 'name' | 'added' | 'stage' | 'contacts';
@@ -458,86 +459,56 @@ export function CompaniesClient() {
     }
   };
 
-  // Light pastels + dark ink; dark solid tints + pure white (inline styles)
-  const statCards: {
-    key: StageBucket;
-    label: string;
-    sub: string;
-    count: number;
-    ring: string;
-    lightBg: string;
-    lightCount: string;
-    darkBg: string;
-  }[] = [
+  // Same pastel + dark-ink scheme as Candidates (shared FilterStatCards)
+  const statCards = [
     {
       key: 'all',
       label: 'All Companies',
       sub: 'Click to show all',
       count: stats.all,
-      ring: 'ring-blue-400',
-      lightBg: 'bg-white border-gray-200',
-      lightCount: 'text-slate-900',
-      darkBg: '#1e3a5f',
+      tone: 'neutral' as const,
     },
     {
       key: 'identification',
       label: 'Identified',
       sub: 'New accounts',
       count: stats.identification,
-      ring: 'ring-slate-400',
-      lightBg: 'bg-slate-100 border-slate-200',
-      lightCount: 'text-slate-900',
-      darkBg: '#475569',
+      tone: 'slate' as const,
     },
     {
       key: 'outreach',
       label: 'Outreach',
       sub: 'In outreach',
       count: stats.outreach,
-      ring: 'ring-sky-400',
-      lightBg: 'bg-sky-50 border-sky-100',
-      lightCount: 'text-sky-900',
-      darkBg: '#0369a1',
+      tone: 'sky' as const,
     },
     {
       key: 'conversation',
       label: 'Conversation',
       sub: 'Engaged',
       count: stats.conversation,
-      ring: 'ring-violet-400',
-      lightBg: 'bg-violet-50 border-violet-100',
-      lightCount: 'text-violet-900',
-      darkBg: '#6b21a8',
+      tone: 'violet' as const,
     },
     {
       key: 'active',
       label: 'In Progress',
       sub: 'Presented → proposal',
       count: stats.active,
-      ring: 'ring-amber-400',
-      lightBg: 'bg-amber-50 border-amber-100',
-      lightCount: 'text-amber-900',
-      darkBg: '#92400e',
+      tone: 'amber' as const,
     },
     {
       key: 'closed_won',
       label: 'Closed Won',
       sub: 'Clients',
       count: stats.closed_won,
-      ring: 'ring-emerald-400',
-      lightBg: 'bg-emerald-50 border-emerald-100',
-      lightCount: 'text-emerald-900',
-      darkBg: '#065f46',
+      tone: 'emerald' as const,
     },
     {
       key: 'lost',
       label: 'Lost',
       sub: 'This period',
       count: stats.lost,
-      ring: 'ring-rose-400',
-      lightBg: 'bg-rose-50 border-rose-100',
-      lightCount: 'text-rose-900',
-      darkBg: '#9f1239',
+      tone: 'rose' as const,
     },
   ];
 
@@ -637,64 +608,12 @@ export function CompaniesClient() {
         </div>
       )}
 
-      {/* Pipeline stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-        {statCards.map((card) => {
-          const active = bucket === card.key;
-          return (
-            <button
-              key={card.key}
-              type="button"
-              onClick={() => setBucket(card.key)}
-              style={
-                isDark
-                  ? {
-                      color: '#ffffff',
-                      backgroundColor: card.darkBg,
-                      borderColor: active ? '#60a5fa' : 'rgba(255,255,255,0.22)',
-                    }
-                  : undefined
-              }
-              className={`text-left rounded-2xl border px-4 py-3.5 shadow-sm transition-all ${
-                isDark
-                  ? active
-                    ? 'ring-2 ring-blue-400 shadow-md'
-                    : 'hover:brightness-110'
-                  : `${card.lightBg} ${
-                      active
-                        ? `ring-2 ${card.ring} border-blue-400 shadow-md`
-                        : 'hover:border-gray-300 hover:shadow'
-                    }`
-              }`}
-            >
-              <div
-                className={`text-2xl font-semibold tabular-nums ${
-                  isDark ? '' : card.lightCount
-                }`}
-                style={isDark ? { color: '#ffffff' } : undefined}
-              >
-                {card.count}
-              </div>
-              <div
-                className={`mt-1 text-[11px] font-bold uppercase tracking-wide ${
-                  isDark ? '' : 'text-slate-800'
-                }`}
-                style={isDark ? { color: '#ffffff' } : undefined}
-              >
-                {card.label}
-              </div>
-              <div
-                className={`mt-0.5 text-[11px] font-medium ${
-                  isDark ? '' : 'text-slate-600'
-                }`}
-                style={isDark ? { color: 'rgba(255,255,255,0.92)' } : undefined}
-              >
-                {card.sub}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+      <FilterStatCards
+        cards={statCards}
+        activeKey={bucket}
+        onSelect={(key) => setBucket(key as StageBucket)}
+        className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3"
+      />
 
       {/* Search / sort bar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
@@ -752,12 +671,7 @@ export function CompaniesClient() {
           total={paged.total}
           onPageChange={setPage}
           itemLabel={paged.total === 1 ? 'company' : 'companies'}
-          forceLightText={isDark}
-          className={
-            isDark
-              ? 'rounded-xl border border-slate-500 bg-[#1e293b] px-3 py-2 shadow-sm text-white'
-              : 'rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm'
-          }
+          className="rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm"
         />
       )}
 

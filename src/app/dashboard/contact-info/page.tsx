@@ -24,6 +24,7 @@ import {
   PaginationBar,
   paginateItems,
 } from '@/components/ui/pagination-bar';
+import { FilterStatCards } from '@/components/ui/filter-stat-cards';
 import { useClients } from '@/lib/hooks/query-client';
 import { useAddContact, useRemoveContact } from '@/lib/hooks/contact-mutations';
 import { getDisplayPhone } from '@/lib/contacts/phone';
@@ -273,68 +274,48 @@ export default function ContactInfoPage() {
   const detailHref = (c: { id: string; clientId: string }) =>
     `/dashboard/contact-info/${c.id}?companyId=${c.clientId}`;
 
-  const statCards: {
-    key: ContactBucket;
-    label: string;
-    sub: string;
-    count: number;
-    ring: string;
-    bg: string;
-    text: string;
-  }[] = [
+  const statCards = [
     {
       key: 'all',
       label: 'All Contacts',
       sub: 'Click to show all',
       count: stats.all,
-      ring: 'ring-blue-200',
-      bg: 'bg-white',
-      text: 'text-gray-900',
+      tone: 'neutral' as const,
     },
     {
       key: 'primary',
       label: 'Primary',
       sub: 'Main contacts',
       count: stats.primary,
-      ring: 'ring-amber-100',
-      bg: 'bg-amber-50/80',
-      text: 'text-amber-900',
+      tone: 'amber' as const,
     },
     {
       key: 'with_email',
       label: 'With Email',
       sub: 'Reachable by email',
       count: stats.with_email,
-      ring: 'ring-sky-100',
-      bg: 'bg-sky-50/80',
-      text: 'text-sky-900',
+      tone: 'sky' as const,
     },
     {
       key: 'with_phone',
       label: 'With Phone',
       sub: 'Reachable by phone',
       count: stats.with_phone,
-      ring: 'ring-emerald-100',
-      bg: 'bg-emerald-50/80',
-      text: 'text-emerald-900',
+      tone: 'emerald' as const,
     },
     {
       key: 'missing_email',
       label: 'Missing Email',
       sub: 'Needs email',
       count: stats.missing_email,
-      ring: 'ring-rose-100',
-      bg: 'bg-rose-50/70',
-      text: 'text-rose-900',
+      tone: 'rose' as const,
     },
     {
       key: 'missing_phone',
       label: 'Missing Phone',
       sub: 'Needs phone',
       count: stats.missing_phone,
-      ring: 'ring-violet-100',
-      bg: 'bg-violet-50/80',
-      text: 'text-violet-900',
+      tone: 'violet' as const,
     },
   ];
 
@@ -458,30 +439,12 @@ export default function ContactInfoPage() {
         </div>
       )}
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        {statCards.map((card) => {
-          const active = bucket === card.key;
-          return (
-            <button
-              key={card.key}
-              type="button"
-              onClick={() => setBucket(card.key)}
-              className={`text-left rounded-2xl border px-4 py-3.5 shadow-sm transition-all ${card.bg} ${
-                active
-                  ? `ring-2 ${card.ring} border-blue-300 shadow-md`
-                  : 'border-gray-200 hover:border-gray-300 hover:shadow'
-              }`}
-            >
-              <div className={`text-2xl font-semibold tabular-nums ${card.text}`}>{card.count}</div>
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mt-1">
-                {card.label}
-              </div>
-              <div className="text-[11px] text-gray-400 mt-0.5">{card.sub}</div>
-            </button>
-          );
-        })}
-      </div>
+      <FilterStatCards
+        cards={statCards}
+        activeKey={bucket}
+        onSelect={(key) => setBucket(key as ContactBucket)}
+        className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3"
+      />
 
       {/* Search / sort */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
