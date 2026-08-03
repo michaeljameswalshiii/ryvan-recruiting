@@ -138,35 +138,39 @@ export function CandidateSmsPanel({
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    /* Always light surface — lives inside white header cards; bg-card is charcoal in dark mode */
+    <div
+      data-ink-on-light
+      className="rounded-xl border border-slate-200 bg-white overflow-hidden text-slate-900 shadow-sm"
+    >
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-accent/40"
+        className="w-full flex items-center justify-between px-4 py-3 text-left text-slate-900 hover:bg-slate-50"
       >
-        <span className="inline-flex items-center gap-2 text-sm font-semibold">
-          <MessageSquare className="h-4 w-4 text-primary" />
+        <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <MessageSquare className="h-4 w-4 text-violet-600" />
           Text candidate
           {consent?.status === 'opted_out' && (
-            <span className="text-[10px] uppercase tracking-wide text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+            <span className="text-[10px] uppercase tracking-wide text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
               opted out
             </span>
           )}
           {consent?.status === 'opted_in' && (
-            <span className="text-[10px] uppercase tracking-wide text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+            <span className="text-[10px] uppercase tracking-wide text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">
               consent ok
             </span>
           )}
         </span>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs font-medium text-slate-600">
           {open ? 'Hide' : 'Open'}
         </span>
       </button>
 
       {open && (
-        <div className="border-t border-border px-4 py-3 space-y-3">
+        <div className="border-t border-slate-200 px-4 py-3 space-y-3 bg-white text-slate-900">
           {!phone && !phoneE164 && (
-            <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <div className="flex items-start gap-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
               Add a phone number on this candidate before texting.
             </div>
@@ -177,6 +181,7 @@ export function CandidateSmsPanel({
               type="button"
               size="sm"
               variant="outline"
+              className="border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
               onClick={() => recordConsent('opted_in')}
             >
               <ShieldCheck className="h-3.5 w-3.5 mr-1" />
@@ -186,6 +191,7 @@ export function CandidateSmsPanel({
               type="button"
               size="sm"
               variant="outline"
+              className="border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
               onClick={() => recordConsent('opted_out')}
             >
               <ShieldOff className="h-3.5 w-3.5 mr-1" />
@@ -194,14 +200,14 @@ export function CandidateSmsPanel({
           </div>
 
           {loading ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground py-4">
+            <div className="flex items-center gap-2 text-xs text-slate-600 py-4">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Loading thread…
             </div>
           ) : (
-            <div className="max-h-48 overflow-y-auto space-y-2 rounded-lg bg-muted/30 p-2">
+            <div className="max-h-48 overflow-y-auto space-y-2 rounded-lg bg-slate-50 border border-slate-100 p-2">
               {messages.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-4">
+                <p className="text-xs text-slate-500 text-center py-4">
                   No texts yet
                 </p>
               )}
@@ -210,14 +216,16 @@ export function CandidateSmsPanel({
                   key={m.id}
                   className={`text-xs rounded-lg px-2.5 py-1.5 max-w-[90%] ${
                     m.direction === 'outbound'
-                      ? 'ml-auto bg-primary text-primary-foreground'
-                      : 'mr-auto bg-background border'
+                      ? 'ml-auto bg-violet-600 text-white'
+                      : 'mr-auto bg-white border border-slate-200 text-slate-900'
                   }`}
                 >
                   <div className="whitespace-pre-wrap">{m.body}</div>
                   <div
-                    className={`mt-0.5 opacity-70 ${
-                      m.direction === 'outbound' ? '' : 'text-muted-foreground'
+                    className={`mt-0.5 text-[10px] ${
+                      m.direction === 'outbound'
+                        ? 'text-violet-100'
+                        : 'text-slate-500'
                     }`}
                   >
                     {new Date(m.createdAt).toLocaleString()} · {m.status}
@@ -234,8 +242,9 @@ export function CandidateSmsPanel({
             value={body}
             onChange={(e) => setBody(e.target.value)}
             maxLength={1500}
+            className="bg-white border-slate-300 text-slate-900 placeholder:text-slate-500"
           />
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
             <label className="inline-flex items-center gap-1.5">
               <input
                 type="checkbox"
@@ -252,11 +261,13 @@ export function CandidateSmsPanel({
               />
               Bypass quiet hours (urgent only)
             </label>
-            <span className="ml-auto">{body.length}/1500</span>
+            <span className="ml-auto text-slate-500">{body.length}/1500</span>
           </div>
           <Button
             type="button"
             size="sm"
+            data-ink-keep
+            className="bg-violet-600 hover:bg-violet-700 text-white"
             onClick={send}
             disabled={sending || (!phone && !phoneE164)}
           >
