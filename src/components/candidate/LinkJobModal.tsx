@@ -161,51 +161,58 @@ export function LinkJobModal({
         onClick={() => onOpenChange(false)}
       />
 
-      <div className="relative z-10 w-full max-w-lg mx-4 bg-card border border-border rounded-xl shadow-xl overflow-hidden bg-white">
-        <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/30">
+      {/* Always light surface — dark hover:bg-muted was charcoal on dark ink */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        data-ink-on-light
+        className="relative z-10 w-full max-w-lg mx-4 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden text-slate-900"
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-slate-50">
           <div>
-            <h2 className="text-lg font-semibold">Link to job</h2>
-            <p className="text-sm text-muted-foreground">{candidateName}</p>
+            <h2 className="text-lg font-semibold text-slate-900">Link to job</h2>
+            <p className="text-sm text-slate-600">{candidateName}</p>
           </div>
           <Button
             variant="ghost"
             size="icon"
+            className="text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             onClick={() => onOpenChange(false)}
           >
             <X className="h-4 w-4" />
           </Button>
         </div>
 
-        <div className="px-6 py-4 border-b">
+        <div className="px-6 py-4 border-b border-gray-200 bg-white">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
               placeholder="Search jobs by title, company, or location..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-10 bg-white border-slate-300 text-slate-900 placeholder:text-slate-500"
               autoFocus
             />
           </div>
         </div>
 
         {selectedJobIds.length > 0 && (
-          <div className="px-6 py-3 border-b bg-muted/20">
-            <p className="text-xs font-medium text-muted-foreground mb-2">
+          <div className="px-6 py-3 border-b border-gray-200 bg-blue-50/60">
+            <p className="text-xs font-medium text-slate-600 mb-2">
               SELECTED ({selectedJobIds.length})
             </p>
             <div className="flex flex-wrap gap-2">
               {selectedJobs.map((job: any) => (
                 <Badge
                   key={job.id}
-                  variant="default"
-                  className="flex items-center gap-1 pr-1"
+                  data-ink-keep
+                  className="flex items-center gap-1 pr-1 bg-blue-600 text-white hover:bg-blue-700"
                 >
                   <span className="max-w-[180px] truncate">{job.title}</span>
                   <button
                     type="button"
                     onClick={() => toggleJob(job.id)}
-                    className="ml-1 hover:text-destructive"
+                    className="ml-1 text-white/90 hover:text-white"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -215,16 +222,14 @@ export function LinkJobModal({
           </div>
         )}
 
-        <div className="max-h-[300px] overflow-y-auto p-2">
+        <div className="max-h-[300px] overflow-y-auto p-2 bg-white">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              <span className="ml-2 text-sm text-muted-foreground">
-                Loading jobs...
-              </span>
+              <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
+              <span className="ml-2 text-sm text-slate-600">Loading jobs...</span>
             </div>
           ) : filteredJobs.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">
+            <div className="text-center py-8 text-slate-600 text-sm">
               {searchQuery ? (
                 <p>No jobs match your search</p>
               ) : (
@@ -242,26 +247,29 @@ export function LinkJobModal({
                     key={job.id}
                     type="button"
                     onClick={() => toggleJob(job.id)}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${
+                    className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors flex items-center justify-between border ${
                       isSelected
-                        ? "bg-primary/10 border border-primary"
-                        : "hover:bg-muted border border-transparent"
+                        ? "bg-blue-50 border-blue-300 ring-1 ring-blue-200"
+                        : "border-transparent bg-white hover:bg-slate-100 hover:border-slate-200"
                     }`}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <Briefcase className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                        <span className="font-medium truncate">
+                        <Briefcase className="h-4 w-4 flex-shrink-0 text-slate-500" />
+                        <span className="font-medium truncate text-slate-900">
                           {job.title}
                         </span>
                         {isAlreadyLinked && (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge
+                            variant="outline"
+                            className="text-xs border-slate-300 text-slate-700 bg-white"
+                          >
                             Linked
                           </Badge>
                         )}
                       </div>
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground ml-6">
-                        <Building2 className="h-3 w-3" />
+                      <div className="flex items-center gap-1 text-sm text-slate-600 ml-6">
+                        <Building2 className="h-3 w-3 shrink-0 text-slate-400" />
                         <span className="truncate">
                           {job.companyName ||
                             job.company_name ||
@@ -269,7 +277,7 @@ export function LinkJobModal({
                         </span>
                         {job.location && (
                           <>
-                            <span>•</span>
+                            <span className="text-slate-400">•</span>
                             <span className="truncate">{job.location}</span>
                           </>
                         )}
@@ -277,10 +285,10 @@ export function LinkJobModal({
                     </div>
 
                     <div
-                      className={`w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ml-2 ${
+                      className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ml-2 ${
                         isSelected
-                          ? "bg-primary border-primary text-primary-foreground"
-                          : "border-muted-foreground"
+                          ? "bg-blue-600 border-blue-600 text-white"
+                          : "border-slate-300 bg-white"
                       }`}
                     >
                       {isSelected && (
@@ -306,15 +314,24 @@ export function LinkJobModal({
           )}
         </div>
 
-        <div className="flex items-center justify-between px-6 py-4 border-t bg-muted/30">
-          <p className="text-sm text-muted-foreground">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-slate-50">
+          <p className="text-sm text-slate-600">
             {selectedJobIds.length} job(s) selected
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              variant="outline"
+              className="border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button
+              data-ink-keep
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={handleSave}
+              disabled={isSaving}
+            >
               {isSaving ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
