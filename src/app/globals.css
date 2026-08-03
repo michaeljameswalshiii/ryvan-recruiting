@@ -234,6 +234,111 @@
 }
 
 /*
+ * Nuclear readable ink on light panels (detail pages, Next actions, tables).
+ * -webkit-text-fill-color beats utility remaps that left text washed-out
+ * until hover. Opt out with data-ink-keep (dark buttons with white label).
+ *
+ * Applied via [data-ink-on-light] OR automatically to solid light surfaces
+ * in .dark mode (bg-white / pastel-50 without dark:bg-* override).
+ */
+[data-ink-on-light],
+.dark .bg-white:not([class*="dark:bg-"]),
+.dark .bg-gray-50:not([class*="dark:bg-"]),
+.dark .bg-slate-50:not([class*="dark:bg-"]),
+.dark .bg-amber-50:not([class*="dark:bg-"]),
+.dark .bg-sky-50:not([class*="dark:bg-"]),
+.dark .bg-blue-50:not([class*="dark:bg-"]),
+.dark .bg-violet-50:not([class*="dark:bg-"]),
+.dark .bg-emerald-50:not([class*="dark:bg-"]),
+.dark .bg-rose-50:not([class*="dark:bg-"]),
+.dark .bg-indigo-50:not([class*="dark:bg-"]),
+.dark .bg-green-50:not([class*="dark:bg-"]),
+.dark .bg-orange-50:not([class*="dark:bg-"]),
+.dark .bg-zinc-50:not([class*="dark:bg-"]) {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a;
+}
+[data-ink-on-light] *:not([data-ink-keep]):not([data-ink-keep] *),
+.dark .bg-white:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
+.dark .bg-gray-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
+.dark .bg-slate-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
+.dark .bg-amber-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
+.dark .bg-sky-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
+.dark .bg-blue-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
+.dark .bg-violet-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
+.dark .bg-emerald-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
+.dark .bg-rose-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
+.dark .bg-indigo-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *) {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a;
+}
+[data-ink-on-light] [data-ink-muted]:not([data-ink-keep]),
+.dark .bg-white:not([class*="dark:bg-"]) [data-ink-muted],
+.dark .bg-amber-50:not([class*="dark:bg-"]) [data-ink-muted] {
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155;
+}
+[data-ink-on-light] [data-ink-keep],
+[data-ink-on-light] [data-ink-keep] *,
+.dark .bg-white:not([class*="dark:bg-"]) [data-ink-keep],
+.dark .bg-white:not([class*="dark:bg-"]) [data-ink-keep] * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+[data-ink-on-light] svg:not([data-ink-keep] svg),
+.dark .bg-white:not([class*="dark:bg-"]) svg:not([data-ink-keep] svg) {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor;
+}
+/* Preserve blue link accents on light cards */
+.dark .bg-white:not([class*="dark:bg-"]) a.text-blue-600,
+.dark .bg-white:not([class*="dark:bg-"]) .text-blue-600,
+.dark .bg-white:not([class*="dark:bg-"]) .text-blue-700,
+[data-ink-on-light] a.text-blue-600,
+[data-ink-on-light] .text-blue-600 {
+  color: #2563eb !important;
+  -webkit-text-fill-color: #2563eb;
+}
+
+/* Dark buttons inside light cards must keep WHITE labels */
+.dark .bg-white:not([class*="dark:bg-"]) :is(
+  .bg-slate-900,
+  .bg-slate-800,
+  .bg-gray-900,
+  .bg-blue-600,
+  .bg-blue-700,
+  .bg-emerald-600,
+  .bg-emerald-700,
+  .bg-indigo-600,
+  .bg-violet-600
+),
+.dark .bg-white:not([class*="dark:bg-"]) :is(
+  .bg-slate-900,
+  .bg-slate-800,
+  .bg-blue-600,
+  .bg-blue-700,
+  .bg-emerald-700
+) *,
+[data-ink-on-light] :is(
+  .bg-slate-900,
+  .bg-slate-800,
+  .bg-blue-600,
+  .bg-blue-700,
+  .bg-emerald-600,
+  .bg-emerald-700
+),
+[data-ink-on-light] :is(
+  .bg-slate-900,
+  .bg-slate-800,
+  .bg-blue-600,
+  .bg-blue-700,
+  .bg-emerald-700
+) * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+
+/*
  * Dual-theme panels: light fill + dark:bg-* → white text in dark mode.
  */
 .dark [data-dark-panel],

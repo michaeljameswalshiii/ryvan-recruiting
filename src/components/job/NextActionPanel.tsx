@@ -219,12 +219,9 @@ export function NextActionPanel({ jobId, className }: Props) {
   const showJobAction =
     !!jobAction && (!hydrated || !isHidden(jobActionKey));
 
-  // Solid light panel + forced dark ink (gradients skip global light-surface CSS)
-  const ink = { color: "#0f172a" } as const;
-  const muted = { color: "#475569" } as const;
-
   return (
     <section
+      data-ink-on-light
       className={`rounded-2xl border border-amber-200 shadow-sm ${className || ""}`}
       style={{ backgroundColor: "#fffbeb", color: "#0f172a" }}
     >
@@ -233,12 +230,10 @@ export function NextActionPanel({ jobId, className }: Props) {
         style={{ borderColor: "#fde68a" }}
       >
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
-          <Zap className="h-4 w-4 shrink-0" style={{ color: "#d97706" }} />
-          <h3 className="text-sm font-semibold" style={ink}>
-            Next actions
-          </h3>
+          <Zap className="h-4 w-4 shrink-0 text-amber-600" />
+          <h3 className="text-sm font-semibold">Next actions</h3>
           {summary && (
-            <span className="text-[11px] font-medium" style={muted}>
+            <span className="text-[11px] font-medium" data-ink-muted>
               {summary.urgent} urgent · {summary.due} due · {summary.enroll}{" "}
               enroll · {summary.stale} stale
             </span>
@@ -250,7 +245,7 @@ export function NextActionPanel({ jobId, className }: Props) {
               type="button"
               onClick={() => clearFeed("job_next")}
               className="text-[11px] font-semibold hover:underline px-1"
-              style={muted}
+              data-ink-muted
             >
               Restore {dismissedCount}
             </button>
@@ -263,7 +258,7 @@ export function NextActionPanel({ jobId, className }: Props) {
                 for (const a of visibleTop) dismiss(jobNextKey(jobId, a));
               }}
               className="text-[11px] font-semibold hover:underline px-1"
-              style={muted}
+              data-ink-muted
               title="Dismiss all visible next actions for 30 days"
             >
               Dismiss
@@ -272,6 +267,7 @@ export function NextActionPanel({ jobId, className }: Props) {
           <Button
             type="button"
             size="sm"
+            data-ink-keep
             className="h-8 text-xs bg-slate-900 text-white hover:bg-slate-800"
             onClick={() => runDue()}
             disabled={busyId === "batch"}
@@ -288,13 +284,11 @@ export function NextActionPanel({ jobId, className }: Props) {
             size="sm"
             variant="ghost"
             className="h-8 w-8 p-0"
-            style={ink}
             onClick={() => load()}
             disabled={loading}
           >
             <RefreshCw
               className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-              style={ink}
             />
           </Button>
         </div>
@@ -304,7 +298,7 @@ export function NextActionPanel({ jobId, className }: Props) {
         {loading && (
           <div
             className="flex items-center gap-2 text-sm py-4 justify-center font-medium"
-            style={muted}
+            data-ink-muted
           >
             <Loader2 className="h-4 w-4 animate-spin" /> Computing with outcome
             ranking…
@@ -315,6 +309,7 @@ export function NextActionPanel({ jobId, className }: Props) {
           <div
             className="group rounded-xl border px-3 py-2 text-sm"
             style={kindStyle(jobAction.kind)}
+            data-ink-on-light
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -322,7 +317,7 @@ export function NextActionPanel({ jobId, className }: Props) {
                   <UserPlus className="h-3.5 w-3.5" />
                   {jobAction.label}
                 </div>
-                <p className="text-xs mt-0.5 font-medium" style={{ opacity: 0.92 }}>
+                <p className="text-xs mt-0.5 font-medium" data-ink-muted>
                   {jobAction.reason}
                 </p>
               </div>
@@ -330,7 +325,7 @@ export function NextActionPanel({ jobId, className }: Props) {
                 alwaysVisible
                 label="Dismiss job action"
                 onDismiss={() => dismiss(jobActionKey)}
-                className="shrink-0 rounded p-1 text-slate-700 hover:bg-black/5"
+                className="shrink-0 rounded p-1 hover:bg-black/5"
               />
             </div>
           </div>
@@ -339,7 +334,7 @@ export function NextActionPanel({ jobId, className }: Props) {
         {!loading && visibleTop.length === 0 && !showJobAction && (
           <div
             className="text-sm text-center py-6 flex flex-col items-center gap-1 font-medium"
-            style={muted}
+            data-ink-muted
           >
             <AlertCircle className="h-4 w-4" />
             {top.length > 0 || jobAction ? (
@@ -370,20 +365,15 @@ export function NextActionPanel({ jobId, className }: Props) {
                 key={`${a.candidateId}-${a.kind}-${i}`}
                 className="group rounded-xl border px-3 py-2"
                 style={rowStyle}
+                data-ink-on-light
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold truncate" style={{ color: rowStyle.color }}>
+                    <div className="text-sm font-semibold truncate">
                       {a.candidateName || a.candidateId?.slice(0, 8) || "Candidate"}
-                      <span className="font-medium" style={{ color: rowStyle.color, opacity: 0.85 }}>
-                        {" "}
-                        · {a.label}
-                      </span>
+                      <span className="font-medium"> · {a.label}</span>
                     </div>
-                    <p
-                      className="text-xs mt-0.5 leading-snug font-medium"
-                      style={{ color: rowStyle.color, opacity: 0.9 }}
-                    >
+                    <p className="text-xs mt-0.5 leading-snug font-medium" data-ink-muted>
                       {a.reason}
                     </p>
                   </div>
@@ -392,6 +382,7 @@ export function NextActionPanel({ jobId, className }: Props) {
                       <Button
                         type="button"
                         size="sm"
+                        data-ink-keep
                         className="h-7 text-[11px] bg-emerald-700 hover:bg-emerald-800 text-white"
                         disabled={busyId === enrollId}
                         onClick={() => runDue(enrollId)}
@@ -411,7 +402,7 @@ export function NextActionPanel({ jobId, className }: Props) {
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="h-7 text-[11px] px-2 border-slate-300 text-slate-800"
+                          className="h-7 text-[11px] px-2"
                           disabled={!!busyId}
                           onClick={() => logReply(enrollId, "positive")}
                         >
@@ -421,7 +412,7 @@ export function NextActionPanel({ jobId, className }: Props) {
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="h-7 text-[11px] px-2 border-slate-300 text-slate-800"
+                          className="h-7 text-[11px] px-2"
                           disabled={!!busyId}
                           onClick={() => logReply(enrollId, "negative")}
                         >
@@ -433,6 +424,7 @@ export function NextActionPanel({ jobId, className }: Props) {
                       <Button
                         type="button"
                         size="sm"
+                        data-ink-keep
                         className="h-7 text-[11px] bg-blue-600 hover:bg-blue-700 text-white"
                         disabled={busyId === `enroll-${a.candidateId}`}
                         onClick={() =>
@@ -454,7 +446,7 @@ export function NextActionPanel({ jobId, className }: Props) {
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="h-7 text-[11px] border-slate-300 text-slate-800"
+                          className="h-7 text-[11px]"
                           disabled={busyId === `enroll-${a.candidateId}`}
                           onClick={() =>
                             quickEnroll(a.candidateId!, a.candidateName)
@@ -467,7 +459,7 @@ export function NextActionPanel({ jobId, className }: Props) {
                       alwaysVisible
                       label={`Dismiss ${a.candidateName || "action"}`}
                       onDismiss={() => dismiss(jobNextKey(jobId, a))}
-                      className="shrink-0 rounded p-1 text-slate-800 hover:bg-black/10"
+                      className="shrink-0 rounded p-1 hover:bg-black/10"
                     />
                   </div>
                 </div>

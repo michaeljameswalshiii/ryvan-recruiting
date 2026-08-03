@@ -480,7 +480,7 @@ export default function JobDetailPage() {
         >
           <ArrowLeft className="h-4 w-4 mr-1" /> Back to Jobs
         </Link>
-        <div className="bg-white border rounded-xl p-6 shadow-sm">
+        <div data-ink-on-light className="bg-white border rounded-xl p-6 shadow-sm">
           <p className="text-red-600 font-medium">Failed to load job details.</p>
           {error instanceof Error && (
             <p className="text-sm text-gray-600 mt-1">{error.message}</p>
@@ -601,7 +601,7 @@ export default function JobDetailPage() {
         {/* ─── Main column ─── */}
         <div className="xl:col-span-8 space-y-5">
           {/* Hero / job summary card */}
-          <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+          <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
             <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900 tracking-tight">
@@ -656,7 +656,7 @@ export default function JobDetailPage() {
           </section>
 
           {/* Candidate pipeline — WIP tracker */}
-          <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+          <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <h2 className="text-sm font-semibold tracking-wide text-gray-800 uppercase">
                 Candidate Pipeline — WIP Tracker
@@ -706,7 +706,7 @@ export default function JobDetailPage() {
           />
 
           {/* Job description */}
-          <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+          <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
             <div className="flex items-center justify-between gap-3 mb-4">
               <h2 className="text-sm font-semibold tracking-wide text-gray-800 uppercase">
                 Job Description
@@ -741,7 +741,7 @@ export default function JobDetailPage() {
             compact
           />
           <NextActionPanel jobId={job.id || jobId} />
-          <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
+          <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
             <div className="flex items-center justify-between gap-2 mb-3">
               <h2 className="text-sm font-semibold tracking-wide text-gray-800 uppercase flex items-center gap-2">
                 <Users className="h-4 w-4 text-gray-500" />
@@ -1041,7 +1041,7 @@ export default function JobDetailPage() {
             )}
           </section>
 
-          <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
+          <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
             <h2 className="text-xs font-semibold tracking-wide text-gray-500 uppercase mb-3">
               Quick Links
             </h2>

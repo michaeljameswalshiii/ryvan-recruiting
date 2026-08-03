@@ -1053,7 +1053,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   return (
     <div className="max-w-[1400px] mx-auto space-y-5 pb-10">
       {/* ── Header ───────────────────────────────────────────────── */}
-      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+      <div data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
           <div className="flex items-start gap-4 min-w-0">
             <div className="h-16 w-16 shrink-0 rounded-full bg-violet-600 text-white flex items-center justify-center text-xl font-semibold shadow-sm">
@@ -1415,7 +1415,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             )}
 
             {/* Pipeline stage */}
-            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+            <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">
                 Pipeline Stage
                 {primaryJob?.jobTitle
@@ -1500,7 +1500,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             </section>
 
             {/* Notes & activity log */}
-            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+            <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
               <div className="mb-4">
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
                   Notes & Activity Log
@@ -1711,7 +1711,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
 
           {/* Right column — live resume preview, then AI tools lower */}
           <div className="xl:col-span-5 space-y-5 xl:sticky xl:top-4 xl:self-start">
-            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+            <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50/50">
                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Resume
@@ -1756,7 +1756,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
               experience.length > 0 ||
               education.length > 0 ||
               skills.length > 0) && (
-              <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 space-y-3">
+              <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 space-y-3">
                 <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                   Parsed profile
                 </h3>
@@ -1781,7 +1781,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             )}
 
             {/* AI evaluation tools — below resume */}
-            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+            <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
               <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-3 flex items-center gap-1.5">
                 <Sparkles className="h-3.5 w-3.5 text-violet-500" />
                 AI Evaluation Tools
@@ -1821,7 +1821,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
 
       {/* ── Timeline tab ─────────────────────────────────────────── */}
       {activeTab === 'timeline' && (
-        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+        <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
           <h2 className="text-base font-semibold text-gray-900 mb-4">
             Full Timeline
           </h2>
@@ -1953,7 +1953,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
 
       {/* ── Resume tab ───────────────────────────────────────────── */}
       {activeTab === 'resume' && (
-        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col h-[calc(100vh-10rem)] min-h-[520px]">
+        <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col h-[calc(100vh-10rem)] min-h-[520px]">
           <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 gap-2 flex-wrap shrink-0">
             <div>
               <h2 className="text-base font-semibold text-gray-900">Resume</h2>
@@ -1989,7 +1989,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
 
       {/* ── Linked jobs tab ──────────────────────────────────────── */}
       {activeTab === 'jobs' && (
-        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+        <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
           <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
             <h2 className="text-base font-semibold text-gray-900">Linked Jobs</h2>
             <div className="flex gap-2">

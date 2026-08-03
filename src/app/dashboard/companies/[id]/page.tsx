@@ -416,7 +416,7 @@ function OverviewTab({
   return (
     <div className="space-y-5">
       {/* Primary contact */}
-      <div className="p-5 sm:p-6 rounded-2xl border border-border bg-card space-y-4">
+      <div data-ink-on-light className="p-5 sm:p-6 rounded-2xl border border-border bg-card space-y-4">
         <div className="flex items-center justify-between gap-2">
           <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-muted-foreground">
             <User className="h-4 w-4" />
@@ -501,7 +501,7 @@ function OverviewTab({
 
       {/* Optional company description */}
       {company.description && (
-        <div className="p-5 sm:p-6 rounded-2xl border border-border bg-card space-y-3">
+        <div data-ink-on-light className="p-5 sm:p-6 rounded-2xl border border-border bg-card space-y-3">
           <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-muted-foreground">
             <FileText className="h-4 w-4" />
             About

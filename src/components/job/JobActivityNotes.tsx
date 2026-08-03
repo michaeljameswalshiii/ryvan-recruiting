@@ -263,7 +263,7 @@ export function JobActivityNotes({
   };
 
   return (
-    <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+    <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
       <div className="mb-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
           Notes &amp; Activity Log

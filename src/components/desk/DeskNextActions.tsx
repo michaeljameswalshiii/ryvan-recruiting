@@ -328,7 +328,7 @@ export function DeskNextActions({
   // ── Default amber desk strip ───────────────────────────────────────
   return (
     <section
-      className={`surface-light rounded-xl border border-amber-300 bg-amber-50 ${
+      data-ink-on-light className={`surface-light rounded-xl border border-amber-300 bg-amber-50 ${
         compact ? "p-3" : "p-4 shadow-sm"
       } ${className || ""}`}
     >
