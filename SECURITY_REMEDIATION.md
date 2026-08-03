@@ -31,7 +31,7 @@ Confirmed exposures as of the 2026-08 hygiene audit:
 Checklist:
 
 - [ ] Rotate **Groq** key (live key was in the public tree)
-- [ ] Rotate **AWS** access keys used by Vercel / local scripts
+- [x] Rotate **AWS** access keys used by Vercel / local scripts (leaked key deleted; new key in Vercel production + local AWS CLI)
 - [ ] Rotate **Apollo** API key; update Vercel `APOLLO_API_KEY`
 - [ ] Rotate **Gmail** app password / OAuth client secret if `.env.gmail` was ever real
 - [ ] Rotate **Vercel** tokens
@@ -41,10 +41,10 @@ Checklist:
 
 ### Repository exposure
 
-- [ ] Make the GitHub repo **private** until history is scrubbed (or keep private permanently)
+- [x] Make the GitHub repo **private** (done 2026-08-03)
   - Owner: `michaeljameswalshiii/turnkey-optimization` — currently **public**
   - GitHub → Settings → Danger Zone → Change visibility → Private
-- [ ] Remove secrets from **git history** (current tree cleanup is not enough):
+- [x] Remove secrets from **git history** via `git filter-repo` + force-push (done 2026-08-03)
   - `git filter-repo` or BFG on paths: `.env*`, `add_groq_key.py`, `src/lib/groq.ts` (old blobs), old scripts with keys
   - Force-push only after team agreement; re-clone all machines
 - [ ] Scan history: `gitleaks detect --source . -v` (or enable GitHub secret scanning)
@@ -157,3 +157,15 @@ Never put secrets in `NEXT_PUBLIC_*` variables (except Cognito pool/client IDs, 
 After rotation, update password managers only — **not** this repository.
 
 Partner workflow: raise P0 rotation + private-repo decision with the repo owner (`michaeljameswalshiii`) before any force-push history rewrite.
+
+---
+
+## Ops completion log
+
+| Date | Action |
+|------|--------|
+| 2026-08-03 | Repo visibility ? **private** |
+| 2026-08-03 | Merged PR #43 hygiene cleanup |
+| 2026-08-03 | git filter-repo path purge + secret literal replacement; force-pushed all branches |
+| 2026-08-03 | Deleted leaked AWS access key; created replacement; updated Vercel production + redeployed |
+| 2026-08-03 | **Still required:** revoke Groq key in Groq console; rotate Apollo/Gmail/other if ever real in dumps; re-clone other local copies (Desktop, TurnkeyFresh) |
