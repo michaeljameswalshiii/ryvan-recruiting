@@ -127,7 +127,7 @@ export default function JobPipelinePage() {
   if (isError || !job) {
     return (
       <div className="max-w-lg mx-auto p-8 text-center space-y-3">
-        <p className="text-slate-700">
+        <p className="text-slate-700 dark:text-slate-200">
           {error instanceof Error ? error.message : 'Job not found'}
         </p>
         <Button asChild variant="outline">
@@ -139,28 +139,36 @@ export default function JobPipelinePage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-5 pb-12">
-      {/* Header */}
+      {/* Header sits on page canvas (dark in black theme) — use light ink in dark mode */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0">
           <Link
             href={`/dashboard/jobs/${jobId}`}
-            className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 mb-2"
+            className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white mb-2"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to job
           </Link>
-          <h1 className="text-2xl font-bold text-slate-900 truncate">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white truncate">
             Pipeline
           </h1>
-          <p className="text-sm text-slate-600 mt-0.5 truncate">
+          <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 truncate">
             {jobTitle}
             {companyName ? (
-              <span className="text-slate-400"> · {companyName}</span>
+              <span className="text-slate-400 dark:text-slate-400">
+                {' '}
+                · {companyName}
+              </span>
             ) : null}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
-          <Button asChild variant="outline" size="sm">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="border-slate-300 bg-white text-slate-900 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700"
+          >
             <Link href={`/dashboard/jobs/${jobId}`}>Job overview</Link>
           </Button>
         </div>
