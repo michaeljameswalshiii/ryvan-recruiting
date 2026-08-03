@@ -192,9 +192,9 @@ export default function Sidebar({ role }: SidebarProps) {
             className="w-full h-auto max-h-[5.5rem] object-contain object-left object-top dark:brightness-125 dark:contrast-110"
           />
         </Link>
-        {/* Global light / dark toggle — under logo */}
+        {/* Global light / dark toggle — high contrast on dark sidebar */}
         <div
-          className="mt-2.5 flex rounded-lg border border-gray-200 dark:border-border bg-gray-50 dark:bg-secondary p-0.5"
+          className="mt-2.5 flex rounded-lg border border-gray-200 bg-gray-100 p-0.5 dark:border-white/30 dark:bg-black/50 dark:ring-1 dark:ring-white/10"
           role="group"
           aria-label="Color theme"
         >
@@ -203,12 +203,12 @@ export default function Sidebar({ role }: SidebarProps) {
             onClick={() => setTheme('white')}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${
               theme === 'white' || theme === 'gray'
-                ? 'bg-white text-slate-900 shadow-sm dark:bg-card dark:text-white'
+                ? 'bg-white text-slate-900 shadow-sm dark:bg-white dark:text-slate-900'
                 : 'text-slate-600 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white'
             }`}
             title="Light UI"
           >
-            <Sun className="h-3.5 w-3.5" />
+            <Sun className="h-3.5 w-3.5 shrink-0" />
             Light
           </button>
           <button
@@ -216,12 +216,12 @@ export default function Sidebar({ role }: SidebarProps) {
             onClick={() => setTheme('black')}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${
               isDark
-                ? 'bg-[#2a2e34] text-white shadow-sm ring-1 ring-white/15'
+                ? 'bg-white text-slate-900 shadow-md ring-1 ring-white/40'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
             title="Dark UI (charcoal background)"
           >
-            <Moon className="h-3.5 w-3.5" />
+            <Moon className="h-3.5 w-3.5 shrink-0" />
             Dark
           </button>
         </div>
