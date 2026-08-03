@@ -234,17 +234,20 @@
 }
 
 /*
- * Nuclear readable ink on light panels (detail pages, Next actions, tables).
- * -webkit-text-fill-color beats utility remaps that left text washed-out
- * until hover. Opt out with data-ink-keep (dark buttons with white label).
+ * FORCE dark ink on light panels (detail pages + Next actions).
  *
- * Applied via [data-ink-on-light] OR automatically to solid light surfaces
- * in .dark mode (bg-white / pastel-50 without dark:bg-* override).
+ * IMPORTANT: :not(A B) with a descendant combinator is INVALID CSS and
+ * caused browsers to DROP the entire previous rule block — so text stayed
+ * washed-out until hover. Keep every selector Level-3 simple.
+ *
+ * data-ink-keep = white text (dark buttons)
+ * data-ink-muted = slate-600 secondary
  */
 [data-ink-on-light],
 .dark .bg-white:not([class*="dark:bg-"]),
 .dark .bg-gray-50:not([class*="dark:bg-"]),
 .dark .bg-slate-50:not([class*="dark:bg-"]),
+.dark .bg-slate-100:not([class*="dark:bg-"]),
 .dark .bg-amber-50:not([class*="dark:bg-"]),
 .dark .bg-sky-50:not([class*="dark:bg-"]),
 .dark .bg-blue-50:not([class*="dark:bg-"]),
@@ -256,86 +259,73 @@
 .dark .bg-orange-50:not([class*="dark:bg-"]),
 .dark .bg-zinc-50:not([class*="dark:bg-"]) {
   color: #0f172a !important;
-  -webkit-text-fill-color: #0f172a;
+  -webkit-text-fill-color: #0f172a !important;
 }
-[data-ink-on-light] *:not([data-ink-keep]):not([data-ink-keep] *),
-.dark .bg-white:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
-.dark .bg-gray-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
-.dark .bg-slate-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
-.dark .bg-amber-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
-.dark .bg-sky-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
-.dark .bg-blue-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
-.dark .bg-violet-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
-.dark .bg-emerald-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
-.dark .bg-rose-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *),
-.dark .bg-indigo-50:not([class*="dark:bg-"]) *:not([data-ink-keep]):not([data-ink-keep] *) {
+
+/* All descendants default to near-black (valid universal selector) */
+[data-ink-on-light] *,
+.dark .bg-white:not([class*="dark:bg-"]) *,
+.dark .bg-gray-50:not([class*="dark:bg-"]) *,
+.dark .bg-slate-50:not([class*="dark:bg-"]) *,
+.dark .bg-slate-100:not([class*="dark:bg-"]) *,
+.dark .bg-amber-50:not([class*="dark:bg-"]) *,
+.dark .bg-sky-50:not([class*="dark:bg-"]) *,
+.dark .bg-blue-50:not([class*="dark:bg-"]) *,
+.dark .bg-violet-50:not([class*="dark:bg-"]) *,
+.dark .bg-emerald-50:not([class*="dark:bg-"]) *,
+.dark .bg-rose-50:not([class*="dark:bg-"]) *,
+.dark .bg-indigo-50:not([class*="dark:bg-"]) * {
   color: #0f172a !important;
-  -webkit-text-fill-color: #0f172a;
+  -webkit-text-fill-color: #0f172a !important;
 }
-[data-ink-on-light] [data-ink-muted]:not([data-ink-keep]),
+
+/* Secondary copy */
+[data-ink-on-light] [data-ink-muted],
 .dark .bg-white:not([class*="dark:bg-"]) [data-ink-muted],
 .dark .bg-amber-50:not([class*="dark:bg-"]) [data-ink-muted] {
   color: #334155 !important;
-  -webkit-text-fill-color: #334155;
+  -webkit-text-fill-color: #334155 !important;
 }
+
+/* White labels on dark buttons */
 [data-ink-on-light] [data-ink-keep],
 [data-ink-on-light] [data-ink-keep] *,
 .dark .bg-white:not([class*="dark:bg-"]) [data-ink-keep],
-.dark .bg-white:not([class*="dark:bg-"]) [data-ink-keep] * {
+.dark .bg-white:not([class*="dark:bg-"]) [data-ink-keep] *,
+[data-ink-on-light] .bg-slate-900,
+[data-ink-on-light] .bg-slate-900 *,
+[data-ink-on-light] .bg-slate-800,
+[data-ink-on-light] .bg-slate-800 *,
+[data-ink-on-light] .bg-blue-600,
+[data-ink-on-light] .bg-blue-600 *,
+[data-ink-on-light] .bg-blue-700,
+[data-ink-on-light] .bg-blue-700 *,
+[data-ink-on-light] .bg-emerald-700,
+[data-ink-on-light] .bg-emerald-700 *,
+.dark .bg-white:not([class*="dark:bg-"]) .bg-slate-900,
+.dark .bg-white:not([class*="dark:bg-"]) .bg-slate-900 *,
+.dark .bg-white:not([class*="dark:bg-"]) .bg-blue-600,
+.dark .bg-white:not([class*="dark:bg-"]) .bg-blue-600 *,
+.dark .bg-white:not([class*="dark:bg-"]) .bg-blue-700,
+.dark .bg-white:not([class*="dark:bg-"]) .bg-blue-700 *,
+.dark .bg-white:not([class*="dark:bg-"]) .bg-emerald-700,
+.dark .bg-white:not([class*="dark:bg-"]) .bg-emerald-700 *,
+.dark .bg-white:not([class*="dark:bg-"]) .bg-slate-800,
+.dark .bg-white:not([class*="dark:bg-"]) .bg-slate-800 * {
   color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff;
-}
-[data-ink-on-light] svg:not([data-ink-keep] svg),
-.dark .bg-white:not([class*="dark:bg-"]) svg:not([data-ink-keep] svg) {
-  color: inherit !important;
-  -webkit-text-fill-color: currentColor;
-}
-/* Preserve blue link accents on light cards */
-.dark .bg-white:not([class*="dark:bg-"]) a.text-blue-600,
-.dark .bg-white:not([class*="dark:bg-"]) .text-blue-600,
-.dark .bg-white:not([class*="dark:bg-"]) .text-blue-700,
-[data-ink-on-light] a.text-blue-600,
-[data-ink-on-light] .text-blue-600 {
-  color: #2563eb !important;
-  -webkit-text-fill-color: #2563eb;
+  -webkit-text-fill-color: #ffffff !important;
 }
 
-/* Dark buttons inside light cards must keep WHITE labels */
-.dark .bg-white:not([class*="dark:bg-"]) :is(
-  .bg-slate-900,
-  .bg-slate-800,
-  .bg-gray-900,
-  .bg-blue-600,
-  .bg-blue-700,
-  .bg-emerald-600,
-  .bg-emerald-700,
-  .bg-indigo-600,
-  .bg-violet-600
-),
-.dark .bg-white:not([class*="dark:bg-"]) :is(
-  .bg-slate-900,
-  .bg-slate-800,
-  .bg-blue-600,
-  .bg-blue-700,
-  .bg-emerald-700
-) *,
-[data-ink-on-light] :is(
-  .bg-slate-900,
-  .bg-slate-800,
-  .bg-blue-600,
-  .bg-blue-700,
-  .bg-emerald-600,
-  .bg-emerald-700
-),
-[data-ink-on-light] :is(
-  .bg-slate-900,
-  .bg-slate-800,
-  .bg-blue-600,
-  .bg-blue-700,
-  .bg-emerald-700
-) * {
+/* Blue links on light cards */
+[data-ink-on-light] a,
+.dark .bg-white:not([class*="dark:bg-"]) a {
+  color: #2563eb !important;
+  -webkit-text-fill-color: #2563eb !important;
+}
+[data-ink-on-light] a [data-ink-keep],
+.dark .bg-white:not([class*="dark:bg-"]) a [data-ink-keep] {
   color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff;
+  -webkit-text-fill-color: #ffffff !important;
 }
 
 /*
