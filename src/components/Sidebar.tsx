@@ -106,44 +106,49 @@ export default function Sidebar({ role }: SidebarProps) {
 
   const linkClass = (href: string, activeTone: 'blue' | 'orange' | 'purple') => {
     const isActive = pathname === href || pathname.startsWith(href + '/');
+    // High-contrast dark nav: never use slate-400/500 on charcoal — they wash out.
+    // CSS [data-app-sidebar] rules also lock colors if utilities fight.
     if (activeTone === 'orange') {
-      return `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+      return `sidebar-nav-link flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
         isActive
-          ? 'bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300'
-          : 'text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200'
+          ? 'sidebar-nav-link--active bg-orange-50 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200'
+          : 'text-slate-700 hover:bg-gray-100 dark:text-slate-100 dark:hover:bg-white/10 dark:hover:text-white'
       }`;
     }
     if (activeTone === 'purple') {
-      return `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+      return `sidebar-nav-link flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
         isActive
-          ? 'bg-purple-50 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300'
-          : 'text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200'
+          ? 'sidebar-nav-link--active bg-purple-50 text-purple-800 dark:bg-purple-500/20 dark:text-purple-200'
+          : 'text-slate-700 hover:bg-gray-100 dark:text-slate-100 dark:hover:bg-white/10 dark:hover:text-white'
       }`;
     }
-    return `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+    return `sidebar-nav-link flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
       isActive
-        ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
-        : 'text-gray-700 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white'
+        ? 'sidebar-nav-link--active bg-blue-50 text-blue-800 dark:bg-blue-500/20 dark:text-blue-100'
+        : 'text-slate-800 hover:bg-gray-100 dark:text-slate-100 dark:hover:bg-white/10 dark:hover:text-white'
     }`;
   };
 
   return (
-    <div className="w-72 min-w-[280px] bg-white dark:bg-sidebar border-r border-gray-200 dark:border-border h-screen flex flex-col fixed left-0 top-0 shadow-sm z-50">
+    <div
+      data-app-sidebar
+      className="w-72 min-w-[280px] bg-white dark:bg-sidebar border-r border-gray-200 dark:border-border h-screen flex flex-col fixed left-0 top-0 shadow-sm z-50 text-foreground"
+    >
       <div className="px-3 pt-3 pb-3 border-b border-gray-200 dark:border-border">
         <Link
           href="/dashboard"
-          className="block rounded-lg hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors -mx-0.5 px-0.5"
+          className="block rounded-lg hover:bg-gray-50/80 dark:hover:bg-white/10 transition-colors -mx-0.5 px-0.5"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/branding/trio-sourcing-logo.png"
             alt="Trio Sourcing — Powered by Ryvan Recruiting"
-            className="w-full h-auto max-h-[5.5rem] object-contain object-left object-top dark:brightness-110 dark:contrast-95"
+            className="w-full h-auto max-h-[5.5rem] object-contain object-left object-top dark:brightness-125 dark:contrast-110"
           />
         </Link>
         {/* Global light / dark toggle — under logo */}
         <div
-          className="mt-2.5 flex rounded-lg border border-gray-200 dark:border-border bg-gray-50 dark:bg-card p-0.5"
+          className="mt-2.5 flex rounded-lg border border-gray-200 dark:border-border bg-gray-50 dark:bg-secondary p-0.5"
           role="group"
           aria-label="Color theme"
         >
@@ -152,8 +157,8 @@ export default function Sidebar({ role }: SidebarProps) {
             onClick={() => setTheme('white')}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${
               theme === 'white' || theme === 'gray'
-                ? 'bg-white text-slate-900 shadow-sm dark:bg-secondary dark:text-white'
-                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                ? 'bg-white text-slate-900 shadow-sm dark:bg-card dark:text-white'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white'
             }`}
             title="Light UI"
           >
@@ -165,8 +170,8 @@ export default function Sidebar({ role }: SidebarProps) {
             onClick={() => setTheme('black')}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${
               isDark
-                ? 'bg-[#2a2e34] text-white shadow-sm ring-1 ring-white/10'
-                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+                ? 'bg-[#2a2e34] text-white shadow-sm ring-1 ring-white/15'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
             title="Dark UI (charcoal background)"
           >
@@ -179,10 +184,10 @@ export default function Sidebar({ role }: SidebarProps) {
       {canScrollUp && (
         <button
           onClick={() => scrollMenu('up')}
-          className="absolute top-28 left-1/2 -translate-x-1/2 z-10 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-full p-1 shadow-md hover:bg-gray-100 dark:hover:bg-slate-800"
+          className="absolute top-28 left-1/2 -translate-x-1/2 z-10 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-full p-1 shadow-md hover:bg-gray-100 dark:hover:bg-slate-700"
           style={{ left: '50%' }}
         >
-          <ChevronUp className="h-4 w-4 dark:text-slate-300" />
+          <ChevronUp className="h-4 w-4 text-slate-700 dark:text-slate-100" />
         </button>
       )}
 
@@ -190,44 +195,72 @@ export default function Sidebar({ role }: SidebarProps) {
         ref={navRef}
         className="flex-1 p-3 overflow-y-auto scrollbar-thin"
         onScroll={checkScroll}
+        aria-label="Main"
       >
         <div className="space-y-1">
-          {visibleMain.map((item) => (
-            <Link key={item.href} href={item.href} className={linkClass(item.href, 'blue')}>
-              <item.icon className="h-5 w-5" />
-              {item.name}
-            </Link>
-          ))}
+          {visibleMain.map((item) => {
+            const isActive =
+              pathname === item.href || pathname.startsWith(item.href + '/');
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={linkClass(item.href, 'blue')}
+                aria-current={isActive ? 'page' : undefined}
+              >
+                <item.icon className="h-5 w-5 shrink-0 opacity-95" />
+                {item.name}
+              </Link>
+            );
+          })}
         </div>
 
         {visibleAdmin.length > 0 && (
           <div className="mt-6 pt-4 border-t border-gray-200 dark:border-border">
-            <div className="text-xs font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-4 mb-2">
+            <div className="sidebar-section-label text-xs font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider px-4 mb-2">
               Admin
             </div>
             <div className="space-y-1">
-              {visibleAdmin.map((item) => (
-                <Link key={item.href} href={item.href} className={linkClass(item.href, 'orange')}>
-                  <item.icon className="h-5 w-5" />
-                  {item.name}
-                </Link>
-              ))}
+              {visibleAdmin.map((item) => {
+                const isActive =
+                  pathname === item.href || pathname.startsWith(item.href + '/');
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={linkClass(item.href, 'orange')}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <item.icon className="h-5 w-5 shrink-0 opacity-95" />
+                    {item.name}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         )}
 
         {visibleSite.length > 0 && (
           <div className="mt-6 pt-4 border-t border-gray-200 dark:border-border">
-            <div className="text-xs font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-4 mb-2">
+            <div className="sidebar-section-label text-xs font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider px-4 mb-2">
               Site Admin
             </div>
             <div className="space-y-1">
-              {visibleSite.map((item) => (
-                <Link key={item.href} href={item.href} className={linkClass(item.href, 'purple')}>
-                  <item.icon className="h-5 w-5" />
-                  {item.name}
-                </Link>
-              ))}
+              {visibleSite.map((item) => {
+                const isActive =
+                  pathname === item.href || pathname.startsWith(item.href + '/');
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={linkClass(item.href, 'purple')}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <item.icon className="h-5 w-5 shrink-0 opacity-95" />
+                    {item.name}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         )}
@@ -236,15 +269,15 @@ export default function Sidebar({ role }: SidebarProps) {
       {canScrollDown && (
         <button
           onClick={() => scrollMenu('down')}
-          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-full p-1 shadow-md hover:bg-gray-100 dark:hover:bg-slate-800"
+          className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-full p-1 shadow-md hover:bg-gray-100 dark:hover:bg-slate-700"
           style={{ left: '50%' }}
         >
-          <ChevronDown className="h-4 w-4 dark:text-slate-300" />
+          <ChevronDown className="h-4 w-4 text-slate-700 dark:text-slate-100" />
         </button>
       )}
 
       <div className="p-4 border-t border-gray-200 dark:border-border mt-auto">
-        <div className="text-xs text-gray-500 dark:text-slate-500 text-center">
+        <div className="text-xs font-medium text-slate-600 dark:text-slate-300 text-center">
           © 2026 Trio Recruiting
         </div>
       </div>

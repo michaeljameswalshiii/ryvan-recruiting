@@ -46,8 +46,8 @@
     --secondary: 213 9% 18%;
     --secondary-foreground: 210 40% 98%;
     --muted: 213 9% 17%;
-    /* Secondary copy ≥ ~7:1 on charcoal — never “ghost” gray */
-    --muted-foreground: 215 16% 82%;
+    /* Secondary copy ≥ ~8:1 on charcoal — never “ghost” gray on nav/chrome */
+    --muted-foreground: 215 20% 88%;
     --accent: 213 9% 18%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 40%;
@@ -118,13 +118,46 @@
 .dark .text-slate-500,
 .dark .text-zinc-500,
 .dark .text-neutral-500 {
-  color: #cbd5e1; /* slate-300 — was too faint at slate-400 */
+  color: #e2e8f0; /* slate-200 — secondary labels on charcoal */
 }
 .dark .text-gray-400,
 .dark .text-slate-400,
 .dark .text-zinc-400,
 .dark .text-neutral-400 {
-  color: #94a3b8; /* slate-400 — meta only */
+  color: #cbd5e1; /* slate-300 — was too faint at slate-400 on dark canvas */
+}
+.dark .text-gray-300,
+.dark .text-slate-300,
+.dark .text-zinc-300 {
+  color: #f1f5f9; /* slate-100 — primary secondary ink */
+}
+
+/*
+ * Sidebar nav (charcoal): force readable link + section contrast.
+ * Overrides any global ink remap that can leave near-black text on dark chrome.
+ */
+.dark [data-app-sidebar] {
+  color: #f1f5f9;
+}
+.dark [data-app-sidebar] .sidebar-nav-link {
+  color: #f1f5f9 !important; /* near-white inactive items */
+}
+.dark [data-app-sidebar] .sidebar-nav-link:hover {
+  color: #ffffff !important;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+.dark [data-app-sidebar] .sidebar-nav-link--active,
+.dark [data-app-sidebar] .sidebar-nav-link[aria-current="page"] {
+  color: #dbeafe !important; /* blue-100 */
+  background-color: rgba(59, 130, 246, 0.22);
+}
+.dark [data-app-sidebar] .sidebar-section-label {
+  color: #e2e8f0 !important;
+  opacity: 1;
+}
+.dark [data-app-sidebar] svg {
+  color: inherit;
+  stroke: currentColor;
 }
 
 /*
@@ -303,18 +336,32 @@
   color: #64748b;
 }
 
-/* Table chrome: force ink on light table shells */
-.dark table {
-  color: #0f172a;
-}
+/* Table chrome: dark ink only inside light cards — never force black on charcoal canvas */
 .dark .bg-white table,
-.dark .bg-white th,
-.dark .bg-white td {
-  color: inherit;
+.dark .bg-gray-50 table,
+.dark .bg-slate-50 table {
+  color: #0f172a;
 }
 .dark .bg-white .text-blue-600,
 .dark .bg-white a.text-blue-600 {
   color: #2563eb !important;
+}
+
+/* Dropdown / popover menus on dark chrome */
+.dark [role="menu"],
+.dark [data-radix-menu-content],
+.dark [data-radix-dropdown-menu-content] {
+  color: #f1f5f9;
+}
+.dark [role="menuitem"] {
+  color: inherit;
+}
+
+/* Placeholders on dark canvas */
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #94a3b8;
+  opacity: 1;
 }
 
 /* Job description rich HTML (careers + editor) */

@@ -114,7 +114,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
           {menuOpen && (
             <div
               role="menu"
-              className="absolute right-0 mt-2 w-64 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1.5 shadow-lg z-50"
+              className="absolute right-0 mt-2 w-64 rounded-xl border border-gray-200 dark:border-border bg-white dark:bg-card py-1.5 shadow-lg z-50 text-foreground"
             >
               {QUICK_ACTIONS.map((action) => {
                 const Icon = action.icon;
@@ -124,14 +124,14 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                     href={action.href}
                     role="menuitem"
                     onClick={() => setMenuOpen(false)}
-                    className="flex items-start gap-3 px-3 py-2.5 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-white/5 transition-colors"
+                    className="flex items-start gap-3 px-3 py-2.5 text-sm hover:bg-blue-50 dark:hover:bg-white/10 transition-colors"
                   >
-                    <Icon className="h-4 w-4 mt-0.5 shrink-0" />
+                    <Icon className="h-4 w-4 mt-0.5 shrink-0 text-blue-600 dark:text-blue-300" />
                     <span className="min-w-0">
-                      <span className="block font-medium text-blue-700 dark:text-blue-300">
+                      <span className="block font-semibold text-slate-900 dark:text-slate-50">
                         {action.label}
                       </span>
-                      <span className="block text-xs text-gray-500 dark:text-slate-400 font-normal">
+                      <span className="block text-xs text-slate-600 dark:text-slate-300 font-normal">
                         {action.description}
                       </span>
                     </span>
