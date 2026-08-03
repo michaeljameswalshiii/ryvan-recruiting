@@ -22,6 +22,7 @@ const DEMO_TENANT = 'tenant-1784069675716-demo';
 const EMPTY_TENANTS = [
   'tenant-1780937012560-9ictwkn4e',
   'tenant-1778593443269-u7u7dp4jo',
+  'tenant-1778594705221', // Test Company (removed from prod 2026-08)
 ];
 
 const TABLES = {
