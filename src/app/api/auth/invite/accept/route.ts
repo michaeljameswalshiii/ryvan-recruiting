@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       refreshToken: "",
     };
 
-    return setSessionCookie(
+    return await setSessionCookie(
       NextResponse.json({
         success: true,
         user: {

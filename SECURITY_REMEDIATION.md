@@ -58,7 +58,12 @@ Checklist:
 
 ---
 
-## P0 — Code / tree (implemented)
+## P0 — Session integrity (2026-08)
+
+- [x] Sealed session cookie (JWE via `jose`, `src/lib/session-seal.ts`)
+- [x] `getSession()` verifies seal; rejects legacy plain JSON (hard cutover → re-login)
+- [x] Middleware API **default-deny** (allowlist: auth, public, mcp, health, cron, email oauth)
+- [ ] Set **`SESSION_SECRET`** on Vercel (min 16 chars; `openssl rand -base64 32`). Falls back to `AI_CREDENTIALS_SECRET` if set.
 
 ### Hardening pass (earlier)
 

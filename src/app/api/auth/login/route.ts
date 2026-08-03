@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
       refreshToken: session.RefreshToken || "",
     };
 
-    return setSessionCookie(
+    return await setSessionCookie(
       NextResponse.json({
         success: true,
         user: {

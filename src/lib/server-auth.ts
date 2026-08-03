@@ -19,6 +19,12 @@ import type { NextResponse } from 'next/server';
 import { CognitoIdentityProviderClient, GetUserCommand, InitiateAuthCommand, GlobalSignOutCommand, SignUpCommand, AdminGetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient, GetItemCommand, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { unmarshall, marshall } from '@aws-sdk/util-dynamodb';
+import {
+  SESSION_COOKIE_NAME,
+  sealSession,
+  unsealSession,
+  sessionCookieOptions,
+} from '@/lib/session-seal';
 
 // AWS Configuration - server-side
 // Support both server-only vars (local) and NEXT_PUBLIC_ vars (Vercel deployment)
@@ -51,14 +57,12 @@ function getAwsCredentials() {
   return undefined;
 }
 
-// Cookie name
-const SESSION_COOKIE = 'turnkey-session';
+// Cookie name (sealed JWE — see session-seal.ts)
+const SESSION_COOKIE = SESSION_COOKIE_NAME;
 
 /**
  * Session data type
- * NOTE: We don't store full JWT tokens in the cookie because they exceed
- * the 4096 byte cookie limit. Instead, we store minimal session info.
- * API calls that need tokens will use the refresh token flow.
+ * Cookie is an encrypted JWE (jose). Tokens are included when they fit size limits.
  */
 export interface SessionData {
   userId: string;
@@ -66,8 +70,8 @@ export interface SessionData {
   tenantId: string;
   /** Canonical role: site_admin | company_admin | user */
   role?: string;
-  accessToken?: string; // Needed for middleware validation
-  refreshToken: string; // Needed for token refresh
+  accessToken?: string;
+  refreshToken: string;
 }
 
 /**
@@ -95,29 +99,31 @@ export function clearCachedTokens(sessionKey: string) {
 /**
  * Cookie name export for routes
  */
-export const SESSION_COOKIE_NAME = SESSION_COOKIE;
+export { SESSION_COOKIE_NAME };
 
 /**
  * Get cookie options (for route handlers)
- * Uses secure cookies in production, with proper settings for Vercel deployment
  */
 export function getCookieOptions() {
-  const isProduction = process.env.NODE_ENV === 'production';
-  
-  return {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: 'lax' as const,
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-    path: '/',
-  };
+  return sessionCookieOptions();
 }
 
 /**
- * Set session cookie on response (helper for route handlers)
+ * Set sealed session cookie on response (helper for route handlers)
  */
-export function setSessionCookie(response: NextResponse, session: SessionData): NextResponse {
-  response.cookies.set(SESSION_COOKIE, JSON.stringify(session), getCookieOptions());
+export async function setSessionCookie(
+  response: NextResponse,
+  session: SessionData
+): Promise<NextResponse> {
+  const sealed = await sealSession({
+    userId: session.userId,
+    email: session.email,
+    tenantId: session.tenantId,
+    role: session.role,
+    accessToken: session.accessToken || '',
+    refreshToken: session.refreshToken || '',
+  });
+  response.cookies.set(SESSION_COOKIE, sealed, getCookieOptions());
   return response;
 }
 
@@ -125,39 +131,39 @@ export function setSessionCookie(response: NextResponse, session: SessionData): 
  * Clear session cookie on response (helper for route handlers)
  */
 export function clearSessionCookie(response: NextResponse): NextResponse {
-  response.cookies.delete(SESSION_COOKIE);
+  response.cookies.set(SESSION_COOKIE, '', {
+    ...getCookieOptions(),
+    maxAge: 0,
+  });
   return response;
 }
 
 /**
- * Get current session from httpOnly cookie
- * READ-ONLY - use API routes to set/delete cookies
+ * Get verified session from sealed httpOnly cookie.
+ * Rejects tampered, expired, and legacy plain-JSON cookies.
  */
 export async function getSession(): Promise<SessionData | null> {
   try {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get(SESSION_COOKIE);
-    
+
     if (!sessionCookie?.value) {
-      console.log('[getSession] No cookie found');
       return null;
     }
-    
-    const session = JSON.parse(sessionCookie.value) as SessionData;
-    
-    // Defensive: validate session is an object
-    if (!session || typeof session !== 'object') {
-      console.log('[getSession] Invalid session object:', session);
+
+    const sealed = await unsealSession(sessionCookie.value);
+    if (!sealed?.userId) {
       return null;
     }
-    
-    // Validate required fields - check for userId instead of accessToken
-    if (!session.userId) {
-      console.log('[getSession] No userId in session');
-      return null;
-    }
-    
-    return session;
+
+    return {
+      userId: sealed.userId,
+      email: sealed.email,
+      tenantId: sealed.tenantId,
+      role: sealed.role,
+      accessToken: sealed.accessToken || '',
+      refreshToken: sealed.refreshToken || '',
+    };
   } catch (error) {
     console.error('[getSession] Error:', error);
     return null;
@@ -254,6 +260,7 @@ export async function authenticateUser(email: string, password: string): Promise
   userId: string;
   email: string;
   tenantId: string;
+  role?: string;
   AccessToken: string;
   IdToken: string;
   RefreshToken: string;

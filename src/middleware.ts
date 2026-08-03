@@ -1,80 +1,60 @@
 /**
  * Security Middleware
  *
- * Model: protect the ATS (dashboard / admin / internal candidates), leave
- * public surfaces open — especially multi-tenant careers pages applicants use
- * without an account.
- *
- * Public exceptions (no login):
- *   - Pages:  /careers/*, /login, /signup, /invite/*, /privacy, /terms
- *   - APIs:   /api/public/* (careers jobs + apply), /api/auth/*
- *
- * Protected (session required):
- *   - /dashboard/*, /candidates/*, /admin/*, /api/admin/*
- *
- * Performance:
- *   - Page navigations only check session cookie presence (no Cognito round-trip).
- *     Cognito GetUser on every menu click was multi-hundred-ms to multi-second lag.
- *   - Token network validation is reserved for selected sensitive APIs if needed
- *     by route handlers; cookie userId is enough to enter the shell.
- *
- * Injects x-tenant-id and x-user-id for selected authenticated APIs.
+ * - Sealed session cookie (JWE) verified before protected access
+ * - API default-deny: all /api/* require a valid session except public allowlist
+ * - Public: careers, auth, schedule tokens, health, MCP (API key)
  *
  * @serverOnly
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  SESSION_COOKIE_NAME,
+  unsealSession,
+  type SealedSessionPayload,
+} from "@/lib/session-seal";
 
 // ============================================================================
 // Route classification
 // ============================================================================
 
 /**
- * Public **pages** — applicants and unauthenticated browsers.
- * Careers is the intentional exception to "must log in to use the site".
+ * Public pages — applicants and unauthenticated browsers.
  */
 const PUBLIC_PAGE_ROUTES = [
-  "/careers", // /careers, /careers/{slug}, /careers/{slug}/{jobId}
-  "/schedule", // candidate self-schedule (token)
-  "/client-schedule", // client interviewer portal (token)
+  "/careers",
+  "/schedule",
+  "/client-schedule",
   "/login",
   "/signup",
-  "/invite", // invite accept flow
-  "/privacy", // Google OAuth / public legal
+  "/invite",
+  "/privacy",
   "/terms",
 ];
 
 /**
- * Public **APIs** — no session cookie required.
- * Careers feed + apply live under /api/public/careers/*
+ * Public APIs — no session cookie required.
+ * (Handlers may still enforce API keys / tokens.)
  */
 const PUBLIC_API_ROUTES = [
-  "/api/auth",
-  "/api/public", // careers jobs, apply, logo — multi-tenant public surface
-  "/api/mcp", // Claude MCP HTTP tools — API key auth (not session cookie)
-  "/api/apollo",
-  "/api/tavily",
-  "/api/boolean",
+  "/api/auth", // login, logout, signup, invite accept
+  "/api/public", // careers, schedule tokens, SMS inbound webhooks
+  "/api/mcp", // Claude MCP — API key auth
   "/api/health",
+  "/api/cron", // Vercel cron — Bearer CRON_SECRET (handler-enforced)
+  "/api/email/oauth", // Gmail/Outlook OAuth redirects (state-bound)
 ];
 
-// API routes that need session injection (for client-side calls from dashboard)
-// bedrock + ai + apollo: inject x-user-id / x-tenant-id when logged in for usage logging
-const PROTECTED_API_ROUTES = [
-  "/api/jobs",
-  "/api/data/jobs",
-  "/api/data/clients",
-  "/api/candidates",
-  "/api/ai",
-  "/api/bedrock",
-  "/api/apollo",
+/**
+ * Page shells that require a valid sealed session.
+ */
+const PROTECTED_PAGE_ROUTES = [
+  "/dashboard",
+  "/candidates",
+  "/admin",
+  "/email",
 ];
-
-// Protected routes that require authentication
-const PROTECTED_ROUTES = ["/dashboard", "/candidates", "/admin", "/api/admin"];
-
-// Session cookie name
-const SESSION_COOKIE = "turnkey-session";
 
 const DEBUG_MW = process.env.MIDDLEWARE_DEBUG === "true";
 
@@ -82,71 +62,53 @@ function mwLog(...args: unknown[]) {
   if (DEBUG_MW) console.log(...args);
 }
 
-/**
- * Check if route is public (no auth required)
- */
-function isPublicRoute(pathname: string): boolean {
-  if (PUBLIC_API_ROUTES.some((route) => pathname.startsWith(route))) {
-    return true;
-  }
-  if (
-    PUBLIC_PAGE_ROUTES.some(
-      (route) => pathname === route || pathname.startsWith(`${route}/`)
-    )
-  ) {
-    return true;
-  }
-  return false;
+function isPublicPage(pathname: string): boolean {
+  return PUBLIC_PAGE_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
+}
+
+function isPublicApi(pathname: string): boolean {
+  return PUBLIC_API_ROUTES.some((route) => pathname.startsWith(route));
+}
+
+function isProtectedPage(pathname: string): boolean {
+  return PROTECTED_PAGE_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
 }
 
 /**
- * Check if route is protected (requires auth)
+ * Verify sealed session from cookie. Rejects legacy JSON and invalid seals.
  */
-function isProtectedRoute(pathname: string): boolean {
-  return PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
+async function getVerifiedSession(
+  request: NextRequest
+): Promise<SealedSessionPayload | null> {
+  const raw = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  return unsealSession(raw);
 }
 
-/**
- * Get session from cookie (local parse only — no network)
- */
-function getSession(request: NextRequest) {
-  const sessionCookie = request.cookies.get(SESSION_COOKIE);
-
-  if (!sessionCookie?.value) {
-    return null;
+function injectSessionHeaders(
+  request: NextRequest,
+  session: SealedSessionPayload
+): Headers {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-tenant-id", session.tenantId || "");
+  requestHeaders.set("x-user-id", session.userId || "");
+  if (session.role) {
+    requestHeaders.set("x-user-role", session.role);
   }
-
-  try {
-    return JSON.parse(sessionCookie.value) as {
-      userId?: string;
-      email?: string;
-      tenantId?: string;
-      role?: string;
-      accessToken?: string;
-      refreshToken?: string;
-    };
-  } catch {
-    return null;
-  }
+  return requestHeaders;
 }
 
-/**
- * Cheap local JWT expiry check (no signature verify, no Cognito).
- * Used only as a soft signal for API routes — pages just need userId.
- */
-function isJwtExpired(accessToken: string, skewSeconds = 30): boolean {
-  try {
-    const parts = accessToken.split(".");
-    if (parts.length < 2) return false;
-    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    // atob is available in Edge runtime
-    const json = atob(b64);
-    const payload = JSON.parse(json) as { exp?: number };
-    if (typeof payload.exp !== "number") return false;
-    return Date.now() >= payload.exp * 1000 - skewSeconds * 1000;
-  } catch {
-    return false;
-  }
+function unauthorizedApi(): NextResponse {
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+
+function redirectToLogin(request: NextRequest, pathname: string): NextResponse {
+  const loginUrl = new URL("/login", request.url);
+  loginUrl.searchParams.set("redirect", pathname);
+  return NextResponse.redirect(loginUrl);
 }
 
 // ============================================================================
@@ -165,69 +127,43 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // === PUBLIC ROUTES - Immediate bypass ===
-  if (isPublicRoute(pathname)) {
+  // === PUBLIC PAGES ===
+  if (isPublicPage(pathname)) {
     return NextResponse.next();
   }
 
-  // === PROTECTED API ROUTES - Inject session headers ===
-  const isProtectedApiRoute = PROTECTED_API_ROUTES.some((route) =>
-    pathname.startsWith(route)
-  );
-  if (isProtectedApiRoute) {
-    const session = getSession(request);
+  // === PUBLIC APIs (explicit allowlist) ===
+  if (pathname.startsWith("/api/") && isPublicApi(pathname)) {
+    return NextResponse.next();
+  }
 
+  // === ALL OTHER APIs — default deny without sealed session ===
+  if (pathname.startsWith("/api/")) {
+    const session = await getVerifiedSession(request);
     if (!session?.userId) {
-      // Allow through without headers — API route handlers re-check auth
-      return NextResponse.next();
+      mwLog(`[Middleware] API unauthorized: ${pathname}`);
+      return unauthorizedApi();
     }
-
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set("x-tenant-id", session.tenantId || "");
-    requestHeaders.set("x-user-id", session.userId || "");
-
+    const requestHeaders = injectSessionHeaders(request, session);
     return NextResponse.next({
       request: { headers: requestHeaders },
     });
   }
 
-  // === PROTECTED ROUTES (Dashboard / admin) - Require auth ===
-  if (isProtectedRoute(pathname)) {
-    const session = getSession(request);
-    const isApiRoute = pathname.startsWith("/api/");
-
-    // No session at all
+  // === PROTECTED PAGES (dashboard shell) ===
+  if (isProtectedPage(pathname)) {
+    const session = await getVerifiedSession(request);
     if (!session?.userId) {
-      mwLog(`[Middleware] No session for ${pathname}`);
-      if (isApiRoute) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-      const loginUrl = new URL("/login", request.url);
-      loginUrl.searchParams.set("redirect", pathname);
-      return NextResponse.redirect(loginUrl);
+      mwLog(`[Middleware] Page unauthorized: ${pathname}`);
+      return redirectToLogin(request, pathname);
     }
-
-    // Pages: cookie presence is enough. Skipping Cognito GetUser here is the
-    // main nav speed fix (was a network hop on every sidebar click).
-    // APIs under /api/admin still get a local JWT exp soft-check when token present.
-    if (isApiRoute && session.accessToken && session.accessToken.length > 0) {
-      if (isJwtExpired(session.accessToken)) {
-        mwLog(`[Middleware] Access token expired for ${pathname}`);
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    }
-
-    // Inject headers for downstream server components / APIs
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set("x-tenant-id", session.tenantId || "");
-    requestHeaders.set("x-user-id", session.userId || "");
-
+    const requestHeaders = injectSessionHeaders(request, session);
     return NextResponse.next({
       request: { headers: requestHeaders },
     });
   }
 
-  // Default: allow through
+  // Other non-API pages: allow through (rare)
   return NextResponse.next();
 }
 
