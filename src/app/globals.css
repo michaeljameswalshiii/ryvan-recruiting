@@ -242,11 +242,6 @@
 .dark .bg-white[class*="dark:bg-card"] {
   color: #ffffff !important;
 }
-.dark [data-dark-panel] *,
-.dark .bg-white[class*="dark:bg-slate"] *:not(a):not(button),
-.dark .bg-white[class*="dark:bg-slate"] button {
-  /* Keep buttons able to set their own colors; force body copy white */
-}
 .dark [data-dark-panel] {
   color: #ffffff !important;
 }
