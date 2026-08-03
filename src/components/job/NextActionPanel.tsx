@@ -33,20 +33,14 @@ type Props = {
   className?: string;
 };
 
-/** Solid pastel + dark ink (inline) — avoids dark-mode utility remaps */
-function kindStyle(kind: string): { backgroundColor: string; borderColor: string; color: string } {
-  if (kind === "send_due_step")
-    return { backgroundColor: "#ecfdf5", borderColor: "#a7f3d0", color: "#064e3b" };
-  if (kind === "enroll_sequence")
-    return { backgroundColor: "#eff6ff", borderColor: "#bfdbfe", color: "#1e3a8a" };
-  if (kind === "submit")
-    return { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe", color: "#4c1d95" };
-  if (kind === "revive_stale")
-    return { backgroundColor: "#fffbeb", borderColor: "#fde68a", color: "#78350f" };
-  if (kind === "source_more")
-    return { backgroundColor: "#f0f9ff", borderColor: "#bae6fd", color: "#0c4a6e" };
-  // advance pipeline / default — white card, near-black ink
-  return { backgroundColor: "#ffffff", borderColor: "#e2e8f0", color: "#0f172a" };
+/** Tailwind light pastel classes — final globals law: light box → black text */
+function kindClass(kind: string): string {
+  if (kind === "send_due_step") return "bg-emerald-50 border-emerald-200";
+  if (kind === "enroll_sequence") return "bg-blue-50 border-blue-200";
+  if (kind === "submit") return "bg-violet-50 border-violet-200";
+  if (kind === "revive_stale") return "bg-amber-50 border-amber-200";
+  if (kind === "source_more") return "bg-sky-50 border-sky-200";
+  return "bg-white border-slate-200";
 }
 
 function jobNextKey(jobId: string, a: NextAction): string {
@@ -222,13 +216,27 @@ export function NextActionPanel({ jobId, className }: Props) {
   return (
     <section
       data-ink-on-light
-      className={`rounded-2xl border border-amber-200 shadow-sm ${className || ""}`}
-      style={{ backgroundColor: "#fffbeb", color: "#0f172a" }}
+      className={`rounded-2xl border border-amber-200 bg-amber-50 shadow-sm ${className || ""}`}
     >
-      <div
-        className="flex items-center justify-between gap-2 px-4 py-3 border-b"
-        style={{ borderColor: "#fde68a" }}
-      >
+      {/* Component-scoped lock (valid selectors only — invalid :not() was a no-op) */}
+      <style>{`
+        [data-next-actions-root],
+        [data-next-actions-root] * {
+          color: #0f172a !important;
+          -webkit-text-fill-color: #0f172a !important;
+        }
+        [data-next-actions-root] [data-ink-muted] {
+          color: #334155 !important;
+          -webkit-text-fill-color: #334155 !important;
+        }
+        [data-next-actions-root] [data-ink-keep],
+        [data-next-actions-root] [data-ink-keep] * {
+          color: #ffffff !important;
+          -webkit-text-fill-color: #ffffff !important;
+        }
+      `}</style>
+      <div data-next-actions-root>
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-amber-200">
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <Zap className="h-4 w-4 shrink-0 text-amber-600" />
           <h3 className="text-sm font-semibold">Next actions</h3>
@@ -307,9 +315,7 @@ export function NextActionPanel({ jobId, className }: Props) {
 
         {!loading && showJobAction && jobAction && (
           <div
-            className="group rounded-xl border px-3 py-2 text-sm"
-            style={kindStyle(jobAction.kind)}
-            data-ink-on-light
+            className={`group rounded-xl border px-3 py-2 text-sm ${kindClass(jobAction.kind)}`}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -359,13 +365,10 @@ export function NextActionPanel({ jobId, className }: Props) {
         {!loading &&
           visibleTop.map((a, i) => {
             const enrollId = a.meta?.enrollmentId as string | undefined;
-            const rowStyle = kindStyle(a.kind);
             return (
               <div
                 key={`${a.candidateId}-${a.kind}-${i}`}
-                className="group rounded-xl border px-3 py-2"
-                style={rowStyle}
-                data-ink-on-light
+                className={`group rounded-xl border px-3 py-2 ${kindClass(a.kind)}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -466,6 +469,7 @@ export function NextActionPanel({ jobId, className }: Props) {
               </div>
             );
           })}
+      </div>
       </div>
     </section>
   );
