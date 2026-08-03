@@ -1,12 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
+import {
+  DEFAULT_PAGE_SIZE,
+  PaginationBar,
+  paginateItems,
+} from '@/components/ui/pagination-bar';
 
 type LinkedCandidate = {
   candidateId?: string;
@@ -113,6 +118,7 @@ export function JobActivityNotes({
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('general');
   const [addingNote, setAddingNote] = useState(false);
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     if (!jobId) return;
@@ -225,7 +231,8 @@ export function JobActivityNotes({
         return true;
       });
 
-      setRows(deduped.slice(0, 80));
+      setRows(deduped.slice(0, 200));
+      setPage(1);
     } catch (e) {
       console.error('[JobActivityNotes]', e);
     } finally {
@@ -236,6 +243,11 @@ export function JobActivityNotes({
   useEffect(() => {
     void load();
   }, [load]);
+
+  const paged = useMemo(
+    () => paginateItems(rows, page, DEFAULT_PAGE_SIZE),
+    [rows, page]
+  );
 
   const handleAddNote = async () => {
     if (!jobId) return;
@@ -320,57 +332,68 @@ export function JobActivityNotes({
           No activity yet. Log a note or link candidates to see their history.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100">
-          <table className="w-full text-sm min-w-[640px]">
-            <thead>
-              <tr className="bg-gray-50/80 border-b border-gray-100 text-left">
-                <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-36">
-                  Date
-                </th>
-                <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-36">
-                  Action Type
-                </th>
-                <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                  Note
-                </th>
-                <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-32">
-                  Source
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {rows.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50/60">
-                  <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap align-top">
-                    {formatDateTime(row.createdAt)}
-                  </td>
-                  <td className="px-3 py-3 align-top">
-                    <span
-                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${noteTypeBadgeClass(row.label)}`}
-                    >
-                      {row.label}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 align-top">
-                    <ExpandableNoteText text={row.body} />
-                  </td>
-                  <td className="px-3 py-3 text-xs align-top">
-                    {row.sourceHref ? (
-                      <Link
-                        href={row.sourceHref}
-                        className="text-blue-600 hover:underline font-medium"
-                      >
-                        {row.source}
-                      </Link>
-                    ) : (
-                      <span className="text-gray-500">{row.source}</span>
-                    )}
-                  </td>
+        <>
+          <div className="overflow-x-auto rounded-xl border border-gray-100">
+            <table className="w-full text-sm min-w-[640px]">
+              <thead>
+                <tr className="bg-gray-50/80 border-b border-gray-100 text-left">
+                  <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-36">
+                    Date
+                  </th>
+                  <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-36">
+                    Action Type
+                  </th>
+                  <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Note
+                  </th>
+                  <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-32">
+                    Source
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {paged.slice.map((row) => (
+                  <tr key={row.id} className="hover:bg-gray-50/60">
+                    <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap align-top">
+                      {formatDateTime(row.createdAt)}
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${noteTypeBadgeClass(row.label)}`}
+                      >
+                        {row.label}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <ExpandableNoteText text={row.body} />
+                    </td>
+                    <td className="px-3 py-3 text-xs align-top">
+                      {row.sourceHref ? (
+                        <Link
+                          href={row.sourceHref}
+                          className="text-blue-600 hover:underline font-medium"
+                        >
+                          {row.source}
+                        </Link>
+                      ) : (
+                        <span className="text-gray-500">{row.source}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <PaginationBar
+            page={paged.page}
+            totalPages={paged.totalPages}
+            total={paged.total}
+            pageSize={DEFAULT_PAGE_SIZE}
+            onPageChange={setPage}
+            itemLabel={paged.total === 1 ? 'activity' : 'activities'}
+            className="mt-3"
+          />
+        </>
       )}
     </section>
   );
