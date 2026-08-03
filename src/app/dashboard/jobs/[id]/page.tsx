@@ -32,9 +32,8 @@ import JobEditModal from "@/components/job/JobEditModal";
 import { JobActivityNotes } from "@/components/job/JobActivityNotes";
 import { FitScoreBadge, type FitGrade } from "@/components/job/FitScoreBadge";
 import { FillReqPlaybookButton } from "@/components/job/FillReqPlaybookButton";
-import { NextActionPanel } from "@/components/job/NextActionPanel";
 import { JobHiringManagerCard } from "@/components/job/JobHiringManagerCard";
-import { JobDescription } from "@/components/careers/JobDescription";
+import { JobDescriptionPreview } from "@/components/job/JobDescriptionPreview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { APPLICATION_STAGES } from "@/lib/schemas/lead";
@@ -773,34 +772,9 @@ export default function JobDetailPage() {
             companyId={job.companyId}
             companyName={job.companyName}
           />
-
-          {/* Job description */}
-          <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <h2 className="text-sm font-semibold tracking-wide text-gray-800 uppercase">
-                Job Description
-              </h2>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 shrink-0"
-                onClick={() => {
-                  setEditFocusDescription(true);
-                  setEditOpen(true);
-                }}
-              >
-                <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                Edit
-              </Button>
-            </div>
-            <div className="rounded-xl border border-gray-100 bg-slate-50/40 px-4 py-4 sm:px-5 sm:py-5">
-              <JobDescription description={job.description || ""} />
-            </div>
-          </section>
         </div>
 
-        {/* ─── Right sidebar: hiring manager + next actions + candidates ─── */}
+        {/* ─── Right sidebar: hiring manager + JD preview + candidates ─── */}
         <div className="xl:col-span-4 space-y-5">
           <JobHiringManagerCard
             jobId={job.id || jobId}
@@ -809,7 +783,14 @@ export default function JobDetailPage() {
             job={job}
             compact
           />
-          <NextActionPanel jobId={job.id || jobId} />
+          <JobDescriptionPreview
+            description={job.description || ""}
+            jobTitle={job.title || job.jobTitle}
+            onEdit={() => {
+              setEditFocusDescription(true);
+              setEditOpen(true);
+            }}
+          />
           <section
             ref={candidatesSectionRef}
             data-ink-on-light
