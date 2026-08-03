@@ -182,10 +182,12 @@
 .dark .bg-gray-50:not([class*="dark:bg-"]),
 .dark .bg-gray-50\/50:not([class*="dark:bg-"]),
 .dark .bg-gray-50\/80:not([class*="dark:bg-"]),
+.dark .bg-gray-100:not([class*="dark:bg-"]),
 .dark .bg-slate-50:not([class*="dark:bg-"]),
 .dark .bg-slate-50\/50:not([class*="dark:bg-"]),
 .dark .bg-slate-50\/60:not([class*="dark:bg-"]),
 .dark .bg-slate-50\/80:not([class*="dark:bg-"]),
+.dark .bg-slate-100:not([class*="dark:bg-"]),
 .dark .bg-zinc-50:not([class*="dark:bg-"]),
 .dark .bg-neutral-50:not([class*="dark:bg-"]),
 .dark .bg-stone-50:not([class*="dark:bg-"]),
@@ -227,7 +229,8 @@
 .dark .bg-rose-50\/70:not([class*="dark:bg-"]),
 .dark .bg-red-50:not([class*="dark:bg-"]),
 .dark .bg-pink-50:not([class*="dark:bg-"]) {
-  color: #0f172a; /* slate-900 — primary ink on truly light surfaces only */
+  /* !important so same-node text-slate-* utilities cannot win */
+  color: #0f172a !important;
 }
 
 /*
@@ -267,104 +270,156 @@
   stroke: currentColor;
 }
 
-/* Nested secondary copy + muted labels inside pastel panels */
-.dark .bg-green-50 .text-muted-foreground,
-.dark .bg-green-50\/60 .text-muted-foreground,
-.dark .bg-indigo-50 .text-muted-foreground,
-.dark .bg-indigo-50\/40 .text-muted-foreground,
-.dark .bg-indigo-50\/50 .text-muted-foreground,
-.dark .bg-violet-50 .text-muted-foreground,
-.dark .bg-violet-50\/50 .text-muted-foreground,
-.dark .bg-emerald-50 .text-muted-foreground,
-.dark .bg-emerald-50\/50 .text-muted-foreground,
-.dark .bg-sky-50 .text-muted-foreground,
-.dark .bg-sky-50\/50 .text-muted-foreground,
-.dark .bg-amber-50 .text-muted-foreground,
-.dark .bg-zinc-50 .text-muted-foreground,
-.dark .bg-blue-50 .text-muted-foreground,
-.dark .bg-blue-50\/60 .text-muted-foreground {
-  color: #334155 !important; /* slate-700 */
-}
-
-/* Secondary labels / subtitles on those light surfaces */
-.dark .bg-white .text-gray-400,
-.dark .bg-white .text-gray-500,
-.dark .bg-white .text-slate-400,
-.dark .bg-white .text-slate-500,
-.dark .bg-white .text-muted-foreground,
-.dark .bg-gray-50 .text-gray-400,
-.dark .bg-gray-50 .text-gray-500,
-.dark .bg-gray-50\/80 .text-gray-400,
-.dark .bg-gray-50\/80 .text-gray-500,
-.dark .bg-slate-50 .text-gray-400,
-.dark .bg-slate-50 .text-gray-500,
-.dark .bg-slate-50\/80 .text-gray-400,
-.dark .bg-sky-50\/80 .text-gray-400,
-.dark .bg-sky-50\/80 .text-gray-500,
-.dark .bg-sky-50\/80 .text-gray-600,
-.dark .bg-violet-50\/80 .text-gray-400,
-.dark .bg-violet-50\/80 .text-gray-500,
-.dark .bg-violet-50\/80 .text-gray-600,
-.dark .bg-amber-50\/80 .text-gray-400,
-.dark .bg-amber-50\/80 .text-gray-500,
-.dark .bg-amber-50\/80 .text-gray-600,
-.dark .bg-emerald-50\/80 .text-gray-400,
-.dark .bg-emerald-50\/80 .text-gray-500,
-.dark .bg-emerald-50\/80 .text-gray-600,
-.dark .bg-rose-50\/70 .text-gray-400,
-.dark .bg-rose-50\/70 .text-gray-500,
-.dark .bg-rose-50\/70 .text-gray-600,
-.dark .bg-slate-50\/80 .text-gray-400,
-.dark .bg-slate-50\/80 .text-gray-500,
-.dark .bg-slate-50\/80 .text-gray-600,
-.dark .bg-blue-50\/80 .text-gray-400,
-.dark .bg-blue-50\/80 .text-gray-500 {
-  color: #334155 !important; /* slate-700 — secondary on light */
-}
-
-.dark .bg-white .text-gray-600,
-.dark .bg-white .text-gray-700,
-.dark .bg-gray-50 .text-gray-600,
-.dark .bg-gray-50\/80 .text-gray-600,
-.dark .bg-slate-50 .text-gray-600 {
-  color: #1e293b !important; /* slate-800 */
-}
-
-/* Primary titles/values on light cards must stay near-black after canvas remap */
-.dark .bg-white .text-gray-900,
-.dark .bg-white .text-slate-900,
-.dark .bg-white .text-zinc-900,
-.dark .bg-gray-50 .text-gray-900,
-.dark .bg-gray-50 .text-slate-900,
-.dark .bg-slate-50 .text-gray-900,
-.dark .bg-slate-50 .text-slate-900,
-.dark .bg-zinc-50 .text-gray-900,
-.dark .bg-zinc-50 .text-slate-900,
-.dark .bg-blue-50 .text-gray-900,
-.dark .bg-blue-50\/80 .text-gray-900,
-.dark .bg-violet-50 .text-gray-900,
-.dark .bg-emerald-50 .text-gray-900,
-.dark .bg-amber-50 .text-gray-900,
-.dark .bg-green-50 .text-gray-900,
-.dark .bg-indigo-50 .text-gray-900,
-.dark .bg-sky-50 .text-gray-900,
-.dark .bg-rose-50 .text-gray-900 {
+/*
+ * PRODUCTION: light surfaces (detail cards, chips, tables) force DARK ink on
+ * gray/slate text utilities. Canvas remaps make those classes light; without
+ * this, candidate/company/job detail pages show washed-out text on white cards.
+ * Covers all common pastel parents used in detail UIs.
+ */
+.dark :is(
+  .bg-white,
+  .bg-white\/70,
+  .bg-white\/80,
+  .bg-white\/90,
+  .bg-gray-50,
+  .bg-gray-50\/50,
+  .bg-gray-50\/80,
+  .bg-gray-100,
+  .bg-slate-50,
+  .bg-slate-50\/50,
+  .bg-slate-50\/60,
+  .bg-slate-50\/80,
+  .bg-slate-100,
+  .bg-zinc-50,
+  .bg-neutral-50,
+  .bg-stone-50,
+  .bg-sky-50,
+  .bg-sky-50\/40,
+  .bg-sky-50\/50,
+  .bg-sky-50\/60,
+  .bg-sky-50\/80,
+  .bg-blue-50,
+  .bg-blue-50\/40,
+  .bg-blue-50\/50,
+  .bg-blue-50\/60,
+  .bg-blue-50\/80,
+  .bg-violet-50,
+  .bg-violet-50\/40,
+  .bg-violet-50\/50,
+  .bg-violet-50\/60,
+  .bg-violet-50\/80,
+  .bg-purple-50,
+  .bg-indigo-50,
+  .bg-indigo-50\/40,
+  .bg-indigo-50\/50,
+  .bg-indigo-50\/60,
+  .bg-indigo-50\/80,
+  .bg-amber-50,
+  .bg-amber-50\/50,
+  .bg-amber-50\/80,
+  .bg-yellow-50,
+  .bg-orange-50,
+  .bg-emerald-50,
+  .bg-emerald-50\/50,
+  .bg-emerald-50\/60,
+  .bg-emerald-50\/80,
+  .bg-green-50,
+  .bg-green-50\/50,
+  .bg-green-50\/60,
+  .bg-teal-50,
+  .bg-cyan-50,
+  .bg-rose-50,
+  .bg-rose-50\/70,
+  .bg-red-50,
+  .bg-pink-50
+):not([class*="dark:bg-"])
+  :is(
+    .text-gray-900,
+    .text-gray-800,
+    .text-gray-700,
+    .text-gray-600,
+    .text-gray-500,
+    .text-gray-400,
+    .text-gray-300,
+    .text-slate-900,
+    .text-slate-800,
+    .text-slate-700,
+    .text-slate-600,
+    .text-slate-500,
+    .text-slate-400,
+    .text-slate-300,
+    .text-zinc-900,
+    .text-zinc-800,
+    .text-zinc-700,
+    .text-zinc-600,
+    .text-zinc-500,
+    .text-zinc-400,
+    .text-neutral-900,
+    .text-neutral-800,
+    .text-neutral-700,
+    .text-neutral-600,
+    .text-neutral-500,
+    .text-muted-foreground,
+    .text-foreground
+  ) {
   color: #0f172a !important;
 }
-.dark .bg-white .text-gray-800,
-.dark .bg-white .text-slate-800,
-.dark .bg-gray-50 .text-gray-800,
-.dark .bg-slate-50 .text-slate-800 {
-  color: #1e293b !important;
-}
-.dark .bg-white .text-gray-700,
-.dark .bg-white .text-slate-700,
-.dark .bg-gray-50 .text-gray-700,
-.dark .bg-slate-50 .text-slate-700 {
-  color: #334155 !important;
+
+/* Softer secondary on light cards (still dark enough to read) */
+.dark :is(.bg-white, .bg-gray-50, .bg-slate-50, .bg-sky-50, .bg-blue-50, .bg-violet-50, .bg-indigo-50, .bg-amber-50, .bg-emerald-50, .bg-rose-50, .bg-green-50, .bg-zinc-50):not([class*="dark:bg-"])
+  :is(.text-gray-400, .text-gray-500, .text-slate-400, .text-slate-500, .text-muted-foreground) {
+  color: #475569 !important; /* slate-600 */
 }
 
-/* Inputs / selects sitting on white surfaces */
+/* Muted icons on light cards */
+.dark :is(.bg-white, .bg-gray-50, .bg-slate-50, .bg-sky-50, .bg-blue-50, .bg-violet-50, .bg-indigo-50, .bg-amber-50, .bg-emerald-50, .bg-rose-50):not([class*="dark:bg-"])
+  svg:is(.text-gray-300, .text-gray-400, .text-gray-500, .text-slate-300, .text-slate-400, .text-slate-500) {
+  color: #64748b !important;
+  stroke: currentColor;
+}
+
+/* Colored accent text on light cards (links / stage chips) — keep brand hues */
+.dark .bg-white .text-blue-600,
+.dark .bg-white a.text-blue-600,
+.dark .bg-white .text-blue-700,
+.dark .bg-slate-50 .text-blue-600,
+.dark .bg-gray-50 .text-blue-600 {
+  color: #2563eb !important;
+}
+.dark .bg-white .text-emerald-600,
+.dark .bg-white .text-emerald-700,
+.dark .bg-emerald-50 .text-emerald-800,
+.dark .bg-emerald-50 .text-emerald-900 {
+  color: #047857 !important;
+}
+.dark .bg-sky-50 .text-sky-800,
+.dark .bg-sky-50 .text-sky-900 {
+  color: #075985 !important;
+}
+.dark .bg-violet-50 .text-violet-800,
+.dark .bg-violet-50 .text-violet-900 {
+  color: #5b21b6 !important;
+}
+.dark .bg-amber-50 .text-amber-800,
+.dark .bg-amber-50 .text-amber-900 {
+  color: #92400e !important;
+}
+.dark .bg-rose-50 .text-rose-800,
+.dark .bg-rose-50 .text-rose-900 {
+  color: #9f1239 !important;
+}
+.dark .bg-indigo-50 .text-indigo-800,
+.dark .bg-indigo-50 .text-indigo-900 {
+  color: #3730a3 !important;
+}
+.dark .bg-slate-50 .text-slate-800,
+.dark .bg-slate-50 .text-slate-700,
+.dark .bg-slate-100 .text-slate-800,
+.dark .bg-slate-100 .text-slate-700 {
+  color: #1e293b !important;
+}
+
+/* Inputs / selects on light surfaces */
 .dark input.bg-white,
 .dark select.bg-white,
 .dark textarea.bg-white,
@@ -373,20 +428,33 @@
 .dark .bg-white textarea,
 .dark .bg-gray-50 input,
 .dark .bg-gray-50 select,
-.dark .bg-slate-50 input {
-  color: #0f172a;
+.dark .bg-slate-50 input,
+.dark .bg-white select,
+.dark section.bg-white input,
+.dark section.bg-white select,
+.dark section.bg-white textarea {
+  color: #0f172a !important;
 }
 
 .dark input.bg-white::placeholder,
-.dark .bg-white input::placeholder {
-  color: #64748b;
+.dark .bg-white input::placeholder,
+.dark section.bg-white input::placeholder {
+  color: #64748b !important;
 }
 
-/* Table chrome: dark ink only inside light cards — never force black on charcoal canvas */
+/* Table chrome inside light cards */
 .dark .bg-white table,
 .dark .bg-gray-50 table,
-.dark .bg-slate-50 table {
-  color: #0f172a;
+.dark .bg-slate-50 table,
+.dark section.bg-white table {
+  color: #0f172a !important;
+}
+
+/* Borders on light cards stay visible */
+.dark .bg-white .border-gray-100,
+.dark .bg-white .border-gray-200,
+.dark .bg-white .border-slate-200 {
+  border-color: #e2e8f0 !important;
 }
 .dark .bg-white .text-blue-600,
 .dark .bg-white a.text-blue-600 {
