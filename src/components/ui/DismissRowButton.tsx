@@ -6,18 +6,20 @@ type Props = {
   onDismiss: () => void;
   label?: string;
   className?: string;
-  /** Always show (default: hover-reveal on sm+) */
+  /** Always show (default true — never hide until hover) */
   alwaysVisible?: boolean;
 };
 
 /**
  * Compact per-row dismiss control for follow-up / attention lists.
+ * Always visible by default so dark-mode remaps + hover-only opacity
+ * don't leave rows looking incomplete.
  */
 export function DismissRowButton({
   onDismiss,
   label = 'Dismiss',
   className = '',
-  alwaysVisible = false,
+  alwaysVisible = true,
 }: Props) {
   return (
     <button
@@ -29,16 +31,19 @@ export function DismissRowButton({
       }}
       className={
         className ||
-        `shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-200/80 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-slate-300 ${
-          alwaysVisible
-            ? 'opacity-100'
-            : 'opacity-70 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100'
+        `shrink-0 rounded-lg p-1.5 focus:outline-none focus:ring-2 focus:ring-slate-300 ${
+          alwaysVisible ? 'opacity-100' : 'opacity-70 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100'
         }`
+      }
+      style={
+        className
+          ? undefined
+          : { color: '#334155' } /* slate-700 — always readable on light rows */
       }
       title={`${label} — hide for 30 days`}
       aria-label={label}
     >
-      <X className="h-4 w-4" />
+      <X className="h-4 w-4" style={{ color: 'inherit' }} />
     </button>
   );
 }

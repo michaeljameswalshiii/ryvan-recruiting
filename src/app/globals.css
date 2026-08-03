@@ -235,7 +235,6 @@
 
 /*
  * Dual-theme panels: light fill + dark:bg-* → white text in dark mode.
- * User rule: on dark chrome, labels and counts must be white / near-white.
  */
 .dark [data-dark-panel],
 .dark .bg-white[class*="dark:bg-slate"],
@@ -268,6 +267,32 @@
 .dark [data-dark-panel] svg {
   color: #ffffff !important;
   stroke: currentColor;
+}
+
+/*
+ * Light gradients (from-*-50 / to-white) used on detail panels — treat as light
+ * surfaces so text-muted-foreground / slate utilities stay dark, not washed-out.
+ */
+.dark [class*="from-amber-50"],
+.dark [class*="from-sky-50"],
+.dark [class*="from-blue-50"],
+.dark [class*="from-violet-50"],
+.dark [class*="from-emerald-50"],
+.dark [class*="from-rose-50"],
+.dark [class*="from-slate-50"],
+.dark [class*="from-orange-50"],
+.dark [class*="to-white"] {
+  color: #0f172a;
+}
+.dark [class*="from-amber-50"] :is(.text-muted-foreground, .text-slate-500, .text-slate-600, .text-gray-500, .text-gray-600),
+.dark [class*="from-sky-50"] :is(.text-muted-foreground, .text-slate-500, .text-slate-600, .text-gray-500),
+.dark [class*="from-slate-50"] :is(.text-muted-foreground, .text-slate-500, .text-slate-600, .text-gray-500),
+.dark [class*="to-white"] :is(.text-muted-foreground, .text-slate-500, .text-slate-600, .text-gray-500, .text-gray-400) {
+  color: #475569 !important;
+}
+.dark [class*="from-amber-50"] :is(.text-slate-900, .text-gray-900, .text-slate-800),
+.dark [class*="to-white"] :is(.text-slate-900, .text-gray-900, .text-slate-800) {
+  color: #0f172a !important;
 }
 
 /*
