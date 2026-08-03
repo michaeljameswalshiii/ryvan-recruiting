@@ -122,8 +122,7 @@ export function canAccessPath(
   // Site-only multi-tenant tools
   if (
     path.startsWith("/dashboard/dynamo-search") ||
-    path.startsWith("/admin/dynamodb") ||
-    path.startsWith("/dashboard/debug-env")
+    path.startsWith("/admin/dynamodb")
   ) {
     return hasPermission(role, "dynamo_search");
   }

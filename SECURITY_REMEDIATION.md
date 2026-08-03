@@ -94,7 +94,7 @@ Checklist:
 - [ ] Require auth on `/api/apollo`, `/api/tavily`, `/api/boolean`, `/api/bedrock` (remove from public middleware list)
 - [ ] Add rate limits on login + paid third-party proxies
 - [ ] Prefer `aws-jwt-verify` for Cognito tokens instead of GetUser on every request
-- [ ] Remove or env-gate `/dashboard/debug-env`
+- [x] Remove `/dashboard/debug-env` (deleted in dead-code cleanup)
 - [ ] Ensure tenant isolation: never trust client-supplied `tenantId` query params for authorization
 
 ### Suggested PR split
