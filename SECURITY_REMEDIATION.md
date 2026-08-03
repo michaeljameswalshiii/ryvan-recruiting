@@ -143,7 +143,6 @@ Checklist:
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Server AWS (prefer least-privilege IAM) |
 | `COGNITO_*` / `NEXT_PUBLIC_COGNITO_*` | Auth |
 | `APOLLO_API_KEY` | Apollo (server only) |
-| `GROQ_API_KEY` | Groq (server only; no hardcoded fallback) |
 | `AI_CREDENTIALS_SECRET` | BYOK encryption (required in prod) |
 | `ADMIN_EMAIL_ALLOWLIST` | Optional extra admin gate |
 | `ADMIN_API_DISABLED` | Emergency kill-switch for admin API |
@@ -168,4 +167,5 @@ Partner workflow: raise P0 rotation + private-repo decision with the repo owner 
 | 2026-08-03 | Merged PR #43 hygiene cleanup |
 | 2026-08-03 | git filter-repo path purge + secret literal replacement; force-pushed all branches |
 | 2026-08-03 | Deleted leaked AWS access key; created replacement; updated Vercel production + redeployed |
-| 2026-08-03 | **Still required:** revoke Groq key in Groq console; rotate Apollo/Gmail/other if ever real in dumps; re-clone other local copies (Desktop, TurnkeyFresh) |
+| 2026-08-03 | **Still required:** revoke old Groq key in Groq console (optional; app no longer uses Groq); rotate Apollo/Gmail/other if ever real in dumps; re-clone other local copies (Desktop, TurnkeyFresh) |
+| 2026-08-03 | Removed unused Groq integration (`src/lib/groq.ts` + `groq` npm package) |
