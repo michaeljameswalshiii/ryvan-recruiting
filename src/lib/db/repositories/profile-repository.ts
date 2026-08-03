@@ -337,7 +337,7 @@ export async function createProfile(
     tenant_id: input.tenant_id,
     email,
     full_name: input.full_name,
-    role: input.role || "user",
+    role: input.role ? normalizeRole(input.role) : "user",
     status: input.status || "active",
     created_at: new Date().toISOString(),
     ...(input.invited_at ? { invited_at: input.invited_at } : {}),
@@ -384,7 +384,7 @@ export async function updateProfile(
   if (input.role !== undefined) {
     names["#role"] = "role";
     updates.push("#role = :role");
-    values[":role"] = input.role;
+    values[":role"] = normalizeRole(input.role);
   }
   if (input.status !== undefined) {
     names["#status"] = "status";

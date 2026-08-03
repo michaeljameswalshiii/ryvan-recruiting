@@ -64,7 +64,7 @@ export interface SessionData {
   userId: string;
   email: string;
   tenantId: string;
-  /** Canonical role: site_admin | customer_admin | user */
+  /** Canonical role: site_admin | company_admin | user */
   role?: string;
   accessToken?: string; // Needed for middleware validation
   refreshToken: string; // Needed for token refresh
@@ -446,7 +446,7 @@ const cognitoClient = new CognitoIdentityProviderClient({ region, credentials: g
       tenant_id: tenantId,
       email,
       full_name: fullName,
-      role: 'customer_admin', // first user of a new tenant
+      role: 'company_admin', // first user of a new tenant
       created_at: new Date().toISOString(),
     }),
   }));

@@ -41,7 +41,7 @@ export function requireTeamAdmin(
 ): true | NextResponse {
   if (!hasPermission(session.role, "team_admin")) {
     return NextResponse.json(
-      { error: "Forbidden — Customer Admin or above required" },
+      { error: "Forbidden — Company Admin or above required" },
       { status: 403 }
     );
   }

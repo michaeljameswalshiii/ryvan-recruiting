@@ -104,14 +104,14 @@ export async function requireAuthSession(): Promise<
   let role = profile.role;
 
   // SITE_ADMIN_EMAIL_ALLOWLIST elevates to site_admin
-  // ADMIN_EMAIL_ALLOWLIST elevates to at least customer_admin (legacy)
+  // ADMIN_EMAIL_ALLOWLIST elevates to at least company_admin
   if (emailOnAllowlist(session.email || profile.email, "SITE_ADMIN_EMAIL_ALLOWLIST")) {
     role = "site_admin";
   } else if (
     !isTenantAdminOrAbove(role) &&
     emailOnAllowlist(session.email || profile.email, "ADMIN_EMAIL_ALLOWLIST")
   ) {
-    role = "customer_admin";
+    role = "company_admin";
   }
 
   return {
@@ -147,7 +147,7 @@ export async function requireSiteAdminSession(): Promise<
 }
 
 /**
- * Require Customer Admin or Site Admin (tenant-elevated tools).
+ * Require Company Admin or Site Admin (tenant-elevated tools).
  * Prefer requireSiteAdminSession for multi-tenant data access.
  */
 export async function requireAdminSession(): Promise<
@@ -196,7 +196,7 @@ export async function resolveUserRole(
     !isTenantAdminOrAbove(role) &&
     emailOnAllowlist(email, "ADMIN_EMAIL_ALLOWLIST")
   ) {
-    return "customer_admin";
+    return "company_admin";
   }
   return role;
 }

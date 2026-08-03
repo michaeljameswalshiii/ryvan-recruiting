@@ -29,7 +29,9 @@ import {
 import { z } from "zod";
 
 const patchSchema = z.object({
-  role: z.enum([ROLES.USER, ROLES.CUSTOMER_ADMIN]).optional(),
+  role: z
+    .enum([ROLES.USER, ROLES.COMPANY_ADMIN, "customer_admin"])
+    .optional(),
   status: z.enum(["active", "disabled"]).optional(),
   full_name: z.string().min(1).max(100).optional(),
 });
@@ -70,7 +72,7 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       return NextResponse.json({ error: "Invalid input" }, { status: 400 });
     }
 
-    // Prevent removing last customer_admin
+    // Prevent removing last company admin
     if (
       parsed.data.role === ROLES.USER ||
       parsed.data.status === "disabled"
@@ -86,21 +88,24 @@ export async function PATCH(request: NextRequest, context: Ctx) {
         );
         if (otherAdmins.length === 0) {
           return NextResponse.json(
-            { error: "Cannot remove or demote the last Customer Admin" },
+            { error: "Cannot remove or demote the last Company Admin" },
             { status: 400 }
           );
         }
       }
     }
 
-    if (
-      parsed.data.role &&
-      !TENANT_ASSIGNABLE_ROLES.includes(parsed.data.role)
-    ) {
+    const nextRole = parsed.data.role
+      ? normalizeRole(parsed.data.role)
+      : undefined;
+    if (nextRole && !TENANT_ASSIGNABLE_ROLES.includes(nextRole)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
 
-    const updated = await updateProfile(id, parsed.data);
+    const updated = await updateProfile(id, {
+      ...parsed.data,
+      ...(nextRole ? { role: nextRole } : {}),
+    });
     if (!updated) {
       return NextResponse.json({ error: "Update failed" }, { status: 500 });
     }
@@ -149,7 +154,7 @@ export async function DELETE(_request: NextRequest, context: Ctx) {
       );
       if (otherAdmins.length === 0) {
         return NextResponse.json(
-          { error: "Cannot disable the last Customer Admin" },
+          { error: "Cannot disable the last Company Admin" },
           { status: 400 }
         );
       }

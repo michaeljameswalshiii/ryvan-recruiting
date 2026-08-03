@@ -14,7 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Copy, UserPlus } from "lucide-react";
 import { toast } from "sonner";
-import { ROLE_LABELS, type AppRole } from "@/lib/roles";
+import { ROLE_LABELS, ROLES, type AppRole } from "@/lib/roles";
 
 type Member = {
   id: string;
@@ -25,6 +25,8 @@ type Member = {
   created_at?: string;
 };
 
+type TenantAssignableRole = typeof ROLES.USER | typeof ROLES.COMPANY_ADMIN;
+
 export function TeamSettings() {
   const [members, setMembers] = useState<Member[]>([]);
   const [seatsUsed, setSeatsUsed] = useState(0);
@@ -33,7 +35,7 @@ export function TeamSettings() {
   const [inviting, setInviting] = useState(false);
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState<"user" | "customer_admin">("user");
+  const [role, setRole] = useState<TenantAssignableRole>(ROLES.USER);
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -97,7 +99,7 @@ export function TeamSettings() {
     }
   };
 
-  const changeRole = async (id: string, newRole: "user" | "customer_admin") => {
+  const changeRole = async (id: string, newRole: TenantAssignableRole) => {
     try {
       const res = await fetch(`/api/tenant/members/${id}`, {
         method: "PATCH",
@@ -185,12 +187,17 @@ export function TeamSettings() {
                 className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
                 value={role}
                 onChange={(e) =>
-                  setRole(e.target.value as "user" | "customer_admin")
+                  setRole(e.target.value as TenantAssignableRole)
                 }
               >
-                <option value="user">User</option>
-                <option value="customer_admin">Customer Admin</option>
+                <option value={ROLES.USER}>{ROLE_LABELS.user}</option>
+                <option value={ROLES.COMPANY_ADMIN}>
+                  {ROLE_LABELS.company_admin}
+                </option>
               </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Company Admin manages the team; User is standard recruiter access.
+              </p>
             </div>
             <div className="sm:col-span-2">
               <Button type="submit" disabled={inviting || seatsUsed >= seatLimit}>
@@ -256,20 +263,22 @@ export function TeamSettings() {
                       <select
                         className="h-8 rounded border px-2 text-xs"
                         value={
-                          m.role === "customer_admin"
-                            ? "customer_admin"
-                            : "user"
+                          m.role === ROLES.COMPANY_ADMIN
+                            ? ROLES.COMPANY_ADMIN
+                            : ROLES.USER
                         }
                         disabled={m.status === "disabled"}
                         onChange={(e) =>
                           changeRole(
                             m.id,
-                            e.target.value as "user" | "customer_admin"
+                            e.target.value as TenantAssignableRole
                           )
                         }
                       >
-                        <option value="user">User</option>
-                        <option value="customer_admin">Customer Admin</option>
+                        <option value={ROLES.USER}>{ROLE_LABELS.user}</option>
+                        <option value={ROLES.COMPANY_ADMIN}>
+                          {ROLE_LABELS.company_admin}
+                        </option>
                       </select>
                     )}
                   </td>

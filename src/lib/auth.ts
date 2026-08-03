@@ -93,7 +93,7 @@ export async function signUp(
       tenant_id: tenantId,
       email,
       full_name: fullName,
-      role: "customer_admin",
+      role: "company_admin",
     });
     
     // Store tenant_id for session

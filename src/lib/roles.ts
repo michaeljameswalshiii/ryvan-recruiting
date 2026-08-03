@@ -2,25 +2,37 @@
  * Role-based access control (RBAC)
  *
  * Roles:
- * - site_admin      Platform operator — all screens + multi-tenant tools
- * - customer_admin  Tenant admin — elevated screens within their tenant only
- * - user            Standard recruiter — core ATS screens
+ * - site_admin     Platform operator — all screens + multi-tenant tools
+ * - company_admin  Company / tenant admin — elevated screens within their tenant
+ * - user           Standard recruiter — core ATS screens
  *
- * Legacy values (admin / member / viewer) are normalized on read.
+ * Legacy values (admin, customer_admin, member, viewer) are normalized on read.
  */
 
 export const ROLES = {
   SITE_ADMIN: "site_admin",
-  CUSTOMER_ADMIN: "customer_admin",
+  COMPANY_ADMIN: "company_admin",
   USER: "user",
+  /**
+   * @deprecated Legacy alias — same permissions as COMPANY_ADMIN.
+   * Kept so older call sites compile; prefer COMPANY_ADMIN.
+   */
+  CUSTOMER_ADMIN: "company_admin",
 } as const;
 
-export type AppRole = (typeof ROLES)[keyof typeof ROLES];
+export type AppRole = "site_admin" | "company_admin" | "user";
 
 export const ROLE_LABELS: Record<AppRole, string> = {
   site_admin: "Site Admin",
-  customer_admin: "Customer Admin",
+  company_admin: "Company Admin",
   user: "User",
+};
+
+/** Short descriptions for invite UI / settings */
+export const ROLE_DESCRIPTIONS: Record<AppRole, string> = {
+  site_admin: "Platform operator with multi-tenant tools",
+  company_admin: "Manages team, settings, and elevated tools for this company",
+  user: "Standard recruiter access to core ATS features",
 };
 
 /** Permission keys used for nav + page gates */
@@ -37,7 +49,7 @@ export type Permission =
 
 const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
   user: ["core_ats", "settings"],
-  customer_admin: [
+  company_admin: [
     "core_ats",
     "settings",
     "ai_apollo",
@@ -63,24 +75,38 @@ const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
  * Unknown / missing → user (least privilege).
  */
 export function normalizeRole(raw: string | null | undefined): AppRole {
-  const r = (raw || "").trim().toLowerCase();
+  const r = (raw || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
 
-  if (r === ROLES.SITE_ADMIN || r === "siteadmin" || r === "super_admin" || r === "superadmin") {
+  if (
+    r === ROLES.SITE_ADMIN ||
+    r === "siteadmin" ||
+    r === "super_admin" ||
+    r === "superadmin"
+  ) {
     return ROLES.SITE_ADMIN;
   }
 
-  // Legacy "admin" = tenant admin (customer_admin), not platform site admin
+  // Company admin (canonical) + legacy customer_admin / admin / tenant_admin
   if (
-    r === ROLES.CUSTOMER_ADMIN ||
-    r === "admin" ||
+    r === ROLES.COMPANY_ADMIN ||
+    r === "companyadmin" ||
+    r === "company_admin" ||
+    r === "customer_admin" ||
     r === "customeradmin" ||
+    r === "admin" ||
     r === "tenant_admin" ||
     r === "tenantadmin"
   ) {
-    return ROLES.CUSTOMER_ADMIN;
+    return ROLES.COMPANY_ADMIN;
   }
 
-  if (r === ROLES.USER || r === "member" || r === "viewer" || r === "recruiter") {
+  if (
+    r === ROLES.USER ||
+    r === "member" ||
+    r === "viewer" ||
+    r === "recruiter" ||
+    r === "standard"
+  ) {
     return ROLES.USER;
   }
 
@@ -103,14 +129,20 @@ export function isSiteAdmin(role: string | null | undefined): boolean {
   return normalizeRole(role) === ROLES.SITE_ADMIN;
 }
 
-export function isCustomerAdmin(role: string | null | undefined): boolean {
-  return normalizeRole(role) === ROLES.CUSTOMER_ADMIN;
+/** True for company_admin (includes legacy customer_admin / admin) */
+export function isCompanyAdmin(role: string | null | undefined): boolean {
+  return normalizeRole(role) === ROLES.COMPANY_ADMIN;
 }
 
-/** Customer Admin or Site Admin */
+/** @deprecated Use isCompanyAdmin */
+export function isCustomerAdmin(role: string | null | undefined): boolean {
+  return isCompanyAdmin(role);
+}
+
+/** Company Admin or Site Admin */
 export function isTenantAdminOrAbove(role: string | null | undefined): boolean {
   const n = normalizeRole(role);
-  return n === ROLES.CUSTOMER_ADMIN || n === ROLES.SITE_ADMIN;
+  return n === ROLES.COMPANY_ADMIN || n === ROLES.SITE_ADMIN;
 }
 
 export function canAccessPath(
@@ -150,12 +182,12 @@ export function canAccessPath(
 /** Valid roles for assignment (e.g. team management UI) */
 export const ASSIGNABLE_ROLES: AppRole[] = [
   ROLES.USER,
-  ROLES.CUSTOMER_ADMIN,
+  ROLES.COMPANY_ADMIN,
   ROLES.SITE_ADMIN,
 ];
 
-/** Roles a customer admin may assign within their tenant (not site_admin) */
+/** Roles a company admin may assign within their tenant (not site_admin) */
 export const TENANT_ASSIGNABLE_ROLES: AppRole[] = [
   ROLES.USER,
-  ROLES.CUSTOMER_ADMIN,
+  ROLES.COMPANY_ADMIN,
 ];

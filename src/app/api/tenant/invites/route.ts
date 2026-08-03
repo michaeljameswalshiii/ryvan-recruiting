@@ -33,7 +33,7 @@ import {
   inviteAcceptUrl,
   sendInviteEmail,
 } from "@/lib/tenant/invites";
-import { roleLabel, ROLES } from "@/lib/roles";
+import { normalizeRole, roleLabel, ROLES } from "@/lib/roles";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
@@ -65,7 +65,14 @@ export async function POST(request: NextRequest) {
     }
 
     const email = parsed.data.email.toLowerCase();
-    const role = parsed.data.role || ROLES.USER;
+    // Canonical: user | company_admin (legacy customer_admin normalized)
+    const role = normalizeRole(parsed.data.role || ROLES.USER);
+    if (role === ROLES.SITE_ADMIN) {
+      return NextResponse.json(
+        { error: "Cannot invite as Site Admin from team settings" },
+        { status: 400 }
+      );
+    }
 
     const tenant = await getTenantById(tenantId);
     if (!tenant) {

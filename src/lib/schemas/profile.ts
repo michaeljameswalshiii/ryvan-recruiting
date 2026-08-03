@@ -24,10 +24,12 @@ export interface Profile {
   password_hash?: string;
 }
 
+/** Accept canonical + legacy role strings on write */
 export const appRoleSchema = z.enum([
   ROLES.SITE_ADMIN,
-  ROLES.CUSTOMER_ADMIN,
+  ROLES.COMPANY_ADMIN,
   ROLES.USER,
+  "customer_admin", // legacy → normalizeRole maps to company_admin
   "admin",
   "member",
   "viewer",
@@ -49,7 +51,9 @@ export const updateProfileSchema = z.object({
 export const inviteMemberSchema = z.object({
   email: z.string().email(),
   full_name: z.string().min(1).max(100).optional(),
-  role: z.enum([ROLES.USER, ROLES.CUSTOMER_ADMIN]).default(ROLES.USER),
+  role: z
+    .enum([ROLES.USER, ROLES.COMPANY_ADMIN, "customer_admin"])
+    .default(ROLES.USER),
 });
 
 export type CreateProfileInput = z.infer<typeof createProfileSchema>;
