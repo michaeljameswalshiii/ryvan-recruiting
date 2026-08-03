@@ -192,17 +192,16 @@ export default function Sidebar({ role }: SidebarProps) {
             className="w-full h-auto max-h-[5.5rem] object-contain object-left object-top dark:brightness-125 dark:contrast-110"
           />
         </Link>
-        {/* Theme toggle — inline colors so dark-mode remaps cannot hide "Light" */}
+        {/* Theme toggle — CSS classes with !important beat sidebar white-svg remaps */}
         <div
-          className="mt-2.5 flex rounded-lg p-0.5"
+          className="theme-toggle mt-2.5 flex rounded-lg p-1 gap-1"
           role="group"
           aria-label="Color theme"
           style={
             isDark
               ? {
-                  backgroundColor: 'rgba(0,0,0,0.55)',
-                  border: '1px solid rgba(255,255,255,0.45)',
-                  boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08)',
+                  backgroundColor: 'rgba(0,0,0,0.65)',
+                  border: '1px solid rgba(255,255,255,0.5)',
                 }
               : {
                   backgroundColor: '#f1f5f9',
@@ -214,49 +213,28 @@ export default function Sidebar({ role }: SidebarProps) {
             type="button"
             onClick={() => setTheme('white')}
             title="Light UI"
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-bold transition"
-            style={
+            className={`theme-toggle-btn flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-[12px] font-bold transition ${
               theme === 'white' || theme === 'gray'
-                ? {
-                    backgroundColor: '#ffffff',
-                    color: '#0f172a',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.12)',
-                  }
+                ? 'theme-toggle-btn--active bg-white text-slate-900 shadow-sm'
                 : isDark
-                  ? {
-                      backgroundColor: 'transparent',
-                      color: '#ffffff',
-                      WebkitTextFillColor: '#ffffff',
-                    }
-                  : {
-                      backgroundColor: 'transparent',
-                      color: '#475569',
-                    }
-            }
+                  ? 'theme-toggle-btn--light-idle'
+                  : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
-            <Sun className="h-3.5 w-3.5 shrink-0" style={{ color: 'inherit' }} />
+            <Sun className="h-3.5 w-3.5 shrink-0" aria-hidden />
             Light
           </button>
           <button
             type="button"
             onClick={() => setTheme('black')}
             title="Dark UI (charcoal background)"
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-bold transition"
-            style={
+            className={`theme-toggle-btn flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-[12px] font-bold transition ${
               isDark
-                ? {
-                    backgroundColor: '#ffffff',
-                    color: '#0f172a',
-                    WebkitTextFillColor: '#0f172a',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
-                  }
-                : {
-                    backgroundColor: 'transparent',
-                    color: '#475569',
-                  }
-            }
+                ? 'theme-toggle-btn--active'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
-            <Moon className="h-3.5 w-3.5 shrink-0" style={{ color: 'inherit' }} />
+            <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden />
             Dark
           </button>
         </div>

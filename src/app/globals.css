@@ -137,6 +137,39 @@
   stroke: #ffffff !important;
   opacity: 1;
 }
+/* Theme toggle: opt out of blanket white svg / ink remaps */
+.dark [data-app-sidebar] .theme-toggle-btn {
+  -webkit-text-fill-color: currentColor !important;
+}
+.dark [data-app-sidebar] .theme-toggle-btn svg {
+  color: currentColor !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+/* Inactive "Light" on dark sidebar — solid yellow chip (can't wash out) */
+.dark [data-app-sidebar] .theme-toggle-btn--light-idle {
+  background-color: #facc15 !important; /* yellow-400 */
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+  border: 1px solid #eab308 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25) !important;
+}
+.dark [data-app-sidebar] .theme-toggle-btn--light-idle svg {
+  color: #0f172a !important;
+  stroke: #0f172a !important;
+}
+/* Active side (selected theme) — white pill + dark ink */
+.dark [data-app-sidebar] .theme-toggle-btn--active {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+}
+.dark [data-app-sidebar] .theme-toggle-btn--active svg {
+  color: #0f172a !important;
+  stroke: #0f172a !important;
+}
+/* Idle Dark option while in light mode is handled by Tailwind; idle Dark while already dark = active above */
 .dark [data-app-sidebar] .sidebar-footer-copy {
   color: #ffffff !important;
   opacity: 0.8;
