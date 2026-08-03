@@ -453,7 +453,7 @@ export default function ContactDetailClient({
   return (
     <div className="max-w-[1400px] mx-auto space-y-5 pb-10">
       {/* ── Header ───────────────────────────────────────────────── */}
-      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+      <div data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
           <div className="flex items-start gap-4 min-w-0">
             <div className="h-16 w-16 shrink-0 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xl font-semibold shadow-sm">
@@ -744,7 +744,7 @@ export default function ContactDetailClient({
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
           <div className="xl:col-span-7 space-y-5">
             {/* Notes & activity — primary content (header already shows contact identity) */}
-            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+            <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
               <div className="flex items-center justify-between gap-3 mb-4">
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
                   Notes & Activity Log
@@ -873,7 +873,7 @@ export default function ContactDetailClient({
 
           {/* Right column */}
           <div className="xl:col-span-5 space-y-5">
-            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+            <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-4">
                 Quick Stats
               </h2>
@@ -921,7 +921,7 @@ export default function ContactDetailClient({
             </section>
 
             {companyJobs.length > 0 && (
-              <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+              <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
                     Open Jobs at {companyName}
@@ -956,7 +956,7 @@ export default function ContactDetailClient({
               </section>
             )}
 
-            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+            <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">
                 Quick links
               </h2>
@@ -992,7 +992,7 @@ export default function ContactDetailClient({
 
       {/* ── Timeline ─────────────────────────────────────────────── */}
       {activeTab === 'timeline' && (
-        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+        <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
           <h2 className="text-base font-semibold text-gray-900 mb-4">
             Full Timeline
           </h2>
@@ -1071,7 +1071,7 @@ export default function ContactDetailClient({
 
       {/* ── Jobs ─────────────────────────────────────────────────── */}
       {activeTab === 'jobs' && (
-        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+        <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-semibold text-gray-900">
               Open Jobs at {companyName}
@@ -1116,7 +1116,7 @@ export default function ContactDetailClient({
 
       {/* ── Company ──────────────────────────────────────────────── */}
       {activeTab === 'company' && (
-        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+        <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
           <h2 className="text-base font-semibold text-gray-900 mb-3">Company</h2>
           {companyHref ? (
             <div className="space-y-4">
