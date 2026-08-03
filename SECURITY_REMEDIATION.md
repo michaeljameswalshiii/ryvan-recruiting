@@ -62,8 +62,12 @@ Checklist:
 
 - [x] Sealed session cookie (JWE via `jose`, `src/lib/session-seal.ts`)
 - [x] `getSession()` verifies seal; rejects legacy plain JSON (hard cutover → re-login)
-- [x] Middleware API **default-deny** (allowlist: auth, public, mcp, health, cron, email oauth)
+- [x] Middleware **default-deny** for pages + APIs
+- [x] Public API allowlist narrowed (no broad `/api/email/oauth`; only `*/callback`)
+- [x] `/api/cron/*` requires `CRON_SECRET` in middleware (fail closed in prod if missing)
+- [x] `/api/mcp/*` requires `Authorization: Bearer` header presence in middleware
 - [ ] Set **`SESSION_SECRET`** on Vercel (min 16 chars; `openssl rand -base64 32`). Falls back to `AI_CREDENTIALS_SECRET` if set.
+- [ ] Set **`CRON_SECRET`** on Vercel for production cron jobs
 
 ### Hardening pass (earlier)
 

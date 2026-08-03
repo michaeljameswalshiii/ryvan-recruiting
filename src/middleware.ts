@@ -1,11 +1,14 @@
 /**
- * Security Middleware
+ * Security Middleware — default deny
  *
- * - Sealed session cookie (JWE) verified before protected access
- * - API default-deny: all /api/* require a valid session except public allowlist
- * - Public: careers, auth, schedule tokens, health, MCP (API key)
+ * Pages: only explicit public routes skip auth; everything else needs a sealed session.
+ * APIs: only explicit public prefixes; everything else needs a sealed session.
+ * Extra gates:
+ *   - /api/cron/* requires CRON_SECRET (Bearer or x-cron-secret)
+ *   - /api/mcp/* requires Authorization: Bearer … header present (key checked in handler)
+ *   - Email OAuth: only */callback paths are public (start flows need session)
  *
- * @serverOnly
+ * Session cookie is JWE-sealed (see session-seal.ts).
  */
 
 import { NextResponse, type NextRequest } from "next/server";
@@ -16,12 +19,10 @@ import {
 } from "@/lib/session-seal";
 
 // ============================================================================
-// Route classification
+// Public allowlists (narrow — prefer adding here over opening whole trees)
 // ============================================================================
 
-/**
- * Public pages — applicants and unauthenticated browsers.
- */
+/** Public pages — no session */
 const PUBLIC_PAGE_ROUTES = [
   "/careers",
   "/schedule",
@@ -31,30 +32,19 @@ const PUBLIC_PAGE_ROUTES = [
   "/invite",
   "/privacy",
   "/terms",
-];
+] as const;
 
 /**
- * Public APIs — no session cookie required.
- * (Handlers may still enforce API keys / tokens.)
+ * Public API prefixes that skip the session requirement.
+ * Prefer specific paths; avoid broad trees when possible.
  */
-const PUBLIC_API_ROUTES = [
-  "/api/auth", // login, logout, signup, invite accept
-  "/api/public", // careers, schedule tokens, SMS inbound webhooks
-  "/api/mcp", // Claude MCP — API key auth
+const PUBLIC_API_PREFIXES = [
+  "/api/auth", // login, logout, register, session check, invite
+  "/api/public", // careers, token schedule, SMS inbound
   "/api/health",
-  "/api/cron", // Vercel cron — Bearer CRON_SECRET (handler-enforced)
-  "/api/email/oauth", // Gmail/Outlook OAuth redirects (state-bound)
-];
-
-/**
- * Page shells that require a valid sealed session.
- */
-const PROTECTED_PAGE_ROUTES = [
-  "/dashboard",
-  "/candidates",
-  "/admin",
-  "/email",
-];
+  "/api/cron", // still requires CRON_SECRET below
+  "/api/mcp", // still requires Bearer header below
+] as const;
 
 const DEBUG_MW = process.env.MIDDLEWARE_DEBUG === "true";
 
@@ -62,25 +52,30 @@ function mwLog(...args: unknown[]) {
   if (DEBUG_MW) console.log(...args);
 }
 
+function matchesPrefix(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
 function isPublicPage(pathname: string): boolean {
-  return PUBLIC_PAGE_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`)
-  );
-}
-
-function isPublicApi(pathname: string): boolean {
-  return PUBLIC_API_ROUTES.some((route) => pathname.startsWith(route));
-}
-
-function isProtectedPage(pathname: string): boolean {
-  return PROTECTED_PAGE_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`)
-  );
+  if (pathname === "/") return true; // root marketing / redirect
+  return PUBLIC_PAGE_ROUTES.some((route) => matchesPrefix(pathname, route));
 }
 
 /**
- * Verify sealed session from cookie. Rejects legacy JSON and invalid seals.
+ * APIs that may run without a session cookie.
+ * Email OAuth: only callback URLs (Google/Microsoft redirect), not "start OAuth".
  */
+function isPublicApi(pathname: string): boolean {
+  if (PUBLIC_API_PREFIXES.some((p) => matchesPrefix(pathname, p))) {
+    return true;
+  }
+  // Exact pattern: /api/email/oauth/{provider}/callback
+  if (/^\/api\/email\/oauth\/[^/]+\/callback\/?$/.test(pathname)) {
+    return true;
+  }
+  return false;
+}
+
 async function getVerifiedSession(
   request: NextRequest
 ): Promise<SealedSessionPayload | null> {
@@ -101,24 +96,46 @@ function injectSessionHeaders(
   return requestHeaders;
 }
 
-function unauthorizedApi(): NextResponse {
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+function unauthorizedApi(message = "Unauthorized"): NextResponse {
+  return NextResponse.json({ error: message }, { status: 401 });
 }
 
 function redirectToLogin(request: NextRequest, pathname: string): NextResponse {
   const loginUrl = new URL("/login", request.url);
-  loginUrl.searchParams.set("redirect", pathname);
+  if (pathname && pathname !== "/") {
+    loginUrl.searchParams.set("redirect", pathname);
+  }
   return NextResponse.redirect(loginUrl);
 }
 
+/** Cron: require shared secret in middleware (handler also checks). */
+function cronAuthorized(request: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    // Fail closed in production if secret missing
+    if (process.env.NODE_ENV === "production") return false;
+    return true; // local dev without CRON_SECRET
+  }
+  const auth = request.headers.get("authorization") || "";
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const header = request.headers.get("x-cron-secret") || "";
+  return bearer === secret || header === secret;
+}
+
+/** MCP: require Authorization header presence (full key check in route). */
+function mcpHasBearer(request: NextRequest): boolean {
+  const auth = request.headers.get("authorization") || "";
+  return auth.startsWith("Bearer ") && auth.slice(7).trim().length >= 8;
+}
+
 // ============================================================================
-// Main Middleware
+// Main
 // ============================================================================
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  // Skip static files and Next.js internal routes
+  // Static / Next internals
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/static") ||
@@ -127,44 +144,65 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // === PUBLIC PAGES ===
-  if (isPublicPage(pathname)) {
+  // ── Public pages ────────────────────────────────────────────────────────
+  if (isPublicPage(pathname) && !pathname.startsWith("/api/")) {
     return NextResponse.next();
   }
 
-  // === PUBLIC APIs (explicit allowlist) ===
-  if (pathname.startsWith("/api/") && isPublicApi(pathname)) {
-    return NextResponse.next();
-  }
-
-  // === ALL OTHER APIs — default deny without sealed session ===
+  // ── APIs ────────────────────────────────────────────────────────────────
   if (pathname.startsWith("/api/")) {
+    // Cron: secret only (no session)
+    if (matchesPrefix(pathname, "/api/cron")) {
+      if (!cronAuthorized(request)) {
+        mwLog(`[Middleware] Cron unauthorized: ${pathname}`);
+        return unauthorizedApi("Unauthorized");
+      }
+      return NextResponse.next();
+    }
+
+    // MCP: Bearer header required; key validated in handler
+    if (matchesPrefix(pathname, "/api/mcp")) {
+      if (request.method === "OPTIONS") {
+        return NextResponse.next();
+      }
+      if (!mcpHasBearer(request)) {
+        mwLog(`[Middleware] MCP missing bearer: ${pathname}`);
+        return unauthorizedApi("Unauthorized");
+      }
+      return NextResponse.next();
+    }
+
+    // Explicit public APIs (auth, public careers, health, oauth callbacks)
+    if (isPublicApi(pathname)) {
+      return NextResponse.next();
+    }
+
+    // Default deny: sealed session required
     const session = await getVerifiedSession(request);
     if (!session?.userId) {
       mwLog(`[Middleware] API unauthorized: ${pathname}`);
       return unauthorizedApi();
     }
+    // Optional: require tenant for data-plane APIs (not all routes need it)
+    // Keep open for site_admin tooling that may resolve tenant later.
+
     const requestHeaders = injectSessionHeaders(request, session);
     return NextResponse.next({
       request: { headers: requestHeaders },
     });
   }
 
-  // === PROTECTED PAGES (dashboard shell) ===
-  if (isProtectedPage(pathname)) {
-    const session = await getVerifiedSession(request);
-    if (!session?.userId) {
-      mwLog(`[Middleware] Page unauthorized: ${pathname}`);
-      return redirectToLogin(request, pathname);
-    }
-    const requestHeaders = injectSessionHeaders(request, session);
-    return NextResponse.next({
-      request: { headers: requestHeaders },
-    });
+  // ── Protected pages — default deny (anything not public page) ───────────
+  const session = await getVerifiedSession(request);
+  if (!session?.userId) {
+    mwLog(`[Middleware] Page unauthorized: ${pathname}`);
+    return redirectToLogin(request, pathname);
   }
 
-  // Other non-API pages: allow through (rare)
-  return NextResponse.next();
+  const requestHeaders = injectSessionHeaders(request, session);
+  return NextResponse.next({
+    request: { headers: requestHeaders },
+  });
 }
 
 export const config = {
