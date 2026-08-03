@@ -250,7 +250,7 @@ export function LinkJobModal({
                     className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors flex items-center justify-between border ${
                       isSelected
                         ? "bg-blue-50 border-blue-300 ring-1 ring-blue-200"
-                        : "border-transparent bg-white hover:bg-slate-100 hover:border-slate-200"
+                        : "border-transparent bg-white hover:bg-blue-50 hover:border-blue-300 hover:ring-1 hover:ring-blue-200"
                     }`}
                   >
                     <div className="min-w-0 flex-1">
