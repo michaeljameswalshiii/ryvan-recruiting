@@ -1,12 +1,12 @@
-﻿const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 export async function getGroqChatCompletion(
   messages: { role: "user" | "assistant" | "system"; content: string }[],
-model: string = "llama-3.3-70b-versatile"
+  model: string = "llama-3.3-70b-versatile"
 ) {
-  // Try env var first, fallback to hardcoded for testing
-  const apiKey = process.env.GROQ_API_KEY || process.env.NEXT_PUBLIC_GROQ_API_KEY || "***REMOVED***";
-  
+  // Server-side only — set GROQ_API_KEY in Vercel / local env. Never hardcode keys.
+  const apiKey = process.env.GROQ_API_KEY || process.env.NEXT_PUBLIC_GROQ_API_KEY;
+
   if (!apiKey) {
     return { error: "GROQ_API_KEY not set" };
   }
@@ -15,7 +15,7 @@ model: string = "llama-3.3-70b-versatile"
     const response = await fetch(GROQ_API_URL, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
