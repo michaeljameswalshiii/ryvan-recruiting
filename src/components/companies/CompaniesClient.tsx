@@ -36,6 +36,7 @@ import {
   PaginationBar,
   paginateItems,
 } from '@/components/ui/pagination-bar';
+import { useTheme } from '@/components/ThemeProvider';
 
 type SortKey = 'last_activity' | 'name' | 'added' | 'stage' | 'contacts';
 
@@ -230,6 +231,7 @@ function locationLine(company: any): string {
 
 export function CompaniesClient() {
   const router = useRouter();
+  const { isDark } = useTheme();
   const { data, isLoading, error, refetch } = useClients();
   const createClientMutation = useCreateClient();
   const deleteClientMutation = useDeleteClient();
@@ -456,77 +458,86 @@ export function CompaniesClient() {
     }
   };
 
+  // Light pastels + dark ink; dark solid tints + pure white (inline styles)
   const statCards: {
     key: StageBucket;
     label: string;
     sub: string;
     count: number;
     ring: string;
-    bg: string;
-    text: string;
+    lightBg: string;
+    lightCount: string;
+    darkBg: string;
   }[] = [
     {
       key: 'all',
       label: 'All Companies',
       sub: 'Click to show all',
       count: stats.all,
-      ring: 'ring-blue-200',
-      bg: 'bg-white',
-      text: 'text-gray-900',
+      ring: 'ring-blue-400',
+      lightBg: 'bg-white border-gray-200',
+      lightCount: 'text-slate-900',
+      darkBg: '#1e3a5f',
     },
     {
       key: 'identification',
       label: 'Identified',
       sub: 'New accounts',
       count: stats.identification,
-      ring: 'ring-slate-100',
-      bg: 'bg-slate-50/80',
-      text: 'text-slate-900',
+      ring: 'ring-slate-400',
+      lightBg: 'bg-slate-100 border-slate-200',
+      lightCount: 'text-slate-900',
+      darkBg: '#475569',
     },
     {
       key: 'outreach',
       label: 'Outreach',
       sub: 'In outreach',
       count: stats.outreach,
-      ring: 'ring-sky-100',
-      bg: 'bg-sky-50/80',
-      text: 'text-sky-900',
+      ring: 'ring-sky-400',
+      lightBg: 'bg-sky-50 border-sky-100',
+      lightCount: 'text-sky-900',
+      darkBg: '#0369a1',
     },
     {
       key: 'conversation',
       label: 'Conversation',
       sub: 'Engaged',
       count: stats.conversation,
-      ring: 'ring-violet-100',
-      bg: 'bg-violet-50/80',
-      text: 'text-violet-900',
+      ring: 'ring-violet-400',
+      lightBg: 'bg-violet-50 border-violet-100',
+      lightCount: 'text-violet-900',
+      darkBg: '#6b21a8',
     },
     {
       key: 'active',
       label: 'In Progress',
       sub: 'Presented → proposal',
       count: stats.active,
-      ring: 'ring-amber-100',
-      bg: 'bg-amber-50/80',
-      text: 'text-amber-900',
+      ring: 'ring-amber-400',
+      lightBg: 'bg-amber-50 border-amber-100',
+      lightCount: 'text-amber-900',
+      darkBg: '#92400e',
     },
     {
       key: 'closed_won',
       label: 'Closed Won',
       sub: 'Clients',
       count: stats.closed_won,
-      ring: 'ring-emerald-100',
-      bg: 'bg-emerald-50/80',
-      text: 'text-emerald-900',
+      ring: 'ring-emerald-400',
+      lightBg: 'bg-emerald-50 border-emerald-100',
+      lightCount: 'text-emerald-900',
+      darkBg: '#065f46',
     },
     {
       key: 'lost',
       label: 'Lost',
       sub: 'This period',
       count: stats.lost,
-      ring: 'ring-rose-100',
-      bg: 'bg-rose-50/70',
-      text: 'text-rose-900',
+      ring: 'ring-rose-400',
+      lightBg: 'bg-rose-50 border-rose-100',
+      lightCount: 'text-rose-900',
+      darkBg: '#9f1239',
     },
   ];
 
@@ -635,17 +646,51 @@ export function CompaniesClient() {
               key={card.key}
               type="button"
               onClick={() => setBucket(card.key)}
-              className={`text-left rounded-2xl border px-4 py-3.5 shadow-sm transition-all ${card.bg} ${
-                active
-                  ? `ring-2 ${card.ring} border-blue-300 shadow-md`
-                  : 'border-gray-200 hover:border-gray-300 hover:shadow'
+              style={
+                isDark
+                  ? {
+                      color: '#ffffff',
+                      backgroundColor: card.darkBg,
+                      borderColor: active ? '#60a5fa' : 'rgba(255,255,255,0.22)',
+                    }
+                  : undefined
+              }
+              className={`text-left rounded-2xl border px-4 py-3.5 shadow-sm transition-all ${
+                isDark
+                  ? active
+                    ? 'ring-2 ring-blue-400 shadow-md'
+                    : 'hover:brightness-110'
+                  : `${card.lightBg} ${
+                      active
+                        ? `ring-2 ${card.ring} border-blue-400 shadow-md`
+                        : 'hover:border-gray-300 hover:shadow'
+                    }`
               }`}
             >
-              <div className={`text-2xl font-semibold tabular-nums ${card.text}`}>{card.count}</div>
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-800 mt-1">
+              <div
+                className={`text-2xl font-semibold tabular-nums ${
+                  isDark ? '' : card.lightCount
+                }`}
+                style={isDark ? { color: '#ffffff' } : undefined}
+              >
+                {card.count}
+              </div>
+              <div
+                className={`mt-1 text-[11px] font-bold uppercase tracking-wide ${
+                  isDark ? '' : 'text-slate-800'
+                }`}
+                style={isDark ? { color: '#ffffff' } : undefined}
+              >
                 {card.label}
               </div>
-              <div className="text-[11px] text-slate-600 mt-0.5">{card.sub}</div>
+              <div
+                className={`mt-0.5 text-[11px] font-medium ${
+                  isDark ? '' : 'text-slate-600'
+                }`}
+                style={isDark ? { color: 'rgba(255,255,255,0.92)' } : undefined}
+              >
+                {card.sub}
+              </div>
             </button>
           );
         })}
@@ -654,19 +699,32 @@ export function CompaniesClient() {
       {/* Search / sort bar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
         <div className="relative w-full sm:max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
+            style={{ color: isDark ? 'rgba(255,255,255,0.7)' : undefined }}
+          />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search companies..."
-            className="pl-9 bg-white"
+            className={
+              isDark
+                ? 'pl-9 bg-[#1e293b] border-slate-500 text-white placeholder:text-white/60'
+                : 'pl-9 bg-white'
+            }
+            style={isDark ? { color: '#ffffff', backgroundColor: '#1e293b' } : undefined}
           />
         </div>
         <div className="flex items-center gap-3">
           <select
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as SortKey)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
+            className={
+              isDark
+                ? 'border border-slate-500 rounded-lg px-3 py-2 text-sm bg-[#1e293b] text-white shadow-sm'
+                : 'border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm'
+            }
+            style={isDark ? { color: '#ffffff', backgroundColor: '#1e293b' } : undefined}
             aria-label="Sort companies"
           >
             <option value="last_activity">Sort: Last Activity</option>
@@ -675,7 +733,10 @@ export function CompaniesClient() {
             <option value="stage">Sort: Stage</option>
             <option value="contacts">Sort: Contacts</option>
           </select>
-          <span className="text-xs text-gray-500 whitespace-nowrap">
+          <span
+            className="text-xs font-medium whitespace-nowrap"
+            style={{ color: isDark ? '#ffffff' : undefined }}
+          >
             {filtered.length} compan{filtered.length === 1 ? 'y' : 'ies'}
             {filtered.length > DEFAULT_PAGE_SIZE
               ? ` · page ${paged.page}/${paged.totalPages}`
@@ -691,7 +752,12 @@ export function CompaniesClient() {
           total={paged.total}
           onPageChange={setPage}
           itemLabel={paged.total === 1 ? 'company' : 'companies'}
-          className="rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm"
+          forceLightText={isDark}
+          className={
+            isDark
+              ? 'rounded-xl border border-slate-500 bg-[#1e293b] px-3 py-2 shadow-sm text-white'
+              : 'rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm'
+          }
         />
       )}
 

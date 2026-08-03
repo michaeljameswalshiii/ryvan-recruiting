@@ -261,27 +261,17 @@ export function JobListView({ jobs }: JobListViewProps) {
     });
   };
 
-  // Exclusive class sets — never put bg-white + dark:bg-* on the same node.
-  // Global CSS `.dark .bg-white .text-slate-* { color: black !important }` wins over dark:text-white.
-  const panelBg = isDark
-    ? 'bg-[#1e293b] border-slate-500 text-white'
-    : 'bg-white border-gray-200 text-slate-900';
-  const panelIdle = isDark
-    ? 'hover:border-slate-400 hover:bg-[#243044]'
-    : 'hover:border-gray-300 hover:shadow';
-  const labelClass = isDark
-    ? 'text-white'
-    : 'text-slate-800';
-  const subClass = isDark ? 'text-white/85' : 'text-slate-600';
-  const countClass = isDark ? 'text-white' : undefined; // light uses per-card color below
-
+  // Light: pastel fills + dark ink. Dark: solid tinted fills + pure white ink
+  // (inline styles — never bg-white + dark:bg together; global CSS remaps ink).
   const statCards: {
     key: JobBucket;
     label: string;
     sub: string;
     count: number;
     ring: string;
-    countLight: string;
+    lightBg: string;
+    lightCount: string;
+    darkBg: string;
   }[] = [
     {
       key: 'all',
@@ -289,7 +279,9 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Click to show all',
       count: stats.all,
       ring: 'ring-blue-400',
-      countLight: 'text-slate-900',
+      lightBg: 'bg-white border-gray-200',
+      lightCount: 'text-slate-900',
+      darkBg: '#1e3a5f',
     },
     {
       key: 'open',
@@ -297,7 +289,9 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Actively hiring',
       count: stats.open,
       ring: 'ring-emerald-400',
-      countLight: 'text-emerald-700',
+      lightBg: 'bg-emerald-50 border-emerald-100',
+      lightCount: 'text-emerald-800',
+      darkBg: '#065f46',
     },
     {
       key: 'paused',
@@ -305,7 +299,9 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Temporarily on hold',
       count: stats.paused,
       ring: 'ring-amber-400',
-      countLight: 'text-amber-700',
+      lightBg: 'bg-amber-50 border-amber-100',
+      lightCount: 'text-amber-900',
+      darkBg: '#92400e',
     },
     {
       key: 'filled',
@@ -313,7 +309,9 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Placed / won',
       count: stats.filled,
       ring: 'ring-sky-400',
-      countLight: 'text-sky-700',
+      lightBg: 'bg-sky-50 border-sky-100',
+      lightCount: 'text-sky-900',
+      darkBg: '#0369a1',
     },
     {
       key: 'lost',
@@ -321,7 +319,9 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Lost the req',
       count: stats.lost,
       ring: 'ring-rose-400',
-      countLight: 'text-rose-700',
+      lightBg: 'bg-rose-50 border-rose-100',
+      lightCount: 'text-rose-900',
+      darkBg: '#9f1239',
     },
     {
       key: 'closed',
@@ -329,7 +329,9 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Closed out',
       count: stats.closed,
       ring: 'ring-slate-400',
-      countLight: 'text-slate-800',
+      lightBg: 'bg-slate-100 border-slate-200',
+      lightCount: 'text-slate-900',
+      darkBg: '#475569',
     },
     {
       key: 'with_candidates',
@@ -337,7 +339,9 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'Has candidates',
       count: stats.with_candidates,
       ring: 'ring-indigo-400',
-      countLight: 'text-indigo-700',
+      lightBg: 'bg-indigo-50 border-indigo-100',
+      lightCount: 'text-indigo-900',
+      darkBg: '#3730a3',
     },
     {
       key: 'no_candidates',
@@ -345,7 +349,9 @@ export function JobListView({ jobs }: JobListViewProps) {
       sub: 'No candidates yet',
       count: stats.no_candidates,
       ring: 'ring-violet-400',
-      countLight: 'text-violet-700',
+      lightBg: 'bg-violet-50 border-violet-100',
+      lightCount: 'text-violet-900',
+      darkBg: '#6b21a8',
     },
   ];
 
@@ -360,30 +366,48 @@ export function JobListView({ jobs }: JobListViewProps) {
               key={card.key}
               type="button"
               onClick={() => setBucket(card.key)}
-              style={isDark ? { color: '#ffffff', backgroundColor: '#1e293b' } : undefined}
-              className={`text-left rounded-2xl border px-4 py-3.5 shadow-sm transition-all ${panelBg} ${
-                active
-                  ? `ring-2 ${card.ring} border-blue-400 shadow-md`
-                  : panelIdle
+              style={
+                isDark
+                  ? {
+                      color: '#ffffff',
+                      backgroundColor: card.darkBg,
+                      borderColor: active ? '#60a5fa' : 'rgba(255,255,255,0.2)',
+                    }
+                  : undefined
+              }
+              className={`text-left rounded-2xl border px-4 py-3.5 shadow-sm transition-all ${
+                isDark
+                  ? active
+                    ? 'ring-2 ring-blue-400 shadow-md'
+                    : 'hover:brightness-110'
+                  : `${card.lightBg} ${
+                      active
+                        ? `ring-2 ${card.ring} border-blue-400 shadow-md`
+                        : 'hover:border-gray-300 hover:shadow'
+                    }`
               }`}
             >
               <div
                 className={`text-2xl font-semibold tabular-nums ${
-                  isDark ? 'text-white' : card.countLight
+                  isDark ? '' : card.lightCount
                 }`}
                 style={isDark ? { color: '#ffffff' } : undefined}
               >
                 {card.count}
               </div>
               <div
-                className={`mt-1 text-[11px] font-bold uppercase tracking-wide ${labelClass}`}
+                className={`mt-1 text-[11px] font-bold uppercase tracking-wide ${
+                  isDark ? '' : 'text-slate-800'
+                }`}
                 style={isDark ? { color: '#ffffff' } : undefined}
               >
                 {card.label}
               </div>
               <div
-                className={`mt-0.5 text-[11px] font-medium ${subClass}`}
-                style={isDark ? { color: 'rgba(255,255,255,0.9)' } : undefined}
+                className={`mt-0.5 text-[11px] font-medium ${
+                  isDark ? '' : 'text-slate-600'
+                }`}
+                style={isDark ? { color: 'rgba(255,255,255,0.92)' } : undefined}
               >
                 {card.sub}
               </div>
