@@ -2,7 +2,8 @@
 
 /**
  * Top-of-list numbered pagination.
- * Dark mode: white text on dark panels (data-dark-panel + explicit classes).
+ * When forceLightText is true (dark mode), use inline white colors so global
+ * `.dark .bg-white .text-*` rules cannot force black ink.
  */
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -37,7 +38,6 @@ export function paginateItems<T>(
   };
 }
 
-/** Build a compact page number list with ellipsis for large sets. */
 export function pageNumbers(current: number, totalPages: number): Array<number | '…'> {
   if (totalPages <= 7) {
     return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -68,6 +68,8 @@ export type PaginationBarProps = {
   itemLabel?: string;
   className?: string;
   hideWhenSinglePage?: boolean;
+  /** Dark mode: force white text via inline styles (beats global ink rules) */
+  forceLightText?: boolean;
 };
 
 export function PaginationBar({
@@ -79,15 +81,29 @@ export function PaginationBar({
   itemLabel = 'items',
   className = '',
   hideWhenSinglePage = true,
+  forceLightText = false,
 }: PaginationBarProps) {
+  const white = forceLightText ? ({ color: '#ffffff' } as const) : undefined;
+  const whiteBtn = forceLightText
+    ? ({
+        color: '#ffffff',
+        backgroundColor: '#334155',
+        borderColor: 'rgba(255,255,255,0.45)',
+      } as const)
+    : undefined;
+
   if (total === 0) return null;
   if (hideWhenSinglePage && totalPages <= 1) {
     return (
       <div
-        data-dark-panel
-        className={`flex items-center justify-between gap-2 text-xs font-medium text-slate-800 dark:!text-white ${className}`}
+        className={`flex items-center justify-between gap-2 text-xs font-medium text-slate-800 ${className}`}
+        style={
+          forceLightText
+            ? { color: '#ffffff', backgroundColor: '#1e293b' }
+            : undefined
+        }
       >
-        <span>
+        <span style={white}>
           {total} {itemLabel}
         </span>
       </div>
@@ -100,18 +116,27 @@ export function PaginationBar({
 
   return (
     <div
-      data-dark-panel
       className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${className}`}
       role="navigation"
       aria-label="Pagination"
+      style={
+        forceLightText
+          ? { color: '#ffffff', backgroundColor: '#1e293b' }
+          : undefined
+      }
     >
-      <p className="text-xs font-medium tabular-nums text-slate-800 dark:!text-white">
+      <p
+        className="text-xs font-medium tabular-nums text-slate-800"
+        style={white}
+      >
         Showing{' '}
-        <span className="font-bold text-slate-900 dark:!text-white">
+        <span className="font-bold" style={white}>
           {start}–{end}
         </span>{' '}
         of{' '}
-        <span className="font-bold text-slate-900 dark:!text-white">{total}</span>{' '}
+        <span className="font-bold" style={white}>
+          {total}
+        </span>{' '}
         {itemLabel}
       </p>
       <div className="flex flex-wrap items-center gap-1">
@@ -119,18 +144,20 @@ export function PaginationBar({
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 w-8 p-0 border-slate-300 dark:border-white/40 bg-white dark:bg-slate-700 text-slate-900 dark:!text-white hover:bg-slate-100 dark:hover:bg-slate-600"
+          className="h-8 w-8 p-0"
+          style={whiteBtn}
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
           aria-label="Previous page"
         >
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="h-4 w-4" style={white} />
         </Button>
         {nums.map((n, i) =>
           n === '…' ? (
             <span
               key={`e-${i}`}
-              className="px-1.5 text-xs font-medium text-slate-600 dark:!text-white select-none"
+              className="px-1.5 text-xs font-medium select-none"
+              style={white}
             >
               …
             </span>
@@ -140,10 +167,17 @@ export function PaginationBar({
               type="button"
               size="sm"
               className={`h-8 min-w-8 px-2 text-xs font-bold tabular-nums ${
-                n === page
-                  ? 'pointer-events-none bg-blue-600 text-white border-blue-600 hover:bg-blue-600'
-                  : 'border border-slate-300 dark:border-white/40 bg-white dark:bg-slate-700 text-slate-900 dark:!text-white hover:bg-slate-100 dark:hover:bg-slate-600'
+                n === page ? 'pointer-events-none' : ''
               }`}
+              style={
+                n === page
+                  ? {
+                      color: '#ffffff',
+                      backgroundColor: '#2563eb',
+                      borderColor: '#2563eb',
+                    }
+                  : whiteBtn
+              }
               onClick={() => onPageChange(n)}
               aria-label={`Page ${n}`}
               aria-current={n === page ? 'page' : undefined}
@@ -156,12 +190,13 @@ export function PaginationBar({
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 w-8 p-0 border-slate-300 dark:border-white/40 bg-white dark:bg-slate-700 text-slate-900 dark:!text-white hover:bg-slate-100 dark:hover:bg-slate-600"
+          className="h-8 w-8 p-0"
+          style={whiteBtn}
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
           aria-label="Next page"
         >
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-4 w-4" style={white} />
         </Button>
       </div>
     </div>
