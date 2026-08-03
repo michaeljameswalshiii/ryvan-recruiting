@@ -38,11 +38,28 @@ export async function loginAction(formData: FormData) {
   }
 
   try {
-    // Authenticate and set cookie
-    await authenticateUser(validated.data.email, validated.data.password);
-    
-    // Return success - caller should redirect
-    return { success: true };
+    const result = await authenticateUser(
+      validated.data.email,
+      validated.data.password
+    );
+
+    if (result.kind === 'mfa_required') {
+      return {
+        mfaRequired: true,
+        challengeName: result.challengeName,
+        session: result.session,
+        email: result.email,
+        username: result.username,
+      };
+    }
+
+    // Primary login path uses /api/auth/login for sealed cookies.
+    // This server action is legacy; return tokens metadata for client to finish via API if needed.
+    return {
+      success: true,
+      userId: result.userId,
+      tenantId: result.tenantId,
+    };
   } catch (error: any) {
     return { error: error.message || 'Login failed' };
   }
