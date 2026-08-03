@@ -120,6 +120,7 @@ export interface ReportingStats {
   // Time series
   candidatesOverTime: TimeSeriesData[];
   previousCandidatesOverTime: TimeSeriesData[];
+  companiesOverTime: TimeSeriesData[];
 
   // Sources with quality
   sources: SourceQuality[];
@@ -473,6 +474,13 @@ export async function getReportingStats(
       prevStart,
       prevEnd
     );
+    const companiesOverTime = buildTimeSeries(
+      safeCompanies.map((co) => ({
+        created_at: co.created_at || co.createdAt,
+      })),
+      periodStart,
+      now
+    );
 
     // Source quality
     const sourceMap = new Map<
@@ -535,7 +543,8 @@ export async function getReportingStats(
           ) / 10
         : 0;
 
-    const topJobs = [...safeJobs]
+    // Active (open) jobs first — matches dashboard "Active jobs" panel
+    const topJobs = [...openJobsList]
       .map((j) => ({
         id: j.id,
         title: j.title || 'Untitled',
@@ -707,6 +716,7 @@ export async function getReportingStats(
       pipelineByStage,
       candidatesOverTime,
       previousCandidatesOverTime,
+      companiesOverTime,
       sources,
 
       jobs: {
@@ -889,6 +899,7 @@ function getEmptyStats(period: PeriodKey = '30'): ReportingStats {
     pipelineByStage: [],
     candidatesOverTime: [],
     previousCandidatesOverTime: [],
+    companiesOverTime: [],
     sources: [],
     jobs: {
       open: 0,

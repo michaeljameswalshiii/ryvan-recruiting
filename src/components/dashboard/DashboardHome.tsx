@@ -1,14 +1,15 @@
 /**
  * Main dashboard home — operational snapshot of recruiting health.
- * Uses the same insight engine as Reporting.
+ * Layout matches the TRIO pulse design: KPIs → Insights → trends →
+ * Active jobs + On Deck → Top sources + Funnel.
  */
 
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import type { ReportingStats, PeriodKey, AttentionItem } from '@/lib/aws/reporting';
+import type { ReportingStats, PeriodKey } from '@/lib/aws/reporting';
 import {
   AreaChart,
   Area,
@@ -17,9 +18,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
-  Cell,
 } from 'recharts';
 import {
   Users,
@@ -28,27 +26,14 @@ import {
   Target,
   Clock,
   TrendingUp,
-  AlertTriangle,
   Sparkles,
   ArrowUpRight,
   ArrowDownRight,
   Minus,
-  UserRound,
 } from 'lucide-react';
 import { DeskNextActions } from '@/components/desk/DeskNextActions';
-import { DismissRowButton } from '@/components/ui/DismissRowButton';
-import { useDismissedItems } from '@/hooks/useDismissedItems';
-import { buildDismissKey } from '@/lib/ui/dismissed-items';
 
-function attentionDismissKey(item: AttentionItem): string {
-  return buildDismissKey({
-    feed: 'attention',
-    entityType: item.type,
-    entityId: item.id,
-  });
-}
-
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#64748b'];
 
 const PERIODS: { key: PeriodKey; label: string }[] = [
   { key: '7', label: '7d' },
@@ -86,16 +71,19 @@ function DeltaBadge({ deltaPct }: { deltaPct: number | null }) {
   );
 }
 
-function severityClass(sev: AttentionItem['severity']) {
-  if (sev === 'high') return 'bg-rose-50 text-rose-700 border-rose-200';
-  if (sev === 'medium') return 'bg-amber-50 text-amber-800 border-amber-200';
-  return 'bg-slate-50 text-slate-600 border-slate-200';
-}
-
-function typeIcon(type: AttentionItem['type']) {
-  if (type === 'job') return Briefcase;
-  if (type === 'company') return Building2;
-  return UserRound;
+function toDisplayTrend(
+  series: Array<{ date: string; count: number }>
+): Array<{ date: string; count: number }> {
+  const trend = series.map((d) => ({
+    date: new Date(d.date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    }),
+    count: d.count,
+  }));
+  if (trend.length > 45) return trend.filter((_, i) => i % 3 === 0);
+  if (trend.length > 20) return trend.filter((_, i) => i % 2 === 0);
+  return trend;
 }
 
 export function DashboardHome({
@@ -108,37 +96,6 @@ export function DashboardHome({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const {
-    hydrated: dismissHydrated,
-    dismiss,
-    clearFeed,
-    isHidden,
-  } = useDismissedItems();
-
-  const dismissItem = useCallback(
-    (item: AttentionItem) => {
-      dismiss(attentionDismissKey(item));
-    },
-    [dismiss]
-  );
-
-  const clearDismissed = useCallback(() => {
-    clearFeed('attention');
-  }, [clearFeed]);
-
-  const visibleAttention = useMemo(() => {
-    if (!dismissHydrated) return stats.needsAttention.slice(0, 8);
-    return stats.needsAttention
-      .filter((item) => !isHidden(attentionDismissKey(item)))
-      .slice(0, 8);
-  }, [stats.needsAttention, dismissHydrated, isHidden]);
-
-  const dismissedCount = useMemo(() => {
-    if (!dismissHydrated) return 0;
-    return stats.needsAttention.filter((item) =>
-      isHidden(attentionDismissKey(item))
-    ).length;
-  }, [stats.needsAttention, dismissHydrated, isHidden]);
 
   const setPeriod = (key: PeriodKey) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -146,27 +103,16 @@ export function DashboardHome({
     router.push(`${pathname}?${next.toString()}`);
   };
 
-  const trend = stats.candidatesOverTime.map((d) => ({
-    date: new Date(d.date).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    }),
-    count: d.count,
-  }));
-  const displayTrend =
-    trend.length > 45
-      ? trend.filter((_, i) => i % 3 === 0)
-      : trend.length > 20
-        ? trend.filter((_, i) => i % 2 === 0)
-        : trend;
+  const candidatesTrend = useMemo(
+    () => toDisplayTrend(stats.candidatesOverTime),
+    [stats.candidatesOverTime]
+  );
+  const companiesTrend = useMemo(
+    () => toDisplayTrend(stats.companiesOverTime || []),
+    [stats.companiesOverTime]
+  );
 
   const funnelMax = Math.max(...stats.funnel.map((f) => f.count), 1);
-
-  const jobStatusChart = [
-    { name: 'Open', count: stats.jobs.open, fill: '#10b981' },
-    { name: 'Hold', count: stats.jobs.onHold, fill: '#f59e0b' },
-    { name: 'Closed', count: stats.jobs.closed, fill: '#94a3b8' },
-  ];
 
   const kpis = [
     {
@@ -268,8 +214,6 @@ export function DashboardHome({
         </div>
       </div>
 
-      <DeskNextActions limit={10} />
-
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {kpis.map((c) => (
@@ -299,15 +243,18 @@ export function DashboardHome({
 
       {/* Insights */}
       {stats.insights.length > 0 && (
-        <div className="surface-light rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
+        <div className="surface-light rounded-2xl border border-blue-100 bg-blue-50/80 p-4 shadow-sm">
           <div className="mb-2 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-blue-700" />
+            <Sparkles className="h-4 w-4 text-blue-600" />
             <h2 className="text-sm font-semibold text-slate-900">Insights</h2>
           </div>
           <ul className="space-y-1.5">
             {stats.insights.map((line, i) => (
-              <li key={i} className="flex gap-2 text-sm font-medium text-slate-800">
-                <span className="shrink-0 font-bold text-blue-700">·</span>
+              <li
+                key={i}
+                className="flex gap-2 text-sm font-medium text-slate-800"
+              >
+                <span className="shrink-0 text-blue-600">•</span>
                 <span>{line}</span>
               </li>
             ))}
@@ -315,170 +262,17 @@ export function DashboardHome({
         </div>
       )}
 
-      {/* Funnel + attention */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Funnel */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">
-                Candidate funnel
-              </h2>
-              <p className="text-xs text-gray-500">
-                Reached stage or beyond · conversion between steps
-              </p>
-            </div>
-            <Link
-              href="/dashboard/candidates"
-              className="text-xs font-medium text-blue-600 hover:underline"
-            >
-              View all
-            </Link>
-          </div>
-          <div className="space-y-3">
-            {stats.funnel.map((step, i) => {
-              const width = Math.max(8, Math.round((step.count / funnelMax) * 100));
-              return (
-                <div key={step.key} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-medium text-gray-900">{step.label}</span>
-                      {step.conversionFromPrev !== null && (
-                        <span className="text-[11px] text-gray-400">
-                          {step.conversionFromPrev}% from prior
-                        </span>
-                      )}
-                    </div>
-                    <span className="tabular-nums text-gray-600 shrink-0">
-                      {step.count.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="h-2.5 w-full rounded-full bg-gray-100 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${width}%`,
-                        backgroundColor: COLORS[i % COLORS.length],
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Needs attention */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4 gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-              <div className="min-w-0">
-                <h2 className="text-base font-semibold text-gray-900">
-                  Needs attention
-                </h2>
-                <p className="text-xs text-gray-500">
-                  Empty jobs, stalled candidates, incomplete accounts
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              {dismissedCount > 0 && (
-                <button
-                  type="button"
-                  onClick={clearDismissed}
-                  className="text-xs font-medium text-slate-500 hover:text-slate-800 hover:underline"
-                  title="Show all items you dismissed (expires after 30 days)"
-                >
-                  Restore {dismissedCount}
-                </button>
-              )}
-              <Link
-                href="/dashboard/candidates"
-                className="text-xs font-medium text-blue-600 hover:underline"
-              >
-                Candidates
-              </Link>
-            </div>
-          </div>
-          <div className="space-y-2 max-h-[320px] overflow-y-auto">
-            {stats.needsAttention.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-10">
-                Nothing urgent — pipeline looks healthy.
-              </p>
-            ) : visibleAttention.length === 0 ? (
-              <div className="text-center py-10 space-y-2">
-                <p className="text-sm text-gray-500">
-                  All attention items are dismissed for now.
-                </p>
-                {dismissedCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={clearDismissed}
-                    className="text-xs font-medium text-blue-600 hover:underline"
-                  >
-                    Restore dismissed ({dismissedCount})
-                  </button>
-                )}
-              </div>
-            ) : (
-              visibleAttention.map((item) => {
-                const Icon = typeIcon(item.type);
-                return (
-                  <div
-                    key={`${item.type}-${item.id}-${item.reason}`}
-                    className="group flex items-start gap-2 rounded-xl border border-gray-100 px-2 py-2 hover:bg-gray-50 transition-colors"
-                  >
-                    <Link
-                      href={item.href}
-                      className="flex min-w-0 flex-1 items-start gap-3 px-1 py-0.5"
-                    >
-                      <div className="h-8 w-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
-                        <Icon className="h-4 w-4 text-gray-500" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-gray-900 truncate">
-                            {item.title}
-                          </span>
-                          <span
-                            className={`text-[10px] uppercase font-semibold rounded-full border px-1.5 py-0.5 ${severityClass(item.severity)}`}
-                          >
-                            {item.severity}
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-500 truncate">
-                          {item.reason}
-                          {item.subtitle ? ` · ${item.subtitle}` : ''}
-                        </div>
-                      </div>
-                    </Link>
-                    <DismissRowButton
-                      label={`Dismiss ${item.title}`}
-                      onDismiss={() => dismissItem(item)}
-                      className="mt-1 shrink-0 rounded-lg p-1.5 text-gray-400 opacity-70 hover:bg-gray-200/80 hover:text-gray-700 hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
-                    />
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Charts row */}
+      {/* Trend charts: candidates + companies */}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">
-                Candidates added
-              </h2>
-              <p className="text-xs text-gray-500">{stats.periodLabel}</p>
-            </div>
+          <div className="mb-2">
+            <h2 className="text-base font-semibold text-gray-900">
+              Candidates added
+            </h2>
+            <p className="text-xs text-gray-500">{stats.periodLabel}</p>
           </div>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={displayTrend}>
+            <AreaChart data={candidatesTrend}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} />
               <YAxis
@@ -502,40 +296,41 @@ export function DashboardHome({
         </div>
 
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">Jobs by status</h2>
-              <p className="text-xs text-gray-500">
-                {stats.jobs.avgCandidatesPerOpen} avg candidates per open job
-              </p>
-            </div>
-            <Link
-              href="/dashboard/jobs"
-              className="text-xs font-medium text-blue-600 hover:underline"
-            >
-              Manage jobs
-            </Link>
+          <div className="mb-2">
+            <h2 className="text-base font-semibold text-gray-900">
+              Companies added
+            </h2>
+            <p className="text-xs text-gray-500">{stats.periodLabel}</p>
           </div>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={jobStatusChart}>
+            <AreaChart data={companiesTrend}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                allowDecimals={false}
+              />
               <Tooltip />
-              <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                {jobStatusChart.map((e, i) => (
-                  <Cell key={i} fill={e.fill} />
-                ))}
-              </Bar>
-            </BarChart>
+              <Area
+                type="monotone"
+                dataKey="count"
+                stroke="#10b981"
+                fill="#10b981"
+                fillOpacity={0.15}
+                strokeWidth={2}
+                name="New companies"
+              />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Active jobs + sources */}
+      {/* Active jobs + On Deck */}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-semibold text-gray-900">Active jobs</h2>
             <Link
               href="/dashboard/jobs"
@@ -545,22 +340,22 @@ export function DashboardHome({
             </Link>
           </div>
           <div className="space-y-2">
-            {stats.jobs.topJobs.slice(0, 5).map((job) => (
+            {stats.jobs.topJobs.slice(0, 6).map((job) => (
               <Link
                 key={job.id}
                 href={`/dashboard/jobs/${job.id}`}
-                className="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2 hover:bg-gray-50"
+                className="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2.5 hover:bg-gray-50"
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-gray-900 truncate">
+                  <div className="truncate text-sm font-medium text-gray-900">
                     {job.title}
                   </div>
-                  <div className="text-xs text-gray-500 truncate">
+                  <div className="truncate text-xs text-gray-500">
                     {job.companyName} · {job.status}
                   </div>
                 </div>
-                <div className="text-right shrink-0">
-                  <div className="text-sm font-semibold tabular-nums">
+                <div className="shrink-0 text-right">
+                  <div className="text-sm font-semibold tabular-nums text-gray-900">
                     {job.candidateCount}
                   </div>
                   <div className="text-[11px] text-gray-400">{job.daysOpen}d</div>
@@ -568,40 +363,96 @@ export function DashboardHome({
               </Link>
             ))}
             {stats.jobs.topJobs.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-8">No jobs yet</p>
+              <p className="py-8 text-center text-sm text-gray-500">No open jobs</p>
             )}
           </div>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-gray-900">Top sources</h2>
+        <DeskNextActions variant="onDeck" limit={8} />
+      </div>
 
+      {/* Top sources + funnel */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-gray-900">Top sources</h2>
           </div>
           <div className="space-y-2">
             {stats.sources.slice(0, 5).map((s) => (
               <div
                 key={s.source}
-                className="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2"
+                className="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2.5"
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-gray-900 truncate">
+                  <div className="truncate text-sm font-medium text-gray-900">
                     {s.label}
                   </div>
                   <div className="text-xs text-gray-500">
                     {s.placementRate}% placed · {s.interviewRate}% interview+
                   </div>
                 </div>
-                <span className="text-sm font-semibold tabular-nums shrink-0">
+                <span className="shrink-0 text-sm font-semibold tabular-nums">
                   {s.count}
                 </span>
               </div>
             ))}
             {stats.sources.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-8">
+              <p className="py-8 text-center text-sm text-gray-500">
                 No source data yet
               </p>
             )}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">
+                Candidate funnel
+              </h2>
+              <p className="text-xs text-gray-500">
+                Reached stage or beyond · conversion between steps
+              </p>
+            </div>
+            <Link
+              href="/dashboard/candidates"
+              className="text-xs font-medium text-blue-600 hover:underline"
+            >
+              View all
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {stats.funnel.map((step, i) => {
+              const width = Math.max(8, Math.round((step.count / funnelMax) * 100));
+              return (
+                <div key={step.key} className="space-y-1">
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="font-medium text-gray-900">
+                        {step.label}
+                      </span>
+                      {step.conversionFromPrev !== null && (
+                        <span className="text-[11px] text-gray-400">
+                          {step.conversionFromPrev}% from prior
+                        </span>
+                      )}
+                    </div>
+                    <span className="shrink-0 tabular-nums text-gray-600">
+                      {step.count.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${width}%`,
+                        backgroundColor: COLORS[i % COLORS.length],
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
