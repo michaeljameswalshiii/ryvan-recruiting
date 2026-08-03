@@ -321,8 +321,11 @@ export function JobActivityNotes({
           </p>
         </div>
         {!loading && rows.length > 0 && (
-          <span className="text-[11px] font-medium text-slate-600 bg-slate-100 border border-slate-200 rounded-full px-2.5 py-1 tabular-nums">
-            {rows.length} total · {PAGE_SIZE}/page
+          <span className="text-[11px] font-semibold text-slate-800 bg-slate-100 border border-slate-300 rounded-full px-2.5 py-1 tabular-nums">
+            {rows.length} total
+            {paged.totalPages > 1
+              ? ` · page ${paged.page}/${paged.totalPages}`
+              : ` · ${PAGE_SIZE}/page`}
           </span>
         )}
       </div>
