@@ -381,7 +381,7 @@ export function JobActivityNotes({
             pageSize={PAGE_SIZE}
             onPageChange={setPage}
             itemLabel={paged.total === 1 ? 'activity' : 'activities'}
-            hideWhenSinglePage={false}
+            hideWhenSinglePage
           />
           <div className="overflow-x-auto rounded-xl border border-gray-100">
             <table className="w-full text-sm min-w-[640px]">
@@ -442,7 +442,6 @@ export function JobActivityNotes({
               pageSize={PAGE_SIZE}
               onPageChange={setPage}
               itemLabel={paged.total === 1 ? 'activity' : 'activities'}
-              hideWhenSinglePage={false}
             />
           )}
         </div>
