@@ -1067,3 +1067,59 @@
   color: #2563eb !important;
   -webkit-text-fill-color: #2563eb !important;
 }
+
+/*
+ * Form fields + outline controls inside light panels / dialogs.
+ * Prevents dark-theme bg-background (charcoal) + forced black text.
+ */
+.dark .bg-white input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.dark .bg-white textarea,
+.dark .bg-white select,
+.dark .bg-white .bg-background,
+.dark .bg-slate-50 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.dark .bg-slate-50 textarea,
+.dark .bg-slate-50 select,
+.dark .bg-slate-50 .bg-background,
+.dark .bg-amber-50 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.dark .bg-amber-50 textarea,
+.dark .bg-amber-50 .bg-background,
+.dark [data-ink-on-light] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.dark [data-ink-on-light] textarea,
+.dark [data-ink-on-light] select,
+.dark [data-ink-on-light] .bg-background,
+.dark [role="dialog"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.dark [role="dialog"] textarea,
+.dark [role="dialog"] select,
+.dark [role="dialog"] .bg-background {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+.dark .bg-white input::placeholder,
+.dark .bg-white textarea::placeholder,
+.dark [data-ink-on-light] input::placeholder,
+.dark [data-ink-on-light] textarea::placeholder,
+.dark [role="dialog"] input::placeholder,
+.dark [role="dialog"] textarea::placeholder {
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+  opacity: 1 !important;
+}
+
+.dark [role="dialog"] {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+.dark [role="dialog"] .bg-primary,
+.dark [role="dialog"] .bg-primary *,
+.dark [role="dialog"] .bg-blue-600,
+.dark [role="dialog"] .bg-blue-600 *,
+.dark [role="dialog"] .bg-blue-700,
+.dark [role="dialog"] .bg-blue-700 *,
+.dark [role="dialog"] [data-ink-keep],
+.dark [role="dialog"] [data-ink-keep] * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}

@@ -2206,15 +2206,20 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
         }}
       />
 
-      {/* Edit contact modal */}
+      {/* Edit contact modal — always light surface (readable in dark theme) */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-auto shadow-xl">
+          <div
+            role="dialog"
+            aria-modal="true"
+            data-ink-on-light
+            className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-auto shadow-xl text-slate-900"
+          >
             <div className="p-6">
-              <h2 className="text-xl font-semibold mb-1">
+              <h2 className="text-xl font-semibold mb-1 text-slate-900">
                 Edit Contact Information
               </h2>
-              <p className="text-sm text-muted-foreground mb-4">
+              <p className="text-sm text-slate-600 mb-4">
                 Update the candidate&apos;s details.
               </p>
               <form onSubmit={handleSaveContact} className="space-y-3">
@@ -2247,7 +2252,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   <Button
                     type="button"
                     variant="outline"
-                    className="flex-1"
+                    className="flex-1 border-slate-300 bg-white text-slate-900 hover:bg-slate-50 hover:text-slate-900"
                     onClick={() => setShowEditModal(false)}
                   >
                     Cancel
@@ -2255,7 +2260,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   <Button
                     type="submit"
                     disabled={isSavingContact}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     {isSavingContact ? 'Saving…' : 'Save Changes'}
                   </Button>

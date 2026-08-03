@@ -1139,13 +1139,20 @@ export default function ContactDetailClient({
         </section>
       )}
 
-      {/* Edit modal */}
+      {/* Edit modal — always light surface (readable in dark theme) */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-auto shadow-xl">
+          <div
+            role="dialog"
+            aria-modal="true"
+            data-ink-on-light
+            className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-auto shadow-xl text-slate-900"
+          >
             <div className="p-6">
-              <h2 className="text-xl font-semibold mb-1">Edit Contact</h2>
-              <p className="text-sm text-muted-foreground mb-4">
+              <h2 className="text-xl font-semibold mb-1 text-slate-900">
+                Edit Contact
+              </h2>
+              <p className="text-sm text-slate-600 mb-4">
                 Update this contact&apos;s details.
               </p>
               <form onSubmit={handleSave} className="space-y-3">
@@ -1207,16 +1214,18 @@ export default function ContactDetailClient({
                   line — store both when available.
                 </p>
                 <div>
-                  <label className="text-sm font-medium block mb-1">Notes</label>
+                  <label className="text-sm font-medium block mb-1 text-slate-800">
+                    Notes
+                  </label>
                   <textarea
                     value={form.notes || ''}
                     onChange={(e) =>
                       setForm({ ...form, notes: e.target.value })
                     }
-                    className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="w-full min-h-[80px] rounded-md border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm placeholder:text-slate-500"
                   />
                 </div>
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-center gap-2 text-sm text-slate-800">
                   <input
                     type="checkbox"
                     checked={!!form.isPrimary}
@@ -1230,7 +1239,7 @@ export default function ContactDetailClient({
                   <Button
                     type="button"
                     variant="outline"
-                    className="flex-1"
+                    className="flex-1 border-slate-300 bg-white text-slate-900 hover:bg-slate-50 hover:text-slate-900"
                     onClick={() => setShowEditModal(false)}
                   >
                     Cancel
@@ -1238,7 +1247,7 @@ export default function ContactDetailClient({
                   <Button
                     type="submit"
                     disabled={saving}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     {saving ? 'Saving…' : 'Save Changes'}
                   </Button>

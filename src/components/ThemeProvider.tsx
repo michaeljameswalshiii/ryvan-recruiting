@@ -118,6 +118,102 @@ html.dark [data-ink-on-light] a,html.dark [data-ink-on-light] .text-blue-600{
   color:#2563eb !important;
   -webkit-text-fill-color:#2563eb !important;
 }
+
+/*
+ * CRITICAL: Inputs/textareas/selects and outline buttons use bg-background
+ * (dark charcoal in black theme). The * black-text rule then paints black
+ * ink on dark fields → unreadable. Force LIGHT surfaces + dark ink inside
+ * white / pastel panels and dialogs.
+ */
+html.dark .bg-white input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.dark .bg-white textarea,
+html.dark .bg-white select,
+html.dark .bg-white .bg-background,
+html.dark .bg-gray-50 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.dark .bg-gray-50 textarea,
+html.dark .bg-gray-50 select,
+html.dark .bg-gray-50 .bg-background,
+html.dark .bg-slate-50 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.dark .bg-slate-50 textarea,
+html.dark .bg-slate-50 select,
+html.dark .bg-slate-50 .bg-background,
+html.dark .bg-amber-50 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.dark .bg-amber-50 textarea,
+html.dark .bg-amber-50 select,
+html.dark .bg-amber-50 .bg-background,
+html.dark [data-ink-on-light] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.dark [data-ink-on-light] textarea,
+html.dark [data-ink-on-light] select,
+html.dark [data-ink-on-light] .bg-background,
+html.dark [role="dialog"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.dark [role="dialog"] textarea,
+html.dark [role="dialog"] select,
+html.dark [role="dialog"] .bg-background{
+  background-color:#ffffff !important;
+  color:#0f172a !important;
+  -webkit-text-fill-color:#0f172a !important;
+  border-color:#cbd5e1 !important;
+}
+
+html.dark .bg-white input::placeholder,
+html.dark .bg-white textarea::placeholder,
+html.dark .bg-gray-50 input::placeholder,
+html.dark .bg-gray-50 textarea::placeholder,
+html.dark .bg-slate-50 input::placeholder,
+html.dark .bg-slate-50 textarea::placeholder,
+html.dark [data-ink-on-light] input::placeholder,
+html.dark [data-ink-on-light] textarea::placeholder,
+html.dark [role="dialog"] input::placeholder,
+html.dark [role="dialog"] textarea::placeholder{
+  color:#64748b !important;
+  -webkit-text-fill-color:#64748b !important;
+  opacity:1 !important;
+}
+
+/* Soft secondary copy inside light panels (not pure black) */
+html.dark .bg-white .text-muted-foreground,
+html.dark [data-ink-on-light] .text-muted-foreground,
+html.dark [role="dialog"] .text-muted-foreground{
+  color:#475569 !important;
+  -webkit-text-fill-color:#475569 !important;
+}
+
+/* Dialogs themselves stay light surfaces in dark mode */
+html.dark [role="dialog"]{
+  background-color:#ffffff !important;
+  color:#0f172a !important;
+  -webkit-text-fill-color:#0f172a !important;
+}
+html.dark [role="dialog"] *{
+  color:#0f172a !important;
+  -webkit-text-fill-color:#0f172a !important;
+}
+/* Re-assert primary/dark buttons inside dialogs → white text */
+html.dark [role="dialog"] .bg-primary,
+html.dark [role="dialog"] .bg-primary *,
+html.dark [role="dialog"] .bg-blue-600,
+html.dark [role="dialog"] .bg-blue-600 *,
+html.dark [role="dialog"] .bg-blue-700,
+html.dark [role="dialog"] .bg-blue-700 *,
+html.dark [role="dialog"] .bg-slate-900,
+html.dark [role="dialog"] .bg-slate-900 *,
+html.dark [role="dialog"] .bg-violet-600,
+html.dark [role="dialog"] .bg-violet-600 *,
+html.dark [role="dialog"] [data-ink-keep],
+html.dark [role="dialog"] [data-ink-keep] *{
+  color:#ffffff !important;
+  -webkit-text-fill-color:#ffffff !important;
+}
+/* Inputs already forced white above — keep dialog primary button bg */
+html.dark [role="dialog"] .bg-primary{
+  background-color:hsl(var(--primary)) !important;
+}
+html.dark [role="dialog"] .bg-blue-600{
+  background-color:#2563eb !important;
+}
+html.dark [role="dialog"] .bg-blue-700{
+  background-color:#1d4ed8 !important;
+}
 `;
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
