@@ -259,6 +259,8 @@ export function JobListView({ jobs }: JobListViewProps) {
     });
   };
 
+  // Note: avoid light pastel classes (bg-emerald-50 etc.) on dark UI — they stay in
+  // the class list and global CSS maps them to near-black ink on charcoal.
   const statCards: {
     key: JobBucket;
     label: string;
@@ -266,79 +268,79 @@ export function JobListView({ jobs }: JobListViewProps) {
     count: number;
     ring: string;
     bg: string;
-    text: string;
+    countClass: string;
   }[] = [
     {
       key: 'all',
       label: 'All Jobs',
       sub: 'Click to show all',
       count: stats.all,
-      ring: 'ring-blue-200',
-      bg: 'bg-white',
-      text: 'text-gray-900',
+      ring: 'ring-blue-400',
+      bg: 'bg-white dark:bg-slate-800',
+      countClass: 'text-slate-900 dark:text-white',
     },
     {
       key: 'open',
       label: 'Open',
       sub: 'Actively hiring',
       count: stats.open,
-      ring: 'ring-emerald-100',
-      bg: 'bg-emerald-50/80',
-      text: 'text-emerald-900',
+      ring: 'ring-emerald-400',
+      bg: 'bg-white dark:bg-slate-800',
+      countClass: 'text-emerald-700 dark:text-emerald-300',
     },
     {
       key: 'paused',
       label: 'Paused',
       sub: 'Temporarily on hold',
       count: stats.paused,
-      ring: 'ring-amber-100',
-      bg: 'bg-amber-50/80',
-      text: 'text-amber-900',
+      ring: 'ring-amber-400',
+      bg: 'bg-white dark:bg-slate-800',
+      countClass: 'text-amber-700 dark:text-amber-300',
     },
     {
       key: 'filled',
       label: 'Filled',
       sub: 'Placed / won',
       count: stats.filled,
-      ring: 'ring-sky-100',
-      bg: 'bg-sky-50/80',
-      text: 'text-sky-900',
+      ring: 'ring-sky-400',
+      bg: 'bg-white dark:bg-slate-800',
+      countClass: 'text-sky-700 dark:text-sky-300',
     },
     {
       key: 'lost',
       label: 'Lost',
       sub: 'Lost the req',
       count: stats.lost,
-      ring: 'ring-rose-100',
-      bg: 'bg-rose-50/80',
-      text: 'text-rose-900',
+      ring: 'ring-rose-400',
+      bg: 'bg-white dark:bg-slate-800',
+      countClass: 'text-rose-700 dark:text-rose-300',
     },
     {
       key: 'closed',
       label: 'Closed',
       sub: 'Closed out',
       count: stats.closed,
-      ring: 'ring-slate-100',
-      bg: 'bg-slate-50/80',
-      text: 'text-slate-900',
+      ring: 'ring-slate-400',
+      bg: 'bg-white dark:bg-slate-800',
+      countClass: 'text-slate-800 dark:text-slate-200',
     },
     {
       key: 'with_candidates',
       label: 'With Pipeline',
       sub: 'Has candidates',
       count: stats.with_candidates,
-      ring: 'ring-indigo-100',
-      bg: 'bg-indigo-50/80',
-      text: 'text-indigo-900',
+      ring: 'ring-indigo-400',
+      bg: 'bg-white dark:bg-slate-800',
+      countClass: 'text-indigo-700 dark:text-indigo-300',
     },
     {
       key: 'no_candidates',
       label: 'Empty',
       sub: 'No candidates yet',
       count: stats.no_candidates,
-      ring: 'ring-violet-100',
-      bg: 'bg-violet-50/80',
-      text: 'text-violet-900',
+      ring: 'ring-violet-400',
+      bg: 'bg-white dark:bg-slate-800',
+      countClass: 'text-violet-700 dark:text-violet-300',
     },
   ];
 
@@ -355,15 +357,19 @@ export function JobListView({ jobs }: JobListViewProps) {
               onClick={() => setBucket(card.key)}
               className={`text-left rounded-2xl border px-4 py-3.5 shadow-sm transition-all ${card.bg} ${
                 active
-                  ? `ring-2 ${card.ring} border-blue-300 shadow-md`
-                  : 'border-gray-200 hover:border-gray-300 hover:shadow'
+                  ? `ring-2 ${card.ring} border-blue-400 dark:border-blue-400 shadow-md`
+                  : 'border-gray-200 dark:border-slate-600 hover:border-gray-300 dark:hover:border-slate-500 hover:shadow'
               }`}
             >
-              <div className={`text-2xl font-semibold tabular-nums ${card.text}`}>{card.count}</div>
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mt-1">
+              <div className={`text-2xl font-semibold tabular-nums ${card.countClass}`}>
+                {card.count}
+              </div>
+              <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-800 dark:text-white">
                 {card.label}
               </div>
-              <div className="text-[11px] text-gray-400 mt-0.5">{card.sub}</div>
+              <div className="mt-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-200">
+                {card.sub}
+              </div>
             </button>
           );
         })}
@@ -384,7 +390,7 @@ export function JobListView({ jobs }: JobListViewProps) {
           <select
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as SortKey)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
+            className="border border-gray-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
             aria-label="Sort jobs"
           >
             <option value="last_activity">Sort: Last Action</option>
@@ -393,7 +399,7 @@ export function JobListView({ jobs }: JobListViewProps) {
             <option value="candidates">Sort: Candidates</option>
             <option value="status">Sort: Status</option>
           </select>
-          <span className="text-xs text-gray-500 whitespace-nowrap">
+          <span className="text-xs font-medium text-slate-600 dark:text-slate-200 whitespace-nowrap">
             {filtered.length} job{filtered.length === 1 ? '' : 's'}
             {filtered.length > DEFAULT_PAGE_SIZE
               ? ` · page ${paged.page}/${paged.totalPages}`
@@ -409,7 +415,7 @@ export function JobListView({ jobs }: JobListViewProps) {
           total={paged.total}
           onPageChange={setPage}
           itemLabel={paged.total === 1 ? 'job' : 'jobs'}
-          className="rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm"
+          className="rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 shadow-sm"
         />
       )}
 

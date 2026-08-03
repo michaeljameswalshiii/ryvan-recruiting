@@ -373,6 +373,27 @@
   opacity: 1;
 }
 
+/*
+ * Solid dark slate panels (filter cards, pagination chrome): force white copy.
+ * Complements JobListView / PaginationBar without pastel-class collisions.
+ */
+.dark .dark\:bg-slate-800 {
+  color: #f8fafc;
+}
+.dark .dark\:bg-slate-800 .text-slate-800,
+.dark .dark\:bg-slate-800 .text-slate-700,
+.dark .dark\:bg-slate-800 .text-slate-600,
+.dark .dark\:bg-slate-800 .text-slate-200,
+.dark .dark\:bg-slate-800 .text-gray-600,
+.dark .dark\:bg-slate-800 .text-gray-500,
+.dark .dark\:bg-slate-800 .text-gray-400 {
+  color: #e2e8f0 !important;
+}
+.dark .dark\:bg-slate-800 .dark\:text-white,
+.dark .dark\:bg-slate-800 .text-white {
+  color: #ffffff !important;
+}
+
 /* Job description rich HTML (careers + editor) */
 .job-desc-html p,
 .job-desc-editor p {
