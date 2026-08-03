@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Bell,
-  Search,
   User,
   Zap,
   ChevronDown,
@@ -14,6 +13,7 @@ import {
   Briefcase,
 } from "lucide-react";
 import { roleLabel } from "@/lib/roles";
+import { GlobalSearch } from "@/components/dashboard/GlobalSearch";
 
 interface DashboardHeaderProps {
   user?: {
@@ -82,14 +82,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
   return (
     <header className="sticky top-0 z-40 h-16 border-b border-border flex items-center justify-between gap-4 px-6 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="flex items-center gap-4 flex-1 min-w-0">
-        <div className="relative max-w-md flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search candidates, companies, jobs..."
-            className="w-full h-10 pl-10 pr-4 rounded-md border border-input bg-background text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </div>
+        <GlobalSearch />
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
