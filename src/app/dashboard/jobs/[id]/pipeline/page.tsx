@@ -163,14 +163,18 @@ export default function JobPipelinePage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="border-slate-300 bg-white text-slate-900 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700"
+          {/* Solid white pill — always readable on dark canvas (outline + dark:bg-slate was invisible) */}
+          <Link
+            href={`/dashboard/jobs/${jobId}`}
+            className="inline-flex items-center justify-center h-9 px-4 rounded-md text-sm font-semibold border border-white/90 bg-white text-slate-900 shadow-sm hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            style={{
+              backgroundColor: '#ffffff',
+              color: '#0f172a',
+              borderColor: '#e2e8f0',
+            }}
           >
-            <Link href={`/dashboard/jobs/${jobId}`}>Job overview</Link>
-          </Button>
+            Job overview
+          </Link>
         </div>
       </div>
 
