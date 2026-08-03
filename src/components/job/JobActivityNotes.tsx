@@ -8,10 +8,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
 import {
-  DEFAULT_PAGE_SIZE,
   PaginationBar,
   paginateItems,
 } from '@/components/ui/pagination-bar';
+
+/** Job activity log page size (15 rows per page). */
+const PAGE_SIZE = 15;
 
 type LinkedCandidate = {
   candidateId?: string;
@@ -120,25 +122,46 @@ export function JobActivityNotes({
   const [addingNote, setAddingNote] = useState(false);
   const [page, setPage] = useState(1);
 
+  // Stable key so parent re-creating linkedCandidates arrays does not
+  // re-fetch and force page back to 1 (which made pagination look broken).
+  const candidateKey = useMemo(
+    () =>
+      (linkedCandidates || [])
+        .map((c) => c.candidateId)
+        .filter(Boolean)
+        .join(','),
+    [linkedCandidates]
+  );
+
+  const candidateNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of linkedCandidates || []) {
+      if (c.candidateId) {
+        map.set(c.candidateId, c.candidateName || 'Candidate');
+      }
+    }
+    return map;
+  }, [linkedCandidates]);
+
   const load = useCallback(async () => {
     if (!jobId) return;
     setLoading(true);
     try {
       const fetches: Promise<Response>[] = [
-        fetch(`/api/jobs/${jobId}/events?limit=40`),
+        fetch(`/api/jobs/${jobId}/events?limit=100`),
       ];
 
-      const candIds = (linkedCandidates || [])
-        .map((c) => c.candidateId)
-        .filter(Boolean) as string[];
+      const candIds = candidateKey
+        ? candidateKey.split(',').filter(Boolean)
+        : [];
 
       for (const cid of candIds.slice(0, 25)) {
-        fetches.push(fetch(`/api/candidate/${cid}/events?limit=15`));
+        fetches.push(fetch(`/api/candidate/${cid}/events?limit=40`));
       }
 
       if (companyId) {
         fetches.push(
-          fetch(`/api/companies/${companyId}/events?limit=20`).catch(
+          fetch(`/api/companies/${companyId}/events?limit=50`).catch(
             () => new Response(null)
           ) as Promise<Response>
         );
@@ -170,9 +193,7 @@ export function JobActivityNotes({
       for (let i = 0; i < candIds.slice(0, 25).length; i++) {
         const res = responses[1 + i];
         const cid = candIds[i];
-        const name =
-          linkedCandidates.find((c) => c.candidateId === cid)?.candidateName ||
-          'Candidate';
+        const name = candidateNameById.get(cid) || 'Candidate';
         try {
           if (res?.ok) {
             const data = await res.json();
@@ -231,23 +252,35 @@ export function JobActivityNotes({
         return true;
       });
 
-      setRows(deduped.slice(0, 200));
-      setPage(1);
+      setRows(deduped.slice(0, 300));
     } catch (e) {
       console.error('[JobActivityNotes]', e);
     } finally {
       setLoading(false);
     }
-  }, [jobId, linkedCandidates, companyId, companyName]);
+  }, [jobId, candidateKey, candidateNameById, companyId, companyName]);
 
+  // Reset to page 1 only when the data sources change (not on every parent render)
   useEffect(() => {
+    setPage(1);
     void load();
-  }, [load]);
+  }, [jobId, candidateKey, companyId, companyName]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional: avoid re-fetch on name map identity
 
   const paged = useMemo(
-    () => paginateItems(rows, page, DEFAULT_PAGE_SIZE),
+    () => paginateItems(rows, page, PAGE_SIZE),
     [rows, page]
   );
+
+  // Keep page in range if the list shrinks (e.g. after reload)
+  useEffect(() => {
+    if (page > paged.totalPages) setPage(paged.totalPages);
+  }, [page, paged.totalPages]);
+
+  // Defensive: never render more than PAGE_SIZE rows even if paginateItems misbehaves
+  const visibleRows = useMemo(() => {
+    const start = (Math.max(1, paged.page) - 1) * PAGE_SIZE;
+    return rows.slice(start, start + PAGE_SIZE);
+  }, [rows, paged.page]);
 
   const handleAddNote = async () => {
     if (!jobId) return;
@@ -266,6 +299,7 @@ export function JobActivityNotes({
       setNewNote('');
       setNoteType('general');
       toast.success('Activity logged');
+      setPage(1);
       await load();
     } catch (e: any) {
       toast.error(e?.message || 'Failed to save note');
@@ -276,14 +310,21 @@ export function JobActivityNotes({
 
   return (
     <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-      <div className="mb-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-          Notes &amp; Activity Log
-        </h2>
-        <p className="text-xs text-gray-400 mt-1">
-          Job notes plus activity from linked candidates
-          {companyId ? ' and the company' : ''}
-        </p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Notes &amp; Activity Log
+          </h2>
+          <p className="text-xs text-gray-400 mt-1">
+            Job notes plus activity from linked candidates
+            {companyId ? ' and the company' : ''}
+          </p>
+        </div>
+        {!loading && rows.length > 0 && (
+          <span className="text-[11px] font-medium text-slate-600 bg-slate-100 border border-slate-200 rounded-full px-2.5 py-1 tabular-nums">
+            {rows.length} total · {PAGE_SIZE}/page
+          </span>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2 mb-5">
@@ -332,7 +373,16 @@ export function JobActivityNotes({
           No activity yet. Log a note or link candidates to see their history.
         </p>
       ) : (
-        <>
+        <div className="space-y-3">
+          <PaginationBar
+            page={paged.page}
+            totalPages={paged.totalPages}
+            total={paged.total}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+            itemLabel={paged.total === 1 ? 'activity' : 'activities'}
+            hideWhenSinglePage={false}
+          />
           <div className="overflow-x-auto rounded-xl border border-gray-100">
             <table className="w-full text-sm min-w-[640px]">
               <thead>
@@ -351,8 +401,8 @@ export function JobActivityNotes({
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {paged.slice.map((row) => (
+              <tbody key={`activity-page-${paged.page}`} className="divide-y divide-gray-100">
+                {visibleRows.map((row) => (
                   <tr key={row.id} className="hover:bg-gray-50/60">
                     <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap align-top">
                       {formatDateTime(row.createdAt)}
@@ -384,16 +434,18 @@ export function JobActivityNotes({
               </tbody>
             </table>
           </div>
-          <PaginationBar
-            page={paged.page}
-            totalPages={paged.totalPages}
-            total={paged.total}
-            pageSize={DEFAULT_PAGE_SIZE}
-            onPageChange={setPage}
-            itemLabel={paged.total === 1 ? 'activity' : 'activities'}
-            className="mt-3"
-          />
-        </>
+          {paged.totalPages > 1 && (
+            <PaginationBar
+              page={paged.page}
+              totalPages={paged.totalPages}
+              total={paged.total}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+              itemLabel={paged.total === 1 ? 'activity' : 'activities'}
+              hideWhenSinglePage={false}
+            />
+          )}
+        </div>
       )}
     </section>
   );
