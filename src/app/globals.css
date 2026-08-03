@@ -146,17 +146,17 @@
   stroke: currentColor !important;
   opacity: 1 !important;
 }
-/* Inactive "Light" on dark sidebar — solid yellow chip (can't wash out) */
+/* Idle "Light" on dark sidebar — soft white chip (not yellow) */
 .dark [data-app-sidebar] .theme-toggle-btn--light-idle {
-  background-color: #facc15 !important; /* yellow-400 */
-  color: #0f172a !important;
-  -webkit-text-fill-color: #0f172a !important;
-  border: 1px solid #eab308 !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25) !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+  box-shadow: none !important;
 }
 .dark [data-app-sidebar] .theme-toggle-btn--light-idle svg {
-  color: #0f172a !important;
-  stroke: #0f172a !important;
+  color: #ffffff !important;
+  stroke: #ffffff !important;
 }
 /* Active side (selected theme) — white pill + dark ink */
 .dark [data-app-sidebar] .theme-toggle-btn--active {
@@ -164,6 +164,7 @@
   color: #0f172a !important;
   -webkit-text-fill-color: #0f172a !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid #ffffff !important;
 }
 .dark [data-app-sidebar] .theme-toggle-btn--active svg {
   color: #0f172a !important;

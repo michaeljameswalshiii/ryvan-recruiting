@@ -230,23 +230,24 @@ export function GlobalSearch() {
         <div
           id={listId}
           role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 max-h-[min(420px,70vh)] overflow-y-auto rounded-xl border border-gray-200 dark:border-border bg-white dark:bg-card shadow-lg"
+          data-ink-on-light
+          className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 max-h-[min(420px,70vh)] overflow-y-auto rounded-xl border border-gray-200 bg-white text-slate-900 shadow-lg"
         >
           {query.trim().length < 2 && (
-            <p className="px-3 py-3 text-sm text-slate-600 dark:text-slate-300">
+            <p className="px-3 py-3 text-sm text-slate-600">
               Type at least 2 characters to search.
             </p>
           )}
 
           {query.trim().length >= 2 && error && (
-            <p className="px-3 py-3 text-sm text-rose-600">{error}</p>
+            <p className="px-3 py-3 text-sm text-rose-700">{error}</p>
           )}
 
           {query.trim().length >= 2 &&
             !loading &&
             !error &&
             results.length === 0 && (
-              <p className="px-3 py-3 text-sm text-slate-600 dark:text-slate-300">
+              <p className="px-3 py-3 text-sm text-slate-600">
                 No matches for &ldquo;{query.trim()}&rdquo;
               </p>
             )}
@@ -255,8 +256,8 @@ export function GlobalSearch() {
             const meta = TYPE_META[group.type];
             const Icon = meta.icon;
             return (
-              <div key={group.type} className="border-b border-gray-100 dark:border-border last:border-0">
-                <div className="sticky top-0 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-gray-50/95 dark:bg-secondary/95 backdrop-blur">
+              <div key={group.type} className="border-b border-gray-100 last:border-0">
+                <div className="sticky top-0 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-600 bg-slate-50 backdrop-blur">
                   {meta.label}
                 </div>
                 <ul className="py-1">
@@ -273,19 +274,19 @@ export function GlobalSearch() {
                           aria-selected={active}
                           className={`flex w-full items-start gap-3 px-3 py-2.5 text-left text-sm transition-colors ${
                             active
-                              ? "bg-blue-50 dark:bg-blue-500/15"
-                              : "hover:bg-gray-50 dark:hover:bg-white/5"
+                              ? "bg-blue-50"
+                              : "hover:bg-slate-50"
                           }`}
                           onMouseEnter={() => setActiveIndex(idx)}
                           onClick={() => go(hit)}
                         >
-                          <Icon className="h-4 w-4 mt-0.5 shrink-0 text-slate-500 dark:text-slate-300" />
+                          <Icon className="h-4 w-4 mt-0.5 shrink-0 text-slate-500" />
                           <span className="min-w-0 flex-1">
-                            <span className="block font-semibold text-slate-900 dark:text-slate-50 truncate">
+                            <span className="block font-semibold text-slate-900 truncate">
                               {hit.title}
                             </span>
                             {hit.subtitle ? (
-                              <span className="block text-xs text-slate-600 dark:text-slate-300 truncate">
+                              <span className="block text-xs text-slate-600 truncate">
                                 {hit.subtitle}
                               </span>
                             ) : null}

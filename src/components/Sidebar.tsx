@@ -192,52 +192,6 @@ export default function Sidebar({ role }: SidebarProps) {
             className="w-full h-auto max-h-[5.5rem] object-contain object-left object-top dark:brightness-125 dark:contrast-110"
           />
         </Link>
-        {/* Theme toggle — CSS classes with !important beat sidebar white-svg remaps */}
-        <div
-          className="theme-toggle mt-2.5 flex rounded-lg p-1 gap-1"
-          role="group"
-          aria-label="Color theme"
-          style={
-            isDark
-              ? {
-                  backgroundColor: 'rgba(0,0,0,0.65)',
-                  border: '1px solid rgba(255,255,255,0.5)',
-                }
-              : {
-                  backgroundColor: '#f1f5f9',
-                  border: '1px solid #cbd5e1',
-                }
-          }
-        >
-          <button
-            type="button"
-            onClick={() => setTheme('white')}
-            title="Light UI"
-            className={`theme-toggle-btn flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-[12px] font-bold transition ${
-              theme === 'white' || theme === 'gray'
-                ? 'theme-toggle-btn--active bg-white text-slate-900 shadow-sm'
-                : isDark
-                  ? 'theme-toggle-btn--light-idle'
-                  : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Sun className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            Light
-          </button>
-          <button
-            type="button"
-            onClick={() => setTheme('black')}
-            title="Dark UI (charcoal background)"
-            className={`theme-toggle-btn flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-[12px] font-bold transition ${
-              isDark
-                ? 'theme-toggle-btn--active'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            Dark
-          </button>
-        </div>
       </div>
 
       {canScrollUp && (
@@ -335,7 +289,53 @@ export default function Sidebar({ role }: SidebarProps) {
         </button>
       )}
 
-      <div className="p-4 border-t border-gray-200 dark:border-border mt-auto">
+      <div className="p-3 border-t border-gray-200 dark:border-border mt-auto space-y-2">
+        {/* Theme toggle — lower-left footer; soft white Light, solid white active */}
+        <div
+          className="theme-toggle flex rounded-lg p-1 gap-1"
+          role="group"
+          aria-label="Color theme"
+          style={
+            isDark
+              ? {
+                  backgroundColor: 'rgba(0,0,0,0.45)',
+                  border: '1px solid rgba(255,255,255,0.28)',
+                }
+              : {
+                  backgroundColor: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                }
+          }
+        >
+          <button
+            type="button"
+            onClick={() => setTheme('white')}
+            title="Light UI"
+            className={`theme-toggle-btn flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-[12px] font-bold transition ${
+              theme === 'white' || theme === 'gray'
+                ? 'theme-toggle-btn--active bg-white text-slate-900 shadow-sm'
+                : isDark
+                  ? 'theme-toggle-btn--light-idle'
+                  : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Sun className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            Light
+          </button>
+          <button
+            type="button"
+            onClick={() => setTheme('black')}
+            title="Dark UI (charcoal background)"
+            className={`theme-toggle-btn flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-[12px] font-bold transition ${
+              isDark
+                ? 'theme-toggle-btn--active'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            Dark
+          </button>
+        </div>
         <div className="sidebar-footer-copy text-xs font-medium text-slate-600 dark:text-white text-center">
           © 2026 Trio Recruiting
         </div>
