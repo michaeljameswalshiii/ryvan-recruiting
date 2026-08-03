@@ -180,7 +180,10 @@ export default function NewJobPage() {
       <p className="text-muted-foreground mb-8">Add a new job opening and link it to a company</p>
 
       {/* Form */}
-      <div className="grid gap-6 bg-card border rounded-lg p-6 max-w-2xl">
+      <div
+        data-ink-on-light
+        className="grid gap-6 bg-white border border-gray-200 rounded-2xl shadow-sm p-6 max-w-2xl text-slate-900"
+      >
         <div className="grid gap-2">
           <Label htmlFor="title">Job Title *</Label>
           <Input

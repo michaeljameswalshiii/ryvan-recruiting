@@ -415,10 +415,13 @@ function OverviewTab({
 
   return (
     <div className="space-y-5">
-      {/* Primary contact */}
-      <div data-ink-on-light className="p-5 sm:p-6 rounded-2xl border border-border bg-card space-y-4">
+      {/* Primary contact — always light surface (readable in dark theme) */}
+      <div
+        data-ink-on-light
+        className="p-5 sm:p-6 rounded-2xl border border-gray-200 bg-white shadow-sm space-y-4 text-slate-900"
+      >
         <div className="flex items-center justify-between gap-2">
-          <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-muted-foreground">
+          <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
             <User className="h-4 w-4" />
             Primary Contact
             {primaryContact && (
@@ -432,7 +435,12 @@ function OverviewTab({
             )}
           </h3>
           {onViewContacts && (
-            <Button variant="ghost" size="sm" onClick={onViewContacts}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onViewContacts}
+              className="text-slate-700 hover:text-slate-900 hover:bg-slate-50"
+            >
               View all contacts
               {contacts.length > 0 ? ` (${contacts.length})` : ""}
             </Button>
@@ -441,15 +449,15 @@ function OverviewTab({
 
         {primaryContact ? (
           <div className="flex items-center gap-4">
-            <div className="h-12 w-12 shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
-              <User className="h-6 w-6 text-primary" />
+            <div className="h-12 w-12 shrink-0 rounded-full bg-blue-50 flex items-center justify-center">
+              <User className="h-6 w-6 text-blue-600" />
             </div>
             <div className="min-w-0">
-              <p className="font-medium">
+              <p className="font-medium text-slate-900">
                 {primaryContact.id ? (
                   <Link
                     href={`/dashboard/contact-info/${primaryContact.id}?companyId=${company.id}`}
-                    className="hover:underline text-primary"
+                    className="hover:underline text-blue-600"
                   >
                     {primaryContact.name}
                   </Link>
@@ -458,15 +466,13 @@ function OverviewTab({
                 )}
               </p>
               {primaryContact.title && (
-                <p className="text-sm text-muted-foreground">
-                  {primaryContact.title}
-                </p>
+                <p className="text-sm text-slate-600">{primaryContact.title}</p>
               )}
               <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
                 {primaryContact.email && (
                   <a
                     href={`mailto:${primaryContact.email}`}
-                    className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
                   >
                     <Mail className="h-3 w-3" />
                     {primaryContact.email}
@@ -475,7 +481,7 @@ function OverviewTab({
                 {primaryPhone && (
                   <a
                     href={`tel:${primaryPhone}`}
-                    className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
                   >
                     <Phone className="h-3 w-3" />
                     {primaryPhone}
@@ -485,12 +491,17 @@ function OverviewTab({
             </div>
           </div>
         ) : (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-dashed border-border px-4 py-6">
-            <p className="text-sm text-muted-foreground">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-dashed border-slate-300 px-4 py-6">
+            <p className="text-sm text-slate-600">
               No contacts linked to this company yet.
             </p>
             {onViewContacts && (
-              <Button variant="outline" size="sm" onClick={onViewContacts}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onViewContacts}
+                className="border-slate-300 bg-white text-slate-900"
+              >
                 <User className="h-4 w-4 mr-2" />
                 Manage contacts
               </Button>
@@ -501,12 +512,15 @@ function OverviewTab({
 
       {/* Optional company description */}
       {company.description && (
-        <div data-ink-on-light className="p-5 sm:p-6 rounded-2xl border border-border bg-card space-y-3">
-          <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-muted-foreground">
+        <div
+          data-ink-on-light
+          className="p-5 sm:p-6 rounded-2xl border border-gray-200 bg-white shadow-sm space-y-3 text-slate-900"
+        >
+          <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
             <FileText className="h-4 w-4" />
             About
           </h3>
-          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+          <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
             {company.description}
           </p>
         </div>
@@ -568,16 +582,17 @@ function JobsTab({ companyId, companyName }: { companyId: string; companyName: s
             <Link 
               key={job.id} 
               href={`/dashboard/jobs?id=${job.id}`}
-              className="block p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors"
+              data-ink-on-light
+              className="block p-4 rounded-lg border border-gray-200 bg-white shadow-sm hover:border-blue-300 transition-colors text-slate-900"
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <h4 className="font-medium">{job.title || "Position"}</h4>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <h4 className="font-medium text-slate-900">{job.title || "Position"}</h4>
+                  <p className="text-sm text-slate-600 mt-1">
                     {job.location || "Location not specified"}
                   </p>
                   {job.salaryRange && (
-                    <p className="text-sm text-muted-foreground mt-1">
+                    <p className="text-sm text-slate-600 mt-1">
                       Salary: {job.salaryRange}
                     </p>
                   )}
@@ -696,9 +711,13 @@ function ContactsTab({ company, leads, onEmailClick }: { company: any; leads: an
       {deletingContact && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setDeletingContact(null)} />
-          <div className="relative z-10 w-full max-w-md mx-4 bg-background rounded-lg border shadow-lg p-6">
-            <h3 className="text-lg font-semibold">Delete Contact</h3>
-            <p className="text-muted-foreground mt-2">
+          <div
+            role="dialog"
+            data-ink-on-light
+            className="relative z-10 w-full max-w-md mx-4 bg-white text-slate-900 rounded-lg border border-gray-200 shadow-lg p-6"
+          >
+            <h3 className="text-lg font-semibold text-slate-900">Delete Contact</h3>
+            <p className="text-slate-600 mt-2">
               Are you sure you want to delete {deletingContact.name}? This action cannot be undone.
             </p>
             <div className="flex justify-end gap-2 mt-4">
@@ -717,18 +736,22 @@ function ContactsTab({ company, leads, onEmailClick }: { company: any; leads: an
       {contacts.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2">
           {contacts.map((contact: any) => (
-            <div key={contact.id} className="p-4 rounded-lg border border-border bg-card">
+            <div
+              key={contact.id}
+              data-ink-on-light
+              className="p-4 rounded-lg border border-gray-200 bg-white shadow-sm text-slate-900"
+            >
               <div className="flex items-start gap-3">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <User className="h-5 w-5 text-primary" />
+                <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
+                  <User className="h-5 w-5 text-blue-600" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h4 className="font-medium">
+                    <h4 className="font-medium text-slate-900">
                       {contact.id ? (
                         <Link
                           href={`/dashboard/contact-info/${contact.id}?companyId=${company.id}`}
-                          className="hover:underline text-primary"
+                          className="hover:underline text-blue-600"
                         >
                           {contact.name}
                         </Link>
@@ -744,18 +767,18 @@ function ContactsTab({ company, leads, onEmailClick }: { company: any; leads: an
                     )}
                   </div>
                   {/* Contact ID - useful for reference */}
-                  <p className="text-xs text-muted-foreground font-mono mt-1">
+                  <p className="text-xs text-slate-500 font-mono mt-1">
                     ID: {contact.id}
                   </p>
                   {contact.title && (
-                    <p className="text-sm text-muted-foreground">{contact.title}</p>
+                    <p className="text-sm text-slate-600">{contact.title}</p>
                   )}
                   
                   <div className="flex flex-wrap gap-2 mt-3">
                     {contact.email && onEmailClick ? (
                       <button 
                         onClick={() => onEmailClick(contact)}
-                        className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-600 hover:underline cursor-pointer"
+                        className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
                         title="Click to send email"
                       >
                         <Mail className="h-3 w-3" />

@@ -86,6 +86,17 @@ html.dark [data-ink-on-light],html.dark [data-ink-on-light] *{
   -webkit-text-fill-color:#0f172a !important;
 }
 
+/*
+ * Safety: data-ink-on-light must never sit on charcoal theme tokens.
+ * Fixes panels tagged for light ink but still using bg-card / bg-background.
+ */
+html.dark [data-ink-on-light].bg-card,
+html.dark [data-ink-on-light].bg-background,
+html.dark [data-ink-on-light].bg-muted{
+  background-color:#ffffff !important;
+  border-color:#e2e8f0 !important;
+}
+
 /* Dark buttons inside light panels: WHITE (after light rule) */
 html.dark .bg-white .bg-slate-900,html.dark .bg-white .bg-slate-900 *,
 html.dark .bg-white .bg-slate-800,html.dark .bg-white .bg-slate-800 *,

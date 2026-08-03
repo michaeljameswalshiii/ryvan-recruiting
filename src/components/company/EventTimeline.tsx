@@ -208,12 +208,15 @@ export function CompanyEventTimeline({
   );
 
   return (
-    <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+    <section
+      data-ink-on-light
+      className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 text-slate-900"
+    >
       <div className="mb-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">
           Notes &amp; Activity Log
         </h2>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-slate-500 mt-1">
           Account activity — emails, meetings, proposals, and follow-ups
         </p>
       </div>
@@ -245,7 +248,8 @@ export function CompanyEventTimeline({
         <Button
           onClick={() => void handleAddNote()}
           disabled={addingNote}
-          className="bg-blue-600 hover:bg-blue-700 shrink-0"
+          data-ink-keep
+          className="bg-blue-600 hover:bg-blue-700 text-white shrink-0"
         >
           {addingNote ? (
             <Loader2 className="h-4 w-4 animate-spin" />

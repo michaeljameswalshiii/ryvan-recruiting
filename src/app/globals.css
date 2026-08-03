@@ -1069,6 +1069,17 @@
 }
 
 /*
+ * Safety: data-ink-on-light + theme card tokens = charcoal in dark mode.
+ * Force a real white surface so ink rules stay readable.
+ */
+.dark [data-ink-on-light].bg-card,
+.dark [data-ink-on-light].bg-background,
+.dark [data-ink-on-light].bg-muted {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+/*
  * Form fields + outline controls inside light panels / dialogs.
  * Prevents dark-theme bg-background (charcoal) + forced black text.
  */

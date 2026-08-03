@@ -139,8 +139,12 @@ export function StageChangeNoteModal({
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       
-      {/* Modal Content */}
-      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+      {/* Modal Content — always light surface */}
+      <div
+        role="dialog"
+        data-ink-on-light
+        className="relative bg-white border border-gray-200 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 text-slate-900"
+      >
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -148,23 +152,21 @@ export function StageChangeNoteModal({
               <StickyNote className="w-5 h-5 text-amber-600" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-foreground">Stage Changed</h2>
-              <p className="text-sm text-muted-foreground">
-                for {candidateName}
-              </p>
+              <h2 className="text-lg font-semibold text-slate-900">Stage Changed</h2>
+              <p className="text-sm text-slate-600">for {candidateName}</p>
             </div>
           </div>
         </div>
 
         {/* Stage Info */}
-        <div className="bg-background rounded-lg p-4 mb-4 border border-border">
+        <div className="bg-slate-50 rounded-lg p-4 mb-4 border border-slate-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-muted-foreground mb-1">Job</p>
-              <p className="font-medium text-sm text-foreground">{jobTitle}</p>
+              <p className="text-xs text-slate-500 mb-1">Job</p>
+              <p className="font-medium text-sm text-slate-900">{jobTitle}</p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-muted-foreground mb-1">New Stage</p>
+              <p className="text-xs text-slate-500 mb-1">New Stage</p>
               <Badge className={getStageColor(newStage)}>
                 {displayLabel}
               </Badge>
@@ -174,15 +176,16 @@ export function StageChangeNoteModal({
 
         {/* Prompt */}
         <div className="mb-4">
-          <p className="text-sm text-foreground">
-            You changed the stage to <span className="font-medium">{displayLabel}</span>.
-            Would you like to add a note about this?
+          <p className="text-sm text-slate-800">
+            You changed the stage to{" "}
+            <span className="font-medium">{displayLabel}</span>. Would you like
+            to add a note about this?
           </p>
         </div>
 
         {/* Note Textarea */}
         <div className="mb-6">
-          <label className="text-sm font-medium text-muted-foreground mb-2 block">
+          <label className="text-sm font-medium text-slate-700 mb-2 block">
             Note (optional)
           </label>
           <Textarea
@@ -190,7 +193,7 @@ export function StageChangeNoteModal({
             onChange={(e) => setNote(e.target.value)}
             placeholder="Add a note about this stage change..."
             rows={3}
-            className="resize-none"
+            className="resize-none bg-white border-slate-300 text-slate-900"
             disabled={busy}
           />
         </div>
@@ -201,7 +204,7 @@ export function StageChangeNoteModal({
             variant="outline"
             onClick={handleSkip}
             disabled={busy}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 border-slate-300 bg-white text-slate-900"
           >
             <X className="w-4 h-4" />
             Skip note
@@ -209,7 +212,8 @@ export function StageChangeNoteModal({
           <Button
             onClick={handleSave}
             disabled={busy}
-            className="flex items-center gap-2"
+            data-ink-keep
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
           >
             {busy ? (
               <>
