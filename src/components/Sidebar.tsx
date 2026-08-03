@@ -106,26 +106,45 @@ export default function Sidebar({ role }: SidebarProps) {
 
   const linkClass = (href: string, activeTone: 'blue' | 'orange' | 'purple') => {
     const isActive = pathname === href || pathname.startsWith(href + '/');
-    // High-contrast dark nav: never use slate-400/500 on charcoal — they wash out.
-    // CSS [data-app-sidebar] rules also lock colors if utilities fight.
+    // IMPORTANT: do not put light pastel classes (bg-blue-50, etc.) on the same
+    // element in dark mode — globals map .dark .bg-blue-50 { color: near-black }
+    // because the class name still matches even when dark:bg-* overrides fill.
+    // Dark nav = pure white text for max contrast on charcoal.
+    const base =
+      'sidebar-nav-link flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all';
+
+    if (isDark) {
+      if (isActive) {
+        const activeBg =
+          activeTone === 'orange'
+            ? 'bg-white/15 ring-1 ring-white/20'
+            : activeTone === 'purple'
+              ? 'bg-white/15 ring-1 ring-white/20'
+              : 'bg-white/15 ring-1 ring-white/25';
+        return `${base} sidebar-nav-link--active ${activeBg} text-white`;
+      }
+      return `${base} text-white hover:bg-white/10 hover:text-white`;
+    }
+
+    // Light mode
     if (activeTone === 'orange') {
-      return `sidebar-nav-link flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
+      return `${base} ${
         isActive
-          ? 'sidebar-nav-link--active bg-orange-50 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200'
-          : 'text-slate-700 hover:bg-gray-100 dark:text-slate-100 dark:hover:bg-white/10 dark:hover:text-white'
+          ? 'sidebar-nav-link--active bg-orange-50 text-orange-800'
+          : 'text-slate-700 hover:bg-gray-100 hover:text-slate-900'
       }`;
     }
     if (activeTone === 'purple') {
-      return `sidebar-nav-link flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
+      return `${base} ${
         isActive
-          ? 'sidebar-nav-link--active bg-purple-50 text-purple-800 dark:bg-purple-500/20 dark:text-purple-200'
-          : 'text-slate-700 hover:bg-gray-100 dark:text-slate-100 dark:hover:bg-white/10 dark:hover:text-white'
+          ? 'sidebar-nav-link--active bg-purple-50 text-purple-800'
+          : 'text-slate-700 hover:bg-gray-100 hover:text-slate-900'
       }`;
     }
-    return `sidebar-nav-link flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
+    return `${base} ${
       isActive
-        ? 'sidebar-nav-link--active bg-blue-50 text-blue-800 dark:bg-blue-500/20 dark:text-blue-100'
-        : 'text-slate-800 hover:bg-gray-100 dark:text-slate-100 dark:hover:bg-white/10 dark:hover:text-white'
+        ? 'sidebar-nav-link--active bg-blue-50 text-blue-800'
+        : 'text-slate-800 hover:bg-gray-100 hover:text-slate-900'
     }`;
   };
 
@@ -217,7 +236,7 @@ export default function Sidebar({ role }: SidebarProps) {
 
         {visibleAdmin.length > 0 && (
           <div className="mt-6 pt-4 border-t border-gray-200 dark:border-border">
-            <div className="sidebar-section-label text-xs font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider px-4 mb-2">
+            <div className="sidebar-section-label text-xs font-bold text-slate-500 dark:text-white uppercase tracking-wider px-4 mb-2">
               Admin
             </div>
             <div className="space-y-1">
@@ -242,7 +261,7 @@ export default function Sidebar({ role }: SidebarProps) {
 
         {visibleSite.length > 0 && (
           <div className="mt-6 pt-4 border-t border-gray-200 dark:border-border">
-            <div className="sidebar-section-label text-xs font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider px-4 mb-2">
+            <div className="sidebar-section-label text-xs font-bold text-slate-500 dark:text-white uppercase tracking-wider px-4 mb-2">
               Site Admin
             </div>
             <div className="space-y-1">
@@ -277,7 +296,7 @@ export default function Sidebar({ role }: SidebarProps) {
       )}
 
       <div className="p-4 border-t border-gray-200 dark:border-border mt-auto">
-        <div className="text-xs font-medium text-slate-600 dark:text-slate-300 text-center">
+        <div className="sidebar-footer-copy text-xs font-medium text-slate-600 dark:text-white text-center">
           © 2026 Trio Recruiting
         </div>
       </div>

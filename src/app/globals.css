@@ -133,31 +133,40 @@
 }
 
 /*
- * Sidebar nav (charcoal): force readable link + section contrast.
- * Overrides any global ink remap that can leave near-black text on dark chrome.
+ * Sidebar nav (charcoal): pure WHITE text — no blue/slate tints.
+ * Also beats .dark .bg-blue-50 { color: near-black } if a pastel class
+ * ever leaks onto a nav link.
  */
 .dark [data-app-sidebar] {
-  color: #f1f5f9;
+  color: #ffffff;
 }
-.dark [data-app-sidebar] .sidebar-nav-link {
-  color: #f1f5f9 !important; /* near-white inactive items */
+.dark [data-app-sidebar] .sidebar-nav-link,
+.dark [data-app-sidebar] .sidebar-nav-link:link,
+.dark [data-app-sidebar] .sidebar-nav-link:visited,
+.dark [data-app-sidebar] a {
+  color: #ffffff !important;
 }
 .dark [data-app-sidebar] .sidebar-nav-link:hover {
   color: #ffffff !important;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.12);
 }
 .dark [data-app-sidebar] .sidebar-nav-link--active,
 .dark [data-app-sidebar] .sidebar-nav-link[aria-current="page"] {
-  color: #dbeafe !important; /* blue-100 */
-  background-color: rgba(59, 130, 246, 0.22);
+  color: #ffffff !important;
+  background-color: rgba(255, 255, 255, 0.16);
 }
 .dark [data-app-sidebar] .sidebar-section-label {
-  color: #e2e8f0 !important;
-  opacity: 1;
+  color: #ffffff !important;
+  opacity: 0.85;
 }
 .dark [data-app-sidebar] svg {
-  color: inherit;
-  stroke: currentColor;
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+  opacity: 1;
+}
+.dark [data-app-sidebar] .sidebar-footer-copy {
+  color: #ffffff !important;
+  opacity: 0.8;
 }
 
 /*
