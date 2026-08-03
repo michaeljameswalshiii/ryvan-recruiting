@@ -4,9 +4,9 @@
  * Pages: only explicit public routes skip auth; everything else needs a sealed session.
  * APIs: only explicit public prefixes; everything else needs a sealed session.
  * Extra gates:
- *   - /api/cron/* requires CRON_SECRET (Bearer or x-cron-secret)
- *   - /api/mcp/* requires Authorization: Bearer … header present (key checked in handler)
- *   - Email OAuth: only */callback paths are public (start flows need session)
+ *   - /api/cron requires CRON_SECRET (Bearer or x-cron-secret)
+ *   - /api/mcp requires Authorization Bearer header (key checked in handler)
+ *   - Email OAuth: only provider callback paths are public (start flows need session)
  *
  * Session cookie is JWE-sealed (see session-seal.ts).
  */
