@@ -8,27 +8,21 @@ node_modules
 out
 build
 dist
+cdk/cdk.out
 
 # Environment / secrets — never commit
 .env
 .env.*
 !.env.example
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.production
-.env.staging
-.env.development
-.env.gmail
-.env.vercel
-.env.vercel.txt
 *.pem
 *.key
 *.p12
 *.pfx
 credentials*.json
 service-account*.json
+.env.vercel.pull
+.env.vercel.pull.tmp
+.env.vercel.txt
 
 # Debug
 npm-debug.log*
@@ -57,5 +51,40 @@ next-env.d.ts
 .supabase
 .vercel
 
-# Local scratch / dumps
+# Local scratch / dumps / one-off Dynamo scans
 bedrock-body.b64
+body.txt
+tmp-*.json
+clients-*.json
+client-config.json
+client-2.json
+lead-*.json
+create-demo-*.json
+issues-query-*.json
+
+# Throwaway root ops (do not re-commit). Real tools live under scripts/
+/add_*.py
+/add-*-key.ps1
+/add-aws-creds.ps1
+/add-cognito-envs.ps1
+/add-vercel-envs.ps1
+/commit*.bat
+/commit*.ps1
+/commit*.txt
+/commit_msg.txt
+/deploy-temp.bat
+/VERCEL_FORCE_REDEPLOY.txt
+/fix-bom.ps1
+/fix-encoding.ps1
+/fix-all-ts-files.ps1
+/temp_*
+/test-*.js
+/test-*.cjs
+/check-*.js
+/delete-user.js
+/confirm-user.js
+/create-ryan-profile.js
+/enable-auth-flow.js
+/reset-password.js
+/set-password.js
+/update-password.js

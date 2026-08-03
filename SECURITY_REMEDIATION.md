@@ -1,7 +1,7 @@
 # Security Remediation Plan
 
 This document is the checklist from the 2026 security review of
-`turnkey-optimization`, plus what was fixed in the first hardening PR.
+`turnkey-optimization`, plus what was fixed in hardening and hygiene passes.
 
 **Assume all previously committed secrets and passwords are compromised.**
 
@@ -9,31 +9,45 @@ This document is the checklist from the 2026 security review of
 
 ## Status legend
 
-- [x] Done in code (this hardening pass)
-- [ ] Still required (ops / follow-up PR)
+- [x] Done in code (committed on a branch)
+- [ ] Still required (ops / partner action — **cannot be fixed by git alone**)
 
 ---
 
 ## P0 — Incident response (do immediately, outside git)
 
-### Rotate & revoke
+### Rotate & revoke (REQUIRED — secrets were in git history and/or tree)
 
-- [ ] Change production login password(s) for any account that appeared in git history (e.g. former README / hard-coded logins)
-- [ ] Rotate **Apollo** API key in Apollo dashboard; update Vercel `APOLLO_API_KEY`
+Confirmed exposures as of the 2026-08 hygiene audit:
+
+| Secret | Where seen | Action |
+|--------|------------|--------|
+| **Groq API key** (Groq `gsk` prefix) | Was in `src/lib/groq.ts` + `add_groq_key.py` until hygiene PR; also older history | **Revoke in Groq console now**; set only via Vercel/env |
+| **AWS access key** (IAM access key id) | `.env.production` / history; local `.env.vercel.pull*` | **Deactivate in IAM**; create new least-privilege key for Vercel only |
+| **Vercel OIDC / env dumps** | `.env.production` history | Re-pull env locally only; never commit |
+| **Apollo / Gmail / other AI keys** | Prior env dumps | Rotate if those files ever held real values |
+| **Login passwords** | Former README / hard-coded logins (removed in earlier hardening) | Change any password that was ever in git |
+
+Checklist:
+
+- [ ] Rotate **Groq** key (live key was in the public tree)
+- [ ] Rotate **AWS** access keys used by Vercel / local scripts
+- [ ] Rotate **Apollo** API key; update Vercel `APOLLO_API_KEY`
 - [ ] Rotate **Gmail** app password / OAuth client secret if `.env.gmail` was ever real
-- [ ] Rotate **AWS** access keys used by Vercel / local scripts if they may have been exposed
-- [ ] Rotate **Vercel** tokens / re-pull env (`vercel env pull` only locally; never commit)
-- [ ] Rotate **Groq / Anthropic / other** AI keys if present in Vercel or old commits
+- [ ] Rotate **Vercel** tokens
+- [ ] Rotate **Anthropic / other** AI keys if present in Vercel or old commits
 - [ ] Set a strong unique `AI_CREDENTIALS_SECRET` on Vercel (required for BYOK encryption in production)
-- [ ] Invalidate active sessions (force Cognito global sign-out / clear cookie secret if you add signing)
+- [ ] Invalidate active sessions (Cognito global sign-out if needed)
 
 ### Repository exposure
 
 - [ ] Make the GitHub repo **private** until history is scrubbed (or keep private permanently)
+  - Owner: `michaeljameswalshiii/turnkey-optimization` — currently **public**
+  - GitHub → Settings → Danger Zone → Change visibility → Private
 - [ ] Remove secrets from **git history** (current tree cleanup is not enough):
-  - Use `git filter-repo` or BFG on paths: `.env*`, old scripts with keys
+  - `git filter-repo` or BFG on paths: `.env*`, `add_groq_key.py`, `src/lib/groq.ts` (old blobs), old scripts with keys
   - Force-push only after team agreement; re-clone all machines
-- [ ] Scan history: `gitleaks detect --source . -v` (or GitHub secret scanning)
+- [ ] Scan history: `gitleaks detect --source . -v` (or enable GitHub secret scanning)
 - [ ] Confirm Vercel deploy does **not** bake `.env.production` from the repo
 
 ### Runtime kill-switches (optional while fixing)
@@ -44,17 +58,32 @@ This document is the checklist from the 2026 security review of
 
 ---
 
-## P0 — Code / tree (implemented in hardening pass)
+## P0 — Code / tree (implemented)
+
+### Hardening pass (earlier)
 
 - [x] Remove live credentials from `ReadMe.md` / `GO.md`
 - [x] Remove hard-coded `DEMO_USER` / `DEMO_TENANT_USER` backdoors from `/api/auth/login`
 - [x] Stop logging login request bodies (password leak to logs)
 - [x] Require admin session on `/api/admin/dynamodb` (all methods)
-- [x] Protect `/admin` and `/api/admin` in middleware (API → 401, pages → login)
+- [x] Protect `/admin` and `/api/admin` in middleware
 - [x] Untrack committed env dumps (`.env.gmail`, `.env.production`, `.env.vercel*`)
 - [x] Expand `.gitignore` for env/secrets patterns
-- [x] Scrub hard-coded Apollo keys and passwords from ops/test scripts
+- [x] Scrub hard-coded Apollo keys and passwords from ops/test scripts (partial)
 - [x] Stop falling back to AWS secret / hard-coded string for BYOK encryption key in production
+
+### Hygiene pass (2026-08 — this branch)
+
+- [x] Remove **hardcoded Groq API key** from `src/lib/groq.ts` (env only)
+- [x] Delete `add_groq_key.py` (contained live key)
+- [x] Delete credential-injector scripts (`add-aws-creds.ps1`, `add-cognito-envs.ps1`, `add-vercel-envs.ps1`, `add-apollo-key.ps1`)
+- [x] Delete Cognito/Dynamo dump JSON at root (`client-config.json`, `client-2.json`, etc.)
+- [x] Delete production-mutating debug scripts from root (`delete-user.js`, `create-ryan-profile.js`, `check-*.js`, password scripts, etc.)
+- [x] Delete throwaway deploy/fix artifacts (`commit-fix*.bat`, `deploy-temp.bat`, `VERCEL_FORCE_REDEPLOY.txt`, `temp_*`, etc.)
+- [x] Delete root one-off `test-*.js` scripts (not unit tests)
+- [x] Remove accidental nested submodule pointers (`candle-garden-estimator`, nested `turnkey-optimization*`)
+- [x] Tighten `.gitignore` / `.vercelignore`
+- [x] Document `scripts/` rules (`scripts/README.md`)
 
 ---
 
@@ -72,27 +101,28 @@ This document is the checklist from the 2026 security review of
 
 | PR | Scope |
 |----|--------|
-| **PR1** | This file + secret scrub + admin lock + login backdoor removal (P0 code) |
+| **PR1** | Secret scrub + admin lock + login backdoor removal (done) |
+| **PR1b** | Root hygiene + remove live Groq key from source (this pass) |
 | **PR2** | Signed sessions + middleware enforce-auth for all `/api/*` except auth/oauth callbacks |
 | **PR3** | Auth-gate Apollo/Bedrock/Tavily + rate limits |
-| **PR4** | Remove root ops scripts from deploy (`vercelignore` / move to private `scripts-private/`) |
-| **PR5** | History rewrite + public→private decision + dependency audit |
+| **PR4** | History rewrite + public→private decision + dependency audit |
 
 ---
 
 ## P2 — Hardening & hygiene
 
-- [ ] Delete or private-only: `check-*.js`, `delete-user.js`, `cleanup-*.js` that assume AWS admin
+- [x] Delete root ops scripts that assume AWS admin (hygiene pass)
 - [ ] Disable open registration or require invite codes
 - [ ] Encrypt OAuth refresh tokens at rest (BACKLOG already notes this)
 - [ ] CSP / security headers via Next.js config
 - [ ] Dependabot + `npm audit` in CI
 - [ ] Structured audit log for admin DynamoDB mutations (who/what/when)
 - [ ] Separate **demo** AWS account / DynamoDB tables from production
+- [ ] Move remaining root `*.md` design notes into `docs/` (optional cleanup)
 
 ---
 
-## Verification checklist (after PR1 deploys)
+## Verification checklist
 
 - [ ] `GET /api/admin/dynamodb` without cookie → **401**
 - [ ] Logged-in non-admin → **403**
@@ -100,7 +130,9 @@ This document is the checklist from the 2026 security review of
 - [ ] Login with old hard-coded demo passwords → **401**
 - [ ] Login with real Cognito / password_hash user → **200** + httpOnly cookie
 - [ ] `git ls-files | findstr /i env` shows only `.env.example`
-- [ ] Repo search for former secrets returns no matches on `master`
+- [ ] Working tree has no hardcoded Groq keys (search source for Groq key prefixes)
+- [ ] Repo is **private** (or history scrubbed if public)
+- [ ] Groq + AWS keys rotated after hygiene merge
 
 ---
 
@@ -111,14 +143,17 @@ This document is the checklist from the 2026 security review of
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Server AWS (prefer least-privilege IAM) |
 | `COGNITO_*` / `NEXT_PUBLIC_COGNITO_*` | Auth |
 | `APOLLO_API_KEY` | Apollo (server only) |
+| `GROQ_API_KEY` | Groq (server only; no hardcoded fallback) |
 | `AI_CREDENTIALS_SECRET` | BYOK encryption (required in prod) |
 | `ADMIN_EMAIL_ALLOWLIST` | Optional extra admin gate |
 | `ADMIN_API_DISABLED` | Emergency kill-switch for admin API |
 
-Never put secrets in `NEXT_PUBLIC_*` variables.
+Never put secrets in `NEXT_PUBLIC_*` variables (except Cognito pool/client IDs, which are public by design).
 
 ---
 
 ## Contact / ownership
 
 After rotation, update password managers only — **not** this repository.
+
+Partner workflow: raise P0 rotation + private-repo decision with the repo owner (`michaeljameswalshiii`) before any force-push history rewrite.

@@ -1,17 +1,40 @@
-# Ignore scripts folder - these are local setup scripts only
+# Local ops — never ship to Vercel build context
 scripts/
-# Ignore CDK folder - AWS infrastructure code, not needed for Next.js
 cdk/
-# Ignore documentation
+mcp-server/
+
+# Documentation (not needed at runtime)
 *.md
 !.gitignore
-# Ignore local config files that aren't needed for production
+
+# Local config / dumps
 *.log
-# Ignore test files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+client-config.json
+clients-*.json
+lead-*.json
+tmp-*.json
+body.txt
+bedrock-body.b64
+
+# Tests
 **/*.test.ts
 **/*.spec.ts
 **/__tests__/
-# Ignore coverage
 coverage/
-# Ignore .next cache from local dev (rebuild on Vercel)
+
+# Local Next cache
 .next/
+
+# Throwaway root artifacts if recreated
+commit*.bat
+commit*.ps1
+deploy-temp.bat
+VERCEL_FORCE_REDEPLOY.txt
+temp_*
+test-*.js
+check-*.js
