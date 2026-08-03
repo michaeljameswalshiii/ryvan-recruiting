@@ -36,7 +36,7 @@ import { JobHiringManagerCard } from "@/components/job/JobHiringManagerCard";
 import { JobDescriptionPreview } from "@/components/job/JobDescriptionPreview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { APPLICATION_STAGES } from "@/lib/schemas/lead";
+import { APPLICATION_STAGES, getStageLabel } from "@/lib/schemas/lead";
 import {
   JOB_STATUSES,
   normalizeJobStatus,
@@ -44,6 +44,11 @@ import {
   isJobOpenForCareers,
   type JobStatus,
 } from "@/lib/jobs/status";
+import {
+  PIPELINE_BUCKETS,
+  candidateMatchesBucket,
+  pipelineHref,
+} from "@/lib/jobs/pipeline-buckets";
 import { toast } from "sonner";
 
 type FitScoreClient = {
@@ -56,67 +61,6 @@ type FitScoreClient = {
 };
 
 const STAGES = APPLICATION_STAGES.map((s) => s.value);
-
-/** Pipeline buckets shown in the WIP tracker (mockup-style). */
-const PIPELINE_BUCKETS = [
-  {
-    key: "attached",
-    label: "Attached",
-    match: null as string[] | null, // total count
-    bg: "bg-slate-50",
-    text: "text-slate-800",
-    ring: "ring-slate-200",
-  },
-  {
-    key: "submitted",
-    label: "Submitted",
-    match: ["submitted", "pre_screened", "Screening", "Applied"],
-    bg: "bg-sky-50",
-    text: "text-sky-800",
-    ring: "ring-sky-100",
-  },
-  {
-    key: "interviewing",
-    label: "Interviewing",
-    match: ["interviewing", "Interviewing", "interview"],
-    bg: "bg-violet-50",
-    text: "text-violet-800",
-    ring: "ring-violet-100",
-  },
-  {
-    key: "offer_out",
-    label: "Offer Out",
-    match: ["offer_out", "offer_accepted", "Offered", "offer"],
-    bg: "bg-amber-50",
-    text: "text-amber-800",
-    ring: "ring-amber-100",
-  },
-  {
-    key: "rejected",
-    label: "Rejected",
-    match: ["rejected", "Rejected", "offer_declined", "not_interested", "Withdrawn"],
-    bg: "bg-rose-50",
-    text: "text-rose-800",
-    ring: "ring-rose-100",
-  },
-] as const;
-
-type PipelineBucketKey = (typeof PIPELINE_BUCKETS)[number]["key"];
-
-function candidateMatchesBucket(
-  stage: string | undefined,
-  bucket: (typeof PIPELINE_BUCKETS)[number]
-): boolean {
-  // "Attached" = everyone linked to this job
-  if (bucket.match === null) return true;
-  const s = String(stage || "").toLowerCase();
-  return bucket.match.some((m) => s === m.toLowerCase());
-}
-
-function getStageLabel(stageValue: string) {
-  const stage = APPLICATION_STAGES.find((s) => s.value === stageValue);
-  return stage?.label || stageValue;
-}
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -173,7 +117,6 @@ export default function JobDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editFocusDescription, setEditFocusDescription] = useState(false);
   const linkFormRef = useRef<HTMLDivElement>(null);
-  const candidatesSectionRef = useRef<HTMLElement>(null);
   const [fitByCandidate, setFitByCandidate] = useState<
     Record<string, FitScoreClient>
   >({});
@@ -182,9 +125,6 @@ export default function JobDetailPage() {
   const [fitRescoringId, setFitRescoringId] = useState<string | null>(null);
   /** candidateId with expanded fit summary */
   const [expandedFitId, setExpandedFitId] = useState<string | null>(null);
-  /** WIP tracker filter → filters Candidates list on this job page */
-  const [pipelineFilter, setPipelineFilter] =
-    useState<PipelineBucketKey | null>(null);
 
   // Support both field names used across the codebase
   const linkedCandidates = useMemo(() => {
@@ -321,36 +261,6 @@ export default function JobDetailPage() {
       return { ...bucket, count };
     });
   }, [linkedCandidates]);
-
-  const activePipelineBucket = useMemo(
-    () =>
-      pipelineFilter
-        ? PIPELINE_BUCKETS.find((b) => b.key === pipelineFilter) ?? null
-        : null,
-    [pipelineFilter]
-  );
-
-  const filteredLinkedCandidates = useMemo(() => {
-    if (!activePipelineBucket) return linkedCandidates;
-    return linkedCandidates.filter((lc: any) =>
-      candidateMatchesBucket(lc.stage, activePipelineBucket)
-    );
-  }, [linkedCandidates, activePipelineBucket]);
-
-  const selectPipelineBucket = (key: PipelineBucketKey) => {
-    // Toggle off if already selected (except "attached" always means show all)
-    setPipelineFilter((prev) => {
-      if (key === "attached") return null;
-      return prev === key ? null : key;
-    });
-    // Scroll candidates panel into view so the filter is obvious
-    requestAnimationFrame(() => {
-      candidatesSectionRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-      });
-    });
-  };
 
   const activeInPipeline = useMemo(() => {
     return linkedCandidates.filter((lc: any) => {
@@ -699,7 +609,7 @@ export default function JobDetailPage() {
             </div>
           </section>
 
-          {/* Candidate pipeline — WIP tracker (tiles filter Candidates list) */}
+          {/* Candidate pipeline — WIP tracker → dedicated pipeline page */}
           <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <div>
@@ -707,48 +617,45 @@ export default function JobDetailPage() {
                   Candidate Pipeline — WIP Tracker
                 </h2>
                 <p className="text-[11px] text-gray-400 mt-0.5">
-                  Click a stage to filter this job&apos;s candidates
+                  Click a stage to open the full pipeline list for this job
                 </p>
               </div>
-              <span className="text-xs text-gray-500">
-                {linkedCandidates.length} candidate
-                {linkedCandidates.length === 1 ? "" : "s"} attached
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-500">
+                  {linkedCandidates.length} candidate
+                  {linkedCandidates.length === 1 ? "" : "s"} attached
+                </span>
+                <Link
+                  href={pipelineHref(jobId, "attached")}
+                  className="text-xs font-medium text-blue-600 hover:underline"
+                >
+                  Open pipeline →
+                </Link>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-              {pipelineCounts.map((bucket) => {
-                const isActive =
-                  bucket.key === "attached"
-                    ? pipelineFilter === null
-                    : pipelineFilter === bucket.key;
-                return (
-                  <button
-                    key={bucket.key}
-                    type="button"
-                    onClick={() => selectPipelineBucket(bucket.key)}
-                    title={
-                      bucket.key === "attached"
-                        ? "Show all candidates linked to this job"
-                        : `Show candidates in ${bucket.label}`
-                    }
-                    className={`rounded-xl ${bucket.bg} ring-1 ${bucket.ring} px-3 py-3 text-center transition-all hover:shadow-sm hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-                      isActive
-                        ? "ring-2 ring-blue-500 shadow-sm scale-[1.02]"
-                        : ""
-                    }`}
+              {pipelineCounts.map((bucket) => (
+                <Link
+                  key={bucket.key}
+                  href={pipelineHref(jobId, bucket.key)}
+                  title={
+                    bucket.key === "attached"
+                      ? "View all candidates on this job"
+                      : `View ${bucket.label} candidates`
+                  }
+                  className={`rounded-xl ${bucket.bg} ring-1 ${bucket.ring} px-3 py-3 text-center transition-all hover:shadow-md hover:scale-[1.02] hover:ring-2 hover:ring-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500`}
+                >
+                  <div
+                    className={`text-2xl font-semibold tabular-nums ${bucket.text}`}
                   >
-                    <div
-                      className={`text-2xl font-semibold tabular-nums ${bucket.text}`}
-                    >
-                      {bucket.count}
-                    </div>
-                    <div className="text-[11px] font-medium uppercase tracking-wide text-gray-500 mt-0.5">
-                      {bucket.label}
-                    </div>
-                  </button>
-                );
-              })}
+                    {bucket.count}
+                  </div>
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-gray-500 mt-0.5">
+                    {bucket.label}
+                  </div>
+                </Link>
+              ))}
             </div>
 
             <div className="space-y-1.5">
@@ -792,7 +699,6 @@ export default function JobDetailPage() {
             }}
           />
           <section
-            ref={candidatesSectionRef}
             data-ink-on-light
             className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4"
           >
@@ -801,38 +707,23 @@ export default function JobDetailPage() {
                 <Users className="h-4 w-4 text-gray-500" />
                 Candidates
                 <span className="text-gray-400 font-normal normal-case tracking-normal text-xs">
-                  (
-                  {pipelineFilter
-                    ? `${filteredLinkedCandidates.length}/${linkedCandidates.length}`
-                    : linkedCandidates.length}
-                  )
+                  ({linkedCandidates.length})
                 </span>
               </h2>
-              <Button variant="outline" size="sm" onClick={openAddCandidate} className="h-8">
-                <UserPlus className="h-3.5 w-3.5 mr-1" />
-                Add
-              </Button>
-            </div>
-
-            {pipelineFilter && activePipelineBucket && (
-              <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5">
-                <span className="text-xs font-medium text-blue-800">
-                  Filtered: {activePipelineBucket.label}
-                  <span className="font-normal text-blue-700/80">
-                    {" "}
-                    · {filteredLinkedCandidates.length} candidate
-                    {filteredLinkedCandidates.length === 1 ? "" : "s"}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setPipelineFilter(null)}
-                  className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 hover:underline shrink-0"
-                >
-                  Clear
-                </button>
+              <div className="flex items-center gap-1.5">
+                {linkedCandidates.length > 0 && (
+                  <Button asChild variant="ghost" size="sm" className="h-8 text-xs">
+                    <Link href={pipelineHref(jobId, "attached")}>
+                      Full list
+                    </Link>
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={openAddCandidate} className="h-8">
+                  <UserPlus className="h-3.5 w-3.5 mr-1" />
+                  Add
+                </Button>
               </div>
-            )}
+            </div>
 
             {linkedCandidates.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-3 py-6 text-center">
@@ -842,26 +733,9 @@ export default function JobDetailPage() {
                   Link
                 </Button>
               </div>
-            ) : filteredLinkedCandidates.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-3 py-6 text-center">
-                <p className="text-xs text-gray-500">
-                  No candidates in{" "}
-                  <span className="font-medium text-gray-700">
-                    {activePipelineBucket?.label || "this stage"}
-                  </span>
-                  .
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setPipelineFilter(null)}
-                  className="mt-2 text-xs font-medium text-blue-600 hover:underline"
-                >
-                  Show all candidates
-                </button>
-              </div>
             ) : (
               <ul className="divide-y divide-gray-100 max-h-[28rem] overflow-y-auto">
-                {filteredLinkedCandidates.map((lc: any) => {
+                {linkedCandidates.map((lc: any) => {
                   const name = lc.candidateName || "Unknown";
                   const stage = lc.stage || "sourced";
                   const fit =
