@@ -43,6 +43,8 @@ export interface UpdateTenantInput {
   trial_ends_at?: string;
   stripe_customer_id?: string;
   stripe_subscription_id?: string;
+  /** Enterprise security block (MFA policy, SSO flags) */
+  security?: Record<string, unknown>;
 }
 
 export const createTenantSchema = z.object({
@@ -254,6 +256,10 @@ export async function updateTenant(
   setField("trial_ends_at", input.trial_ends_at);
   setField("stripe_customer_id", input.stripe_customer_id);
   setField("stripe_subscription_id", input.stripe_subscription_id);
+  if (input.security !== undefined) {
+    updates.push("security = :security");
+    values[":security"] = input.security;
+  }
 
   if (updates.length === 0) {
     return getTenantById(tenantId);

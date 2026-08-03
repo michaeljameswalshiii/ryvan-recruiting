@@ -21,6 +21,19 @@ export interface Tenant {
   billing_email?: string;
   stripe_customer_id?: string;
   stripe_subscription_id?: string;
+  /**
+   * Enterprise security policy — optional; missing = MFA off, SSO off.
+   * See lib/security/tenant-security.ts
+   */
+  security?: {
+    mfaPolicy?: string;
+    ssoEnabled?: boolean;
+    ssoProviderName?: string;
+    ssoCognitoIdpName?: string;
+    ssoNotes?: string;
+    updatedAt?: string;
+    updatedBy?: string;
+  };
 }
 
 export const createTenantSchema = z.object({

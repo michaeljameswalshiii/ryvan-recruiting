@@ -24,6 +24,7 @@ import {
   CreditCard,
   Terminal,
   MessageSquare,
+  Shield,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +38,7 @@ import { PlanSettings } from '@/components/settings/PlanSettings';
 import { McpKeysSettings } from '@/components/settings/McpKeysSettings';
 import { ApolloSettings } from '@/components/settings/ApolloSettings';
 import { TextingSettings } from '@/components/settings/TextingSettings';
+import { SecuritySettings } from '@/components/settings/SecuritySettings';
 
 interface EmailConnection {
   provider: 'gmail' | 'outlook';
@@ -72,7 +74,8 @@ type SettingsTab =
   | 'organization'
   | 'plan'
   | 'integrations'
-  | 'texting';
+  | 'texting'
+  | 'security';
 
 export default function SettingsPage() {
   const searchParams = useSearchParams();
@@ -410,6 +413,12 @@ export default function SettingsPage() {
       label: 'Texting',
       icon: <MessageSquare className="h-4 w-4" />,
     },
+    {
+      id: 'security',
+      label: 'Security',
+      icon: <Shield className="h-4 w-4" />,
+      adminOnly: true,
+    },
     { id: 'plan', label: 'Plan', icon: <CreditCard className="h-4 w-4" /> },
   ];
 
@@ -451,6 +460,7 @@ export default function SettingsPage() {
         </div>
       )}
       {tab === 'texting' && <TextingSettings />}
+      {tab === 'security' && canTeamAdmin && <SecuritySettings />}
       {tab === 'plan' && <PlanSettings />}
 
       {tab === 'account' && (

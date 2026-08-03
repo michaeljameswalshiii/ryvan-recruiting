@@ -35,6 +35,10 @@ import {
 } from "@/lib/tenant/invites";
 import { normalizeRole, roleLabel, ROLES } from "@/lib/roles";
 import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  writeSecurityAudit,
+  requestAuditMeta,
+} from "@/lib/security/audit";
 
 export async function POST(request: NextRequest) {
   try {
@@ -166,6 +170,19 @@ export async function POST(request: NextRequest) {
       inviterName: inviter?.full_name || auth.email,
       inviteUrl,
       roleLabel: roleLabel(role),
+    });
+
+    void writeSecurityAudit({
+      tenantId,
+      action: "auth.invite.created",
+      actorUserId: auth.userId,
+      actorEmail: auth.email,
+      actorRole: auth.role,
+      targetType: "user",
+      targetId: profile.id,
+      summary: `Invited ${email} as ${role}`,
+      meta: { role, email_sent: emailResult.sent },
+      ...requestAuditMeta(request),
     });
 
     return NextResponse.json({

@@ -16,7 +16,7 @@
 
 import { cookies } from 'next/headers';
 import type { NextResponse } from 'next/server';
-import { CognitoIdentityProviderClient, GetUserCommand, InitiateAuthCommand, GlobalSignOutCommand, SignUpCommand, AdminGetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
+import { CognitoIdentityProviderClient, GetUserCommand, InitiateAuthCommand, RespondToAuthChallengeCommand, GlobalSignOutCommand, SignUpCommand, AdminGetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient, GetItemCommand, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { unmarshall, marshall } from '@aws-sdk/util-dynamodb';
 import {
@@ -256,7 +256,8 @@ export async function getSessionUserEmail(): Promise<string | null> {
  * Authenticate user with Cognito
  * Returns tokens for API route to set cookie
  */
-export async function authenticateUser(email: string, password: string): Promise<{
+export type CognitoAuthSuccess = {
+  kind: 'success';
   userId: string;
   email: string;
   tenantId: string;
@@ -264,19 +265,105 @@ export async function authenticateUser(email: string, password: string): Promise
   AccessToken: string;
   IdToken: string;
   RefreshToken: string;
+};
+
+/** Cognito MFA challenge — client must call /api/auth/mfa/verify */
+export type CognitoAuthMfaChallenge = {
+  kind: 'mfa_required';
+  challengeName: string;
+  session: string;
+  email: string;
+  /** Cognito username (often email) */
+  username: string;
+};
+
+export type CognitoAuthResult = CognitoAuthSuccess | CognitoAuthMfaChallenge;
+
+async function loadProfileTenantRole(userId: string): Promise<{
+  tenantId: string;
+  role: string;
 }> {
-  // Validate env vars - don't leak to client
+  let tenantId = '';
+  let role = 'user';
+  if (!userId) return { tenantId, role };
+  try {
+    const dynamoClient = new DynamoDBClient({
+      region,
+      credentials: getAwsCredentials(),
+    });
+    const profilesTable =
+      process.env.DYNAMODB_PROFILES_TABLE || 'turnkey-profiles';
+    const profileCommand = new GetItemCommand({
+      TableName: profilesTable,
+      Key: { id: { S: userId } },
+    });
+    const profileResponse = await dynamoClient.send(profileCommand);
+    if (profileResponse.Item) {
+      const profile = unmarshall(profileResponse.Item);
+      tenantId = profile.tenant_id || '';
+      role = (profile.role as string) || 'user';
+    }
+  } catch (err) {
+    console.error('Failed to get profile:', err);
+  }
+  return { tenantId, role };
+}
+
+async function resolveUserFromAccessToken(
+  client: CognitoIdentityProviderClient,
+  AccessToken: string,
+  emailHint: string
+): Promise<{ userId: string; userEmail: string }> {
+  let userId = '';
+  let userEmail = emailHint;
+  try {
+    const userCommand = new AdminGetUserCommand({
+      Username: emailHint,
+      UserPoolId: userPoolId,
+    });
+    const userResponse = await client.send(userCommand);
+    const subAttr = userResponse.UserAttributes?.find((a) => a.Name === 'sub');
+    const emailAttr = userResponse.UserAttributes?.find(
+      (a) => a.Name === 'email'
+    );
+    userId = subAttr?.Value || '';
+    userEmail = emailAttr?.Value || emailHint;
+  } catch {
+    try {
+      const userCommand = new GetUserCommand({ AccessToken });
+      const userResponse = await client.send(userCommand);
+      const subAttr = userResponse.UserAttributes?.find(
+        (a) => a.Name === 'sub'
+      );
+      const emailAttr = userResponse.UserAttributes?.find(
+        (a) => a.Name === 'email'
+      );
+      userId = subAttr?.Value || '';
+      userEmail = emailAttr?.Value || emailHint;
+    } catch (err) {
+      console.error('Failed to get user details:', err);
+    }
+  }
+  return { userId, userEmail };
+}
+
+export async function authenticateUser(
+  email: string,
+  password: string
+): Promise<CognitoAuthResult> {
   if (!clientId || !userPoolId) {
     throw new Error('Authentication not configured');
   }
-  
+
   if (!email || !password) {
     throw new Error('Email and password required');
   }
-  
-const client = new CognitoIdentityProviderClient({ region, credentials: getAwsCredentials() });
-  
-  // Initiate auth with USER_PASSWORD_AUTH
+
+  const client = new CognitoIdentityProviderClient({
+    region,
+    credentials: getAwsCredentials(),
+  });
+
   const authCommand = new InitiateAuthCommand({
     AuthFlow: 'USER_PASSWORD_AUTH',
     ClientId: clientId,
@@ -285,76 +372,127 @@ const client = new CognitoIdentityProviderClient({ region, credentials: getAwsCr
       PASSWORD: password,
     },
   });
-  
+
   const authResponse = await client.send(authCommand);
-  
+
+  // MFA challenge (TOTP / SMS) — do not issue session cookie yet
+  if (
+    authResponse.ChallengeName &&
+    (authResponse.ChallengeName === 'SOFTWARE_TOKEN_MFA' ||
+      authResponse.ChallengeName === 'SMS_MFA' ||
+      authResponse.ChallengeName === 'EMAIL_OTP')
+  ) {
+    if (!authResponse.Session) {
+      throw new Error('Invalid credentials');
+    }
+    return {
+      kind: 'mfa_required',
+      challengeName: authResponse.ChallengeName,
+      session: authResponse.Session,
+      email,
+      username: email,
+    };
+  }
+
   if (!authResponse.AuthenticationResult) {
     throw new Error('Invalid credentials');
   }
-  
-  const { AccessToken, IdToken, RefreshToken } = authResponse.AuthenticationResult;
-  
+
+  const { AccessToken, IdToken, RefreshToken } =
+    authResponse.AuthenticationResult;
+
   if (!AccessToken || !IdToken || !RefreshToken) {
     throw new Error('Invalid authentication response');
   }
-  
-  // Use AdminGetUserCommand to get reliable user sub/ID
-  let userId = '';
-  let userEmail = email;
-  
-  try {
-    const userCommand = new AdminGetUserCommand({
-      Username: email,
-      UserPoolId: userPoolId,
-    });
-    const userResponse = await client.send(userCommand);
-    
-    const subAttr = userResponse.UserAttributes?.find(a => a.Name === 'sub');
-    const emailAttr = userResponse.UserAttributes?.find(a => a.Name === 'email');
-    
-    userId = subAttr?.Value || '';
-    userEmail = emailAttr?.Value || email;
-  } catch {
-    // Fallback to GetUser if AdminGetUser not available
-    try {
-      const userCommand = new GetUserCommand({ AccessToken });
-      const userResponse = await client.send(userCommand);
-      
-      const subAttr = userResponse.UserAttributes?.find(a => a.Name === 'sub');
-      const emailAttr = userResponse.UserAttributes?.find(a => a.Name === 'email');
-      
-      userId = subAttr?.Value || '';
-      userEmail = emailAttr?.Value || email;
-    } catch (err) {
-      console.error('Failed to get user details:', err);
-    }
+
+  const { userId, userEmail } = await resolveUserFromAccessToken(
+    client,
+    AccessToken,
+    email
+  );
+  const { tenantId, role } = await loadProfileTenantRole(userId);
+
+  return {
+    kind: 'success',
+    userId,
+    email: userEmail,
+    tenantId,
+    role,
+    AccessToken,
+    IdToken,
+    RefreshToken,
+  };
+}
+
+/**
+ * Complete Cognito MFA challenge and return full session tokens.
+ */
+export async function completeMfaChallenge(input: {
+  email: string;
+  username?: string;
+  session: string;
+  challengeName: string;
+  code: string;
+}): Promise<CognitoAuthSuccess> {
+  if (!clientId || !userPoolId) {
+    throw new Error('Authentication not configured');
   }
-  
-// Get tenant + role from profile
-  let tenantId = '';
-  let role = 'user';
-  if (userId) {
-    try {
-      const dynamoClient = new DynamoDBClient({ region, credentials: getAwsCredentials() });
-      const profilesTable = process.env.DYNAMODB_PROFILES_TABLE || 'turnkey-profiles';
-      
-      const profileCommand = new GetItemCommand({
-        TableName: profilesTable,
-        Key: { id: { S: userId } },
-      });
-      const profileResponse = await dynamoClient.send(profileCommand);
-      
-      if (profileResponse.Item) {
-        const profile = unmarshall(profileResponse.Item);
-        tenantId = profile.tenant_id || '';
-        role = (profile.role as string) || 'user';
-      }
-    } catch (err) {
-      console.error('Failed to get profile:', err);
-    }
+  const code = String(input.code || '').trim();
+  if (!code || !input.session) {
+    throw new Error('Invalid MFA code');
   }
-  
-  return { userId, email: userEmail, tenantId, role, AccessToken, IdToken, RefreshToken };
+
+  const client = new CognitoIdentityProviderClient({
+    region,
+    credentials: getAwsCredentials(),
+  });
+
+  const challengeResponses: Record<string, string> = {
+    USERNAME: input.username || input.email,
+  };
+  if (input.challengeName === 'SOFTWARE_TOKEN_MFA') {
+    challengeResponses.SOFTWARE_TOKEN_MFA_CODE = code;
+  } else if (input.challengeName === 'SMS_MFA') {
+    challengeResponses.SMS_MFA_CODE = code;
+  } else {
+    challengeResponses.SOFTWARE_TOKEN_MFA_CODE = code;
+  }
+
+  const resp = await client.send(
+    new RespondToAuthChallengeCommand({
+      ClientId: clientId,
+      ChallengeName: input.challengeName as 'SOFTWARE_TOKEN_MFA' | 'SMS_MFA',
+      Session: input.session,
+      ChallengeResponses: challengeResponses,
+    })
+  );
+
+  if (!resp.AuthenticationResult?.AccessToken) {
+    throw new Error('Invalid MFA code');
+  }
+
+  const { AccessToken, IdToken, RefreshToken } = resp.AuthenticationResult;
+  if (!AccessToken || !IdToken || !RefreshToken) {
+    throw new Error('Invalid MFA response');
+  }
+
+  const { userId, userEmail } = await resolveUserFromAccessToken(
+    client,
+    AccessToken,
+    input.email
+  );
+  const { tenantId, role } = await loadProfileTenantRole(userId);
+
+  return {
+    kind: 'success',
+    userId,
+    email: userEmail,
+    tenantId,
+    role,
+    AccessToken,
+    IdToken,
+    RefreshToken,
+  };
 }
 
 /**

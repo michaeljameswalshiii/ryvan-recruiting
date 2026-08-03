@@ -39,6 +39,8 @@ const emailLogsTable = process.env.DYNAMODB_EMAIL_LOGS_TABLE || 'turnkey-email-l
 const eventsTable = process.env.DYNAMODB_EVENTS_TABLE || 'turnkey-events';
 const bedrockUsageTable = process.env.DYNAMODB_BEDROCK_USAGE_TABLE || 'turnkey-bedrock-usage';
 const issuesTable = process.env.DYNAMODB_ISSUES_TABLE || 'turnkey-issues';
+const securityAuditTable =
+  process.env.DYNAMODB_SECURITY_AUDIT_TABLE || 'turnkey-security-audit';
 
 // ============================================================================
 // Client (UPDATED - Explicit credentials for Vercel)
