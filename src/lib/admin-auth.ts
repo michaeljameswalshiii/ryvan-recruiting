@@ -179,15 +179,14 @@ export function isAdminAuthError(
 }
 
 /**
- * Resolve role for session cookie / layout (profile + allowlists).
+ * Apply env allowlist elevates on top of a base role (sync — no DynamoDB).
+ * Used by layout chrome so every nav click stays free of profile round-trips.
  */
-export async function resolveUserRole(
-  userId: string,
-  email?: string
-): Promise<AppRole> {
-  const profile = await loadProfileRole(userId);
-  let role = profile?.role ?? "user";
-
+export function applyRoleAllowlists(
+  baseRole: string | null | undefined,
+  email?: string | null
+): AppRole {
+  let role = normalizeRole(baseRole);
   if (email && emailOnAllowlist(email, "SITE_ADMIN_EMAIL_ALLOWLIST")) {
     return "site_admin";
   }
@@ -197,6 +196,56 @@ export async function resolveUserRole(
     emailOnAllowlist(email, "ADMIN_EMAIL_ALLOWLIST")
   ) {
     return "company_admin";
+  }
+  return role;
+}
+
+/**
+ * Fast path for dashboard/candidates layout chrome.
+ * Prefers the role already stored on the session cookie (set at login).
+ * Only hits DynamoDB when the cookie has no role (legacy sessions).
+ */
+export async function resolveLayoutRole(session: {
+  userId: string;
+  email?: string;
+  role?: string;
+}): Promise<AppRole> {
+  // Cookie role is written at login via resolveUserRole — trust it for chrome.
+  // Allowlists still re-apply so env elevates work without re-login.
+  if (session.role) {
+    return applyRoleAllowlists(session.role, session.email);
+  }
+  return resolveUserRole(session.userId, session.email);
+}
+
+/** Short TTL cache so rare DynamoDB role lookups don't thrash under soft nav. */
+const roleCache = new Map<string, { role: AppRole; expires: number }>();
+const ROLE_CACHE_TTL_MS = 60_000;
+
+/**
+ * Resolve role for session cookie / layout (profile + allowlists).
+ * Prefer resolveLayoutRole for UI chrome — this is for login + privileged APIs.
+ */
+export async function resolveUserRole(
+  userId: string,
+  email?: string
+): Promise<AppRole> {
+  const cacheKey = `${userId}|${(email || "").toLowerCase()}`;
+  const hit = roleCache.get(cacheKey);
+  if (hit && hit.expires > Date.now()) {
+    return hit.role;
+  }
+
+  const profile = await loadProfileRole(userId);
+  const role = applyRoleAllowlists(profile?.role ?? "user", email);
+
+  roleCache.set(cacheKey, { role, expires: Date.now() + ROLE_CACHE_TTL_MS });
+  // Bound map size (long-running server processes)
+  if (roleCache.size > 500) {
+    const now = Date.now();
+    for (const [k, v] of roleCache) {
+      if (v.expires <= now) roleCache.delete(k);
+    }
   }
   return role;
 }

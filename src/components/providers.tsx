@@ -11,9 +11,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Prefer fresh CRM data after AI/server mutations
-            staleTime: 0,
-            refetchOnWindowFocus: true,
+            // Cache briefly so sidebar navigation can paint instantly from memory.
+            // AI/server mutations still call invalidateCrmCaches (marks stale +
+            // refetches only *active* queries) so lists stay correct without a
+            // full refetch storm after every AI write.
+            staleTime: 30_000,
+            // Avoid surprise refetch mid-click when tab regains focus
+            refetchOnWindowFocus: false,
           },
         },
       })

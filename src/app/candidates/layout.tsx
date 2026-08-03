@@ -1,29 +1,27 @@
 import Sidebar from "@/components/Sidebar";
 import { getSession } from "@/lib/server-auth";
-import { resolveUserRole } from "@/lib/admin-auth";
-import { normalizeRole } from "@/lib/roles";
+import { resolveLayoutRole } from "@/lib/admin-auth";
 import { redirect } from "next/navigation";
-
-// Force dynamic rendering (session + role for nav)
-export const dynamic = "force-dynamic";
 
 /**
  * Legacy /candidates/* routes share the same chrome as /dashboard/*.
  * Sidebar is position:fixed (w-72) — content MUST use ml-72 or it sits under the nav.
+ *
+ * Same fast-path as dashboard layout: cookie role only (no force-dynamic /
+ * no DynamoDB on the happy path). Middleware already gates the route.
  */
+
 export default async function CandidatesLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const session = await getSession();
-  if (!session) {
+  if (!session?.userId) {
     redirect("/login");
   }
 
-  const role =
-    (await resolveUserRole(session.userId, session.email)) ||
-    normalizeRole(session.role);
+  const role = await resolveLayoutRole(session);
 
   return (
     <div className="min-h-screen bg-gray-50">

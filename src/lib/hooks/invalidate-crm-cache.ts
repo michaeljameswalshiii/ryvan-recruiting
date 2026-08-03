@@ -2,6 +2,13 @@
  * Invalidate React Query caches after AI / external CRM mutations.
  * Server tools write DynamoDB directly; list UIs only refresh when these keys clear.
  *
+ * Performance notes:
+ * - Default refetch is **active only** (visible queries). Inactive caches are marked
+ *   stale and refresh when the user navigates to them — avoids post-AI network storms
+ *   that block sidebar clicks for several seconds.
+ * - Use `soft: true` to mark stale with zero immediate refetches (bulk imports).
+ * - Use `refetchType: 'all'` only when you truly need every cached query refreshed now.
+ *
  * @clientSafe
  */
 
@@ -39,6 +46,17 @@ const JOB_TOOLS = new Set([
 ]);
 
 /**
+ * When the server reports CRM mutation but does not list tools, touch common write
+ * buckets so lists refresh — without using a heavier "refetch everything" mode.
+ */
+export const CRM_FALLBACK_WRITE_TOOLS = [
+  'create_company',
+  'create_contact',
+  'create_candidate',
+  'create_job',
+] as const;
+
+/**
  * Map AI tool names → CRM entity buckets that should refetch.
  */
 export function crmEntitiesTouchedByTools(toolsUsed: string[]): {
@@ -67,23 +85,30 @@ export function crmEntitiesTouchedByTools(toolsUsed: string[]): {
   };
 }
 
+export type CrmInvalidateOptions = {
+  forceClients?: boolean;
+  forceAll?: boolean;
+  /**
+   * Soft: mark caches stale without forcing a refetch of any query.
+   * Use after bulk list-builder import so Chrome doesn't reload the entire
+   * company list in one shot on the results page.
+   */
+  soft?: boolean;
+  /**
+   * Override refetch scope. Default is `active` (only mounted queries).
+   * Prefer this over soft when the current page should update immediately.
+   */
+  refetchType?: 'active' | 'all' | 'none';
+};
+
 /**
- * Invalidate (and refetch active) CRM list/detail queries.
+ * Invalidate (and optionally refetch) CRM list/detail queries.
  * Call after AI assistant responses that used write tools.
  */
 export async function invalidateCrmCaches(
   queryClient: QueryClient,
   toolsUsed: string[],
-  options?: {
-    forceClients?: boolean;
-    forceAll?: boolean;
-    /**
-     * Soft: mark caches stale without forcing a full refetch of every query.
-     * Use after bulk list-builder import so Chrome doesn't reload the entire
-     * company list in one shot on the results page.
-     */
-    soft?: boolean;
-  }
+  options?: CrmInvalidateOptions
 ): Promise<void> {
   const touched = crmEntitiesTouchedByTools(toolsUsed);
   if (options?.forceAll) {
@@ -98,8 +123,10 @@ export async function invalidateCrmCaches(
   }
   if (!touched.any) return;
 
-  // soft → none (stale only); default → all (previous behavior for small AI writes)
-  const refetchType = options?.soft ? ('none' as const) : ('all' as const);
+  // soft → none; explicit refetchType wins; default → active (not all)
+  const refetchType: 'active' | 'all' | 'none' = options?.soft
+    ? 'none'
+    : (options?.refetchType ?? 'active');
 
   const tasks: Promise<unknown>[] = [];
 
@@ -136,7 +163,7 @@ export async function invalidateCrmCaches(
     );
   }
 
-  // Dashboard widgets that aggregate counts
+  // Dashboard widgets that aggregate counts — only if something CRM-related changed
   tasks.push(
     queryClient.invalidateQueries({
       queryKey: ['dashboard'],
@@ -175,12 +202,12 @@ export function subscribeCrmCacheBroadcast(queryClient: QueryClient): () => void
   const ch = new BroadcastChannel('trio-crm-invalidate');
   const onMessage = (ev: MessageEvent) => {
     const tools = Array.isArray(ev.data?.toolsUsed) ? ev.data.toolsUsed : [];
-    void invalidateCrmCaches(queryClient, tools.length ? tools : [
-      'create_company',
-      'create_contact',
-      'create_candidate',
-      'create_job',
-    ]);
+    // Other tabs: mark stale + refresh only active queries (don't thrash background tabs)
+    void invalidateCrmCaches(
+      queryClient,
+      tools.length ? tools : [...CRM_FALLBACK_WRITE_TOOLS],
+      { refetchType: 'active' }
+    );
   };
   ch.addEventListener('message', onMessage);
   return () => {

@@ -774,18 +774,17 @@ export default function GeneralAiUsagePage() {
           ];
           return next.slice(-AI_UI_STORE_MESSAGES);
         });
-        // CRM tools write on the server — refresh lists after paint (debounced)
+        // CRM tools write on the server — refresh lists after idle (don't block nav)
         const crmMutated = result.crmMutated === true;
         if (
           crmMutated ||
           toolsUsed.some((t) => /^(create_|update_|link_)/.test(t))
         ) {
           scheduleCrmCacheInvalidation(queryClient, toolsUsed, {
-            forceClients:
-              crmMutated ||
-              toolsUsed.some((t) => /company|contact|client/i.test(t)),
-            forceAll: crmMutated,
-            delayMs: 800,
+            forceClients: toolsUsed.some((t) =>
+              /company|contact|client/i.test(t)
+            ),
+            delayMs: 100,
           });
         }
       }

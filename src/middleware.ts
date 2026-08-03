@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Security Middleware
  *
  * Model: protect the ATS (dashboard / admin / internal candidates), leave
@@ -11,6 +11,12 @@
  *
  * Protected (session required):
  *   - /dashboard/*, /candidates/*, /admin/*, /api/admin/*
+ *
+ * Performance:
+ *   - Page navigations only check session cookie presence (no Cognito round-trip).
+ *     Cognito GetUser on every menu click was multi-hundred-ms to multi-second lag.
+ *   - Token network validation is reserved for selected sensitive APIs if needed
+ *     by route handlers; cookie userId is enough to enter the shell.
  *
  * Injects x-tenant-id and x-user-id for selected authenticated APIs.
  *
@@ -28,14 +34,14 @@ import { NextResponse, type NextRequest } from "next/server";
  * Careers is the intentional exception to "must log in to use the site".
  */
 const PUBLIC_PAGE_ROUTES = [
-  '/careers', // /careers, /careers/{slug}, /careers/{slug}/{jobId}
-  '/schedule', // candidate self-schedule (token)
-  '/client-schedule', // client interviewer portal (token)
-  '/login',
-  '/signup',
-  '/invite', // invite accept flow
-  '/privacy', // Google OAuth / public legal
-  '/terms',
+  "/careers", // /careers, /careers/{slug}, /careers/{slug}/{jobId}
+  "/schedule", // candidate self-schedule (token)
+  "/client-schedule", // client interviewer portal (token)
+  "/login",
+  "/signup",
+  "/invite", // invite accept flow
+  "/privacy", // Google OAuth / public legal
+  "/terms",
 ];
 
 /**
@@ -43,32 +49,38 @@ const PUBLIC_PAGE_ROUTES = [
  * Careers feed + apply live under /api/public/careers/*
  */
 const PUBLIC_API_ROUTES = [
-  '/api/auth',
-  '/api/public', // careers jobs, apply, logo — multi-tenant public surface
-  '/api/mcp', // Claude MCP HTTP tools — API key auth (not session cookie)
-  '/api/apollo',
-  '/api/tavily',
-  '/api/boolean',
-  '/api/health',
+  "/api/auth",
+  "/api/public", // careers jobs, apply, logo — multi-tenant public surface
+  "/api/mcp", // Claude MCP HTTP tools — API key auth (not session cookie)
+  "/api/apollo",
+  "/api/tavily",
+  "/api/boolean",
+  "/api/health",
 ];
 
 // API routes that need session injection (for client-side calls from dashboard)
 // bedrock + ai + apollo: inject x-user-id / x-tenant-id when logged in for usage logging
 const PROTECTED_API_ROUTES = [
-  '/api/jobs',
-  '/api/data/jobs',
-  '/api/data/clients',
-  '/api/candidates',
-  '/api/ai',
-  '/api/bedrock',
-  '/api/apollo',
+  "/api/jobs",
+  "/api/data/jobs",
+  "/api/data/clients",
+  "/api/candidates",
+  "/api/ai",
+  "/api/bedrock",
+  "/api/apollo",
 ];
 
 // Protected routes that require authentication
-const PROTECTED_ROUTES = ['/dashboard', '/candidates', '/admin', '/api/admin'];
+const PROTECTED_ROUTES = ["/dashboard", "/candidates", "/admin", "/api/admin"];
 
 // Session cookie name
-const SESSION_COOKIE = 'turnkey-session';
+const SESSION_COOKIE = "turnkey-session";
+
+const DEBUG_MW = process.env.MIDDLEWARE_DEBUG === "true";
+
+function mwLog(...args: unknown[]) {
+  if (DEBUG_MW) console.log(...args);
+}
 
 /**
  * Check if route is public (no auth required)
@@ -77,7 +89,11 @@ function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_API_ROUTES.some((route) => pathname.startsWith(route))) {
     return true;
   }
-  if (PUBLIC_PAGE_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`))) {
+  if (
+    PUBLIC_PAGE_ROUTES.some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`)
+    )
+  ) {
     return true;
   }
   return false;
@@ -91,77 +107,44 @@ function isProtectedRoute(pathname: string): boolean {
 }
 
 /**
- * Get session from cookie
+ * Get session from cookie (local parse only — no network)
  */
 function getSession(request: NextRequest) {
-  const cookieStore = request.cookies;
-  const sessionCookie = cookieStore.get(SESSION_COOKIE);
-  
+  const sessionCookie = request.cookies.get(SESSION_COOKIE);
+
   if (!sessionCookie?.value) {
     return null;
   }
-  
+
   try {
-    return JSON.parse(sessionCookie.value);
+    return JSON.parse(sessionCookie.value) as {
+      userId?: string;
+      email?: string;
+      tenantId?: string;
+      role?: string;
+      accessToken?: string;
+      refreshToken?: string;
+    };
   } catch {
     return null;
   }
 }
 
 /**
- * Validate session token with Cognito
+ * Cheap local JWT expiry check (no signature verify, no Cognito).
+ * Used only as a soft signal for API routes — pages just need userId.
  */
-async function validateSessionToken(accessToken: string, refreshToken?: string): Promise<boolean> {
-  if (!accessToken) {
-    console.error("[VALIDATE] No access token");
-    return false;
-  }
-  
-  const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1';
-  const clientId = process.env.COGNITO_CLIENT_ID || process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || '';
-  
-  console.log("[VALIDATE] Validating token...");
-  console.log("[VALIDATE] AWS_REGION:", region);
-  console.log("[VALIDATE] COGNITO_CLIENT_ID:", clientId ? "set" : "NOT SET");
-  
+function isJwtExpired(accessToken: string, skewSeconds = 30): boolean {
   try {
-    const { GetUserCommand, CognitoIdentityProviderClient } = await import('@aws-sdk/client-cognito-identity-provider');
-    
-    const client = new CognitoIdentityProviderClient({ region });
-    const command = new GetUserCommand({ AccessToken: accessToken });
-    await client.send(command);
-    
-    return true;
-  } catch (error: any) {
-    console.error("[VALIDATE] Token validation FAILED:");
-    console.error("[VALIDATE] Error:", error?.message);
-    console.error("[VALIDATE] Code:", error?.code);
-    
-    // Try token refresh if expired
-    const errorMessage = error?.message || '';
-    const isExpired = errorMessage.includes('Token expired') || 
-                     errorMessage.includes('NotAuthorizedException');
-    
-    if (isExpired && refreshToken && clientId) {
-      try {
-        const { InitiateAuthCommand, CognitoIdentityProviderClient } = await import('@aws-sdk/client-cognito-identity-provider');
-        
-        const client = new CognitoIdentityProviderClient({ region });
-        const refreshCommand = new InitiateAuthCommand({
-          AuthFlow: 'REFRESH_TOKEN_AUTH',
-          ClientId: clientId,
-          AuthParameters: { REFRESH_TOKEN: refreshToken },
-        });
-        
-        const response = await client.send(refreshCommand);
-        if (response.AuthenticationResult?.AccessToken) {
-          return true;
-        }
-      } catch {
-        return false;
-      }
-    }
-    
+    const parts = accessToken.split(".");
+    if (parts.length < 2) return false;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    // atob is available in Edge runtime
+    const json = atob(b64);
+    const payload = JSON.parse(json) as { exp?: number };
+    if (typeof payload.exp !== "number") return false;
+    return Date.now() >= payload.exp * 1000 - skewSeconds * 1000;
+  } catch {
     return false;
   }
 }
@@ -173,88 +156,71 @@ async function validateSessionToken(accessToken: string, refreshToken?: string):
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  // === DEBUG LOGGING ===
-  console.log(`[Middleware Debug] Path: ${pathname} | Has Cookie: ${!!request.cookies.get('turnkey-session')}`);
-
   // Skip static files and Next.js internal routes
   if (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/static') ||
-    pathname.includes('.')
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/static") ||
+    pathname.includes(".")
   ) {
     return NextResponse.next();
   }
 
-// === PUBLIC ROUTES - Immediate bypass ===
+  // === PUBLIC ROUTES - Immediate bypass ===
   if (isPublicRoute(pathname)) {
-    console.log(`[Middleware] Allowing public route: ${pathname}`);
     return NextResponse.next();
   }
 
   // === PROTECTED API ROUTES - Inject session headers ===
-  const isProtectedApiRoute = PROTECTED_API_ROUTES.some(route => pathname.startsWith(route));
+  const isProtectedApiRoute = PROTECTED_API_ROUTES.some((route) =>
+    pathname.startsWith(route)
+  );
   if (isProtectedApiRoute) {
-    console.log(`[Middleware] Processing API route: ${pathname}`);
-    
     const session = getSession(request);
-    
-    if (!session) {
-      console.log(`[Middleware] No session for API route - allowing with warning`);
-      // Allow through but without headers - API will handle auth
+
+    if (!session?.userId) {
+      // Allow through without headers — API route handlers re-check auth
       return NextResponse.next();
     }
-    
-    // Inject headers for API routes
-    console.log(`[Middleware] Injecting session headers for ${pathname}:`, session.tenantId);
+
     const requestHeaders = new Headers(request.headers);
-    requestHeaders.set('x-tenant-id', session.tenantId || '');
-    requestHeaders.set('x-user-id', session.userId || '');
+    requestHeaders.set("x-tenant-id", session.tenantId || "");
+    requestHeaders.set("x-user-id", session.userId || "");
 
     return NextResponse.next({
       request: { headers: requestHeaders },
     });
   }
 
-// === PROTECTED ROUTES (Dashboard / admin) - Require auth ===
+  // === PROTECTED ROUTES (Dashboard / admin) - Require auth ===
   if (isProtectedRoute(pathname)) {
     const session = getSession(request);
-    const isApiRoute = pathname.startsWith('/api/');
+    const isApiRoute = pathname.startsWith("/api/");
 
     // No session at all
     if (!session?.userId) {
-      console.log(`[Middleware] No session for ${pathname}`);
+      mwLog(`[Middleware] No session for ${pathname}`);
       if (isApiRoute) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('redirect', pathname);
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("redirect", pathname);
       return NextResponse.redirect(loginUrl);
     }
 
-    // If we have accessToken, validate with Cognito.
-    // Simple DynamoDB auth sessions may omit accessToken; route handlers re-check.
-    if (session.accessToken && session.accessToken.length > 0) {
-      console.log(`[Middleware] Validating Cognito token for ${pathname}...`);
-      const isValid = await validateSessionToken(session.accessToken, session.refreshToken);
-
-      if (!isValid) {
-        console.log(`[Middleware] Token invalid for ${pathname}`);
-        if (isApiRoute) {
-          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-        const loginUrl = new URL('/login', request.url);
-        loginUrl.searchParams.set('redirect', pathname);
-        return NextResponse.redirect(loginUrl);
+    // Pages: cookie presence is enough. Skipping Cognito GetUser here is the
+    // main nav speed fix (was a network hop on every sidebar click).
+    // APIs under /api/admin still get a local JWT exp soft-check when token present.
+    if (isApiRoute && session.accessToken && session.accessToken.length > 0) {
+      if (isJwtExpired(session.accessToken)) {
+        mwLog(`[Middleware] Access token expired for ${pathname}`);
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
-      console.log(`[Middleware] Token valid, allowing ${pathname}`);
-    } else {
-      console.log(`[Middleware] No accessToken (simple auth), allowing ${pathname}`);
     }
 
-    // Inject headers
+    // Inject headers for downstream server components / APIs
     const requestHeaders = new Headers(request.headers);
-    requestHeaders.set('x-tenant-id', session.tenantId || '');
-    requestHeaders.set('x-user-id', session.userId || '');
+    requestHeaders.set("x-tenant-id", session.tenantId || "");
+    requestHeaders.set("x-user-id", session.userId || "");
 
     return NextResponse.next({
       request: { headers: requestHeaders },
@@ -267,6 +233,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

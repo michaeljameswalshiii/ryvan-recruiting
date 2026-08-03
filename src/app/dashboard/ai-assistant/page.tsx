@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { invalidateCrmCaches } from "@/lib/hooks/invalidate-crm-cache";
+import { scheduleCrmCacheInvalidation } from "@/lib/ai/chat-client-perf";
 import {
   explainAiFetchError,
   parseAiFetchResponse,
@@ -267,11 +267,12 @@ content: "You are a helpful AI assistant. You can help with a wide range of task
         crmMutated ||
         toolsUsed.some((t) => /^(create_|update_|link_)/.test(t))
       ) {
-        void invalidateCrmCaches(queryClient, toolsUsed, {
-          forceClients:
-            crmMutated ||
-            toolsUsed.some((t) => /company|contact|client/i.test(t)),
-          forceAll: crmMutated,
+        // Idle + active-only refetch so sidebar clicks stay instant after AI writes
+        scheduleCrmCacheInvalidation(queryClient, toolsUsed, {
+          forceClients: toolsUsed.some((t) =>
+            /company|contact|client/i.test(t)
+          ),
+          delayMs: 100,
         });
       }
     } catch (err) {

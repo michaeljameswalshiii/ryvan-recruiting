@@ -1,17 +1,23 @@
-﻿import Sidebar from "@/components/Sidebar";
+import Sidebar from "@/components/Sidebar";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { getSession } from "@/lib/server-auth";
-import { resolveUserRole } from "@/lib/admin-auth";
-import { normalizeRole } from "@/lib/roles";
+import { resolveLayoutRole } from "@/lib/admin-auth";
 import { redirect } from "next/navigation";
 import { DragDropProvider } from "@/components/providers/dnd-provider";
 import { FloatingAiAssistant } from "@/components/ai/FloatingAiAssistant";
 
-// Force dynamic rendering - this layout uses cookies via getSession()
-export const dynamic = 'force-dynamic';
-
 /**
- * Dashboard Layout - Server-side auth + role-aware nav
+ * Dashboard Layout — server chrome (sidebar + header).
+ *
+ * Auth:
+ * - Middleware already requires a session cookie for /dashboard/*
+ * - Layout reads cookie for role-aware nav (no Cognito / no DynamoDB on the
+ *   happy path — role comes from the cookie written at login).
+ *
+ * Note: we intentionally do NOT set `export const dynamic = 'force-dynamic'`.
+ * Using `cookies()` via getSession() already opts this layout into dynamic
+ * rendering when needed, without forcing a full re-render policy that fights
+ * soft navigation caching.
  */
 
 export default async function DashboardLayout({
@@ -20,25 +26,19 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const session = await getSession();
-  
-  if (!session) {
-    redirect('/login');
+
+  if (!session || typeof session !== "object" || !session.userId) {
+    redirect("/login");
   }
 
-  if (!session || typeof session !== 'object') {
-    console.error('[DashboardLayout] Invalid session:', session);
-    redirect('/login');
-  }
-
-  const role =
-    (await resolveUserRole(session.userId, session.email)) ||
-    normalizeRole(session.role);
+  // Cookie role + env allowlists only — no DynamoDB on every menu click
+  const role = await resolveLayoutRole(session);
 
   const tenantInfo = {
-    userId: session?.userId || '',
-    email: session?.email || '',
-    fullName: 'User',
-    tenantId: session?.tenantId || '',
+    userId: session.userId || "",
+    email: session.email || "",
+    fullName: "User",
+    tenantId: session.tenantId || "",
     role,
   };
 

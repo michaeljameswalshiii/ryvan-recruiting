@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useRef, useState, useEffect } from 'react';
 import {
   LayoutDashboard,
@@ -67,6 +67,7 @@ interface SidebarProps {
 
 export default function Sidebar({ role }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const navRef = useRef<HTMLDivElement>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
@@ -92,6 +93,32 @@ export default function Sidebar({ role }: SidebarProps) {
     window.addEventListener('resize', checkScroll);
     return () => window.removeEventListener('resize', checkScroll);
   }, []);
+
+  // Warm common destinations in the background so menu clicks feel instant
+  // (especially right after AI work when the main thread was busy).
+  useEffect(() => {
+    const hrefs = [
+      ...visibleMain.map((i) => i.href),
+      ...visibleAdmin.map((i) => i.href),
+      ...visibleSite.map((i) => i.href),
+    ].filter((h) => h !== pathname);
+
+    const prefetchAll = () => {
+      for (const href of hrefs.slice(0, 12)) {
+        try {
+          router.prefetch(href);
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+
+    // Defer so we never compete with first paint / AI response render
+    const t = setTimeout(prefetchAll, 400);
+    return () => clearTimeout(t);
+    // Only re-run when role-visible set or path changes (not every theme toggle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, role, router]);
 
   const scrollMenu = (direction: 'up' | 'down') => {
     if (navRef.current) {

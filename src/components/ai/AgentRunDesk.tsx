@@ -644,9 +644,9 @@ export function AgentRunDesk({
       });
 
       if (result.crmMutated) {
-        scheduleCrmCacheInvalidation(queryClient, result.toolsUsed, {
-          forceAll: true,
-          delayMs: 600,
+        // Active-only + idle — forceAll caused multi-second menu lag after AI writes
+        scheduleCrmCacheInvalidation(queryClient, result.toolsUsed || [], {
+          delayMs: 100,
         });
       }
 
@@ -740,9 +740,9 @@ export function AgentRunDesk({
       });
 
       if (result.crmMutated) {
-        scheduleCrmCacheInvalidation(queryClient, result.toolsUsed, {
-          forceAll: true,
-          delayMs: 600,
+        // Active-only + idle — forceAll caused multi-second menu lag after AI writes
+        scheduleCrmCacheInvalidation(queryClient, result.toolsUsed || [], {
+          delayMs: 100,
         });
       }
 

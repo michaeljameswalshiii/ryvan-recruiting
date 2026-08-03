@@ -440,12 +440,12 @@ export function FloatingAiAssistant() {
           crmMutated ||
           toolsUsed.some((t) => /^(create_|update_|link_)/.test(t))
         ) {
+          // Idle + active-only refetch — never forceAll (that blocked sidebar nav)
           scheduleCrmCacheInvalidation(queryClient, toolsUsed, {
-            forceClients:
-              crmMutated ||
-              toolsUsed.some((t) => /company|contact|client/i.test(t)),
-            forceAll: crmMutated,
-            delayMs: 800,
+            forceClients: toolsUsed.some((t) =>
+              /company|contact|client/i.test(t)
+            ),
+            delayMs: 100,
           });
         }
       }

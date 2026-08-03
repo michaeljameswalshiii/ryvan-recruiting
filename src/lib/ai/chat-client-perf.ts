@@ -3,13 +3,17 @@
  * Keeps multi-turn chats from freezing Chrome via:
  * - slim API history (char caps, strip old attachments)
  * - base64 → blob URL for downloads (drop base64 from React state)
- * - debounced CRM cache invalidation
+ * - idle-deferred CRM cache invalidation (doesn't block sidebar navigation)
  *
  * @clientSafe
  */
 
 import type { QueryClient } from '@tanstack/react-query';
-import { invalidateCrmCaches } from '@/lib/hooks/invalidate-crm-cache';
+import {
+  CRM_FALLBACK_WRITE_TOOLS,
+  invalidateCrmCaches,
+  type CrmInvalidateOptions,
+} from '@/lib/hooks/invalidate-crm-cache';
 
 /** Max turns sent to /api/bedrock (keeps request body bounded) */
 export const AI_API_HISTORY_TURNS = 12;
@@ -193,59 +197,121 @@ export function downloadFromMeta(file: GeneratedFileMeta): void {
 }
 
 // ---------------------------------------------------------------------------
-// Debounced CRM invalidation — avoid refetch storm mid-parse
+// Idle-deferred CRM invalidation — never compete with menu clicks / navigation
 // ---------------------------------------------------------------------------
 
 type PendingInvalidate = {
   tools: string[];
   forceClients: boolean;
   forceAll: boolean;
-  timer: ReturnType<typeof setTimeout>;
+  soft: boolean;
+  /** browser timeout id or idle callback id (we track kind separately) */
+  handle: number;
+  kind: 'timeout' | 'idle';
 };
 
 const pendingByClient = new WeakMap<QueryClient, PendingInvalidate>();
 
+function cancelPending(p: PendingInvalidate): void {
+  if (typeof window === 'undefined') return;
+  if (p.kind === 'idle' && 'cancelIdleCallback' in window) {
+    window.cancelIdleCallback(p.handle);
+  } else {
+    window.clearTimeout(p.handle);
+  }
+}
+
 /**
- * Schedule CRM cache invalidation after a short delay so it doesn't
- * compete with AI response JSON parse + React paint.
+ * Schedule CRM cache invalidation after paint + browser idle so it does not
+ * compete with AI response render or sidebar menu clicks.
+ *
+ * Defaults:
+ * - delayMs: 100ms (let React commit the assistant message first)
+ * - refetchType: active only (via invalidateCrmCaches default)
+ * - no forceAll unless caller opts in (prefer tool-name mapping)
  */
 export function scheduleCrmCacheInvalidation(
   queryClient: QueryClient,
   toolsUsed: string[],
-  options?: { forceClients?: boolean; forceAll?: boolean; delayMs?: number }
+  options?: {
+    forceClients?: boolean;
+    forceAll?: boolean;
+    soft?: boolean;
+    delayMs?: number;
+  }
 ): void {
-  const delayMs = options?.delayMs ?? 750;
+  const delayMs = options?.delayMs ?? 100;
   const existing = pendingByClient.get(queryClient);
   if (existing) {
-    clearTimeout(existing.timer);
-    const tools = Array.from(
-      new Set([...(existing.tools || []), ...(toolsUsed || [])])
-    );
-    const forceClients = !!(existing.forceClients || options?.forceClients);
-    const forceAll = !!(existing.forceAll || options?.forceAll);
-    const timer = setTimeout(() => {
-      pendingByClient.delete(queryClient);
-      void invalidateCrmCaches(queryClient, tools, { forceClients, forceAll });
-    }, delayMs);
-    pendingByClient.set(queryClient, {
-      tools,
+    cancelPending(existing);
+  }
+
+  const tools = Array.from(
+    new Set([
+      ...(existing?.tools || []),
+      ...(toolsUsed?.length ? toolsUsed : [...CRM_FALLBACK_WRITE_TOOLS]),
+    ])
+  );
+  const forceClients = !!(existing?.forceClients || options?.forceClients);
+  // Prefer not to forceAll — tool mapping + fallback tools is enough and much lighter.
+  const forceAll = !!(existing?.forceAll || options?.forceAll);
+  const soft = !!(existing?.soft || options?.soft);
+
+  const fire = () => {
+    pendingByClient.delete(queryClient);
+    const invOpts: CrmInvalidateOptions = {
       forceClients,
       forceAll,
-      timer,
-    });
+      soft,
+      // When soft is false, active-only refetch keeps nav snappy
+      refetchType: soft ? 'none' : 'active',
+    };
+    void invalidateCrmCaches(queryClient, tools, invOpts);
+  };
+
+  if (typeof window === 'undefined') {
+    fire();
     return;
   }
-  const tools = [...(toolsUsed || [])];
-  const forceClients = !!options?.forceClients;
-  const forceAll = !!options?.forceAll;
-  const timer = setTimeout(() => {
-    pendingByClient.delete(queryClient);
-    void invalidateCrmCaches(queryClient, tools, { forceClients, forceAll });
+
+  // Phase 1: wait for paint. Phase 2: idle so clicks win the event loop.
+  const timeoutHandle = window.setTimeout(() => {
+    const pending = pendingByClient.get(queryClient);
+    if (!pending) return;
+
+    if ('requestIdleCallback' in window) {
+      const idleHandle = window.requestIdleCallback(
+        () => {
+          fire();
+        },
+        { timeout: 2000 }
+      );
+      pendingByClient.set(queryClient, {
+        ...pending,
+        handle: idleHandle,
+        kind: 'idle',
+      });
+    } else {
+      fire();
+    }
   }, delayMs);
+
   pendingByClient.set(queryClient, {
     tools,
     forceClients,
     forceAll,
-    timer,
+    soft,
+    handle: timeoutHandle,
+    kind: 'timeout',
   });
+}
+
+/** Cancel any pending AI-driven CRM invalidation (e.g. on unmount). */
+export function cancelScheduledCrmCacheInvalidation(
+  queryClient: QueryClient
+): void {
+  const existing = pendingByClient.get(queryClient);
+  if (!existing) return;
+  cancelPending(existing);
+  pendingByClient.delete(queryClient);
 }
