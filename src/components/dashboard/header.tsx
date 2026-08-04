@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Bell,
   User,
@@ -11,9 +12,11 @@ import {
   Building2,
   Contact,
   Briefcase,
+  LogOut,
 } from "lucide-react";
 import { roleLabel } from "@/lib/roles";
 import { GlobalSearch } from "@/components/dashboard/GlobalSearch";
+import { logout } from "@/lib/api/auth-client";
 
 interface DashboardHeaderProps {
   user?: {
@@ -53,12 +56,14 @@ const QUICK_ACTIONS = [
 ] as const;
 
 export function DashboardHeader({ user }: DashboardHeaderProps) {
+  const router = useRouter();
   const displayName = user?.full_name || user?.fullName || user?.email || "User";
   const subtitle = user?.role
     ? roleLabel(user.role)
     : user?.tenants?.name || "";
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -78,6 +83,19 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
       document.removeEventListener("keydown", onKey);
     };
   }, [menuOpen]);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+    } catch {
+      // Still leave the app even if the network call fails
+    } finally {
+      router.push("/login");
+      router.refresh();
+    }
+  };
 
   return (
     <header className="sticky top-0 z-40 h-16 border-b border-border flex items-center justify-between gap-4 px-6 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -155,6 +173,20 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
             ) : null}
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          aria-label="Log out"
+          title="Log out"
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border bg-background text-sm font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+        >
+          <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="hidden sm:inline">
+            {loggingOut ? "Logging out…" : "Log out"}
+          </span>
+        </button>
       </div>
     </header>
   );
