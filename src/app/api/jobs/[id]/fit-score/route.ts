@@ -3,6 +3,7 @@
  * GET  /api/jobs/[id]/fit-score?candidateId=
  * POST /api/jobs/[id]/fit-score
  *   body: { candidateId } | { candidateIds: string[] } | { resumeText?, skills? }
+ *   optional: recruiterNotes — free text folded into candidate signal (manual match)
  *
  * On persist: stamps fit fields on job.candidates[] + lead.linkedJobs[] (dual-write)
  * and appends an activity note (type Other, systemKind ai_fit). No pipeline stage change.
@@ -341,11 +342,37 @@ async function tryStoreFitOnLinkedCandidate(
   return anyStored;
 }
 
+/** Fold recruiter notes into the candidate signal used by Domain/Tools scoring. */
+function applyRecruiterNotes(
+  input: FitCandidateInput,
+  recruiterNotes?: string
+): FitCandidateInput {
+  const notes = (recruiterNotes || "").trim();
+  if (!notes) return input;
+  const fromNotes = extractSkillsFromText(notes);
+  const skills = Array.from(
+    new Set([...(input.skills || []), ...fromNotes].map(String).filter(Boolean))
+  );
+  return {
+    ...input,
+    skills: skills.length ? skills : input.skills,
+    summary: [input.summary, "", "Recruiter notes (manual match):", notes]
+      .filter((x) => x !== undefined && x !== null)
+      .join("\n"),
+  };
+}
+
 async function scoreOne(
   tenantId: string,
   job: NonNullable<Awaited<ReturnType<typeof getJobById>>>,
   candidateId: string,
-  opts?: { persist?: boolean; useOutcomes?: boolean; createdBy?: string }
+  opts?: {
+    persist?: boolean;
+    useOutcomes?: boolean;
+    createdBy?: string;
+    /** Optional recruiter context for manual Match Against Job Requirements */
+    recruiterNotes?: string;
+  }
 ): Promise<{
   candidateId: string;
   candidateName?: string;
@@ -357,13 +384,17 @@ async function scoreOne(
   };
   persisted?: boolean;
   resumeUsed?: boolean;
+  recruiterNotesUsed?: boolean;
 } | null> {
   const lead = await getLeadById(tenantId, candidateId);
   if (!lead) return null;
 
-  const { input: candidateInput, resumeUsed } = await buildCandidateInput(
+  const { input: baseInput, resumeUsed } = await buildCandidateInput(
     lead as any
   );
+  const notes = (opts?.recruiterNotes || "").trim();
+  const recruiterNotesUsed = notes.length > 0;
+  const candidateInput = applyRecruiterNotes(baseInput, notes);
 
   let fit: FitScoreResult & {
     baseScore?: number;
@@ -388,6 +419,18 @@ async function scoreOne(
   }
 
   fit.summary = formatFitSummary(fit);
+  if (recruiterNotesUsed) {
+    fit.reasons = [
+      "Recruiter notes included in Domain / Tools score",
+      ...fit.reasons,
+    ].slice(0, 12);
+    fit.summary = [
+      fit.summary,
+      "",
+      "Recruiter notes considered:",
+      notes.slice(0, 1500),
+    ].join("\n");
+  }
   if (resumeUsed) {
     fit.reasons = [
       "Scored using resume file text (profile skills/summary were sparse)",
@@ -412,6 +455,7 @@ async function scoreOne(
     fit,
     persisted,
     resumeUsed,
+    recruiterNotesUsed,
   };
 }
 
@@ -499,6 +543,9 @@ export async function POST(
 
     const body = await request.json().catch(() => ({}));
     const persist = body.persist !== false;
+    const recruiterNotes = String(
+      body.recruiterNotes || body.recruiter_notes || body.notes || ""
+    ).trim();
 
     // Ad-hoc score from resume text / skills (no candidate record)
     if (
@@ -510,21 +557,32 @@ export async function POST(
       const skills: string[] = Array.isArray(body.skills)
         ? body.skills.map(String)
         : extractSkillsFromText(resumeText);
+      const baseInput: FitCandidateInput = {
+        skills,
+        title: body.title ? String(body.title) : "",
+        summary: resumeText,
+        location: body.location ? String(body.location) : "",
+        experience: Array.isArray(body.experience) ? body.experience : undefined,
+      };
       const fit = scoreCandidateJobFit(
-        {
-          skills,
-          title: body.title ? String(body.title) : "",
-          summary: resumeText,
-          location: body.location ? String(body.location) : "",
-          experience: Array.isArray(body.experience) ? body.experience : undefined,
-        },
+        applyRecruiterNotes(baseInput, recruiterNotes),
         jobFitInput(job)
       );
+      if (recruiterNotes) {
+        fit.reasons = [
+          "Recruiter notes included in Domain / Tools score",
+          ...fit.reasons,
+        ].slice(0, 12);
+      }
       return NextResponse.json({
         jobId,
         jobTitle: job.title,
         adHoc: true,
-        fit,
+        recruiterNotesUsed: !!recruiterNotes,
+        fit: {
+          ...fit,
+          summary: formatFitSummary(fit),
+        },
       });
     }
 
@@ -559,7 +617,11 @@ export async function POST(
       );
     }
 
-    const unique = Array.from(new Set(ids)).slice(0, 100);
+    // Manual match with notes is single-candidate only (clearer UX)
+    const unique = Array.from(new Set(ids)).slice(
+      0,
+      recruiterNotes ? 1 : 100
+    );
     const createdBy =
       (await getSessionUserEmail()) || "system";
     const scores: Array<{
@@ -567,6 +629,7 @@ export async function POST(
       candidateName?: string;
       fit: FitScoreResult;
       persisted?: boolean;
+      recruiterNotesUsed?: boolean;
     }> = [];
     const missing: string[] = [];
 
@@ -574,6 +637,7 @@ export async function POST(
       const r = await scoreOne(tenantId, job, cid, {
         persist,
         createdBy,
+        recruiterNotes: recruiterNotes || undefined,
       });
       if (r) scores.push(r);
       else missing.push(cid);

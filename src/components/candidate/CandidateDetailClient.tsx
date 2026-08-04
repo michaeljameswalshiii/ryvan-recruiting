@@ -293,6 +293,11 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [emailOpen, setEmailOpen] = useState(false);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [aiOutput, setAiOutput] = useState<string>('');
+  /** Manual Domain/Tools match panel (same engine as Run AI fit) */
+  const [matchPanelOpen, setMatchPanelOpen] = useState(false);
+  const [matchJobId, setMatchJobId] = useState<string>('');
+  const [matchNotes, setMatchNotes] = useState('');
+  const [matchRunning, setMatchRunning] = useState(false);
   const [resumeUrl, setResumeUrl] = useState(safe.resumeUrl || '');
   const [resumeFileName, setResumeFileName] = useState(
     safe.resumeFileName || ''
@@ -992,11 +997,26 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   );
 
   const runAiTool = async (tool: string) => {
+    // Match Against Job Requirements → same Domain/Tools engine + optional notes
+    if (tool === 'match') {
+      if (!linkedJobs.length) {
+        toast.error('Link this candidate to a job first, then run Match.');
+        setLinkJobOpen(true);
+        return;
+      }
+      setMatchPanelOpen(true);
+      setAiOutput('');
+      if (!matchJobId) {
+        const first = linkedJobs[0];
+        setMatchJobId(String(first.jobId || first.id || ''));
+      }
+      return;
+    }
+
     setAiLoading(tool);
     setAiOutput('');
     const prompts: Record<string, string> = {
       rate: `Rate this candidate for recruiting. Give a score 1-10 with brief reasoning.\n\nName: ${contactInfo.name}\nTitle: ${contactInfo.title}\nSummary: ${safe.summary || 'N/A'}\nSkills: ${skills.join(', ') || 'N/A'}\nExperience: ${JSON.stringify(experience).slice(0, 1500)}`,
-      match: `Match this candidate against typical job requirements for "${contactInfo.title || 'their role'}". List strengths, gaps, and fit %.\n\nSummary: ${safe.summary || 'N/A'}\nSkills: ${skills.join(', ')}\nExperience: ${JSON.stringify(experience).slice(0, 1500)}`,
       interview: `Generate 8 strong interview questions for a ${contactInfo.title || 'professional'} candidate named ${contactInfo.name}. Include behavioral and technical questions.`,
       summarize: `Write a concise client-facing resume summary (3-5 sentences, professional tone) for ${contactInfo.name}, ${contactInfo.title}.\n\nSummary: ${safe.summary || 'N/A'}\nSkills: ${skills.join(', ')}\nExperience: ${JSON.stringify(experience).slice(0, 1500)}`,
     };
@@ -1020,6 +1040,101 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       toast.error(err?.message || 'AI tool failed');
       setAiOutput('');
     } finally {
+      setAiLoading(null);
+    }
+  };
+
+  /**
+   * Manual match: same Domain/Tools fit scorer as Run AI fit, with optional
+   * recruiter notes folded into the candidate signal before scoring.
+   */
+  const runMatchAgainstJob = async () => {
+    const jobId = matchJobId || String(linkedJobs[0]?.jobId || linkedJobs[0]?.id || '');
+    if (!jobId || !candidateId) {
+      toast.error('Select a linked job to match against.');
+      return;
+    }
+    setMatchRunning(true);
+    setAiLoading('match');
+    setAiOutput('');
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/fit-score`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidateId,
+          persist: true,
+          recruiterNotes: matchNotes.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || 'Match failed');
+      }
+      const row =
+        Array.isArray(data.scores) && data.scores.length
+          ? data.scores[0]
+          : data.fit
+            ? { fit: data.fit }
+            : null;
+      const fit = row?.fit || data.fit;
+      if (!fit) throw new Error('No fit result returned');
+
+      const domainScore = fit.domainFit?.score;
+      const domainGrade = fit.domainFit?.grade;
+      const toolScore = fit.toolReadiness?.score;
+      const toolGrade = fit.toolReadiness?.grade;
+      const toolApplicable = fit.toolReadiness?.applicable ?? true;
+      const overlay = {
+        fitScore: fit.score,
+        fitGrade: fit.grade,
+        fitDomainScore:
+          typeof domainScore === 'number' ? domainScore : undefined,
+        fitDomainGrade: domainGrade,
+        fitToolScore: typeof toolScore === 'number' ? toolScore : undefined,
+        fitToolGrade: toolGrade,
+        fitToolApplicable: toolApplicable,
+        fitReasons: fit.reasons || [],
+        fitStrengths: fit.strengths || [],
+        fitGaps: fit.gaps || [],
+        fitSummary: fit.summary || undefined,
+        fitScoredAt: new Date().toISOString(),
+      };
+      setFitOverlayByJob((prev) => ({ ...prev, [jobId]: overlay }));
+      setLinkedJobs((prev) =>
+        prev.map((j: any) =>
+          (j.jobId || j.id) === jobId ? { ...j, ...overlay } : j
+        )
+      );
+      setExpandedFitJobId(jobId);
+      setAiOutput(
+        fit.summary ||
+          [
+            `Domain ${domainScore ?? '—'}/100 · Tools ${
+              toolApplicable === false ? 'n/a' : toolScore ?? '—'
+            }/100 · Overall ${fit.score}/100 (${fit.grade})`,
+            ...(fit.gaps || []).map((g: string) => `• ${g}`),
+          ].join('\n')
+      );
+      void fetchNotes();
+      const bits = [
+        typeof domainScore === 'number' ? `Domain ${Math.round(domainScore)}` : null,
+        toolApplicable !== false && typeof toolScore === 'number'
+          ? `Tools ${Math.round(toolScore)}`
+          : null,
+        `Overall ${fit.score} (${fit.grade})`,
+      ].filter(Boolean);
+      toast.success(
+        matchNotes.trim()
+          ? `Match with notes: ${bits.join(' · ')}`
+          : `Match: ${bits.join(' · ')}`
+      );
+    } catch (err: any) {
+      toast.error(err?.message || 'Match failed');
+      setAiOutput('');
+    } finally {
+      setMatchRunning(false);
       setAiLoading(null);
     }
   };
@@ -1838,7 +1953,10 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
               <div className="space-y-2">
                 {[
                   { id: 'rate', label: 'Rate This Candidate' },
-                  { id: 'match', label: 'Match Against Job Requirements' },
+                  {
+                    id: 'match',
+                    label: 'Match Against Job Requirements',
+                  },
                   { id: 'interview', label: 'Generate Interview Questions' },
                   { id: 'summarize', label: 'Summarize Resume for Client' },
                 ].map((tool) => (
@@ -1846,11 +1964,12 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                     key={tool.id}
                     variant="outline"
                     className="w-full justify-between h-11 border-blue-200 text-blue-800 hover:bg-blue-50"
-                    disabled={!!aiLoading}
+                    disabled={!!aiLoading || matchRunning}
                     onClick={() => runAiTool(tool.id)}
                   >
                     <span>{tool.label}</span>
-                    {aiLoading === tool.id ? (
+                    {aiLoading === tool.id ||
+                    (tool.id === 'match' && matchRunning) ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <ChevronRight className="h-4 w-4 opacity-50" />
@@ -1858,6 +1977,113 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   </Button>
                 ))}
               </div>
+
+              {/* Manual Domain/Tools match — same engine as Run AI fit + notes */}
+              {matchPanelOpen && (
+                <div className="mt-4 space-y-3 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        Match against a linked job
+                      </p>
+                      <p className="mt-0.5 text-xs font-medium text-slate-600">
+                        Same Domain / Tools scorer as Run AI fit. Add recruiter
+                        notes first so they count toward the score (skills,
+                        tools, context).
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                      onClick={() => setMatchPanelOpen(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  {linkedJobs.length === 0 ? (
+                    <p className="text-sm text-slate-700">
+                      No linked jobs yet.{' '}
+                      <button
+                        type="button"
+                        className="font-semibold text-blue-700 underline"
+                        onClick={() => setLinkJobOpen(true)}
+                      >
+                        Link a job
+                      </button>{' '}
+                      first.
+                    </p>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                          Job
+                        </label>
+                        <select
+                          value={
+                            matchJobId ||
+                            String(
+                              linkedJobs[0]?.jobId || linkedJobs[0]?.id || ''
+                            )
+                          }
+                          onChange={(e) => setMatchJobId(e.target.value)}
+                          className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                          disabled={matchRunning}
+                        >
+                          {linkedJobs.map((j: any) => {
+                            const id = String(j.jobId || j.id);
+                            const title =
+                              j.jobTitle || j.title || 'Linked job';
+                            return (
+                              <option key={id} value={id}>
+                                {title}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                          Recruiter notes (optional)
+                        </label>
+                        <textarea
+                          value={matchNotes}
+                          onChange={(e) => setMatchNotes(e.target.value)}
+                          rows={4}
+                          disabled={matchRunning}
+                          placeholder="e.g. Confirmed 2 yrs Planning Center + Bloomerang on screen call. Strong GL/month-end. Client-facing training experience."
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
+                        />
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Notes are scored with the profile/resume — mention
+                          tools, domain experience, location, or screen
+                          insights.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        className="w-full"
+                        disabled={matchRunning}
+                        onClick={() => void runMatchAgainstJob()}
+                      >
+                        {matchRunning ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Scoring…
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Run match
+                            {matchNotes.trim() ? ' with notes' : ''}
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+
               {aiOutput && (
                 <div className="mt-4 rounded-xl border border-violet-100 bg-violet-50/50 p-4 text-sm text-gray-800 whitespace-pre-wrap max-h-80 overflow-y-auto">
                   {aiOutput}
