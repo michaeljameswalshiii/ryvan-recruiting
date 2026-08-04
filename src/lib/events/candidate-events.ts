@@ -943,13 +943,32 @@ export async function recordAiFitAssessed(
     strengths?: string[];
     gaps?: string[];
     reasons?: string[];
+    domainFit?: { score: number; grade?: string };
+    toolReadiness?: {
+      score: number;
+      grade?: string;
+      applicable?: boolean;
+    };
   }
 ): Promise<RecordEventResponse> {
   const summary =
     (fit.summary && fit.summary.trim()) ||
     `Fit score: ${fit.score}/100 (grade ${fit.grade})`;
+  const splitLine = [
+    fit.domainFit
+      ? `Domain ${fit.domainFit.score}/100 (${fit.domainFit.grade || "?"})`
+      : null,
+    fit.toolReadiness?.applicable === false
+      ? "Tools n/a"
+      : fit.toolReadiness
+        ? `Tools ${fit.toolReadiness.score}/100 (${fit.toolReadiness.grade || "?"})`
+        : null,
+    `Overall ${fit.score}/100 (${fit.grade})`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const noteText = [
-    `AI fit for "${jobTitle}": ${fit.score}/100 (grade ${fit.grade})`,
+    `AI fit for "${jobTitle}": ${splitLine}`,
     summary,
   ]
     .filter(Boolean)
@@ -960,7 +979,7 @@ export async function recordAiFitAssessed(
     "NOTE",
     {
       title: `AI fit · ${jobTitle}`,
-      description: `Fit ${fit.score}/100 (${fit.grade}) for ${jobTitle}`,
+      description: splitLine || `Fit ${fit.score}/100 (${fit.grade}) for ${jobTitle}`,
       metadata: {
         noteText,
         noteType: "Other",
@@ -970,6 +989,11 @@ export async function recordAiFitAssessed(
         jobTitle,
         fitScore: fit.score,
         fitGrade: fit.grade,
+        fitDomainScore: fit.domainFit?.score,
+        fitDomainGrade: fit.domainFit?.grade,
+        fitToolScore: fit.toolReadiness?.score,
+        fitToolGrade: fit.toolReadiness?.grade,
+        fitToolApplicable: fit.toolReadiness?.applicable,
         fitSummary: summary,
         fitStrengths: fit.strengths?.slice(0, 6) || [],
         fitGaps: fit.gaps?.slice(0, 6) || [],

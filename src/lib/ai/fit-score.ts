@@ -7,25 +7,44 @@
 
 export type FitGrade = "A" | "B" | "C" | "D" | "F";
 
-export interface FitScoreResult {
+/** One half of the split fit view (domain vs tools). */
+export interface FitSplitScore {
   score: number; // 0-100
   grade: FitGrade;
+  /** False when the JD has no tool/product skills to score. */
+  applicable?: boolean;
+}
+
+export interface FitScoreResult {
+  /** Overall blend (domain + tools when tools apply). */
+  score: number; // 0-100
+  grade: FitGrade;
+  /** Domain / role fit: title, accounting/finance core, location, seniority. */
+  domainFit: FitSplitScore;
+  /** Tool / product readiness: named systems, implementation stack. */
+  toolReadiness: FitSplitScore;
   reasons: string[];
   strengths: string[];
   gaps: string[];
   skillsMatched: string[];
   skillsMissing: string[];
+  toolsMatched: string[];
+  toolsMissing: string[];
 }
 
 export interface FitReviewAssessment {
   score: number;
   grade: FitGrade;
+  domainFit: FitSplitScore;
+  toolReadiness: FitSplitScore;
   headline: string;
   summary: string;
   strengths: string[];
   gaps: string[];
   matchedSkills: string[];
   missingSkills: string[];
+  toolsMatched: string[];
+  toolsMissing: string[];
   confidence: "high" | "medium" | "low";
 }
 
@@ -751,6 +770,99 @@ const ACCOUNTING_CLUSTER = [
   "bookkeeping",
 ];
 
+/**
+ * Domain / functional skills (not named products).
+ * Everything else extracted from a JD is treated as a tool/product/process skill.
+ */
+const DOMAIN_SKILL_SET = new Set<string>([
+  ...ACCOUNTING_CLUSTER,
+  "finance",
+  "accounting",
+  "bookkeeping",
+  "budgeting",
+  "payroll",
+  "tax",
+  "audit",
+  "nonprofit",
+  "client-facing",
+  "client onboarding",
+  "customer service",
+  "communication",
+  "leadership",
+  "management",
+  "analysis",
+  "reporting",
+  "reconciliation",
+]);
+
+/** Known product / platform names (always tool readiness). */
+const KNOWN_TOOL_SKILLS = new Set<string>([
+  "planning center",
+  "bloomerang",
+  "salesforce",
+  "hubspot",
+  "workday",
+  "netsuite",
+  "sage",
+  "xero",
+  "bill.com",
+  "intacct",
+  "blackbaud",
+  "raisers edge",
+  "donorperfect",
+  "little green light",
+  "shelby",
+  "acs",
+  "church community builder",
+  "pushpay",
+  "tithely",
+  "quickbooks online",
+  "google workspace",
+  "microsoft 365",
+  "excel",
+  "power bi",
+  "tableau",
+  "jira",
+  "asana",
+  "monday.com",
+  "salesforce npsp",
+]);
+
+function isDomainSkill(skill: string): boolean {
+  const n = normalizeSkill(skill);
+  if (!n) return false;
+  if (DOMAIN_SKILL_SET.has(n)) return true;
+  if (KNOWN_TOOL_SKILLS.has(n)) return false;
+  // Soft domain phrases
+  if (
+    /^(finance|accounting|bookkeep|budget|payroll|tax|audit|nonprofit|ministry)/.test(
+      n
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isToolSkill(skill: string): boolean {
+  const n = normalizeSkill(skill);
+  if (!n) return false;
+  if (KNOWN_TOOL_SKILLS.has(n)) return true;
+  if (isDomainSkill(n)) return false;
+  // Implementation / project / product-ish terms from JDs
+  if (
+    /\b(implementation|migration|project management|donor management|crm|erp|saas|onboarding tool|data migration)\b/.test(
+      n
+    ) ||
+    n.includes(".") ||
+    n.endsWith(" software")
+  ) {
+    return true;
+  }
+  // Default: non-domain extracted skill → tool/product
+  return true;
+}
+
 /** Prefer these skills first in "Core skills present" UI ordering */
 const SKILL_DISPLAY_PRIORITY: string[] = [
   "quickbooks",
@@ -1448,19 +1560,120 @@ export function scoreCandidateJobFit(
     seniorityScore = 0.35;
   }
 
+  // --- Split: domain fit vs tool readiness ---
+  let domainSkillCredit = 0;
+  let domainSkillWeight = 0;
+  let toolSkillCredit = 0;
+  let toolSkillWeight = 0;
+  const toolsMatched: string[] = [];
+  const toolsMissing: string[] = [];
+
+  for (const js of effectiveJobSkills) {
+    const importance = skillImportance(js);
+    const credit = matchCreditBySkill.get(js) || 0;
+    if (isToolSkill(js)) {
+      toolSkillWeight += importance;
+      if (credit >= 0.5) {
+        toolSkillCredit += credit * importance;
+        toolsMatched.push(prettySkill(js));
+      } else if (importance <= 0.4) {
+        toolSkillCredit += 0.55 * importance;
+        toolsMissing.push(`${prettySkill(js)} (nice-to-have)`);
+      } else {
+        toolsMissing.push(prettySkill(js));
+      }
+    } else {
+      domainSkillWeight += importance;
+      if (credit >= 0.5) {
+        domainSkillCredit += credit * importance;
+      } else if (importance <= 0.4) {
+        domainSkillCredit += 0.55 * importance;
+      }
+    }
+  }
+
+  const domainSkillsRatio =
+    domainSkillWeight > 0
+      ? Math.min(1, domainSkillCredit / domainSkillWeight)
+      : skillsRatio;
+  const toolsApplicable = toolSkillWeight > 0;
+  const toolSkillsRatio = toolsApplicable
+    ? Math.min(1, toolSkillCredit / toolSkillWeight)
+    : 1;
+
+  // Domain fit: core function + title + domain language + location + seniority
+  let domainBlended = Math.min(
+    1,
+    domainSkillsRatio * 0.5 + domain.score * 0.35 + titlePart.score * 0.15
+  );
+  if (domain.score >= 0.4 && domainSkillsRatio >= 0.35) {
+    domainBlended = Math.max(domainBlended, 0.78);
+  }
+  if (domain.score >= 0.5 && domainSkillsRatio >= 0.45) {
+    domainBlended = Math.max(domainBlended, 0.86);
+  }
+  if (domain.score >= 0.55 && domainSkillsRatio >= 0.55) {
+    domainBlended = Math.max(domainBlended, 0.92);
+  }
+  if (jobIsFinanceHeavy && hasAccountingDomain && domainSkillsRatio >= 0.4) {
+    domainBlended = Math.max(domainBlended, 0.88);
+  }
+
+  const domainFitScore = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(
+        (domainBlended * 0.75 + locPart.score * 0.1 + seniorityScore * 0.15) *
+          100
+      )
+    )
+  );
+  const domainFit: FitSplitScore = {
+    score: domainFitScore,
+    grade: gradeFromScore(domainFitScore),
+    applicable: true,
+  };
+
+  const toolReadinessScore = toolsApplicable
+    ? Math.max(0, Math.min(100, Math.round(toolSkillsRatio * 100)))
+    : 100;
+  const toolReadiness: FitSplitScore = {
+    score: toolReadinessScore,
+    grade: gradeFromScore(toolReadinessScore),
+    applicable: toolsApplicable,
+  };
+
+  // Legacy blended path (still useful for reasons context)
   const weighted =
     blendedSkills * 0.6 +
     titlePart.score * 0.2 +
     locPart.score * 0.1 +
     seniorityScore * 0.1;
 
-  const score = Math.max(0, Math.min(100, Math.round(weighted * 100)));
+  // Overall: honest blend when tools apply; otherwise domain-only
+  const score = Math.max(
+    0,
+    Math.min(
+      100,
+      toolsApplicable
+        ? Math.round(domainFitScore * 0.55 + toolReadinessScore * 0.45)
+        : domainFitScore
+    )
+  );
   const grade = gradeFromScore(score);
 
   // --- Human-readable strengths / gaps (no raw ≈ dumps) ---
   const reasons: string[] = [];
   const strengths: string[] = [];
   const gaps: string[] = [];
+
+  reasons.push(
+    `Domain fit ${domainFitScore}/100 (${domainFit.grade})` +
+      (toolsApplicable
+        ? ` · Tool readiness ${toolReadinessScore}/100 (${toolReadiness.grade})`
+        : " · No tool stack required on JD")
+  );
 
   if (titlePart.score >= 0.45) {
     strengths.push(
@@ -1520,7 +1733,15 @@ export function scoreCandidateJobFit(
     .map((s) => s.replace(/\s*\(nice-to-have\)/i, ""))
     .slice(0, 4);
 
-  if (hardMissing.length > 0 && skillsRatio < 0.9) {
+  const hardToolsMissing = toolsMissing
+    .filter((s) => !/\(nice-to-have\)/i.test(s))
+    .slice(0, 5);
+
+  if (toolsApplicable && hardToolsMissing.length > 0) {
+    gaps.push(
+      `Tool stack not clearly shown: ${hardToolsMissing.join(", ")}`
+    );
+  } else if (hardMissing.length > 0 && skillsRatio < 0.9) {
     gaps.push(`Confirm experience with: ${hardMissing.join(", ")}`);
   } else if (softMissing.length > 0 && skillsRatio < 0.92) {
     gaps.push(`Optional tools not clearly shown: ${softMissing.join(", ")}`);
@@ -1547,18 +1768,28 @@ export function scoreCandidateJobFit(
   }
 
   reasons.push(...titlePart.reasons);
+  // Keep a breadcrumb of the legacy composite for debugging
+  reasons.push(`Legacy blend reference: ${Math.round(weighted * 100)}`);
 
   const uniq = (arr: string[]) => Array.from(new Set(arr.filter(Boolean)));
 
   return {
     score,
     grade,
-    reasons: uniq(reasons).slice(0, 10),
+    domainFit,
+    toolReadiness,
+    reasons: uniq(reasons)
+      .filter((r) => !r.startsWith("Legacy blend"))
+      .slice(0, 10),
     strengths: uniq(strengths).slice(0, 8),
     gaps: uniq(gaps).slice(0, 6),
     skillsMatched: uniq(skillsMatched),
     skillsMissing: uniq(
       skillsMissing.map((s) => s.replace(/\s*\(nice-to-have\)/i, ""))
+    ),
+    toolsMatched: uniq(toolsMatched),
+    toolsMissing: uniq(
+      toolsMissing.map((s) => s.replace(/\s*\(nice-to-have\)/i, ""))
     ),
   };
 }
@@ -1601,40 +1832,71 @@ function summarizeDomainHits(hits: string[]): string {
 export function buildReviewerAssessment(
   result: FitScoreResult
 ): FitReviewAssessment {
-  const headline =
-    result.score >= 85
-      ? "Strong fit — likely worth advancing"
-      : result.score >= 70
-        ? "Good fit — promising with a few checks"
-        : result.score >= 55
-          ? "Partial fit — useful but needs validation"
-          : result.score >= 40
-            ? "Weak fit — likely not a top priority"
-            : "Poor fit — not a strong match on paper";
+  const domain = result.domainFit ?? {
+    score: result.score,
+    grade: result.grade,
+    applicable: true,
+  };
+  const tools = result.toolReadiness ?? {
+    score: result.score,
+    grade: result.grade,
+    applicable: false,
+  };
+  const toolsApply = tools.applicable !== false && tools.score != null;
 
-  const summary =
-    result.score >= 85
-      ? "The profile shows strong alignment with the role and the resume reads as a credible match."
-      : result.score >= 70
-        ? "The candidate shows solid overlap with the role, with a few areas that deserve verification."
-        : result.score >= 55
-          ? "There is some alignment, but the case is not yet strong enough to move forward without checking gaps."
-          : result.score >= 40
-            ? "The profile appears only loosely aligned to the role and should be handled cautiously."
-            : "The fit is weak based on the current profile and resume signals.";
+  let headline: string;
+  let summary: string;
+
+  if (toolsApply && domain.score >= 85 && tools.score < 70) {
+    headline = "Strong domain fit — tool stack still unproven";
+    summary =
+      "The profile looks strong for the functional side of the role, but key products or implementation tools from the JD are not clearly evidenced. Advance for domain; screen hard on tools.";
+  } else if (toolsApply && domain.score >= 70 && tools.score < 55) {
+    headline = "Solid domain, weak tool readiness";
+    summary =
+      "Core experience aligns with the role, but several named tools or implementation skills are missing on paper. Confirm stack fit before treating as a strong advance.";
+  } else if (result.score >= 85) {
+    headline = "Strong fit — likely worth advancing";
+    summary =
+      "Both domain alignment and tool readiness look solid relative to this role.";
+  } else if (result.score >= 70) {
+    headline = "Good fit — promising with a few checks";
+    summary =
+      "The candidate shows solid overlap with the role, with a few areas that deserve verification.";
+  } else if (result.score >= 55) {
+    headline = "Partial fit — useful but needs validation";
+    summary =
+      "There is some alignment, but the case is not yet strong enough to move forward without checking gaps.";
+  } else if (result.score >= 40) {
+    headline = "Weak fit — likely not a top priority";
+    summary =
+      "The profile appears only loosely aligned to the role and should be handled cautiously.";
+  } else {
+    headline = "Poor fit — not a strong match on paper";
+    summary =
+      "The fit is weak based on the current profile and resume signals.";
+  }
 
   const confidence: FitReviewAssessment["confidence"] =
-    result.score >= 80 ? "high" : result.score >= 60 ? "medium" : "low";
+    result.score >= 80 && (!toolsApply || tools.score >= 70)
+      ? "high"
+      : result.score >= 60
+        ? "medium"
+        : "low";
 
   return {
     score: result.score,
     grade: result.grade,
+    domainFit: domain,
+    toolReadiness: tools,
     headline,
     summary,
     strengths: result.strengths.slice(0, 5),
     gaps: result.gaps.slice(0, 4),
     matchedSkills: result.skillsMatched.slice(0, 8),
     missingSkills: result.skillsMissing.slice(0, 6),
+    toolsMatched: (result.toolsMatched || []).slice(0, 8),
+    toolsMissing: (result.toolsMissing || []).slice(0, 6),
     confidence,
   };
 }
@@ -1645,7 +1907,11 @@ export function buildReviewerAssessment(
 export function formatFitSummary(result: FitScoreResult): string {
   const assessment = buildReviewerAssessment(result);
   const lines: string[] = [
-    `Fit ${assessment.score}/100 · Grade ${assessment.grade}`,
+    `Domain fit ${assessment.domainFit.score}/100 · Grade ${assessment.domainFit.grade}`,
+    assessment.toolReadiness.applicable === false
+      ? `Tool readiness n/a · No tool stack called out on JD`
+      : `Tool readiness ${assessment.toolReadiness.score}/100 · Grade ${assessment.toolReadiness.grade}`,
+    `Overall ${assessment.score}/100 · Grade ${assessment.grade}`,
     assessment.headline,
     "",
     assessment.summary,
@@ -1672,7 +1938,15 @@ export function formatFitSummary(result: FitScoreResult): string {
     lines.push(`Skills evidenced: ${assessment.matchedSkills.join(", ")}`);
   }
 
-  if (assessment.missingSkills.length) {
+  if (assessment.toolsMatched.length) {
+    lines.push("");
+    lines.push(`Tools evidenced: ${assessment.toolsMatched.join(", ")}`);
+  }
+
+  if (assessment.toolsMissing.length) {
+    lines.push("");
+    lines.push(`Tool gaps: ${assessment.toolsMissing.join(", ")}`);
+  } else if (assessment.missingSkills.length) {
     lines.push("");
     lines.push(`Potential gaps: ${assessment.missingSkills.join(", ")}`);
   }

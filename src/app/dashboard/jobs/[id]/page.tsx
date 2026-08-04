@@ -54,6 +54,12 @@ import { toast } from "sonner";
 type FitScoreClient = {
   score: number;
   grade: FitGrade | string;
+  domainFit?: { score: number; grade?: FitGrade | string };
+  toolReadiness?: {
+    score: number;
+    grade?: FitGrade | string;
+    applicable?: boolean;
+  };
   reasons?: string[];
   strengths?: string[];
   gaps?: string[];
@@ -148,6 +154,23 @@ export default function JobDetailPage() {
         seeded[lc.candidateId] = {
           score: lc.fitScore,
           grade: lc.fitGrade || "C",
+          domainFit:
+            typeof lc.fitDomainScore === "number"
+              ? {
+                  score: lc.fitDomainScore,
+                  grade: lc.fitDomainGrade || "C",
+                }
+              : undefined,
+          toolReadiness:
+            typeof lc.fitToolScore === "number" ||
+            lc.fitToolApplicable === false
+              ? {
+                  score:
+                    typeof lc.fitToolScore === "number" ? lc.fitToolScore : 100,
+                  grade: lc.fitToolGrade || "C",
+                  applicable: lc.fitToolApplicable !== false,
+                }
+              : undefined,
           reasons: Array.isArray(lc.fitReasons) ? lc.fitReasons : [],
           strengths: Array.isArray(lc.fitStrengths) ? lc.fitStrengths : [],
           gaps: Array.isArray(lc.fitGaps) ? lc.fitGaps : [],
@@ -189,6 +212,8 @@ export default function JobDetailPage() {
             next[row.candidateId] = {
               score: row.fit.score,
               grade: row.fit.grade,
+              domainFit: row.fit.domainFit,
+              toolReadiness: row.fit.toolReadiness,
               reasons: row.fit.reasons,
               strengths: row.fit.strengths,
               gaps: row.fit.gaps,
@@ -234,6 +259,8 @@ export default function JobDetailPage() {
         [cid]: {
           score: fit.score,
           grade: fit.grade,
+          domainFit: fit.domainFit,
+          toolReadiness: fit.toolReadiness,
           reasons: fit.reasons,
           strengths: fit.strengths,
           gaps: fit.gaps,
@@ -241,7 +268,16 @@ export default function JobDetailPage() {
         },
       }));
       setExpandedFitId(cid);
-      toast.success(`AI fit: ${fit.score}/100 (${fit.grade})`);
+      const bits = [
+        fit.domainFit
+          ? `Domain ${fit.domainFit.score}`
+          : null,
+        fit.toolReadiness?.applicable !== false && fit.toolReadiness
+          ? `Tools ${fit.toolReadiness.score}`
+          : null,
+        `Overall ${fit.score} (${fit.grade})`,
+      ].filter(Boolean);
+      toast.success(`AI fit: ${bits.join(" · ")}`);
     } catch (err: any) {
       toast.error(err?.message || "AI fit failed");
     } finally {
@@ -775,6 +811,8 @@ export default function JobDetailPage() {
                             <FitScoreBadge
                               score={fit?.score}
                               grade={fit?.grade}
+                              domainFit={fit?.domainFit}
+                              toolReadiness={fit?.toolReadiness}
                               reasons={fit?.reasons}
                               strengths={fit?.strengths}
                               gaps={fit?.gaps}

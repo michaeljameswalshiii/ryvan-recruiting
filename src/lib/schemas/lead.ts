@@ -139,6 +139,11 @@ export const linkedJobSchema = z.object({
   // AI job-fit assessment (dual-written with job.candidates[])
   fitScore: z.number().min(0).max(100).optional(),
   fitGrade: z.enum(["A", "B", "C", "D", "F"]).optional(),
+  fitDomainScore: z.number().min(0).max(100).optional(),
+  fitDomainGrade: z.enum(["A", "B", "C", "D", "F"]).optional(),
+  fitToolScore: z.number().min(0).max(100).optional(),
+  fitToolGrade: z.enum(["A", "B", "C", "D", "F"]).optional(),
+  fitToolApplicable: z.boolean().optional(),
   fitReasons: z.array(z.string()).optional(),
   fitStrengths: z.array(z.string()).optional(),
   fitGaps: z.array(z.string()).optional(),

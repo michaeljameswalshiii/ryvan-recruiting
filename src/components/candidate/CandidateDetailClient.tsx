@@ -317,6 +317,11 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       {
         fitScore: number;
         fitGrade?: string;
+        fitDomainScore?: number;
+        fitDomainGrade?: string;
+        fitToolScore?: number;
+        fitToolGrade?: string;
+        fitToolApplicable?: boolean;
         fitReasons?: string[];
         fitStrengths?: string[];
         fitGaps?: string[];
@@ -672,9 +677,21 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       if (!fit) {
         throw new Error('No fit result returned');
       }
+      const domainScore = fit.domainFit?.score ?? fit.domainScore;
+      const domainGrade = fit.domainFit?.grade ?? fit.domainGrade;
+      const toolScore = fit.toolReadiness?.score ?? fit.toolScore;
+      const toolGrade = fit.toolReadiness?.grade ?? fit.toolGrade;
+      const toolApplicable =
+        fit.toolReadiness?.applicable ?? fit.toolApplicable ?? true;
       const overlay = {
         fitScore: fit.score,
         fitGrade: fit.grade,
+        fitDomainScore:
+          typeof domainScore === "number" ? domainScore : undefined,
+        fitDomainGrade: domainGrade,
+        fitToolScore: typeof toolScore === "number" ? toolScore : undefined,
+        fitToolGrade: toolGrade,
+        fitToolApplicable: toolApplicable,
         fitReasons: fit.reasons || [],
         fitStrengths: fit.strengths || [],
         fitGaps: fit.gaps || [],
@@ -689,7 +706,16 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       );
       setExpandedFitJobId(jobId);
       void fetchNotes();
-      toast.success(`AI fit: ${fit.score}/100 (${fit.grade})`);
+      const toastBits = [
+        typeof domainScore === "number"
+          ? `Domain ${Math.round(domainScore)}`
+          : null,
+        toolApplicable !== false && typeof toolScore === "number"
+          ? `Tools ${Math.round(toolScore)}`
+          : null,
+        `Overall ${fit.score} (${fit.grade})`,
+      ].filter(Boolean);
+      toast.success(`AI fit: ${toastBits.join(" · ")}`);
     } catch (err: any) {
       toast.error(err?.message || 'AI fit failed');
     } finally {
@@ -2049,6 +2075,22 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   overlay?.fitScore ??
                   (typeof job.fitScore === 'number' ? job.fitScore : null);
                 const fitGrade = overlay?.fitGrade ?? job.fitGrade;
+                const fitDomainScore =
+                  overlay?.fitDomainScore ??
+                  (typeof job.fitDomainScore === 'number'
+                    ? job.fitDomainScore
+                    : null);
+                const fitDomainGrade =
+                  overlay?.fitDomainGrade ?? job.fitDomainGrade;
+                const fitToolScore =
+                  overlay?.fitToolScore ??
+                  (typeof job.fitToolScore === 'number'
+                    ? job.fitToolScore
+                    : null);
+                const fitToolGrade =
+                  overlay?.fitToolGrade ?? job.fitToolGrade;
+                const fitToolApplicable =
+                  overlay?.fitToolApplicable ?? job.fitToolApplicable ?? true;
                 const fitReasons = overlay?.fitReasons ?? job.fitReasons ?? [];
                 const fitStrengths =
                   overlay?.fitStrengths ?? job.fitStrengths ?? [];
@@ -2076,6 +2118,23 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                           <FitScoreBadge
                             score={fitScore}
                             grade={fitGrade}
+                            domainFit={
+                              fitDomainScore != null
+                                ? {
+                                    score: fitDomainScore,
+                                    grade: fitDomainGrade,
+                                  }
+                                : null
+                            }
+                            toolReadiness={
+                              fitDomainScore != null
+                                ? {
+                                    score: fitToolScore,
+                                    grade: fitToolGrade,
+                                    applicable: fitToolApplicable !== false,
+                                  }
+                                : null
+                            }
                             reasons={fitReasons}
                             strengths={fitStrengths}
                             gaps={fitGaps}
@@ -2159,9 +2218,35 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                           </div>
                         ) : (
                           <div className="space-y-2 text-[13px] leading-relaxed">
-                            <div className="font-semibold text-gray-900">
-                              Fit {Math.round(Number(fitScore))}/100
-                              {fitGrade ? ` · Grade ${fitGrade}` : ''}
+                            <div className="font-semibold text-gray-900 space-y-0.5">
+                              {fitDomainScore != null && (
+                                <div>
+                                  Domain fit {Math.round(Number(fitDomainScore))}
+                                  /100
+                                  {fitDomainGrade
+                                    ? ` · Grade ${fitDomainGrade}`
+                                    : ''}
+                                </div>
+                              )}
+                              {fitDomainScore != null && (
+                                <div>
+                                  {fitToolApplicable === false
+                                    ? 'Tool readiness n/a'
+                                    : `Tool readiness ${
+                                        fitToolScore != null
+                                          ? Math.round(Number(fitToolScore))
+                                          : '—'
+                                      }/100${
+                                        fitToolGrade
+                                          ? ` · Grade ${fitToolGrade}`
+                                          : ''
+                                      }`}
+                                </div>
+                              )}
+                              <div>
+                                Overall {Math.round(Number(fitScore))}/100
+                                {fitGrade ? ` · Grade ${fitGrade}` : ''}
+                              </div>
                             </div>
                             {fitStrengths.length > 0 && (
                               <div>

@@ -222,6 +222,11 @@ function fitLinkFields(result: FitScoreResult, scoredAt: string) {
   return {
     fitScore: result.score,
     fitGrade: result.grade,
+    fitDomainScore: result.domainFit?.score,
+    fitDomainGrade: result.domainFit?.grade,
+    fitToolScore: result.toolReadiness?.score,
+    fitToolGrade: result.toolReadiness?.grade,
+    fitToolApplicable: result.toolReadiness?.applicable !== false,
     fitReasons: result.reasons.slice(0, 6),
     fitStrengths: result.strengths.slice(0, 6),
     fitGaps: result.gaps.slice(0, 6),
@@ -320,6 +325,8 @@ async function tryStoreFitOnLinkedCandidate(
         {
           score: result.score,
           grade: result.grade,
+          domainFit: result.domainFit,
+          toolReadiness: result.toolReadiness,
           summary: fields.fitSummary,
           strengths: result.strengths,
           gaps: result.gaps,

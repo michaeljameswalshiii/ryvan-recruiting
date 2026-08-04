@@ -303,6 +303,12 @@ export default function JobPipelinePage() {
                   const fitScore =
                     typeof lc.fitScore === 'number' ? lc.fitScore : null;
                   const fitGrade = lc.fitGrade;
+                  const fitDomainScore =
+                    typeof lc.fitDomainScore === 'number'
+                      ? lc.fitDomainScore
+                      : null;
+                  const fitToolScore =
+                    typeof lc.fitToolScore === 'number' ? lc.fitToolScore : null;
                   const isUnlinking = unlinkingId === cid;
 
                   return (
@@ -357,6 +363,23 @@ export default function JobPipelinePage() {
                         <FitScoreBadge
                           score={fitScore}
                           grade={fitGrade}
+                          domainFit={
+                            fitDomainScore != null
+                              ? {
+                                  score: fitDomainScore,
+                                  grade: lc.fitDomainGrade,
+                                }
+                              : null
+                          }
+                          toolReadiness={
+                            fitDomainScore != null
+                              ? {
+                                  score: fitToolScore ?? 100,
+                                  grade: lc.fitToolGrade,
+                                  applicable: lc.fitToolApplicable !== false,
+                                }
+                              : null
+                          }
                           size="sm"
                         />
                       </td>
