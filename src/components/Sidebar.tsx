@@ -183,13 +183,13 @@ export default function Sidebar({ role }: SidebarProps) {
       <div className="px-3 pt-3 pb-3 border-b border-gray-200 dark:border-border">
         <Link
           href="/dashboard"
-          className="block rounded-lg hover:bg-gray-50/80 dark:hover:bg-white/10 transition-colors -mx-0.5 px-0.5"
+          className="block rounded-lg bg-white p-2 shadow-sm border border-gray-100 hover:bg-gray-50 transition-colors"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/branding/trio-sourcing-logo.png"
-            alt="Trio Sourcing — Powered by Ryvan Recruiting"
-            className="w-full h-auto max-h-[5.5rem] object-contain object-left object-top dark:brightness-125 dark:contrast-110"
+            src="/branding/trio-sourcing-logo.png?v=20260804"
+            alt="TRIO — Connecting GREAT Companies with GREAT Candidates through GREAT Recruiters"
+            className="w-full h-auto max-h-[6.5rem] object-contain object-left"
           />
         </Link>
       </div>

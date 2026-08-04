@@ -110,12 +110,15 @@ export function DashboardNav({ session }: DashboardNavProps) {
   return (
     <nav className="w-64 h-screen bg-sidebar border-r border-border fixed left-0 top-0 flex flex-col">
       <div className="px-3 pt-3 pb-2 border-b border-border flex items-start justify-between gap-2">
-        <Link href="/dashboard" className="min-w-0 flex-1">
+        <Link
+          href="/dashboard"
+          className="min-w-0 flex-1 rounded-lg bg-white p-2 shadow-sm border border-gray-100"
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/branding/trio-sourcing-logo.png"
-            alt="Trio Sourcing — Powered by Ryvan Recruiting"
-            className="w-full h-auto max-h-[5.5rem] object-contain object-left object-top"
+            src="/branding/trio-sourcing-logo.png?v=20260804"
+            alt="TRIO — Connecting GREAT Companies with GREAT Candidates through GREAT Recruiters"
+            className="w-full h-auto max-h-[6.5rem] object-contain object-left"
           />
         </Link>
         {/* Theme Toggle */}
