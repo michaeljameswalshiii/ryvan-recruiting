@@ -31,7 +31,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
 /** Short descriptions for invite UI / settings */
 export const ROLE_DESCRIPTIONS: Record<AppRole, string> = {
   site_admin: "Platform operator with multi-tenant tools",
-  company_admin: "Manages team, settings, and elevated tools for this company",
+  company_admin: "Manages team and company settings for this organization",
   user: "Standard recruiter access to core ATS features",
 };
 
@@ -49,14 +49,9 @@ export type Permission =
 
 const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
   user: ["core_ats", "settings"],
-  company_admin: [
-    "core_ats",
-    "settings",
-    "ai_apollo",
-    "issues",
-    "usage",
-    "team_admin",
-  ],
+  // Company admin: core ATS + team/settings only — no lower-menu Admin screens
+  // (AI Apollo, AI Reliability, Issues, Usage stay site_admin-only).
+  company_admin: ["core_ats", "settings", "team_admin"],
   site_admin: [
     "core_ats",
     "settings",
@@ -165,7 +160,10 @@ export function canAccessPath(
   if (path.startsWith("/dashboard/issues")) {
     return hasPermission(role, "issues");
   }
-  if (path.startsWith("/dashboard/usage")) {
+  if (
+    path.startsWith("/dashboard/usage") ||
+    path.startsWith("/dashboard/ai-reliability")
+  ) {
     return hasPermission(role, "usage");
   }
   if (path.startsWith("/dashboard/settings")) {
