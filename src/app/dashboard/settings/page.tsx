@@ -39,6 +39,7 @@ import { McpKeysSettings } from '@/components/settings/McpKeysSettings';
 import { ApolloSettings } from '@/components/settings/ApolloSettings';
 import { TextingSettings } from '@/components/settings/TextingSettings';
 import { SecuritySettings } from '@/components/settings/SecuritySettings';
+import { ChangePasswordCard } from '@/components/settings/ChangePasswordCard';
 
 interface EmailConnection {
   provider: 'gmail' | 'outlook';
@@ -1141,20 +1142,8 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
       
-      {/* Security Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Security</CardTitle>
-          <CardDescription>
-            Manage your password and security settings
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Security settings coming soon.
-          </p>
-        </CardContent>
-      </Card>
+      {/* Change password (any signed-in user) */}
+      <ChangePasswordCard />
       </>
       )}
     </div>

@@ -29,13 +29,24 @@ export const registerSchema = z.object({
   path: ['confirmPassword'],
 });
 
-// Change password input
-export const changePasswordSchema = z.object({
-  currentPassword: z.string().min(6, 'Current password is required'),
-  newPassword: z.string()
-    .min(6, 'New password must be at least 6 characters')
-    .max(100),
-});
+// Change password input (logged-in user)
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Current password is required'),
+    newPassword: z
+      .string()
+      .min(8, 'New password must be at least 8 characters')
+      .max(100, 'Password too long'),
+    confirmPassword: z.string().min(1, 'Confirm your new password'),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: "New passwords don't match",
+    path: ['confirmPassword'],
+  })
+  .refine((data) => data.currentPassword !== data.newPassword, {
+    message: 'New password must be different from current password',
+    path: ['newPassword'],
+  });
 
 // Type exports
 export type LoginInput = z.infer<typeof loginSchema>;
