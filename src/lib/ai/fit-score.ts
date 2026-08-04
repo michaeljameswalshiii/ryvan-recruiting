@@ -15,14 +15,43 @@ export interface FitSplitScore {
   applicable?: boolean;
 }
 
-export interface FitScoreResult {
-  /** Overall blend (domain + tools when tools apply). */
+/** Canonical multi-factor fit dimensions (deterministic heuristics). */
+export type FitDimensionId =
+  | "skills_match"
+  | "years_experience"
+  | "industry_domain"
+  | "seniority_scope"
+  | "achievements"
+  | "responsibilities"
+  | "education_credentials"
+  | "career_trajectory"
+  | "location_arrangement"
+  | "keyword_context";
+
+export interface FitDimensionScore {
+  id: FitDimensionId;
+  label: string;
   score: number; // 0-100
   grade: FitGrade;
-  /** Domain / role fit: title, accounting/finance core, location, seniority. */
+  /** Short recruiter-facing note */
+  detail: string;
+  /** When false, excluded from overall average */
+  applicable: boolean;
+}
+
+export interface FitScoreResult {
+  /** Overall = average of applicable dimensions. */
+  score: number; // 0-100
+  grade: FitGrade;
+  /** Domain / role fit rollup (for compact badges). */
   domainFit: FitSplitScore;
-  /** Tool / product readiness: named systems, implementation stack. */
+  /** Tool / product readiness (for compact badges). */
   toolReadiness: FitSplitScore;
+  /** Full multi-factor breakdown */
+  dimensions: FitDimensionScore[];
+  /** Skills match: exact vs adjacent (transferable) counts */
+  skillsExactCount?: number;
+  skillsAdjacentCount?: number;
   reasons: string[];
   strengths: string[];
   gaps: string[];
@@ -37,6 +66,7 @@ export interface FitReviewAssessment {
   grade: FitGrade;
   domainFit: FitSplitScore;
   toolReadiness: FitSplitScore;
+  dimensions: FitDimensionScore[];
   headline: string;
   summary: string;
   strengths: string[];
@@ -1205,6 +1235,211 @@ function estimateYearsFromExperience(
   return Math.min(30, Math.round(years * 10) / 10);
 }
 
+/** Parse "5+ years", "minimum of 3 years", "7-10 years" from JD text. */
+function parseRequiredYears(jobText: string): number | null {
+  const t = jobText.toLowerCase();
+  const range = t.match(
+    /(\d{1,2})\s*[-–to]+\s*(\d{1,2})\s*\+?\s*years?/
+  );
+  if (range) {
+    const a = parseInt(range[1], 10);
+    const b = parseInt(range[2], 10);
+    if (Number.isFinite(a) && Number.isFinite(b)) return Math.round((a + b) / 2);
+  }
+  const m = t.match(
+    /(?:minimum|at least|min\.?|require[sd]?|seeking)?[^\d]{0,20}(\d{1,2})\s*\+?\s*years?(?:\s+of)?(?:\s+(?:relevant|related|professional|experience))?/i
+  );
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n >= 1 && n <= 40) return n;
+  }
+  return null;
+}
+
+/** Quantified achievement density (impact signals). */
+function scoreAchievements(candText: string): {
+  score: number;
+  detail: string;
+} {
+  const t = candText || "";
+  if (t.trim().length < 40) {
+    return { score: 40, detail: "Too little resume text to judge achievements" };
+  }
+  const money = (t.match(/\$[\d,.]+|\d+(\.\d+)?\s*%/g) || []).length;
+  const impact =
+    t.match(
+      /\b(increased|decreased|reduced|grew|saved|delivered|generated|improved|cut|raised|closed|hired|built|launched|scaled|won)\b/gi
+    ) || [];
+  const numbers = (t.match(/\b\d{2,}\b/g) || []).length;
+  const hits = money + impact.length * 0.6 + Math.min(4, numbers * 0.15);
+  const score = Math.max(25, Math.min(100, Math.round(35 + hits * 8)));
+  const detail =
+    money + impact.length > 0
+      ? `Quantified / impact language found (${money} metric-like, ${impact.length} impact verbs)`
+      : "Mostly responsibility language — few quantified results visible";
+  return { score, detail };
+}
+
+/** Career trajectory: tenure stability + hop risk. */
+function scoreCareerTrajectory(
+  experience?: FitCandidateInput["experience"]
+): { score: number; detail: string } {
+  if (!Array.isArray(experience) || experience.length === 0) {
+    return {
+      score: 55,
+      detail: "No structured experience history to judge trajectory",
+    };
+  }
+  const roles = experience.length;
+  const years = estimateYearsFromExperience(experience);
+  const avgTenure = roles > 0 ? years / roles : years;
+  let score = 70;
+  let flags: string[] = [];
+  if (avgTenure >= 2.5) {
+    score += 15;
+    flags.push(`~${avgTenure.toFixed(1)}y avg tenure`);
+  } else if (avgTenure >= 1.5) {
+    score += 5;
+    flags.push(`~${avgTenure.toFixed(1)}y avg tenure`);
+  } else if (roles >= 4 && years < 6) {
+    score -= 20;
+    flags.push("Possible job-hopping pattern");
+  } else {
+    score -= 8;
+    flags.push("Shorter tenures");
+  }
+  // Progression: later titles senior-er than early
+  if (roles >= 2) {
+    const first = detectSeniority(String(experience[experience.length - 1]?.title || ""));
+    const last = detectSeniority(String(experience[0]?.title || ""));
+    if (last.level > first.level) {
+      score += 10;
+      flags.push("Upward progression");
+    } else if (last.level < first.level) {
+      score -= 5;
+      flags.push("Title level not clearly progressing");
+    }
+  }
+  score = Math.max(20, Math.min(100, Math.round(score)));
+  return { score, detail: flags.join(" · ") || `${roles} roles` };
+}
+
+/** Education / certs required vs preferred on JD. */
+function scoreEducationCredentials(
+  jobText: string,
+  candText: string
+): { score: number; detail: string; applicable: boolean } {
+  const j = jobText.toLowerCase();
+  const c = candText.toLowerCase();
+  const required: string[] = [];
+  const preferred: string[] = [];
+
+  const degPatterns: Array<{ re: RegExp; label: string }> = [
+    { re: /\b(bachelor'?s?|b\.?s\.?|ba\b|undergraduate degree)\b/i, label: "Bachelor's" },
+    { re: /\b(master'?s?|m\.?s\.?|mba|graduate degree)\b/i, label: "Master's/MBA" },
+    { re: /\b(cpa|certified public accountant)\b/i, label: "CPA" },
+    { re: /\b(pmp|project management professional)\b/i, label: "PMP" },
+    { re: /\b(shrm|ph[r]|sphr)\b/i, label: "HR cert" },
+    { re: /\b(pe\b|professional engineer)\b/i, label: "PE" },
+    { re: /\b(cissp|security\+|compTIA)\b/i, label: "Security cert" },
+  ];
+
+  for (const p of degPatterns) {
+    if (!p.re.test(j)) continue;
+    const idx = j.search(p.re);
+    const window = j.slice(Math.max(0, idx - 60), idx + 80);
+    if (/preferred|nice to have|a plus|bonus|ideally/.test(window)) {
+      preferred.push(p.label);
+    } else {
+      required.push(p.label);
+    }
+  }
+
+  if (!required.length && !preferred.length) {
+    return {
+      score: 70,
+      detail: "No specific education/credentials called out on JD",
+      applicable: false,
+    };
+  }
+
+  const has = (label: string) => {
+    if (label === "Bachelor's")
+      return /\b(bachelor|b\.?s\.?|ba\b|undergraduate|degree)\b/i.test(c);
+    if (label === "Master's/MBA")
+      return /\b(master|m\.?s\.?|mba|graduate degree)\b/i.test(c);
+    if (label === "CPA") return /\bcpa\b/i.test(c);
+    if (label === "PMP") return /\bpmp\b/i.test(c);
+    return c.includes(label.toLowerCase().split(" ")[0]);
+  };
+
+  let score = 50;
+  const notes: string[] = [];
+  for (const r of required) {
+    if (has(r)) {
+      score += 20;
+      notes.push(`Has required ${r}`);
+    } else {
+      score -= 25;
+      notes.push(`Missing required ${r}`);
+    }
+  }
+  for (const p of preferred) {
+    if (has(p)) {
+      score += 10;
+      notes.push(`Has preferred ${p}`);
+    } else {
+      notes.push(`Preferred ${p} not shown`);
+    }
+  }
+  score = Math.max(15, Math.min(100, score));
+  return {
+    score,
+    detail: notes.slice(0, 4).join(" · ") || "Credentials checked",
+    applicable: true,
+  };
+}
+
+/** Keyword / context alignment — rewards multi-word contextual hits over isolated buzzwords. */
+function scoreKeywordContext(
+  candText: string,
+  jobText: string
+): { score: number; detail: string } {
+  const domain = domainKeywordOverlap(candText, jobText);
+  // Penalize thin resumes that only match short tokens
+  const shortOnly =
+    domain.hits.length > 0 &&
+    domain.hits.every((h) => h.split(/\s+/).length === 1 && h.length < 8);
+  let score = Math.round(domain.score * 100);
+  if (shortOnly) score = Math.round(score * 0.65);
+  if (domain.hits.length >= 5) score = Math.min(100, score + 8);
+  const detail =
+    domain.hits.length > 0
+      ? `Context terms: ${domain.hits.slice(0, 6).join(", ")}${
+          shortOnly ? " (mostly short tokens)" : ""
+        }`
+      : "Little terminology overlap beyond generic language";
+  return { score: Math.max(10, Math.min(100, score)), detail };
+}
+
+function dim(
+  id: FitDimensionId,
+  label: string,
+  score: number,
+  detail: string,
+  applicable = true
+): FitDimensionScore {
+  const s = Math.max(0, Math.min(100, Math.round(score)));
+  return {
+    id,
+    label,
+    score: s,
+    grade: gradeFromScore(s),
+    detail,
+    applicable,
+  };
+}
+
 /** Expand role titles so "Accountant" can match "Finance Implementation Specialist". */
 const TITLE_SYNONYMS: Record<string, string[]> = {
   finance: [
@@ -1644,26 +1879,186 @@ export function scoreCandidateJobFit(
     applicable: toolsApplicable,
   };
 
-  // Legacy blended path (still useful for reasons context)
-  const weighted =
-    blendedSkills * 0.6 +
-    titlePart.score * 0.2 +
-    locPart.score * 0.1 +
-    seniorityScore * 0.1;
+  // --- Exact vs adjacent skill matches ---
+  let skillsExactCount = 0;
+  let skillsAdjacentCount = 0;
+  for (const js of effectiveJobSkills) {
+    const credit = matchCreditBySkill.get(js) || 0;
+    if (credit >= 0.99) skillsExactCount += 1;
+    else if (credit >= 0.5) skillsAdjacentCount += 1;
+  }
+  const skillsExactRatio =
+    effectiveJobSkills.length > 0
+      ? skillsExactCount / effectiveJobSkills.length
+      : 0.5;
+  const skillsAdjRatio =
+    effectiveJobSkills.length > 0
+      ? skillsAdjacentCount / effectiveJobSkills.length
+      : 0;
+  // Exact matches weigh more than adjacent/transferable
+  const skillsMatchScore = Math.round(
+    Math.min(
+      100,
+      (skillsExactRatio * 0.75 + skillsAdjRatio * 0.45 + skillsRatio * 0.25) *
+        100
+    )
+  );
 
-  // Overall: simple average of Domain + Tools when a tool stack exists;
-  // otherwise overall = domain only (tools n/a).
-  // e.g. Domain 94 + Tools 60 → Overall 77
+  // Years of relevant experience
+  const requiredYears = parseRequiredYears(jobText);
+  let yearsScore = 70;
+  let yearsDetail = years > 0 ? `~${years} years estimated on profile` : "Years not clear on profile";
+  if (requiredYears != null && years > 0) {
+    const ratio = years / requiredYears;
+    if (ratio >= 0.85 && ratio <= 1.6) {
+      yearsScore = 90;
+      yearsDetail = `~${years}y vs ~${requiredYears}y required — aligned`;
+    } else if (ratio < 0.85) {
+      yearsScore = Math.max(25, Math.round(ratio * 85));
+      yearsDetail = `~${years}y vs ~${requiredYears}y required — may be under-qualified`;
+    } else {
+      // Over-qualified: still strong but flag
+      yearsScore = 82;
+      yearsDetail = `~${years}y vs ~${requiredYears}y required — may be over-qualified`;
+    }
+  } else if (years >= 8) {
+    yearsScore = 88;
+  } else if (years >= 4) {
+    yearsScore = 78;
+  } else if (years >= 2) {
+    yearsScore = 65;
+  } else if (years > 0) {
+    yearsScore = 50;
+  }
+
+  // Seniority & scope (team/budget/P&L signals)
+  let scopeBonus = 0;
+  const scopeHits: string[] = [];
+  if (/\b(team of \d+|managed \d+|direct reports|span of control)\b/i.test(candText)) {
+    scopeBonus += 0.08;
+    scopeHits.push("team size");
+  }
+  if (/\b(budget|p&l|p \/ l|profit and loss|\$\d)/i.test(candText)) {
+    scopeBonus += 0.08;
+    scopeHits.push("budget/P&L");
+  }
+  const seniorityDimScore = Math.round(
+    Math.min(1, seniorityScore + scopeBonus) * 100
+  );
+  const seniorityDetail =
+    `Level: profile ${candSen.label} vs role ${jobSen.label}` +
+    (scopeHits.length ? ` · Scope: ${scopeHits.join(", ")}` : "");
+
+  // Responsibilities overlap (title + skills coverage + domain)
+  const respScore = Math.round(
+    Math.min(
+      1,
+      titlePart.score * 0.35 + skillsRatio * 0.4 + domain.score * 0.25
+    ) * 100
+  );
+
+  const achievements = scoreAchievements(candText);
+  const trajectory = scoreCareerTrajectory(candidate.experience);
+  const education = scoreEducationCredentials(jobText, candText);
+  const keywordCtx = scoreKeywordContext(candText, jobText);
+
+  const dimensions: FitDimensionScore[] = [
+    dim(
+      "skills_match",
+      "Skills match",
+      toolsApplicable
+        ? Math.round(skillsMatchScore * 0.55 + toolReadinessScore * 0.45)
+        : skillsMatchScore,
+      `${skillsExactCount} exact · ${skillsAdjacentCount} adjacent/transferable` +
+        (toolsApplicable
+          ? ` · Tools ${toolReadinessScore}/100`
+          : " · No tool stack on JD")
+    ),
+    dim(
+      "years_experience",
+      "Years of relevant experience",
+      yearsScore,
+      yearsDetail
+    ),
+    dim(
+      "industry_domain",
+      "Industry / domain fit",
+      Math.round(domain.score * 100),
+      summarizeDomainHits(domain.hits) ||
+        (domain.hits.length
+          ? `Domain terms: ${domain.hits.slice(0, 5).join(", ")}`
+          : "Limited same-sector language")
+    ),
+    dim(
+      "seniority_scope",
+      "Seniority & scope",
+      seniorityDimScore,
+      seniorityDetail
+    ),
+    dim(
+      "achievements",
+      "Measurable achievements",
+      achievements.score,
+      achievements.detail
+    ),
+    dim(
+      "responsibilities",
+      "Role-specific responsibilities",
+      respScore,
+      `${Math.round(skillsRatio * 100)}% skill coverage · title alignment ${Math.round(titlePart.score * 100)}`
+    ),
+    dim(
+      "education_credentials",
+      "Education & credentials",
+      education.score,
+      education.detail,
+      education.applicable
+    ),
+    dim(
+      "career_trajectory",
+      "Career trajectory & stability",
+      trajectory.score,
+      trajectory.detail
+    ),
+    dim(
+      "location_arrangement",
+      "Location / work arrangement",
+      Math.round(locPart.score * 100),
+      locPart.reason || "Location scored"
+    ),
+    dim(
+      "keyword_context",
+      "Keyword & context alignment",
+      keywordCtx.score,
+      keywordCtx.detail
+    ),
+  ];
+
+  const applicableDims = dimensions.filter((d) => d.applicable);
   const score = Math.max(
     0,
     Math.min(
       100,
-      toolsApplicable
-        ? Math.round((domainFitScore + toolReadinessScore) / 2)
-        : domainFitScore
+      Math.round(
+        applicableDims.reduce((s, d) => s + d.score, 0) /
+          Math.max(1, applicableDims.length)
+      )
     )
   );
   const grade = gradeFromScore(score);
+
+  // Compact badges still use domain rollup + tools
+  // domainFit already computed; keep it as a recruiter-facing rollup
+  // of industry + years + seniority + responsibilities (not full overall)
+  const domainRollup = Math.round(
+    (dimensions.find((d) => d.id === "industry_domain")!.score +
+      dimensions.find((d) => d.id === "years_experience")!.score +
+      dimensions.find((d) => d.id === "seniority_scope")!.score +
+      dimensions.find((d) => d.id === "responsibilities")!.score) /
+      4
+  );
+  domainFit.score = domainRollup;
+  domainFit.grade = gradeFromScore(domainRollup);
 
   // --- Human-readable strengths / gaps (no raw ≈ dumps) ---
   const reasons: string[] = [];
@@ -1671,11 +2066,17 @@ export function scoreCandidateJobFit(
   const gaps: string[] = [];
 
   reasons.push(
-    `Domain fit ${domainFitScore}/100 (${domainFit.grade})` +
-      (toolsApplicable
-        ? ` · Tool readiness ${toolReadinessScore}/100 (${toolReadiness.grade})`
-        : " · No tool stack required on JD")
+    `Overall ${score}/100 (${grade}) · Domain ${domainFit.score} · Tools ${
+      toolsApplicable ? toolReadinessScore : "n/a"
+    }`
   );
+  for (const d of applicableDims) {
+    if (d.score >= 80) {
+      strengths.push(`${d.label}: ${d.detail}`);
+    } else if (d.score < 55) {
+      gaps.push(`${d.label}: ${d.detail}`);
+    }
+  }
 
   if (titlePart.score >= 0.45) {
     strengths.push(
@@ -1690,12 +2091,12 @@ export function scoreCandidateJobFit(
     const ordered = sortSkillsForDisplay(skillsMatched).slice(0, 7);
     const core = ordered.join(", ");
     strengths.push(
-      skillsNear.length > 2
-        ? `Core skills present: ${core}`
-        : `Strong skill match: ${core}`
+      skillsExactCount > 0
+        ? `Exact skill hits: ${core}`
+        : `Adjacent/transferable skills: ${core}`
     );
     reasons.push(
-      `${skillsMatched.length} of ${effectiveJobSkills.length} job skills evidenced`
+      `${skillsExactCount} exact · ${skillsAdjacentCount} adjacent of ${effectiveJobSkills.length} job skills`
     );
   } else if (effectiveJobSkills.length > 0 && domain.hits.length === 0) {
     reasons.push("Few job skills evidenced on the profile/resume");
@@ -1704,7 +2105,6 @@ export function scoreCandidateJobFit(
   if (domain.hits.length > 0) {
     const themes = summarizeDomainHits(domain.hits);
     if (themes) strengths.push(themes);
-    reasons.push("Resume language overlaps the job domain");
   }
 
   // Prefer real product/tool gaps over accounting ops already implied by domain
@@ -1712,7 +2112,6 @@ export function scoreCandidateJobFit(
     .filter((s) => !/\(nice-to-have\)/i.test(s))
     .filter((s) => {
       const n = normalizeSkill(s);
-      // Don't ask to "confirm GL/month-end" if accounting domain is solid
       if (
         hasAccountingDomain &&
         clusterPresent.length >= 2 &&
@@ -1720,7 +2119,6 @@ export function scoreCandidateJobFit(
       ) {
         return false;
       }
-      // Don't ask client-facing if domain already says implementation/client work
       if (
         n === "client-facing" &&
         /implement|client|training|onboard/i.test(domain.hits.join(" "))
@@ -1729,10 +2127,6 @@ export function scoreCandidateJobFit(
       }
       return true;
     })
-    .slice(0, 4);
-  const softMissing = skillsMissing
-    .filter((s) => /\(nice-to-have\)/i.test(s))
-    .map((s) => s.replace(/\s*\(nice-to-have\)/i, ""))
     .slice(0, 4);
 
   const hardToolsMissing = toolsMissing
@@ -1745,24 +2139,14 @@ export function scoreCandidateJobFit(
     );
   } else if (hardMissing.length > 0 && skillsRatio < 0.9) {
     gaps.push(`Confirm experience with: ${hardMissing.join(", ")}`);
-  } else if (softMissing.length > 0 && skillsRatio < 0.92) {
-    gaps.push(`Optional tools not clearly shown: ${softMissing.join(", ")}`);
   }
 
-  if (locPart.reason) {
-    if (locPart.score >= 0.7) strengths.push(locPart.reason);
-    else if (locPart.score < 0.4) gaps.push(locPart.reason);
-    reasons.push(locPart.reason);
+  if (requiredYears != null && years > 0 && years < requiredYears * 0.85) {
+    gaps.push(yearsDetail);
+  } else if (requiredYears != null && years > requiredYears * 1.6) {
+    gaps.push(yearsDetail);
   }
 
-  if (years >= 5) {
-    strengths.push(`Solid experience (~${years} years)`);
-    reasons.push(`~${years} years experience (estimated)`);
-  } else if (years > 0) {
-    reasons.push(`~${years} years experience (estimated)`);
-  }
-
-  // Only flag under-qualification, never "too senior"
   if (effectiveCandLevel < jobSen.level && levelDiff >= 2) {
     gaps.push(
       `May be light on seniority for this level (profile reads ${candSen.label}, role reads ${jobSen.label})`
@@ -1770,8 +2154,6 @@ export function scoreCandidateJobFit(
   }
 
   reasons.push(...titlePart.reasons);
-  // Keep a breadcrumb of the legacy composite for debugging
-  reasons.push(`Legacy blend reference: ${Math.round(weighted * 100)}`);
 
   const uniq = (arr: string[]) => Array.from(new Set(arr.filter(Boolean)));
 
@@ -1780,11 +2162,12 @@ export function scoreCandidateJobFit(
     grade,
     domainFit,
     toolReadiness,
-    reasons: uniq(reasons)
-      .filter((r) => !r.startsWith("Legacy blend"))
-      .slice(0, 10),
-    strengths: uniq(strengths).slice(0, 8),
-    gaps: uniq(gaps).slice(0, 6),
+    dimensions,
+    skillsExactCount,
+    skillsAdjacentCount,
+    reasons: uniq(reasons).slice(0, 12),
+    strengths: uniq(strengths).slice(0, 10),
+    gaps: uniq(gaps).slice(0, 8),
     skillsMatched: uniq(skillsMatched),
     skillsMissing: uniq(
       skillsMissing.map((s) => s.replace(/\s*\(nice-to-have\)/i, ""))
@@ -1845,6 +2228,7 @@ export function buildReviewerAssessment(
     applicable: false,
   };
   const toolsApply = tools.applicable !== false && tools.score != null;
+  const dimensions = result.dimensions || [];
 
   let headline: string;
   let summary: string;
@@ -1852,31 +2236,31 @@ export function buildReviewerAssessment(
   if (toolsApply && domain.score >= 85 && tools.score < 70) {
     headline = "Strong domain fit — tool stack still unproven";
     summary =
-      "The profile looks strong for the functional side of the role, but key products or implementation tools from the JD are not clearly evidenced. Advance for domain; screen hard on tools.";
+      "Functional/domain signals look strong, but named tools or implementation skills from the JD are thin. Screen hard on stack before treating as a full advance.";
   } else if (toolsApply && domain.score >= 70 && tools.score < 55) {
     headline = "Solid domain, weak tool readiness";
     summary =
-      "Core experience aligns with the role, but several named tools or implementation skills are missing on paper. Confirm stack fit before treating as a strong advance.";
+      "Core experience aligns with the role, but several tools/systems are not evidenced. Confirm stack fit before prioritizing.";
   } else if (result.score >= 85) {
-    headline = "Strong fit — likely worth advancing";
+    headline = "Strong multi-factor fit — likely worth advancing";
     summary =
-      "Both domain alignment and tool readiness look solid relative to this role.";
+      "Across skills, domain, seniority, and related factors the profile reads as a credible match for this role.";
   } else if (result.score >= 70) {
     headline = "Good fit — promising with a few checks";
     summary =
-      "The candidate shows solid overlap with the role, with a few areas that deserve verification.";
+      "Solid overlap overall; review lower-scoring dimensions below before advancing.";
   } else if (result.score >= 55) {
     headline = "Partial fit — useful but needs validation";
     summary =
-      "There is some alignment, but the case is not yet strong enough to move forward without checking gaps.";
+      "Some alignment, but several factors are soft. Use the dimension scores to decide next step.";
   } else if (result.score >= 40) {
     headline = "Weak fit — likely not a top priority";
     summary =
-      "The profile appears only loosely aligned to the role and should be handled cautiously.";
+      "The profile is only loosely aligned across the scored factors.";
   } else {
     headline = "Poor fit — not a strong match on paper";
     summary =
-      "The fit is weak based on the current profile and resume signals.";
+      "Multi-factor scoring finds limited alignment with this JD.";
   }
 
   const confidence: FitReviewAssessment["confidence"] =
@@ -1891,10 +2275,11 @@ export function buildReviewerAssessment(
     grade: result.grade,
     domainFit: domain,
     toolReadiness: tools,
+    dimensions,
     headline,
     summary,
-    strengths: result.strengths.slice(0, 5),
-    gaps: result.gaps.slice(0, 4),
+    strengths: result.strengths.slice(0, 6),
+    gaps: result.gaps.slice(0, 6),
     matchedSkills: result.skillsMatched.slice(0, 8),
     missingSkills: result.skillsMissing.slice(0, 6),
     toolsMatched: (result.toolsMatched || []).slice(0, 8),
@@ -1909,15 +2294,29 @@ export function buildReviewerAssessment(
 export function formatFitSummary(result: FitScoreResult): string {
   const assessment = buildReviewerAssessment(result);
   const lines: string[] = [
-    `Domain fit ${assessment.domainFit.score}/100 · Grade ${assessment.domainFit.grade}`,
+    `Overall ${assessment.score}/100 · Grade ${assessment.grade}`,
+    `Domain rollup ${assessment.domainFit.score}/100 · Grade ${assessment.domainFit.grade}`,
     assessment.toolReadiness.applicable === false
       ? `Tool readiness n/a · No tool stack called out on JD`
       : `Tool readiness ${assessment.toolReadiness.score}/100 · Grade ${assessment.toolReadiness.grade}`,
-    `Overall ${assessment.score}/100 · Grade ${assessment.grade}`,
     assessment.headline,
     "",
     assessment.summary,
   ];
+
+  if (assessment.dimensions?.length) {
+    lines.push("");
+    lines.push("Factor scores");
+    for (const d of assessment.dimensions) {
+      if (!d.applicable) {
+        lines.push(`• ${d.label}: n/a — ${d.detail}`);
+      } else {
+        lines.push(
+          `• ${d.label}: ${d.score}/100 (${d.grade}) — ${d.detail}`
+        );
+      }
+    }
+  }
 
   if (assessment.strengths.length) {
     lines.push("");
