@@ -199,6 +199,39 @@ html.dark [role="dialog"] *{
   color:#0f172a !important;
   -webkit-text-fill-color:#0f172a !important;
 }
+
+/*
+ * Popovers / dropdown menus (Insights, Quick Action, etc.)
+ * Never use charcoal bg-card with dark slate text — force light surface + dark ink.
+ */
+html.dark [data-popover-surface],
+html.dark [role="menu"],
+html.dark [role="listbox"]{
+  background-color:#ffffff !important;
+  color:#0f172a !important;
+  -webkit-text-fill-color:#0f172a !important;
+  border-color:#e2e8f0 !important;
+}
+html.dark [data-popover-surface] *,
+html.dark [role="menu"] *,
+html.dark [role="listbox"] *{
+  color:#0f172a !important;
+  -webkit-text-fill-color:#0f172a !important;
+}
+html.dark [data-popover-surface] .text-blue-600,
+html.dark [data-popover-surface] .text-blue-700,
+html.dark [role="menu"] .text-blue-600,
+html.dark [role="menu"] .text-blue-700{
+  color:#2563eb !important;
+  -webkit-text-fill-color:#2563eb !important;
+}
+html.dark [data-popover-surface] .text-slate-600,
+html.dark [data-popover-surface] .text-gray-600,
+html.dark [role="menu"] .text-slate-600,
+html.dark [role="menu"] .text-gray-600{
+  color:#475569 !important;
+  -webkit-text-fill-color:#475569 !important;
+}
 /* Re-assert primary/dark buttons inside dialogs → white text */
 html.dark [role="dialog"] .bg-primary,
 html.dark [role="dialog"] .bg-primary *,

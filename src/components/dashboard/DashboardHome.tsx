@@ -255,20 +255,21 @@ export function DashboardHome({
             onClick={() => setInsightsOpen((o) => !o)}
             aria-expanded={insightsOpen}
             aria-controls="dashboard-insights-panel"
-            className="surface-light flex w-full items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/80 px-3 py-2 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+            data-ink-on-light
+            className="surface-light flex w-full items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
           >
             <Sparkles className="h-4 w-4 shrink-0 text-blue-600" aria-hidden />
             <span className="text-sm font-semibold uppercase tracking-wide text-slate-900">
               Insights
             </span>
-            <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-blue-700">
+            <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-blue-800">
               {stats.insights.length}
             </span>
-            <span className="ml-auto hidden text-[11px] font-medium text-slate-500 sm:inline">
+            <span className="ml-auto hidden text-[11px] font-semibold text-slate-600 sm:inline">
               {insightsOpen ? 'Hide' : 'Hover or click to review'}
             </span>
             <ChevronDown
-              className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${
+              className={`h-4 w-4 shrink-0 text-slate-700 transition-transform ${
                 insightsOpen ? 'rotate-180' : ''
               }`}
               aria-hidden
@@ -282,13 +283,18 @@ export function DashboardHome({
               aria-label="Dashboard insights"
               className="absolute left-0 right-0 top-full z-30 mt-1"
             >
-              <ul className="max-h-72 space-y-1.5 overflow-y-auto rounded-xl border border-blue-100 bg-white p-3 shadow-lg dark:bg-card">
+              {/* Stay white in both themes — never dark:bg-card (dark ink on charcoal) */}
+              <ul
+                data-ink-on-light
+                data-popover-surface
+                className="surface-light max-h-72 space-y-1.5 overflow-y-auto rounded-xl border border-blue-200 bg-white p-3 shadow-lg"
+              >
                 {stats.insights.map((line, i) => (
                   <li
                     key={i}
-                    className="flex gap-2 text-sm font-medium text-slate-800"
+                    className="flex gap-2 text-sm font-semibold text-slate-900"
                   >
-                    <span className="shrink-0 text-blue-600">•</span>
+                    <span className="shrink-0 font-bold text-blue-600">•</span>
                     <span>{line}</span>
                   </li>
                 ))}

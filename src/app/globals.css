@@ -854,6 +854,23 @@
   color: #0f172a !important; /* slate-900 */
 }
 
+/* Popovers tagged for light ink (Insights dropdown, menus) — never charcoal */
+.dark [data-popover-surface],
+.dark [data-popover-surface].bg-card,
+.dark [data-popover-surface].bg-background {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+.dark [data-popover-surface] [class*="text-gray-"],
+.dark [data-popover-surface] [class*="text-slate-"],
+.dark [data-popover-surface] [class*="text-zinc-"] {
+  color: #0f172a !important;
+}
+.dark [data-popover-surface] .text-blue-600 {
+  color: #2563eb !important;
+}
+
 /* Keep brand link colors on light panels */
 .dark .surface-light .text-blue-600,
 .dark .bg-white .text-blue-600,
