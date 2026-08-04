@@ -1651,13 +1651,15 @@ export function scoreCandidateJobFit(
     locPart.score * 0.1 +
     seniorityScore * 0.1;
 
-  // Overall: honest blend when tools apply; otherwise domain-only
+  // Overall: simple average of Domain + Tools when a tool stack exists;
+  // otherwise overall = domain only (tools n/a).
+  // e.g. Domain 94 + Tools 60 → Overall 77
   const score = Math.max(
     0,
     Math.min(
       100,
       toolsApplicable
-        ? Math.round(domainFitScore * 0.55 + toolReadinessScore * 0.45)
+        ? Math.round((domainFitScore + toolReadinessScore) / 2)
         : domainFitScore
     )
   );
