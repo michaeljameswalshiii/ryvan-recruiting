@@ -336,7 +336,7 @@ export function DeskNextActions({
         <div className="flex min-w-0 items-center gap-2">
           <Zap className="h-4 w-4 shrink-0 text-amber-700" />
           <span className="text-sm font-semibold text-slate-900">
-            Desk next actions
+            Next Actions
           </span>
           {summary && (
             <span className="truncate text-[11px] font-medium text-slate-700">
