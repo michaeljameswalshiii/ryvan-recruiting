@@ -37,6 +37,23 @@ function generateId(): string {
 }
 
 /**
+ * All CONTACT# child rows for a tenant (not filtered by company).
+ */
+async function queryAllContactChildRows(
+  tenantId: string
+): Promise<CompanyContact[]> {
+  const result = await queryItems<Contact>(
+    clientsTable,
+    'tenant_id = :tenantId AND begins_with(SK, :contactPrefix)',
+    {
+      ':tenantId': tenantId,
+      ':contactPrefix': `CONTACT#`,
+    }
+  );
+  return (result.items || []) as CompanyContact[];
+}
+
+/**
  * Get all contacts for a company
  * Queries using begins_with on SK prefix
  */
@@ -52,25 +69,95 @@ export async function getContactsForCompany(
     return cached;
   }
 
-// Query contacts for this tenant using begins_with on SK
-  const result = await queryItems<Contact>(
-    clientsTable,
-    'tenant_id = :tenantId AND begins_with(SK, :contactPrefix)',
-    { 
-      ':tenantId': tenantId,
-      ':contactPrefix': `CONTACT#`
-    }
-  );
-
-  const contacts = result.items || [];
+  const contacts = await queryAllContactChildRows(tenantId);
 
   // Filter by companyId (since we're storing companyId on each contact)
-  const filteredContacts = (contacts as CompanyContact[]).filter(c => c.companyId === companyId);
+  const filteredContacts = contacts.filter(
+    (c) =>
+      String(c.companyId || (c as { clientId?: string }).clientId || '') ===
+      String(companyId)
+  );
 
   // Cache the result
   await setCached(cacheKey, filteredContacts, CACHE_TTL);
 
   return filteredContacts;
+}
+
+export type TenantContactRow = Contact & {
+  companyId: string;
+  companyName?: string;
+  source?: 'child' | 'embedded';
+};
+
+/**
+ * List every company contact for a tenant (child CONTACT# rows + embedded company.contacts[]).
+ * Dedupes by contact id when both models exist.
+ */
+export async function getAllContactsForTenant(
+  tenantId: string
+): Promise<TenantContactRow[]> {
+  const cacheKey = makeCacheKey(tenantId, 'contacts', 'all');
+  const cached = await getCached<TenantContactRow[]>(cacheKey);
+  if (cached) return cached;
+
+  const byId = new Map<string, TenantContactRow>();
+
+  // Child-entity model
+  const children = await queryAllContactChildRows(tenantId);
+  for (const c of children) {
+    const companyId = String(
+      c.companyId || (c as { clientId?: string }).clientId || ''
+    ).trim();
+    if (!c.id) continue;
+    byId.set(c.id, {
+      ...c,
+      companyId,
+      source: 'child',
+    });
+  }
+
+  // Embedded contacts on company records (legacy / dual-write)
+  try {
+    const { getAllClients } = await import('./client-repository');
+    const companies = await getAllClients(tenantId);
+    for (const co of companies || []) {
+      const companyId = String(co.id || '').trim();
+      const companyName = String(co.name || '');
+      const embedded = Array.isArray(co.contacts) ? co.contacts : [];
+      for (const c of embedded) {
+        if (!c?.id) continue;
+        if (byId.has(c.id)) {
+          // Prefer enriching company name
+          const prev = byId.get(c.id)!;
+          if (!prev.companyName && companyName) {
+            byId.set(c.id, { ...prev, companyName, companyId: prev.companyId || companyId });
+          }
+          continue;
+        }
+        byId.set(c.id, {
+          ...c,
+          companyId: String(c.companyId || companyId),
+          companyName,
+          source: 'embedded',
+        });
+      }
+      // Attach company names to child rows
+      for (const [id, row] of byId) {
+        if (row.companyId === companyId && !row.companyName) {
+          byId.set(id, { ...row, companyName });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[getAllContactsForTenant] company enrich failed', err);
+  }
+
+  const list = Array.from(byId.values()).sort((a, b) =>
+    String(a.name || '').localeCompare(String(b.name || ''))
+  );
+  await setCached(cacheKey, list, CACHE_TTL);
+  return list;
 }
 
 /**

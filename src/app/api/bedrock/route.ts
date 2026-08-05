@@ -167,7 +167,7 @@ function buildGeneralAiSystemPrompt(): string {
 You help with analysis, writing, research, document review, AND operating the CRM when the user asks.
 
 READ tools:
-- internal_data: list/get leads (candidates), clients (companies), jobs, pipeline
+- internal_data: list/get leads (candidates), clients (companies), contacts (hiring managers / Contact Info), jobs, pipeline. For contacts without email use data_type=contacts, action=list, filter=missing_email.
 ${externalLines.join("\n")}
 
 FILE tools:
@@ -906,16 +906,34 @@ function getToolSchemasForBedrock(): BedrockTool[] {
     {
       name: "internal_data",
       description:
-        "Read ATS data: leads/candidates, clients/companies, jobs, pipeline. action list|get. Use before updates to find ids.",
+        "Read ATS data: leads/candidates, clients/companies, contacts (hiring managers on Contact Info), jobs, pipeline. action list|get. " +
+        "For company contacts missing email: data_type=contacts, action=list, filter=missing_email. " +
+        "Use before updates to find ids. Contacts are NOT candidates.",
       input_schema: {
         type: "object",
         properties: {
           data_type: {
             type: "string",
-            description: "leads | candidates | clients | jobs | pipeline",
+            description:
+              "leads | candidates | clients | contacts | jobs | pipeline",
           },
           action: { type: "string", description: "list or get" },
           id: { type: "string", description: "Record id when action is get" },
+          company_id: {
+            type: "string",
+            description:
+              "Optional company id — filter contacts list, or resolve contact get",
+          },
+          filter: {
+            type: "string",
+            description:
+              "Optional list filter: all | missing_email | has_email | missing_phone | has_phone. Use missing_email for contacts without email.",
+          },
+          missing_email: {
+            type: "boolean",
+            description:
+              "Shortcut: true = only people without an email (same as filter=missing_email)",
+          },
         },
         required: ["data_type", "action"],
       },
@@ -1482,6 +1500,9 @@ Never map "br" in a brand domain (e.g. structuralbr.com) to Brazil.`;
         data_type: toolInput.data_type || "leads",
         action: toolInput.action || "list",
         id: toolInput.id,
+        company_id: toolInput.company_id,
+        filter: toolInput.filter,
+        missing_email: toolInput.missing_email,
       } as ToolParams,
       toolContext
     );

@@ -198,6 +198,10 @@ async function executeToolByName(
         query,
         data_type: toolInput.data_type,
         action: toolInput.action,
+        id: toolInput.id,
+        company_id: toolInput.company_id,
+        filter: toolInput.filter,
+        missing_email: toolInput.missing_email,
       } as any,
       toolContext
     );

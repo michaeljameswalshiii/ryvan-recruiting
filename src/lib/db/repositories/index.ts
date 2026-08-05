@@ -48,6 +48,7 @@ export {
 // Contact repository - explicit exports (has getPrimaryContact, setPrimaryContact)
 export {
   getContactsForCompany,
+  getAllContactsForTenant,
   getContactById,
   getPrimaryContact as getCompanyPrimaryContact,
   addContact,
@@ -56,6 +57,7 @@ export {
   setPrimaryContact as setCompanyPrimaryContact,
   addNoteToContact,
 } from './contact-repository';
+export type { TenantContactRow } from './contact-repository';
 
 // BD list builder jobs
 export {
