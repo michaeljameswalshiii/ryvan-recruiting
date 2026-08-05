@@ -158,7 +158,11 @@ export function matchJobIdFromText(
 /**
  * Job IDs that must leave Focus entirely:
  * - linked job stage is terminal, OR
- * - any terminal note (Rejected, etc.) is tied to that job (id or title in body)
+ * - a terminal note (Rejected, etc.) with an explicit metadata.jobId
+ *
+ * Free-form Rejected text that merely *mentions* a job title is NOT enough
+ * to archive the whole thread (e.g. “not moving forward … but asked about
+ * Operations Specialist” must not hide Attached / AI fit for Ops).
  */
 export function getClosedJobIds(
   rows: any[],
@@ -174,13 +178,9 @@ export function getClosedJobIds(
 
   for (const note of rows) {
     if (!isTerminalNoteActivity(note)) continue;
+    // Only explicit job linkage closes the whole req thread
     const jid = getEventJobId(note);
-    if (jid) {
-      closed.add(jid);
-      continue;
-    }
-    const matched = matchJobIdFromText(eventBody(note), jobs);
-    if (matched) closed.add(matched);
+    if (jid) closed.add(jid);
   }
 
   return closed;
@@ -231,13 +231,8 @@ export function isFocusActivity(
   const meta = note?.metadata || {};
   if (meta.archived === true || meta.archivedAt) return false;
 
-  // Closed outcomes always archive
+  // Closed outcomes always archive (Rejected badge, etc.)
   if (isTerminalNoteActivity(note)) return false;
-
-  const jobId = resolveActivityJobId(note, linkedJobs);
-
-  // Anything about a closed job leaves Focus (AI fit, Attached, Interested note, …)
-  if (jobId && closedJobIds.has(jobId)) return false;
 
   const body = eventBody(note);
   const isAiFit =
@@ -249,10 +244,29 @@ export function isFocusActivity(
     meta.systemKind === "job_unlinked" ||
     note?.eventType === "JOB_LINKED" ||
     note?.eventType === "JOB_UNLINKED" ||
-    /^linked to job:/i.test(body);
+    /^linked to job:/i.test(body) ||
+    /^attached to job:/i.test(body);
+
+  // Prefer explicit jobId; for Attached/AI also match title so rows stay with the req
+  let jobId = getEventJobId(note);
+  if (!jobId && (isAiFit || isJobAttach)) {
+    jobId = matchJobIdFromText(body, Array.isArray(linkedJobs) ? linkedJobs : []);
+  } else if (!jobId) {
+    jobId = resolveActivityJobId(note, linkedJobs);
+  }
+
+  // Whole thread for a closed job (stage terminal or Rejected with jobId) → archive
+  if (jobId && closedJobIds.has(jobId)) return false;
 
   if (isAiFit || isJobAttach) {
-    if (!jobId) return false;
+    // Attached / AI fit: show in Focus when the job is still open
+    if (!jobId) {
+      // Can't map to a job — keep if recent so nothing important disappears
+      const ts = new Date(note?.createdAt || note?.timestamp || 0).getTime();
+      if (!Number.isFinite(ts) || ts <= 0) return true;
+      const cutoff = Date.now() - freeNoteDays * 24 * 60 * 60 * 1000;
+      return ts >= cutoff;
+    }
     return focusJobIds.has(jobId);
   }
 
@@ -260,7 +274,7 @@ export function isFocusActivity(
     return focusJobIds.has(jobId);
   }
 
-  // No resolvable job: recent free-form only
+  // No resolvable job: recent free-form only (non-terminal)
   const ts = new Date(note?.createdAt || note?.timestamp || 0).getTime();
   if (!Number.isFinite(ts) || ts <= 0) return true;
   const cutoff = Date.now() - freeNoteDays * 24 * 60 * 60 * 1000;
