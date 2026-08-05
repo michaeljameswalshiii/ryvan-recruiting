@@ -302,31 +302,32 @@ export default function NewCandidatePage() {
     }
   };
 
-  // Dark mode: charcoal panels + white titles/labels; inputs stay light for typing
-  // data-dark-form-panel: globals.css forces white copy (beats contrast remaps)
+  // Dark form panels: ThemeProvider [data-dark-form-panel] forces white copy last
   const darkFormCard =
-    "border-border bg-card text-foreground " +
-    "dark:border-slate-600 dark:bg-slate-900 dark:text-white " +
-    "dark:[&_label]:text-white dark:[&_svg]:text-slate-200";
+    "border-border bg-card text-card-foreground " +
+    "dark:border-slate-600 dark:bg-slate-900";
 
-  const fieldInputClass =
-    "mt-1 dark:bg-white dark:text-slate-900 dark:placeholder:text-slate-500 dark:border-slate-300";
-
+  const fieldInputClass = "mt-1";
   const fieldSelectClass =
-    "mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm " +
-    "dark:bg-white dark:text-slate-900 dark:border-slate-300";
+    "mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
 
   return (
-    <div className="p-6 max-w-6xl mx-auto dark:text-white">
+    <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
         <Link href="/dashboard/candidates">
-          <Button variant="ghost" size="icon" className="dark:text-white dark:hover:bg-white/10">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-foreground"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold dark:text-white">Add New Candidate</h1>
-          <p className="text-sm text-muted-foreground dark:text-slate-300">
+          <h1 className="text-2xl font-bold text-foreground">
+            Add New Candidate
+          </h1>
+          <p className="text-sm text-muted-foreground">
             Upload a resume to auto-fill fields, then create the candidate
           </p>
         </div>
@@ -502,9 +503,9 @@ export default function NewCandidatePage() {
           </Card>
 
           {/* Top-right: Basic Information */}
-          <Card data-dark-form-panel className={darkFormCard}>
+          <Card data-dark-form-panel data-dark-panel className={darkFormCard}>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 dark:text-white">
+              <CardTitle className="flex items-center gap-2 text-inherit">
                 <User className="h-5 w-5" />
                 Basic Information
               </CardTitle>
@@ -512,7 +513,7 @@ export default function NewCandidatePage() {
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <Label htmlFor="name" className="dark:text-white">
+                  <Label htmlFor="name">
                     Name <span className="text-red-400">*</span>
                   </Label>
                   <Input
@@ -525,9 +526,7 @@ export default function NewCandidatePage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="title" className="dark:text-white">
-                    Title
-                  </Label>
+                  <Label htmlFor="title">Title</Label>
                   <Input
                     id="title"
                     value={formData.title}
@@ -537,9 +536,7 @@ export default function NewCandidatePage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="location" className="dark:text-white">
-                    Location
-                  </Label>
+                  <Label htmlFor="location">Location</Label>
                   <Input
                     id="location"
                     value={formData.location}
@@ -549,9 +546,7 @@ export default function NewCandidatePage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="email" className="dark:text-white">
-                    Email
-                  </Label>
+                  <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
                     type="email"
@@ -561,9 +556,7 @@ export default function NewCandidatePage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="phone" className="dark:text-white">
-                    Phone
-                  </Label>
+                  <Label htmlFor="phone">Phone</Label>
                   <Input
                     id="phone"
                     type="tel"
@@ -577,9 +570,9 @@ export default function NewCandidatePage() {
           </Card>
 
           {/* Bottom-left: Pipeline */}
-          <Card data-dark-form-panel className={darkFormCard}>
+          <Card data-dark-form-panel data-dark-panel className={darkFormCard}>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 dark:text-white">
+              <CardTitle className="flex items-center gap-2 text-inherit">
                 <Briefcase className="h-5 w-5" />
                 Pipeline Information
               </CardTitle>
@@ -587,9 +580,7 @@ export default function NewCandidatePage() {
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <Label htmlFor="status" className="dark:text-white">
-                    Status
-                  </Label>
+                  <Label htmlFor="status">Status</Label>
                   <select
                     id="status"
                     value={formData.status}
@@ -604,9 +595,7 @@ export default function NewCandidatePage() {
                   </select>
                 </div>
                 <div>
-                  <Label htmlFor="source" className="dark:text-white">
-                    Source
-                  </Label>
+                  <Label htmlFor="source">Source</Label>
                   <select
                     id="source"
                     value={formData.source}
@@ -625,18 +614,16 @@ export default function NewCandidatePage() {
           </Card>
 
           {/* Bottom-right: Additional */}
-          <Card data-dark-form-panel className={darkFormCard}>
+          <Card data-dark-form-panel data-dark-panel className={darkFormCard}>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 dark:text-white">
+              <CardTitle className="flex items-center gap-2 text-inherit">
                 <FileText className="h-5 w-5" />
                 Additional Information
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="linkedin_url" className="dark:text-white">
-                  LinkedIn URL
-                </Label>
+                <Label htmlFor="linkedin_url">LinkedIn URL</Label>
                 <Input
                   id="linkedin_url"
                   value={formData.linkedin_url}
@@ -645,9 +632,7 @@ export default function NewCandidatePage() {
                 />
               </div>
               <div>
-                <Label htmlFor="skills" className="dark:text-white">
-                  Skills
-                </Label>
+                <Label htmlFor="skills">Skills</Label>
                 <Input
                   id="skills"
                   value={formData.skills}
@@ -657,21 +642,16 @@ export default function NewCandidatePage() {
                 />
               </div>
               <div>
-                <Label htmlFor="summary" className="dark:text-white">
-                  Summary
-                </Label>
+                <Label htmlFor="summary">Summary</Label>
                 <textarea
                   id="summary"
                   value={formData.summary}
                   onChange={(e) => handleChange('summary', e.target.value)}
-                  className={
-                    "mt-1 min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm " +
-                    "dark:bg-white dark:text-slate-900 dark:placeholder:text-slate-500 dark:border-slate-300"
-                  }
+                  className="mt-1 min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   placeholder="Short ATS-friendly blurb (~20 words). Filled from resume when uploaded."
                   rows={3}
                 />
-                <p className="mt-1 text-[11px] text-muted-foreground dark:text-slate-300">
+                <p className="mt-1 text-[11px] text-muted-foreground">
                   Keep it under ~20 words for ATS (role + strengths + keywords).
                 </p>
               </div>

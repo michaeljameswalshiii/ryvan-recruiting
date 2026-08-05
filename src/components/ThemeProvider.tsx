@@ -258,6 +258,54 @@ html.dark [role="dialog"] .bg-blue-600{
 html.dark [role="dialog"] .bg-blue-700{
   background-color:#1d4ed8 !important;
 }
+
+/*
+ * LAST: dark form panels (Add Candidate, etc.)
+ * Charcoal surface + white titles/labels; light inputs for typing.
+ * Must beat every light-panel black-ink rule above.
+ */
+html.dark [data-dark-form-panel],
+html.dark [data-dark-panel]{
+  background-color:#0f172a !important;
+  border-color:#334155 !important;
+  color:#f8fafc !important;
+  -webkit-text-fill-color:#f8fafc !important;
+}
+html.dark [data-dark-form-panel] *:not(input):not(textarea):not(select):not(option):not(button),
+html.dark [data-dark-panel] *:not(input):not(textarea):not(select):not(option):not(button){
+  color:#f8fafc !important;
+  -webkit-text-fill-color:#f8fafc !important;
+}
+html.dark [data-dark-form-panel] input,
+html.dark [data-dark-form-panel] textarea,
+html.dark [data-dark-form-panel] select,
+html.dark [data-dark-form-panel] option,
+html.dark [data-dark-panel] input,
+html.dark [data-dark-panel] textarea,
+html.dark [data-dark-panel] select,
+html.dark [data-dark-panel] option{
+  color:#0f172a !important;
+  -webkit-text-fill-color:#0f172a !important;
+  background-color:#ffffff !important;
+  border-color:#cbd5e1 !important;
+}
+html.dark [data-dark-form-panel] input::placeholder,
+html.dark [data-dark-form-panel] textarea::placeholder,
+html.dark [data-dark-panel] input::placeholder,
+html.dark [data-dark-panel] textarea::placeholder{
+  color:#64748b !important;
+  -webkit-text-fill-color:#64748b !important;
+  opacity:1 !important;
+}
+html.dark [data-dark-form-panel] button,
+html.dark [data-dark-panel] button{
+  /* leave button chrome alone unless it's plain text */
+}
+html.dark [data-dark-form-panel] svg,
+html.dark [data-dark-panel] svg{
+  color:#e2e8f0 !important;
+  stroke:currentColor;
+}
 `;
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
