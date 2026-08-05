@@ -30,7 +30,15 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { noteText, noteType = 'general', createdBy, stage } = body;
+    const {
+      noteText,
+      noteType = 'general',
+      createdBy,
+      stage,
+      jobId,
+      jobTitle,
+      companyName,
+    } = body;
 
     // Detail text is optional — action type alone can be logged
     const finalNoteText =
@@ -40,8 +48,21 @@ export async function POST(
     const user =
       createdBy || session?.email || session?.userId || 'system';
 
-    // Stage-driving note types (Submitted, Interview Scheduled, …) update pipeline
-    const stageResult = await applyStageFromNoteType(id, noteType);
+    const scopedJobId =
+      typeof jobId === 'string' && jobId.trim() ? jobId.trim() : null;
+    const scopedJobTitle =
+      typeof jobTitle === 'string' && jobTitle.trim()
+        ? jobTitle.trim()
+        : null;
+    const scopedCompany =
+      typeof companyName === 'string' && companyName.trim()
+        ? companyName.trim()
+        : null;
+
+    // Stage-driving note types update that job's pipeline (or candidate if no job)
+    const stageResult = await applyStageFromNoteType(id, noteType, {
+      jobId: scopedJobId,
+    });
     let stageToStore = stageResult.stageToStore;
     if (!stageToStore && stage) {
       stageToStore = stage;
@@ -52,6 +73,9 @@ export async function POST(
     const result = await addNoteToCandidate(id, finalNoteText, user, {
       stage: stageToStore || null,
       noteType,
+      jobId: scopedJobId,
+      jobTitle: scopedJobTitle,
+      companyName: scopedCompany,
       stageUpdated,
       previousStage,
       newStage: newStage || stageToStore,
@@ -72,6 +96,8 @@ export async function POST(
       previousStage,
       status: newStage || stageToStore || undefined,
       stageLabel: newStage ? stageDisplayLabel(newStage) : undefined,
+      jobId: scopedJobId || undefined,
+      jobTitle: scopedJobTitle || undefined,
     });
   } catch (error) {
     console.error('[API] Failed to add note:', error);

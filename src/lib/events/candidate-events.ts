@@ -473,6 +473,10 @@ export async function addNoteToCandidate(
   options?: {
     stage?: string | null;
     noteType?: string;
+    /** Stored job association (not a live join) */
+    jobId?: string | null;
+    jobTitle?: string | null;
+    companyName?: string | null;
     [key: string]: unknown;
   }
 ): Promise<RecordEventResponse> {
@@ -497,16 +501,29 @@ export async function addNoteToCandidate(
     metadata.stage = options.stage;
   }
 
+  // Job tag — stored permanently so closed/unlinked jobs still render
+  const jobId = options?.jobId ? String(options.jobId).trim() : '';
+  if (jobId) {
+    metadata.jobId = jobId;
+    if (options?.jobTitle) metadata.jobTitle = String(options.jobTitle);
+    if (options?.companyName) metadata.companyName = String(options.companyName);
+  }
+
   // Prefer free-text when present; otherwise show the action type as the description
   const description = text
     ? text.substring(0, 100) + (text.length > 100 ? '...' : '')
     : noteTypeLabel;
 
+  const jobSuffix =
+    jobId && options?.jobTitle
+      ? ` · ${options.jobTitle}`
+      : '';
+
   return recordEvent(
     candidateId,
     'NOTE',
     {
-      title: `Note - ${noteTypeLabel}`,
+      title: `Note - ${noteTypeLabel}${jobSuffix}`,
       description,
       metadata,
     },

@@ -56,6 +56,11 @@ export async function setCandidatePipelineStage(
     tenantId?: string | null;
     /** Only update the first linked job (default: all linked jobs) */
     primaryJobOnly?: boolean;
+    /**
+     * When set, only update this linked job's stage (multi-job pipeline).
+     * lead.status becomes the "furthest" of all linked job stages after the write.
+     */
+    jobId?: string | null;
   }
 ): Promise<SetStageResult> {
   const target = normStatus(nextStage);
@@ -102,36 +107,55 @@ export async function setCandidatePipelineStage(
       ? (lead as any).linkedJobs.map((j: any) => ({ ...j }))
       : [];
 
-    const jobsNeedSync = linked.some(
-      (j: any) => normStatus(j?.stage) !== target
-    );
-    const statusNeedsSync = currentStatus !== target;
+    const scopedJobId = options?.jobId
+      ? String(options.jobId).trim()
+      : '';
 
-    if (!statusNeedsSync && !jobsNeedSync) {
-      return {
-        stageUpdated: false,
-        previousStage,
-        newStage: target,
-        stageToStore: target,
-        tenantId,
-        linkedJobsSynced: false,
-      };
-    }
-
-    const patch: Record<string, unknown> = {};
-    if (statusNeedsSync) {
-      patch.status = target;
+    let jobsNeedSync = false;
+    if (scopedJobId) {
+      jobsNeedSync = linked.some(
+        (j: any) =>
+          String(j?.jobId || j?.id || '') === scopedJobId &&
+          normStatus(j?.stage) !== target
+      );
+      // Job may only exist on job.candidates[] — still allow write
+      if (!jobsNeedSync && linked.every((j: any) => String(j?.jobId || '') !== scopedJobId)) {
+        jobsNeedSync = true;
+      }
+    } else {
+      jobsNeedSync = linked.some(
+        (j: any) => normStatus(j?.stage) !== target
+      );
     }
 
     let linkedJobsSynced = false;
+    const now = new Date().toISOString();
     if (jobsNeedSync && linked.length > 0) {
-      const now = new Date().toISOString();
-      if (options?.primaryJobOnly) {
+      if (scopedJobId) {
+        let found = false;
+        for (let i = 0; i < linked.length; i++) {
+          if (String(linked[i]?.jobId || linked[i]?.id || '') !== scopedJobId) {
+            continue;
+          }
+          linked[i] = {
+            ...linked[i],
+            stage: target,
+            stageUpdatedAt: now,
+          };
+          found = true;
+        }
+        if (!found) {
+          // Stage-only update on job record; keep linkedJobs as-is if missing
+        } else {
+          linkedJobsSynced = true;
+        }
+      } else if (options?.primaryJobOnly) {
         linked[0] = {
           ...linked[0],
           stage: target,
           stageUpdatedAt: now,
         };
+        linkedJobsSynced = true;
       } else {
         for (let i = 0; i < linked.length; i++) {
           linked[i] = {
@@ -140,22 +164,92 @@ export async function setCandidatePipelineStage(
             stageUpdatedAt: now,
           };
         }
+        linkedJobsSynced = true;
       }
+    }
+
+    // Effective candidate status: furthest of all linked job stages (after patch)
+    const STAGE_RANK: Record<string, number> = {
+      sourced: 1,
+      identification: 1,
+      contacted: 2,
+      outreach: 2,
+      interested: 3,
+      conversation: 3,
+      pre_screened: 4,
+      submitted: 5,
+      presented: 5,
+      interviewing: 6,
+      interview: 6,
+      offer_out: 7,
+      offer: 7,
+      placed: 8,
+      accept: 8,
+      rejected: 0,
+      not_interested: 0,
+      dnu: 0,
+    };
+    const rank = (s: string) => STAGE_RANK[normStatus(s)] ?? 1;
+
+    let effectiveStatus = target;
+    if (linked.length > 0) {
+      let best = linked[0];
+      let bestR = rank(linked[0]?.stage);
+      for (const j of linked) {
+        const r = rank(j?.stage);
+        if (r > bestR) {
+          bestR = r;
+          best = j;
+        }
+      }
+      // Prefer non-terminal furthest; if all rejected, use target if it was the write
+      if (bestR > 0) {
+        effectiveStatus = normStatus(best?.stage) || target;
+      } else if (rank(target) > 0) {
+        effectiveStatus = target;
+      } else {
+        effectiveStatus = normStatus(best?.stage) || target;
+      }
+    }
+
+    const statusNeedsSync = currentStatus !== effectiveStatus;
+
+    if (!statusNeedsSync && !linkedJobsSynced && !scopedJobId) {
+      // Nothing to write on lead
+      if (!jobsNeedSync) {
+        return {
+          stageUpdated: false,
+          previousStage,
+          newStage: effectiveStatus,
+          stageToStore: target,
+          tenantId,
+          linkedJobsSynced: false,
+        };
+      }
+    }
+
+    const patch: Record<string, unknown> = {};
+    if (statusNeedsSync) {
+      patch.status = effectiveStatus;
+    }
+    if (linkedJobsSynced) {
       patch.linkedJobs = linked;
-      linkedJobsSynced = true;
     }
 
-    await updateLead(tenantId, candidateId, patch as any);
+    if (Object.keys(patch).length > 0) {
+      await updateLead(tenantId, candidateId, patch as any);
+    }
 
-    // Also sync job.candidates[] (desk next-actions reads stage from the job record).
-    // Prefer linkedJobs; fall back to any job ids we can infer.
+    // Sync job.candidates[] for the scoped job or all linked jobs
     const jobIds = new Set<string>();
-    for (const j of linked) {
-      if (j?.jobId) jobIds.add(String(j.jobId));
-    }
-    if (options?.primaryJobOnly && linked[0]?.jobId) {
-      jobIds.clear();
+    if (scopedJobId) {
+      jobIds.add(scopedJobId);
+    } else if (options?.primaryJobOnly && linked[0]?.jobId) {
       jobIds.add(String(linked[0].jobId));
+    } else {
+      for (const j of linked) {
+        if (j?.jobId) jobIds.add(String(j.jobId));
+      }
     }
     for (const jobId of jobIds) {
       try {
@@ -163,6 +257,7 @@ export async function setCandidatePipelineStage(
           candidateId,
           stage: target as any,
         });
+        linkedJobsSynced = true;
       } catch (syncErr) {
         console.warn(
           '[stage-sync] job.candidates stage sync failed',
@@ -173,10 +268,13 @@ export async function setCandidatePipelineStage(
       }
     }
 
+    const didUpdate =
+      statusNeedsSync || linkedJobsSynced || jobIds.size > 0;
+
     return {
-      stageUpdated: true,
+      stageUpdated: didUpdate,
       previousStage,
-      newStage: target,
+      newStage: effectiveStatus,
       stageToStore: target,
       tenantId,
       linkedJobsSynced,
@@ -198,7 +296,7 @@ export async function setCandidatePipelineStage(
 export async function applyStageFromNoteType(
   candidateId: string,
   noteType: string | null | undefined,
-  _options?: { force?: boolean }
+  options?: { force?: boolean; jobId?: string | null }
 ): Promise<SetStageResult> {
   const impliedStage = stageFromNoteType(noteType);
   if (!impliedStage) {
@@ -212,5 +310,7 @@ export async function applyStageFromNoteType(
     };
   }
 
-  return setCandidatePipelineStage(candidateId, impliedStage);
+  return setCandidatePipelineStage(candidateId, impliedStage, {
+    jobId: options?.jobId || null,
+  });
 }

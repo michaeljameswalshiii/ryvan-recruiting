@@ -55,6 +55,8 @@ import {
 } from '@/lib/ui/activity-badge-colors';
 import {
   splitFocusAndArchived,
+  getActiveLinkedJobIds,
+  getEventJobId,
   type ActivityViewMode,
 } from '@/lib/candidates/activity-focus';
 
@@ -263,22 +265,30 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [notes, setNotes] = useState<any[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [activityPage, setActivityPage] = useState(1);
-  /** Focus = active-job activity (default); All = full history */
+  /**
+   * Timeline scope: All jobs (default) | Focus (open jobs only).
+   * Job chip filter is separate (activityJobFilter).
+   */
   const [activityViewMode, setActivityViewMode] =
     useState<ActivityViewMode>(() => {
-      if (typeof window === 'undefined') return 'focus';
+      if (typeof window === 'undefined') return 'all';
       try {
         const saved = localStorage.getItem('trio-activity-view');
+        // Prefer All jobs as product default; migrate old "focus" only if saved
         if (saved === 'all' || saved === 'focus') return saved;
       } catch {
         /* ignore */
       }
-      return 'focus';
+      return 'all';
     });
+  /** 'all' | jobId | 'candidate' (notes with no job tag) */
+  const [activityJobFilter, setActivityJobFilter] = useState<string>('all');
   const [showArchivedActivity, setShowArchivedActivity] = useState(false);
   const [archivedPage, setArchivedPage] = useState(1);
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('Conversation');
+  /** Job tag for new notes — primary active linked job when present */
+  const [logJobId, setLogJobId] = useState<string>('');
   const [addingNote, setAddingNote] = useState(false);
   /** Inline edit state for activity log rows */
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -467,6 +477,16 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     // Detail text optional — action type alone is enough
     setAddingNote(true);
     try {
+      const selectedJob = logJobId
+        ? linkedJobs.find(
+            (j) => String(j?.jobId || j?.id || '') === logJobId
+          )
+        : null;
+      const jobTitle =
+        selectedJob?.jobTitle || selectedJob?.title || undefined;
+      const companyName =
+        selectedJob?.companyName || selectedJob?.company_name || undefined;
+
       const res = await fetch(`/api/candidate/${candidateId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -474,6 +494,9 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
           noteText: newNote.trim(),
           noteType,
           stage: status || null,
+          jobId: logJobId || null,
+          jobTitle: jobTitle || null,
+          companyName: companyName || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -481,23 +504,36 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
         throw new Error(data.error || 'Failed to add note');
       }
 
-      // Note types like Submitted / Interview / Offer Out also move the pipeline
+      // Stage-driving notes update the selected job's stage (and effective status)
       if (data.stageUpdated && data.status) {
         setStatus(data.status);
+        if (logJobId) {
+          setLinkedJobs((prev) =>
+            prev.map((j) =>
+              String(j?.jobId || j?.id || '') === logJobId
+                ? { ...j, stage: data.status }
+                : j
+            )
+          );
+        }
+        const jobBit = jobTitle ? ` on ${jobTitle}` : '';
         toast.success(
-          `Note logged · stage set to ${data.stageLabel || stageDisplayLabel(data.status)}`
+          `Note logged${jobBit} · stage → ${data.stageLabel || stageDisplayLabel(data.status)}`
         );
       } else if (noteTypeDrivesStage(noteType) && data.status) {
         setStatus(data.status);
         toast.success('Note logged (pipeline already at this stage)');
       } else if (noteTypeDrivesStage(noteType) && !data.status) {
-        // Server couldn't confirm stage write — still try local UI if type maps
         toast.success('Note logged');
         toast.message(
           'Stage may not have updated — use Advance if the pipeline looks wrong'
         );
       } else {
-        toast.success('Note logged');
+        toast.success(
+          logJobId && jobTitle
+            ? `Note logged · ${jobTitle}`
+            : 'Note logged'
+        );
       }
       setNewNote('');
       await fetchNotes();
@@ -1220,12 +1256,60 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     [activityRows, linkedJobs]
   );
 
-  /** Rows shown in the main table for the current view mode */
-  const visibleActivityRows = useMemo(
-    () =>
-      activityViewMode === 'all' ? activityRows : focusActivityRows,
-    [activityViewMode, activityRows, focusActivityRows]
+  const activeLinkedJobIds = useMemo(
+    () => getActiveLinkedJobIds(linkedJobs),
+    [linkedJobs]
   );
+
+  /** Primary open job for note form default */
+  const primaryLogJobId = useMemo(() => {
+    for (const j of linkedJobs) {
+      const id = String(j?.jobId || j?.id || '');
+      if (id && activeLinkedJobIds.has(id)) return id;
+    }
+    return linkedJobs[0]
+      ? String(linkedJobs[0].jobId || linkedJobs[0].id || '')
+      : '';
+  }, [linkedJobs, activeLinkedJobIds]);
+
+  // Pre-select primary/active linked job when links load or change
+  useEffect(() => {
+    if (!logJobId && primaryLogJobId) {
+      setLogJobId(primaryLogJobId);
+      return;
+    }
+    if (
+      logJobId &&
+      logJobId !== '' &&
+      !linkedJobs.some(
+        (j) => String(j?.jobId || j?.id || '') === logJobId
+      )
+    ) {
+      setLogJobId(primaryLogJobId || '');
+    }
+  }, [primaryLogJobId, linkedJobs, logJobId]);
+
+  /** Scope: All vs Focus (open jobs), then optional job chip */
+  const visibleActivityRows = useMemo(() => {
+    let rows =
+      activityViewMode === 'all' ? activityRows : focusActivityRows;
+
+    if (activityJobFilter === 'all') return rows;
+    if (activityJobFilter === 'candidate') {
+      return rows.filter((n) => !getEventJobId(n));
+    }
+    // Specific job: that job's notes + candidate-level (null jobId)
+    return rows.filter((n) => {
+      const jid = getEventJobId(n);
+      if (!jid) return true;
+      return jid === activityJobFilter;
+    });
+  }, [
+    activityViewMode,
+    activityRows,
+    focusActivityRows,
+    activityJobFilter,
+  ]);
 
   const pagedActivity = useMemo(
     () => paginateItems(visibleActivityRows, activityPage, DEFAULT_PAGE_SIZE),
@@ -1242,7 +1326,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     setActivityPage(1);
     setArchivedPage(1);
     setShowArchivedActivity(false);
-  }, [notes.length, candidateId, activityViewMode]);
+  }, [notes.length, candidateId, activityViewMode, activityJobFilter]);
 
   useEffect(() => {
     try {
@@ -1721,8 +1805,8 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                     Notes & Activity Log
                   </h2>
                   <p className="text-xs text-gray-400 mt-1">
-                    Focus shows active-job activity + recent free notes. Stage
-                    types still update the pipeline automatically.
+                    Each note stores action type + optional job. Filter by job
+                    anytime — closed jobs keep their history.
                   </p>
                 </div>
                 <div
@@ -1732,20 +1816,6 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 >
                   <button
                     type="button"
-                    onClick={() => setActivityViewMode('focus')}
-                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                      activityViewMode === 'focus'
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Focus
-                    {activityRows.length > 0
-                      ? ` (${focusActivityRows.length})`
-                      : ''}
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setActivityViewMode('all')}
                     className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
                       activityViewMode === 'all'
@@ -1753,49 +1823,139 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    All activity
+                    All jobs
                     {activityRows.length > 0
                       ? ` (${activityRows.length})`
+                      : ''}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivityViewMode('focus')}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                      activityViewMode === 'focus'
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Open jobs
+                    {activityRows.length > 0
+                      ? ` (${focusActivityRows.length})`
                       : ''}
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-2 mb-5">
-                <select
-                  value={noteType}
-                  onChange={(e) => setNoteType(e.target.value)}
-                  className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm sm:w-48"
-                >
-                  {NOTE_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-                <Input
-                  value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Optional note detail..."
-                  className="flex-1 bg-white"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleAddNote();
-                    }
-                  }}
-                />
-                <Button
-                  onClick={handleAddNote}
-                  disabled={addingNote}
-                  className="bg-blue-600 hover:bg-blue-700 shrink-0"
-                >
-                  {addingNote ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    'Log'
-                  )}
-                </Button>
+              {/* Job filter chips — convenience view over stored jobId */}
+              {linkedJobs.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setActivityJobFilter('all')}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                      activityJobFilter === 'all'
+                        ? 'border-blue-300 bg-blue-50 text-blue-800'
+                        : 'border-gray-200 bg-white text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    All jobs
+                  </button>
+                  {linkedJobs.map((j: any) => {
+                    const id = String(j?.jobId || j?.id || '');
+                    const title = j?.jobTitle || j?.title || 'Job';
+                    if (!id) return null;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setActivityJobFilter(id)}
+                        className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition max-w-[14rem] truncate ${
+                          activityJobFilter === id
+                            ? 'border-violet-300 bg-violet-50 text-violet-900'
+                            : 'border-gray-200 bg-white text-slate-600 hover:border-slate-300'
+                        }`}
+                        title={title}
+                      >
+                        {title}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setActivityJobFilter('candidate')}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                      activityJobFilter === 'candidate'
+                        ? 'border-slate-400 bg-slate-100 text-slate-900'
+                        : 'border-gray-200 bg-white text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    Candidate only
+                  </button>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 mb-5">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <select
+                    value={noteType}
+                    onChange={(e) => setNoteType(e.target.value)}
+                    className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm sm:w-44"
+                    aria-label="Action type"
+                  >
+                    {NOTE_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={logJobId}
+                    onChange={(e) => setLogJobId(e.target.value)}
+                    className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm sm:min-w-[12rem] sm:max-w-[18rem]"
+                    aria-label="Job for this note"
+                  >
+                    <option value="">Candidate — no specific job</option>
+                    {linkedJobs.map((j: any) => {
+                      const id = String(j?.jobId || j?.id || '');
+                      if (!id) return null;
+                      const title = j?.jobTitle || j?.title || 'Job';
+                      const co = j?.companyName || j?.company_name || '';
+                      return (
+                        <option key={id} value={id}>
+                          {co ? `${title} @ ${co}` : title}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <Input
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="Optional note detail..."
+                    className="flex-1 bg-white"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleAddNote();
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={handleAddNote}
+                    disabled={addingNote}
+                    className="bg-blue-600 hover:bg-blue-700 shrink-0"
+                  >
+                    {addingNote ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Log'
+                    )}
+                  </Button>
+                </div>
+                {logJobId && noteTypeDrivesStage(noteType) && (
+                  <p className="text-[11px] text-slate-500">
+                    This action type will update the pipeline stage for the
+                    selected job only.
+                  </p>
+                )}
               </div>
 
               {notesLoading ? (
@@ -2029,7 +2189,18 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                                   </div>
                                 </div>
                               ) : (
-                                <ExpandableNoteText text={getNoteBody(note)} />
+                                <div className="space-y-1">
+                                  {(note?.metadata?.jobTitle ||
+                                    note?.metadata?.companyName) && (
+                                    <span className="inline-flex max-w-full truncate rounded-md border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+                                      {note.metadata.jobTitle || 'Job'}
+                                      {note.metadata.companyName
+                                        ? ` @ ${note.metadata.companyName}`
+                                        : ''}
+                                    </span>
+                                  )}
+                                  <ExpandableNoteText text={getNoteBody(note)} />
+                                </div>
                               )}
                             </td>
                             <td className="px-3 py-3 align-top text-right">
@@ -2291,8 +2462,8 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 Timeline
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Focus = active linked jobs + recent free notes · All = full
-                history
+                All jobs by default · each note can be tagged to a job · Open
+                jobs filter is optional
               </p>
             </div>
             <div
@@ -2302,17 +2473,6 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             >
               <button
                 type="button"
-                onClick={() => setActivityViewMode('focus')}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                  activityViewMode === 'focus'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Focus ({focusActivityRows.length})
-              </button>
-              <button
-                type="button"
                 onClick={() => setActivityViewMode('all')}
                 className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
                   activityViewMode === 'all'
@@ -2320,10 +2480,55 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                All ({activityRows.length})
+                All jobs ({activityRows.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivityViewMode('focus')}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                  activityViewMode === 'focus'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Open jobs ({focusActivityRows.length})
               </button>
             </div>
           </div>
+          {linkedJobs.length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setActivityJobFilter('all')}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                  activityJobFilter === 'all'
+                    ? 'border-blue-300 bg-blue-50 text-blue-800'
+                    : 'border-gray-200 bg-white text-slate-600'
+                }`}
+              >
+                All jobs
+              </button>
+              {linkedJobs.map((j: any) => {
+                const id = String(j?.jobId || j?.id || '');
+                if (!id) return null;
+                const title = j?.jobTitle || j?.title || 'Job';
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setActivityJobFilter(id)}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold max-w-[14rem] truncate ${
+                      activityJobFilter === id
+                        ? 'border-violet-300 bg-violet-50 text-violet-900'
+                        : 'border-gray-200 bg-white text-slate-600'
+                    }`}
+                  >
+                    {title}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {notesLoading ? (
             <div className="flex justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
