@@ -10,6 +10,7 @@ import {
   ChevronDown,
   DollarSign,
   ExternalLink,
+  FileText,
   Globe,
   Loader2,
   MapPin,
@@ -50,6 +51,8 @@ import {
   pipelineHref,
 } from "@/lib/jobs/pipeline-buckets";
 import { toast } from "sonner";
+import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
+import { hasPermission } from "@/lib/roles";
 
 type FitScoreClient = {
   score: number;
@@ -118,6 +121,23 @@ export default function JobDetailPage() {
   const [candidateEmail, setCandidateEmail] = useState("");
   const [newCandidateStage, setNewCandidateStage] = useState("sourced");
   const [candidateNotes, setCandidateNotes] = useState("");
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/session", { credentials: "include" });
+        if (!res.ok) return;
+        const data = await res.json();
+        setUserRole(data?.user?.role || data?.role || null);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, []);
+
+  const canInvoice = hasPermission(userRole, "team_admin");
   const [candidateSearch, setCandidateSearch] = useState("");
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -575,6 +595,16 @@ export default function JobDetailPage() {
           )}
 
           <FillReqPlaybookButton jobId={job.id} jobTitle={job.title} />
+          {canInvoice && (
+            <Button
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => setInvoiceOpen(true)}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Create invoice
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
             <Pencil className="h-4 w-4 mr-2" />
             Edit Job
@@ -1090,6 +1120,21 @@ export default function JobDetailPage() {
         job={job}
         focusDescription={editFocusDescription}
       />
+
+      {canInvoice && (
+        <CreateInvoiceModal
+          open={invoiceOpen}
+          onClose={() => setInvoiceOpen(false)}
+          jobId={job.id}
+          jobTitle={job.title}
+          companyName={job.companyName || job.company_name}
+          salaryRange={job.salaryRange || job.salary_range}
+          candidates={linkedCandidates.map((lc: any) => ({
+            id: lc.candidateId,
+            name: lc.candidateName || lc.name || "Candidate",
+          }))}
+        />
+      )}
     </div>
   );
 }

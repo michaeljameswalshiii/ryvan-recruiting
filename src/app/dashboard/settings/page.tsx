@@ -25,6 +25,7 @@ import {
   Terminal,
   MessageSquare,
   Shield,
+  FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,6 +41,7 @@ import { ApolloSettings } from '@/components/settings/ApolloSettings';
 import { TextingSettings } from '@/components/settings/TextingSettings';
 import { SecuritySettings } from '@/components/settings/SecuritySettings';
 import { ChangePasswordCard } from '@/components/settings/ChangePasswordCard';
+import { InvoiceTemplatesSettings } from '@/components/settings/InvoiceTemplatesSettings';
 
 interface EmailConnection {
   provider: 'gmail' | 'outlook';
@@ -73,6 +75,7 @@ type SettingsTab =
   | 'account'
   | 'team'
   | 'organization'
+  | 'invoices'
   | 'plan'
   | 'integrations'
   | 'texting'
@@ -404,6 +407,12 @@ export default function SettingsPage() {
     { id: 'team', label: 'Team', icon: <Users className="h-4 w-4" />, adminOnly: true },
     { id: 'organization', label: 'Organization', icon: <Building2 className="h-4 w-4" />, adminOnly: true },
     {
+      id: 'invoices',
+      label: 'Invoices',
+      icon: <FileText className="h-4 w-4" />,
+      adminOnly: true,
+    },
+    {
       id: 'integrations',
       label: 'Integrations',
       icon: <Terminal className="h-4 w-4" />,
@@ -454,6 +463,7 @@ export default function SettingsPage() {
 
       {tab === 'team' && canTeamAdmin && <TeamSettings />}
       {tab === 'organization' && canTeamAdmin && <OrgSettings />}
+      {tab === 'invoices' && canTeamAdmin && <InvoiceTemplatesSettings />}
       {tab === 'integrations' && canTeamAdmin && (
         <div className="space-y-6">
           <ApolloSettings />
