@@ -54,7 +54,6 @@ import {
   activityBadgeStyle,
 } from '@/lib/ui/activity-badge-colors';
 import {
-  getActiveLinkedJobIds,
   splitFocusAndArchived,
   type ActivityViewMode,
 } from '@/lib/candidates/activity-focus';
@@ -1212,16 +1211,14 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notes, safe.notes, safe.createdAt]);
 
-  const activeJobIds = useMemo(
-    () => getActiveLinkedJobIds(linkedJobs),
-    [linkedJobs]
+  const {
+    focus: focusActivityRows,
+    archived: archivedActivityRows,
+    focusJobIds,
+  } = useMemo(
+    () => splitFocusAndArchived(activityRows, linkedJobs),
+    [activityRows, linkedJobs]
   );
-
-  const { focus: focusActivityRows, archived: archivedActivityRows } =
-    useMemo(
-      () => splitFocusAndArchived(activityRows, activeJobIds),
-      [activityRows, activeJobIds]
-    );
 
   /** Rows shown in the main table for the current view mode */
   const visibleActivityRows = useMemo(
@@ -1915,11 +1912,11 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
               ) : (
                 <div className="space-y-3">
                   {activityViewMode === 'focus' &&
-                    activeJobIds.size === 0 &&
+                    focusJobIds.size === 0 &&
                     focusActivityRows.length > 0 && (
                       <p className="text-[11px] text-slate-500">
-                        No open linked jobs — showing recent free-form notes
-                        (last 14 days). Link a job to focus by req.
+                        No open jobs in play — showing recent free-form notes
+                        only. Closed / rejected reqs are under archived.
                       </p>
                     )}
                   <PaginationBar

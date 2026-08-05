@@ -1,5 +1,8 @@
 /**
  * Candidate activity focus filter — active-job timeline vs full history.
+ *
+ * Focus = only open, non-closed jobs (no Rejected/Not Interested/etc. for that req).
+ * Once a job has a closed outcome, ALL activity for that job leaves Focus.
  */
 
 /** Stages treated as closed / not “in play” for Focus view */
@@ -19,8 +22,7 @@ export const TERMINAL_JOB_STAGES = new Set([
 ]);
 
 /**
- * Note / action types that should never appear in Focus (closed outcomes).
- * Matched against noteType, noteTypeLabel, and display badge labels.
+ * Note / action types that mark a closed outcome (and the whole job thread).
  */
 export const TERMINAL_NOTE_TYPES = new Set([
   "rejected",
@@ -41,6 +43,15 @@ export const TERMINAL_NOTE_TYPES = new Set([
 
 const FREE_NOTE_FOCUS_DAYS = 14;
 
+export type LinkedJobLike = {
+  jobId?: string;
+  id?: string;
+  stage?: string;
+  jobTitle?: string;
+  title?: string;
+  companyName?: string;
+};
+
 export function normalizeStageKey(stage?: string | null): string {
   return String(stage || "")
     .trim()
@@ -53,14 +64,22 @@ export function isTerminalJobStage(stage?: string | null): boolean {
   return TERMINAL_JOB_STAGES.has(s);
 }
 
-/** Linked jobs still “active” for focus filtering */
+export function jobRecordId(j: LinkedJobLike): string {
+  return String(j?.jobId || j?.id || "").trim();
+}
+
+export function jobRecordTitle(j: LinkedJobLike): string {
+  return String(j?.jobTitle || j?.title || "").trim();
+}
+
+/** Linked jobs still open by stage (before considering terminal notes) */
 export function getActiveLinkedJobIds(
-  linkedJobs: Array<{ jobId?: string; id?: string; stage?: string }> | null | undefined
+  linkedJobs: LinkedJobLike[] | null | undefined
 ): Set<string> {
   const ids = new Set<string>();
   if (!Array.isArray(linkedJobs)) return ids;
   for (const j of linkedJobs) {
-    const id = String(j?.jobId || j?.id || "").trim();
+    const id = jobRecordId(j);
     if (!id) continue;
     if (!isTerminalJobStage(j?.stage)) ids.add(id);
   }
@@ -72,6 +91,11 @@ export function getEventJobId(note: any): string | null {
   const id = meta.jobId || meta.job_id || null;
   if (id) return String(id);
   return null;
+}
+
+function eventBody(note: any): string {
+  const meta = note?.metadata || {};
+  return String(meta.noteText || note?.description || note?.title || "");
 }
 
 /** True if this activity is a closed/negative outcome note type */
@@ -95,16 +119,12 @@ export function isTerminalNoteActivity(note: any): boolean {
 
   for (const c of candidates) {
     if (TERMINAL_NOTE_TYPES.has(c)) return true;
-    // "Note - Rejected", "Rejected", etc.
     if (c.includes("rejected") || c.includes("not interested")) return true;
     if (c === "dnu" || c.endsWith(" dnu") || c.startsWith("dnu ")) return true;
     if (c.includes("job unlinked") || c === "job_unlinked") return true;
   }
 
-  const body = String(
-    meta.noteText || note?.description || note?.title || ""
-  ).toLowerCase();
-  // Stage-driven reject notes often have type Rejected already; body alone is weaker
+  const body = eventBody(note).toLowerCase();
   if (meta.noteType || meta.noteTypeLabel) return false;
   if (/^rejected\b/.test(body) || body.startsWith("not interested")) {
     return true;
@@ -112,26 +132,114 @@ export function isTerminalNoteActivity(note: any): boolean {
   return false;
 }
 
+/** Match free-text / titles to a linked job id */
+export function matchJobIdFromText(
+  text: string,
+  linkedJobs: LinkedJobLike[]
+): string | null {
+  const t = String(text || "").toLowerCase();
+  if (!t || !Array.isArray(linkedJobs)) return null;
+
+  let best: { id: string; len: number } | null = null;
+  for (const j of linkedJobs) {
+    const id = jobRecordId(j);
+    const title = jobRecordTitle(j);
+    if (!id || !title || title.length < 3) continue;
+    const titleLower = title.toLowerCase();
+    if (t.includes(titleLower)) {
+      if (!best || titleLower.length > best.len) {
+        best = { id, len: titleLower.length };
+      }
+    }
+  }
+  return best?.id || null;
+}
+
 /**
- * Focus = tied to an active linked job (and not a terminal note type),
- * OR recent free-form notes that are not terminal outcomes.
- * Explicitly archived / Rejected / Not Interested / etc. are never Focus.
+ * Job IDs that must leave Focus entirely:
+ * - linked job stage is terminal, OR
+ * - any terminal note (Rejected, etc.) is tied to that job (id or title in body)
+ */
+export function getClosedJobIds(
+  rows: any[],
+  linkedJobs: LinkedJobLike[] | null | undefined
+): Set<string> {
+  const closed = new Set<string>();
+  const jobs = Array.isArray(linkedJobs) ? linkedJobs : [];
+
+  for (const j of jobs) {
+    const id = jobRecordId(j);
+    if (id && isTerminalJobStage(j?.stage)) closed.add(id);
+  }
+
+  for (const note of rows) {
+    if (!isTerminalNoteActivity(note)) continue;
+    const jid = getEventJobId(note);
+    if (jid) {
+      closed.add(jid);
+      continue;
+    }
+    const matched = matchJobIdFromText(eventBody(note), jobs);
+    if (matched) closed.add(matched);
+  }
+
+  return closed;
+}
+
+/**
+ * Jobs still allowed in Focus = stage-active and not closed by outcome notes.
+ */
+export function getFocusJobIds(
+  rows: any[],
+  linkedJobs: LinkedJobLike[] | null | undefined
+): Set<string> {
+  const stageActive = getActiveLinkedJobIds(linkedJobs);
+  const closed = getClosedJobIds(rows, linkedJobs);
+  const focus = new Set<string>();
+  for (const id of stageActive) {
+    if (!closed.has(id)) focus.add(id);
+  }
+  return focus;
+}
+
+/**
+ * Resolve which job (if any) this activity belongs to.
+ */
+export function resolveActivityJobId(
+  note: any,
+  linkedJobs: LinkedJobLike[] | null | undefined
+): string | null {
+  const jid = getEventJobId(note);
+  if (jid) return jid;
+  return matchJobIdFromText(
+    eventBody(note),
+    Array.isArray(linkedJobs) ? linkedJobs : []
+  );
+}
+
+/**
+ * Focus = activity for jobs still open & not closed by Rejected/etc.,
+ * OR recent free-form notes that don't belong to a closed job.
  */
 export function isFocusActivity(
   note: any,
-  activeJobIds: Set<string>,
+  focusJobIds: Set<string>,
+  closedJobIds: Set<string>,
+  linkedJobs: LinkedJobLike[] | null | undefined,
   freeNoteDays: number = FREE_NOTE_FOCUS_DAYS
 ): boolean {
   const meta = note?.metadata || {};
   if (meta.archived === true || meta.archivedAt) return false;
 
-  // Closed outcomes (Rejected, etc.) always go to archive — even if recent
+  // Closed outcomes always archive
   if (isTerminalNoteActivity(note)) return false;
 
-  const jobId = getEventJobId(note);
-  const body = String(
-    meta.noteText || note?.description || note?.title || ""
-  );
+  const jobId = resolveActivityJobId(note, linkedJobs);
+
+  // Anything about a closed job leaves Focus (AI fit, Attached, Interested note, …)
+  if (jobId && closedJobIds.has(jobId)) return false;
+
+  const body = eventBody(note);
   const isAiFit =
     meta.systemKind === "ai_fit" ||
     typeof meta.fitScore === "number" ||
@@ -143,34 +251,38 @@ export function isFocusActivity(
     note?.eventType === "JOB_UNLINKED" ||
     /^linked to job:/i.test(body);
 
-  // Job-scoped system rows only belong in Focus when that job is still active
   if (isAiFit || isJobAttach) {
     if (!jobId) return false;
-    return activeJobIds.has(jobId);
+    return focusJobIds.has(jobId);
   }
 
   if (jobId) {
-    return activeJobIds.has(jobId);
+    return focusJobIds.has(jobId);
   }
 
-  // No jobId: keep recent free-form / pipeline notes in Focus
+  // No resolvable job: recent free-form only
   const ts = new Date(note?.createdAt || note?.timestamp || 0).getTime();
-  if (!Number.isFinite(ts) || ts <= 0) return true; // unknown date → keep visible
+  if (!Number.isFinite(ts) || ts <= 0) return true;
   const cutoff = Date.now() - freeNoteDays * 24 * 60 * 60 * 1000;
   return ts >= cutoff;
 }
 
 export function splitFocusAndArchived(
   rows: any[],
-  activeJobIds: Set<string>
-): { focus: any[]; archived: any[] } {
+  linkedJobs: LinkedJobLike[] | null | undefined
+): { focus: any[]; archived: any[]; focusJobIds: Set<string>; closedJobIds: Set<string> } {
+  const closedJobIds = getClosedJobIds(rows, linkedJobs);
+  const focusJobIds = getFocusJobIds(rows, linkedJobs);
   const focus: any[] = [];
   const archived: any[] = [];
   for (const row of rows) {
-    if (isFocusActivity(row, activeJobIds)) focus.push(row);
-    else archived.push(row);
+    if (isFocusActivity(row, focusJobIds, closedJobIds, linkedJobs)) {
+      focus.push(row);
+    } else {
+      archived.push(row);
+    }
   }
-  return { focus, archived };
+  return { focus, archived, focusJobIds, closedJobIds };
 }
 
 export type ActivityViewMode = "focus" | "all";
