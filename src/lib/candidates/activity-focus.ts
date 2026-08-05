@@ -155,6 +155,30 @@ export function matchJobIdFromText(
   return best?.id || null;
 }
 
+/** Clauses that name a *different* opportunity (not the subject of a Rejected note). */
+const DIFFERENT_OPPORTUNITY_PATTERNS = [
+  /different opportunity[:\s—–-]+([^\n.;]+)/gi,
+  /another opportunity[:\s—–-]+([^\n.;]+)/gi,
+  /different role[:\s—–-]+([^\n.;]+)/gi,
+  /other opportunity[:\s—–-]+([^\n.;]+)/gi,
+  /alternative(?: opportunity| role)?[:\s—–-]+([^\n.;]+)/gi,
+  /instead (?:for|about|on)\s+([^\n.;]+)/gi,
+  /inquire(?:d)? about (?:a |the )?([^\n.;]+)/gi,
+  /did inquire about a different opportunity[:\s—–-]+([^\n.;]+)/gi,
+];
+
+/**
+ * Strip "different opportunity …" clauses so title matching does not treat the
+ * *other* role as the subject of this note.
+ */
+export function stripDifferentOpportunityClauses(text: string): string {
+  let out = String(text || "");
+  for (const re of DIFFERENT_OPPORTUNITY_PATTERNS) {
+    out = out.replace(new RegExp(re.source, re.flags), " ");
+  }
+  return out.replace(/\s+/g, " ").trim();
+}
+
 /**
  * Jobs named as a *different / other / alternative* opportunity in free text
  * (still in play — should stay in Focus).
@@ -167,19 +191,10 @@ export function extractDifferentOpportunityJobIds(
   const jobs = Array.isArray(linkedJobs) ? linkedJobs : [];
   if (!text || !jobs.length) return protectedIds;
 
-  const patterns = [
-    /different opportunity[:\s—–-]+([^\n.;]+)/gi,
-    /another opportunity[:\s—–-]+([^\n.;]+)/gi,
-    /different role[:\s—–-]+([^\n.;]+)/gi,
-    /other opportunity[:\s—–-]+([^\n.;]+)/gi,
-    /alternative(?: opportunity| role)?[:\s—–-]+([^\n.;]+)/gi,
-    /instead (?:for|about|on)\s+([^\n.;]+)/gi,
-    /inquire(?:d)? about (?:a |the )?([^\n.;]+)/gi,
-  ];
-
-  for (const re of patterns) {
+  for (const re of DIFFERENT_OPPORTUNITY_PATTERNS) {
+    const local = new RegExp(re.source, re.flags);
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
+    while ((m = local.exec(text)) !== null) {
       const chunk = m[1] || "";
       const id = matchJobIdFromText(chunk, jobs);
       if (id) protectedIds.add(id);
@@ -361,9 +376,29 @@ export type ResolvedJobTag = {
   label: string | null;
 };
 
+function enrichFromJob(
+  j: LinkedJobLike | undefined,
+  jobTitle: string | null,
+  companyName: string | null
+): { jobTitle: string | null; companyName: string | null } {
+  if (!j) return { jobTitle, companyName };
+  return {
+    jobTitle: jobTitle || jobRecordTitle(j) || null,
+    companyName:
+      companyName ||
+      String(
+        (j as any).companyName || (j as any).company_name || ""
+      ).trim() ||
+      null,
+  };
+}
+
 /**
  * Resolve a consistent job tag for display on any activity row.
  * Uses stored metadata first, then body/title matching against linked jobs.
+ *
+ * Important: on Rejected / terminal notes, a job named only as a
+ * "different opportunity" is *not* the subject — tag the closed role instead.
  */
 export function resolveActivityJobTag(
   note: any,
@@ -377,49 +412,48 @@ export function resolveActivityJobTag(
   };
   const jobs = Array.isArray(linkedJobs) ? linkedJobs : [];
   const meta = note?.metadata || {};
+  const body = eventBody(note);
+  const differentOppIds = extractDifferentOpportunityJobIds(body, jobs);
+  const isTerminal = isTerminalNoteActivity(note);
 
   let jobId = getEventJobId(note);
   let jobTitle = meta.jobTitle ? String(meta.jobTitle).trim() : null;
   let companyName = meta.companyName ? String(meta.companyName).trim() : null;
 
+  // Explicit metadata must not point at the "different opportunity" job on a
+  // free-form Rejected note when that would invert the meaning. Prefer stored
+  // jobId always (recruiter deliberately tagged it); only free-form inference
+  // is corrected below.
   // Snapshot-only title without id
   if (!jobId && jobTitle) {
-    const match = jobs.find(
-      (j) =>
-        jobRecordTitle(j).toLowerCase() === jobTitle!.toLowerCase() ||
-        jobRecordTitle(j).toLowerCase().includes(jobTitle!.toLowerCase()) ||
-        jobTitle!.toLowerCase().includes(jobRecordTitle(j).toLowerCase())
-    );
-    if (match) {
-      jobId = jobRecordId(match) || jobId;
-      if (!companyName) {
-        companyName =
-          String(
-            (match as any).companyName || (match as any).company_name || ""
-          ).trim() || null;
+    // If title is only the different-opportunity role on a terminal note, drop it
+    const titleMatchId = matchJobIdFromText(jobTitle, jobs);
+    if (
+      isTerminal &&
+      titleMatchId &&
+      differentOppIds.has(titleMatchId) &&
+      !getEventJobId(note)
+    ) {
+      jobTitle = null;
+    } else {
+      const match = jobs.find(
+        (j) =>
+          jobRecordTitle(j).toLowerCase() === jobTitle!.toLowerCase() ||
+          jobRecordTitle(j).toLowerCase().includes(jobTitle!.toLowerCase()) ||
+          jobTitle!.toLowerCase().includes(jobRecordTitle(j).toLowerCase())
+      );
+      if (match) {
+        jobId = jobRecordId(match) || jobId;
+        const en = enrichFromJob(match, jobTitle, companyName);
+        jobTitle = en.jobTitle;
+        companyName = en.companyName;
       }
-      jobTitle = jobRecordTitle(match) || jobTitle;
     }
   }
 
   // Infer from body (AI fit for "X", Linked to job: X @ Y, free-form)
   if (!jobId || !jobTitle) {
-    const body = eventBody(note);
-    const inferredId = matchJobIdFromText(body, jobs);
-    if (inferredId) {
-      jobId = jobId || inferredId;
-      const j = jobs.find((x) => jobRecordId(x) === inferredId);
-      if (j) {
-        jobTitle = jobTitle || jobRecordTitle(j) || null;
-        companyName =
-          companyName ||
-          String(
-            (j as any).companyName || (j as any).company_name || ""
-          ).trim() ||
-          null;
-      }
-    }
-    // Parse "Linked to job: Title @ Company" even if not in linkedJobs anymore
+    // Explicit structured patterns first (subject of the note)
     if (!jobTitle) {
       const linked = body.match(
         /^(?:linked to job|attached to job):\s*(.+?)(?:\s*@\s*(.+))?$/i
@@ -429,23 +463,85 @@ export function resolveActivityJobTag(
         companyName = companyName || linked[2]?.trim() || null;
       }
     }
-    // Parse AI fit for "Title"
     if (!jobTitle) {
       const ai = body.match(/ai fit for\s*["“]?([^"”\n]+?)["”]?\s*:/i);
       if (ai) jobTitle = ai[1]?.trim() || null;
     }
+
+    // Free-form title match — never use a job that only appears as a
+    // "different opportunity" as the note's job tag.
+    if (!jobId || !jobTitle) {
+      const bodyForMatch = stripDifferentOpportunityClauses(body);
+      let inferredId = matchJobIdFromText(bodyForMatch, jobs);
+
+      // Rejected + "different opportunity – Ops" with no other title in body:
+      // the subject is the *other* linked job (Finance), not Ops.
+      if (!inferredId && isTerminal && differentOppIds.size > 0) {
+        const closedCandidates = jobs.filter((j) => {
+          const id = jobRecordId(j);
+          return Boolean(id) && !differentOppIds.has(id);
+        });
+        if (closedCandidates.length === 1) {
+          inferredId = jobRecordId(closedCandidates[0]);
+        } else if (closedCandidates.length > 1) {
+          // Prefer a linked job already in a terminal stage
+          const terminal = closedCandidates.find((j) =>
+            isTerminalJobStage(j?.stage)
+          );
+          if (terminal) inferredId = jobRecordId(terminal);
+        }
+      }
+
+      // Last resort free-form match on full body, but never pick a
+      // different-opportunity-only job for terminal notes
+      if (!inferredId && !isTerminal) {
+        inferredId = matchJobIdFromText(body, jobs);
+      } else if (!inferredId && isTerminal) {
+        const raw = matchJobIdFromText(body, jobs);
+        if (raw && !differentOppIds.has(raw)) inferredId = raw;
+      }
+
+      if (inferredId) {
+        jobId = jobId || inferredId;
+        const j = jobs.find((x) => jobRecordId(x) === inferredId);
+        const en = enrichFromJob(j, jobTitle, companyName);
+        jobTitle = en.jobTitle;
+        companyName = en.companyName;
+      }
+    }
+  }
+
+  // If we still tagged a terminal note with the different-opportunity job and
+  // have no explicit stored jobId, flip to the closed role.
+  if (
+    isTerminal &&
+    !getEventJobId(note) &&
+    jobId &&
+    differentOppIds.has(jobId)
+  ) {
+    const closedCandidates = jobs.filter((j) => {
+      const id = jobRecordId(j);
+      return Boolean(id) && !differentOppIds.has(id);
+    });
+    if (closedCandidates.length === 1) {
+      jobId = jobRecordId(closedCandidates[0]);
+      const en = enrichFromJob(closedCandidates[0], null, null);
+      jobTitle = en.jobTitle;
+      companyName = en.companyName;
+    } else {
+      // Ambiguous — do not show the wrong (protected) job as the chip
+      jobId = null;
+      jobTitle = null;
+      companyName = null;
+    }
   }
 
   // Enrich company from linkedJobs by id
-  if (jobId && !companyName) {
+  if (jobId && (!companyName || !jobTitle)) {
     const j = jobs.find((x) => jobRecordId(x) === jobId);
-    if (j) {
-      companyName =
-        String(
-          (j as any).companyName || (j as any).company_name || ""
-        ).trim() || null;
-      if (!jobTitle) jobTitle = jobRecordTitle(j) || null;
-    }
+    const en = enrichFromJob(j, jobTitle, companyName);
+    jobTitle = en.jobTitle;
+    companyName = en.companyName;
   }
 
   if (!jobTitle && !jobId) return empty;
