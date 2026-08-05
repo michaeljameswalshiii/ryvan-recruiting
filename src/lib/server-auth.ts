@@ -364,11 +364,14 @@ export async function authenticateUser(
     credentials: getAwsCredentials(),
   });
 
+  // Cognito email/username is case-sensitive — always use lowercase
+  const username = email.trim().toLowerCase();
+
   const authCommand = new InitiateAuthCommand({
     AuthFlow: 'USER_PASSWORD_AUTH',
     ClientId: clientId,
     AuthParameters: {
-      USERNAME: email,
+      USERNAME: username,
       PASSWORD: password,
     },
   });
@@ -389,8 +392,8 @@ export async function authenticateUser(
       kind: 'mfa_required',
       challengeName: authResponse.ChallengeName,
       session: authResponse.Session,
-      email,
-      username: email,
+      email: username,
+      username,
     };
   }
 
@@ -408,14 +411,14 @@ export async function authenticateUser(
   const { userId, userEmail } = await resolveUserFromAccessToken(
     client,
     AccessToken,
-    email
+    username
   );
   const { tenantId, role } = await loadProfileTenantRole(userId);
 
   return {
     kind: 'success',
     userId,
-    email: userEmail,
+    email: (userEmail || username).toLowerCase(),
     tenantId,
     role,
     AccessToken,

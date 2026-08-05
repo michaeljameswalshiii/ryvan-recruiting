@@ -7,7 +7,11 @@
 
 // Login input
 export const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  // Cognito usernames + Dynamo profiles store email lowercase — normalize on input
+  email: z
+    .string()
+    .email('Invalid email address')
+    .transform((v) => v.trim().toLowerCase()),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 

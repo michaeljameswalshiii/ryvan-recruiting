@@ -50,12 +50,13 @@ async function authenticateSimple(email: string, password: string) {
         : undefined,
   });
 
+  const emailNorm = email.trim().toLowerCase();
   const scanResult = await client.send(
     new ScanCommand({
       TableName: profilesTable,
       FilterExpression: "email = :email",
       ExpressionAttributeValues: {
-        ":email": { S: email },
+        ":email": { S: emailNorm },
       },
     })
   );
@@ -87,7 +88,7 @@ async function authenticateSimple(email: string, password: string) {
 
   return {
     userId: userId || "",
-    email,
+    email: emailNorm,
     tenantId: tenantId || "",
     role: profile.role?.S || "user",
     AccessToken: "",
