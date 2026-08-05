@@ -1267,6 +1267,8 @@ export function AgentRunDesk({
                     </div>
                   )}
                   <div
+                    data-ink-on-light={m.role === 'assistant' && !dark ? true : undefined}
+                    data-ink-keep={m.role === 'user' || dark ? true : undefined}
                     className={`max-w-[min(100%,36rem)] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
                       m.role === 'user'
                         ? dark
@@ -1274,10 +1276,43 @@ export function AgentRunDesk({
                           : 'bg-slate-900 text-white'
                         : dark
                           ? 'border border-white/10 bg-slate-900 text-slate-100'
-                          : 'border border-slate-200 bg-white text-slate-800'
+                          : 'border border-slate-200 bg-white text-slate-900'
                     }`}
+                    style={
+                      m.role === 'user'
+                        ? {
+                            color: '#ffffff',
+                            WebkitTextFillColor: '#ffffff',
+                          }
+                        : dark
+                          ? {
+                              backgroundColor: '#0f172a',
+                              color: '#f1f5f9',
+                              WebkitTextFillColor: '#f1f5f9',
+                            }
+                          : {
+                              backgroundColor: '#ffffff',
+                              color: '#0f172a',
+                              WebkitTextFillColor: '#0f172a',
+                            }
+                    }
                   >
-                    <p className="whitespace-pre-wrap break-words">
+                    <p
+                      className="whitespace-pre-wrap break-words"
+                      style={
+                        m.role === 'user'
+                          ? { color: '#ffffff', WebkitTextFillColor: '#ffffff' }
+                          : dark
+                            ? {
+                                color: '#f1f5f9',
+                                WebkitTextFillColor: '#f1f5f9',
+                              }
+                            : {
+                                color: '#0f172a',
+                                WebkitTextFillColor: '#0f172a',
+                              }
+                      }
+                    >
                       {m.content.replace(/\n?GOAL_(COMPLETE|CONTINUE)\s*/gi, '')}
                     </p>
                   </div>

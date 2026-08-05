@@ -616,18 +616,41 @@ return (
                 </div>
               )}
               <div
+                data-ink-on-light={message.role === "assistant" ? true : undefined}
+                data-ink-keep={message.role === "user" ? true : undefined}
                 className={`max-w-[80%] rounded-lg p-3 ${
                   message.role === "user"
                     ? "bg-primary text-primary-foreground"
-                    : "bg-background border border-border"
+                    : "bg-white border border-slate-200 text-slate-900"
                 }`}
+                style={
+                  message.role === "assistant"
+                    ? {
+                        backgroundColor: "#ffffff",
+                        color: "#0f172a",
+                        WebkitTextFillColor: "#0f172a",
+                      }
+                    : {
+                        color: "#ffffff",
+                        WebkitTextFillColor: "#ffffff",
+                      }
+                }
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  <p
+                    className="text-sm whitespace-pre-wrap"
+                    style={
+                      message.role === "assistant"
+                        ? { color: "#0f172a", WebkitTextFillColor: "#0f172a" }
+                        : { color: "#ffffff", WebkitTextFillColor: "#ffffff" }
+                    }
+                  >
+                    {message.content}
+                  </p>
                   {message.role === "assistant" && (
                     <button
                       onClick={() => copyToClipboard(message.content, message.id)}
-                      className="flex-shrink-0 text-muted-foreground hover:text-foreground"
+                      className="flex-shrink-0 text-slate-500 hover:text-slate-800"
                     >
                       {copiedId === message.id ? (
                         <Check className="h-4 w-4" />
@@ -637,7 +660,14 @@ return (
                     </button>
                   )}
                 </div>
-                <p className="text-xs opacity-50 mt-2">
+                <p
+                  className="text-xs mt-2"
+                  style={
+                    message.role === "assistant"
+                      ? { color: "#64748b", WebkitTextFillColor: "#64748b" }
+                      : { color: "rgba(255,255,255,0.7)", WebkitTextFillColor: "rgba(255,255,255,0.7)" }
+                  }
+                >
                   {formatMessageTime(message.timestamp)}
                 </p>
               </div>

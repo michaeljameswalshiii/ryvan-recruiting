@@ -827,9 +827,17 @@ export default function GeneralAiUsagePage() {
   }
 
   return (
-    <div className="-m-6 flex h-[calc(100vh-4rem)] min-w-0 overflow-hidden bg-slate-100">
+    <div
+      data-ink-on-light
+      className="-m-6 flex h-[calc(100vh-4rem)] min-w-0 overflow-hidden bg-slate-100"
+      style={{ backgroundColor: '#f1f5f9', color: '#0f172a' }}
+    >
       {/* Interactive chat (default) — must min-w-0 so the rail cannot crush this column */}
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-slate-50 to-white">
+      <section
+        data-ink-on-light
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-slate-50 to-white"
+        style={{ color: '#0f172a' }}
+      >
       {/* Header: stack on narrow so actions never squeeze the title to one-word width */}
       <header className="flex flex-shrink-0 flex-col gap-3 border-b border-slate-200/80 bg-white/90 px-4 py-3 backdrop-blur sm:px-6 sm:py-3.5">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1067,17 +1075,37 @@ export default function GeneralAiUsagePage() {
                     }`}
                   >
                     <div
+                      data-ink-on-light={m.role === 'assistant' ? true : undefined}
+                      data-ink-keep={m.role === 'user' ? true : undefined}
                       className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
                         m.role === 'user'
                           ? 'bg-slate-900 text-white'
-                          : 'border border-slate-200 bg-white text-slate-800'
+                          : 'border border-slate-200 bg-white text-slate-900'
                       }`}
+                      style={
+                        m.role === 'assistant'
+                          ? {
+                              backgroundColor: '#ffffff',
+                              color: '#0f172a',
+                              WebkitTextFillColor: '#0f172a',
+                            }
+                          : {
+                              backgroundColor: '#0f172a',
+                              color: '#ffffff',
+                              WebkitTextFillColor: '#ffffff',
+                            }
+                      }
                     >
                       {m.attachments && m.attachments.length > 0 && (
                         <div
                           className={`mb-2 flex flex-wrap gap-1.5 ${
-                            m.role === 'user' ? 'text-slate-200' : 'text-slate-500'
+                            m.role === 'user' ? 'text-slate-200' : 'text-slate-600'
                           }`}
+                          style={
+                            m.role === 'assistant'
+                              ? { color: '#475569', WebkitTextFillColor: '#475569' }
+                              : undefined
+                          }
                         >
                           {m.attachments.map((a) => (
                             <span
@@ -1094,7 +1122,14 @@ export default function GeneralAiUsagePage() {
                           ))}
                         </div>
                       )}
-                      <p className="whitespace-pre-wrap break-words">
+                      <p
+                        className="whitespace-pre-wrap break-words"
+                        style={
+                          m.role === 'assistant'
+                            ? { color: '#0f172a', WebkitTextFillColor: '#0f172a' }
+                            : { color: '#ffffff', WebkitTextFillColor: '#ffffff' }
+                        }
+                      >
                         {m.displayContent ?? m.content}
                       </p>
                       {m.role === 'assistant' &&

@@ -647,19 +647,44 @@ export function FloatingAiAssistant() {
                 </div>
               )}
               <div
+                data-ink-on-light={m.role === 'assistant' ? true : undefined}
+                data-ink-keep={m.role === 'user' ? true : undefined}
                 className={`group relative max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
                   m.role === 'user'
                     ? 'bg-slate-900 text-white'
-                    : 'bg-slate-50 text-slate-800 border border-slate-100'
+                    : 'bg-white text-slate-900 border border-slate-200'
                 }`}
+                style={
+                  m.role === 'assistant'
+                    ? {
+                        backgroundColor: '#ffffff',
+                        color: '#0f172a',
+                        WebkitTextFillColor: '#0f172a',
+                      }
+                    : {
+                        backgroundColor: '#0f172a',
+                        color: '#ffffff',
+                        WebkitTextFillColor: '#ffffff',
+                      }
+                }
               >
-                <div className="whitespace-pre-wrap break-words">
+                <div
+                  className="whitespace-pre-wrap break-words"
+                  style={
+                    m.role === 'assistant'
+                      ? { color: '#0f172a', WebkitTextFillColor: '#0f172a' }
+                      : { color: '#ffffff', WebkitTextFillColor: '#ffffff' }
+                  }
+                >
                   {m.content}
                 </div>
                 <div
-                  className={`mt-1 flex items-center gap-2 text-[10px] ${
-                    m.role === 'user' ? 'text-slate-400' : 'text-slate-400'
-                  }`}
+                  className="mt-1 flex items-center gap-2 text-[10px]"
+                  style={
+                    m.role === 'assistant'
+                      ? { color: '#64748b', WebkitTextFillColor: '#64748b' }
+                      : { color: '#94a3b8', WebkitTextFillColor: '#94a3b8' }
+                  }
                 >
                   <span>{formatTime(m.timestamp)}</span>
                   {m.modelLabel && <span>· {m.modelLabel}</span>}
