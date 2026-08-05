@@ -53,6 +53,11 @@ import {
   ACTIVITY_BADGE_BASE_CLASS,
   activityBadgeStyle,
 } from '@/lib/ui/activity-badge-colors';
+import {
+  getActiveLinkedJobIds,
+  splitFocusAndArchived,
+  type ActivityViewMode,
+} from '@/lib/candidates/activity-focus';
 
 /** Activity / note types shown in the log composer (canonical order) */
 const NOTE_TYPES = ACTIVITY_NOTE_TYPES;
@@ -259,6 +264,11 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [notes, setNotes] = useState<any[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [activityPage, setActivityPage] = useState(1);
+  /** Focus = active-job activity; All = full history */
+  const [activityViewMode, setActivityViewMode] =
+    useState<ActivityViewMode>('focus');
+  const [showArchivedActivity, setShowArchivedActivity] = useState(false);
+  const [archivedPage, setArchivedPage] = useState(1);
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('Conversation');
   const [addingNote, setAddingNote] = useState(false);
@@ -1193,14 +1203,40 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notes, safe.notes, safe.createdAt]);
 
+  const activeJobIds = useMemo(
+    () => getActiveLinkedJobIds(linkedJobs),
+    [linkedJobs]
+  );
+
+  const { focus: focusActivityRows, archived: archivedActivityRows } =
+    useMemo(
+      () => splitFocusAndArchived(activityRows, activeJobIds),
+      [activityRows, activeJobIds]
+    );
+
+  /** Rows shown in the main table for the current view mode */
+  const visibleActivityRows = useMemo(
+    () =>
+      activityViewMode === 'all' ? activityRows : focusActivityRows,
+    [activityViewMode, activityRows, focusActivityRows]
+  );
+
   const pagedActivity = useMemo(
-    () => paginateItems(activityRows, activityPage, DEFAULT_PAGE_SIZE),
-    [activityRows, activityPage]
+    () => paginateItems(visibleActivityRows, activityPage, DEFAULT_PAGE_SIZE),
+    [visibleActivityRows, activityPage]
+  );
+
+  const pagedArchived = useMemo(
+    () =>
+      paginateItems(archivedActivityRows, archivedPage, DEFAULT_PAGE_SIZE),
+    [archivedActivityRows, archivedPage]
   );
 
   useEffect(() => {
     setActivityPage(1);
-  }, [notes.length, candidateId]);
+    setArchivedPage(1);
+    setShowArchivedActivity(false);
+  }, [notes.length, candidateId, activityViewMode]);
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-5 pb-10">
@@ -1665,14 +1701,50 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
 
             {/* Notes & activity log */}
             <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-              <div className="mb-4">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-                  Notes & Activity Log
-                </h2>
-                <p className="text-xs text-gray-400 mt-1">
-                  Stage types (Applied, Interested, Submitted, …) update the
-                  pipeline automatically — no separate stage change needed
-                </p>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                    Notes & Activity Log
+                  </h2>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Focus shows active-job activity + recent free notes. Stage
+                    types still update the pipeline automatically.
+                  </p>
+                </div>
+                <div
+                  className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 shrink-0"
+                  role="group"
+                  aria-label="Activity view"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActivityViewMode('focus')}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                      activityViewMode === 'focus'
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Focus
+                    {activityRows.length > 0
+                      ? ` (${focusActivityRows.length})`
+                      : ''}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivityViewMode('all')}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                      activityViewMode === 'all'
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    All activity
+                    {activityRows.length > 0
+                      ? ` (${activityRows.length})`
+                      : ''}
+                  </button>
+                </div>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2 mb-5">
@@ -1720,8 +1792,119 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 <p className="text-sm text-gray-500 text-center py-8">
                   No activity yet. Log the first note above.
                 </p>
+              ) : visibleActivityRows.length === 0 &&
+                activityViewMode === 'focus' ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-500 text-center py-6">
+                    No focus activity for active jobs.
+                    {archivedActivityRows.length > 0
+                      ? ` ${archivedActivityRows.length} older item${
+                          archivedActivityRows.length === 1 ? '' : 's'
+                        } are archived.`
+                      : ''}
+                  </p>
+                  {archivedActivityRows.length > 0 && (
+                    <div className="flex justify-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowArchivedActivity(true)}
+                      >
+                        Show archived ({archivedActivityRows.length})
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setActivityViewMode('all')}
+                      >
+                        View all activity
+                      </Button>
+                    </div>
+                  )}
+                  {showArchivedActivity && archivedActivityRows.length > 0 && (
+                    <div className="space-y-2 pt-2 border-t border-gray-100">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Archived / past jobs
+                      </p>
+                      <PaginationBar
+                        page={pagedArchived.page}
+                        totalPages={pagedArchived.totalPages}
+                        total={pagedArchived.total}
+                        onPageChange={setArchivedPage}
+                        itemLabel={
+                          pagedArchived.total === 1
+                            ? 'archived activity'
+                            : 'archived activities'
+                        }
+                      />
+                      <div className="overflow-x-auto rounded-xl border border-dashed border-slate-200 bg-slate-50/40">
+                        <table className="w-full text-sm min-w-[560px]">
+                          <thead>
+                            <tr className="border-b border-gray-100 text-left">
+                              <th className="px-3 py-2 text-[11px] font-semibold uppercase text-gray-500 w-36">
+                                Date
+                              </th>
+                              <th className="px-3 py-2 text-[11px] font-semibold uppercase text-gray-500 w-40">
+                                Action Type
+                              </th>
+                              <th className="px-3 py-2 text-[11px] font-semibold uppercase text-gray-500">
+                                Note
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {pagedArchived.slice.map(
+                              (note: any, index: number) => {
+                                const label = getNoteTypeLabel(note);
+                                return (
+                                  <tr
+                                    key={
+                                      note.id || note.SK || `arch-${index}`
+                                    }
+                                    className="opacity-90"
+                                  >
+                                    <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap align-top">
+                                      {formatDateTime(
+                                        note.createdAt ||
+                                          note.timestamp ||
+                                          note.created_at
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2.5 align-top">
+                                      <span
+                                        className={ACTIVITY_BADGE_BASE_CLASS}
+                                        style={activityBadgeStyle(label)}
+                                      >
+                                        {label}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2.5 text-sm text-gray-700 align-top">
+                                      <ExpandableNoteText
+                                        text={getNoteBody(note)}
+                                      />
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-3">
+                  {activityViewMode === 'focus' &&
+                    activeJobIds.size === 0 &&
+                    focusActivityRows.length > 0 && (
+                      <p className="text-[11px] text-slate-500">
+                        No open linked jobs — showing recent free-form notes
+                        (last 14 days). Link a job to focus by req.
+                      </p>
+                    )}
                   <PaginationBar
                     page={pagedActivity.page}
                     totalPages={pagedActivity.totalPages}
@@ -1869,6 +2052,101 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                     </tbody>
                   </table>
                 </div>
+
+                  {activityViewMode === 'focus' &&
+                    archivedActivityRows.length > 0 && (
+                      <div className="pt-2 border-t border-gray-100 space-y-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowArchivedActivity((v) => !v)
+                          }
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                        >
+                          <ChevronDown
+                            className={`h-3.5 w-3.5 transition-transform ${
+                              showArchivedActivity ? 'rotate-180' : ''
+                            }`}
+                          />
+                          {showArchivedActivity ? 'Hide' : 'Show'} archived
+                          {' / '}
+                          past jobs ({archivedActivityRows.length})
+                        </button>
+                        {showArchivedActivity && (
+                          <div className="space-y-2">
+                            <PaginationBar
+                              page={pagedArchived.page}
+                              totalPages={pagedArchived.totalPages}
+                              total={pagedArchived.total}
+                              onPageChange={setArchivedPage}
+                              itemLabel={
+                                pagedArchived.total === 1
+                                  ? 'archived activity'
+                                  : 'archived activities'
+                              }
+                            />
+                            <div className="overflow-x-auto rounded-xl border border-dashed border-slate-200 bg-slate-50/50">
+                              <table className="w-full text-sm min-w-[560px]">
+                                <thead>
+                                  <tr className="border-b border-gray-100 text-left">
+                                    <th className="px-3 py-2 text-[11px] font-semibold uppercase text-gray-500 w-36">
+                                      Date
+                                    </th>
+                                    <th className="px-3 py-2 text-[11px] font-semibold uppercase text-gray-500 w-40">
+                                      Action Type
+                                    </th>
+                                    <th className="px-3 py-2 text-[11px] font-semibold uppercase text-gray-500">
+                                      Note
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {pagedArchived.slice.map(
+                                    (note: any, index: number) => {
+                                      const label = getNoteTypeLabel(note);
+                                      return (
+                                        <tr
+                                          key={
+                                            note.id ||
+                                            note.SK ||
+                                            `arch-main-${index}`
+                                          }
+                                        >
+                                          <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap align-top">
+                                            {formatDateTime(
+                                              note.createdAt ||
+                                                note.timestamp ||
+                                                note.created_at
+                                            )}
+                                          </td>
+                                          <td className="px-3 py-2.5 align-top">
+                                            <span
+                                              className={
+                                                ACTIVITY_BADGE_BASE_CLASS
+                                              }
+                                              style={activityBadgeStyle(
+                                                label
+                                              )}
+                                            >
+                                              {label}
+                                            </span>
+                                          </td>
+                                          <td className="px-3 py-2.5 text-sm text-gray-700 align-top">
+                                            <ExpandableNoteText
+                                              text={getNoteBody(note)}
+                                            />
+                                          </td>
+                                        </tr>
+                                      );
+                                    }
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                 </div>
               )}
             </section>
@@ -1993,9 +2271,45 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       {/* ── Timeline tab ─────────────────────────────────────────── */}
       {activeTab === 'timeline' && (
         <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">
-            Full Timeline
-          </h2>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">
+                Timeline
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Focus = active linked jobs + recent free notes · All = full
+                history
+              </p>
+            </div>
+            <div
+              className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 shrink-0"
+              role="group"
+              aria-label="Timeline view"
+            >
+              <button
+                type="button"
+                onClick={() => setActivityViewMode('focus')}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                  activityViewMode === 'focus'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Focus ({focusActivityRows.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivityViewMode('all')}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                  activityViewMode === 'all'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                All ({activityRows.length})
+              </button>
+            </div>
+          </div>
           {notesLoading ? (
             <div className="flex justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
@@ -2004,6 +2318,23 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             <p className="text-sm text-gray-500 text-center py-10">
               No timeline events yet.
             </p>
+          ) : visibleActivityRows.length === 0 &&
+            activityViewMode === 'focus' ? (
+            <div className="space-y-3 text-center py-8">
+              <p className="text-sm text-gray-500">
+                No focus activity for active jobs.
+              </p>
+              {archivedActivityRows.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setActivityViewMode('all')}
+                >
+                  View all activity ({activityRows.length})
+                </Button>
+              )}
+            </div>
           ) : (
             <div className="space-y-3">
               <PaginationBar
@@ -2118,6 +2449,64 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   </div>
                 );
               })}
+
+              {activityViewMode === 'focus' &&
+                archivedActivityRows.length > 0 && (
+                  <div className="pt-3 border-t border-gray-100 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowArchivedActivity((v) => !v)}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                    >
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 transition-transform ${
+                          showArchivedActivity ? 'rotate-180' : ''
+                        }`}
+                      />
+                      {showArchivedActivity ? 'Hide' : 'Show'} archived / past
+                      jobs ({archivedActivityRows.length})
+                    </button>
+                    {showArchivedActivity &&
+                      pagedArchived.slice.map((note: any, index: number) => {
+                        const label = getNoteTypeLabel(note);
+                        return (
+                          <div
+                            key={
+                              note.id || note.SK || `tl-arch-${index}`
+                            }
+                            className="flex gap-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4"
+                          >
+                            <div className="w-36 shrink-0 text-xs text-gray-500">
+                              {formatDateTime(
+                                note.createdAt ||
+                                  note.timestamp ||
+                                  note.created_at
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span
+                                className={`${ACTIVITY_BADGE_BASE_CLASS} mb-2`}
+                                style={activityBadgeStyle(label)}
+                              >
+                                {label}
+                              </span>
+                              <ExpandableNoteText text={getNoteBody(note)} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    {showArchivedActivity &&
+                      pagedArchived.totalPages > 1 && (
+                        <PaginationBar
+                          page={pagedArchived.page}
+                          totalPages={pagedArchived.totalPages}
+                          total={pagedArchived.total}
+                          onPageChange={setArchivedPage}
+                          itemLabel="archived"
+                        />
+                      )}
+                  </div>
+                )}
             </div>
           )}
         </section>
