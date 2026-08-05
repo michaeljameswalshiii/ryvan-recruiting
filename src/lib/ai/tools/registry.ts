@@ -42,6 +42,10 @@ import {
   disabledExternalToolMessage,
   isExternalToolDisabled,
 } from "@/lib/ai/tool-flags";
+import {
+  logToolTenant,
+  prepareToolExecution,
+} from "@/lib/ai/tenant-scope";
 
 // ============================================================================
 // Registry
@@ -225,12 +229,34 @@ export async function executeTool(
   const start = Date.now();
   const tool = TOOL_REGISTRY[toolName];
 
+  // Tenant lock + strip model-supplied tenant_id before anything runs
+  const prepared = prepareToolExecution(toolName, params || ({} as ToolParams), context);
+  const safeParams = prepared.params;
+  const safeContext = prepared.context;
+  logToolTenant(toolName, safeContext, {
+    strippedTenantArgs: true,
+  });
+
+  if (prepared.rejectError) {
+    const result: ToolResult = {
+      success: false,
+      error: prepared.rejectError,
+      metadata: { reason: "no_tenant", tenantIsolation: true },
+    };
+    auditSafe(toolName, safeContext, safeParams, start, {
+      success: false,
+      error: result.error,
+      resultStatus: "no_tenant",
+    });
+    return result;
+  }
+
   if (!tool) {
     const result: ToolResult = {
       success: false,
       error: `Tool not found: ${toolName}`,
     };
-    auditSafe(toolName, context, params, start, {
+    auditSafe(toolName, safeContext, safeParams, start, {
       success: false,
       error: result.error,
       resultStatus: "not_found",
@@ -244,7 +270,7 @@ export async function executeTool(
       success: false,
       error: disabledExternalToolMessage(toolName),
     };
-    auditSafe(toolName, context, params, start, {
+    auditSafe(toolName, safeContext, safeParams, start, {
       success: false,
       error: result.error,
       resultStatus: "disabled",
@@ -254,8 +280,8 @@ export async function executeTool(
 
   try {
     // Agent Desk: one-time user approval auto-confirms CRM write tools
-    let execParams = params;
-    if (context.agentWriteApproved) {
+    let execParams = safeParams;
+    if (safeContext.agentWriteApproved) {
       const writeTools = new Set([
         "create_company",
         "update_company",
@@ -270,17 +296,22 @@ export async function executeTool(
         "update_job_candidate_stage",
       ]);
       if (writeTools.has(toolName)) {
-        execParams = { ...params, confirmed: true };
+        execParams = { ...safeParams, confirmed: true };
       }
     }
-    const result = await tool.execute(execParams, context);
+    const result = await tool.execute(execParams, safeContext);
+    // Never echo a different tenant back from tools
+    if (result?.metadata && typeof result.metadata === "object") {
+      (result.metadata as Record<string, unknown>).tenantId =
+        safeContext.tenantId;
+    }
     const status =
       result?.success === false
         ? "error"
         : String(
             (result?.data as { status?: string } | undefined)?.status || "ok"
           );
-    auditSafe(toolName, context, params, start, {
+    auditSafe(toolName, safeContext, safeParams, start, {
       success: !!result?.success,
       error: result?.error,
       resultStatus: status,
@@ -289,7 +320,7 @@ export async function executeTool(
   } catch (err) {
     const errorMessage =
       err instanceof Error ? err.message : "Tool execution failed";
-    auditSafe(toolName, context, params, start, {
+    auditSafe(toolName, safeContext, safeParams, start, {
       success: false,
       error: errorMessage,
       resultStatus: "exception",

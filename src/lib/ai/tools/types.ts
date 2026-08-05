@@ -25,8 +25,20 @@ export interface ToolSpendEntry {
 }
 
 export interface ToolContext {
+  /**
+   * Effective tenant for all CRM/internal tools.
+   * ALWAYS set from session (or site-admin act-as header) — never from the model.
+   */
   tenantId: string | null;
   userId: string | null;
+  email?: string | null;
+  /** Canonical role: site_admin | company_admin | user */
+  role?: string | null;
+  isSiteAdmin?: boolean;
+  /** Login session tenant (before any admin act-as) */
+  sessionTenantId?: string | null;
+  /** When site admin uses X-Act-As-Tenant-Id */
+  actAsTenantId?: string | null;
   requestUrl?: string;
   /** Populated by generate_file tool; returned on the HTTP response for UI downloads */
   generatedFiles?: Array<{

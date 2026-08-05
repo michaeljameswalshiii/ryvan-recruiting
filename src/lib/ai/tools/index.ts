@@ -94,6 +94,16 @@ export type { GeneratedFilePayload } from "./generate-file";
 // Registry
 export { executeTool, getTools, getTool, hasTool, getToolDescription, TOOL_NAMES };
 
+// Tenant isolation helpers
+export {
+  stripModelTenantFields,
+  resolveAiTenantFromRequest,
+  buildToolContext,
+  prepareToolExecution,
+  logToolTenant,
+  AI_TENANT_ISOLATION_PROMPT,
+} from "@/lib/ai/tenant-scope";
+
 // ============================================================================
 // Legacy - Tool Registry for backward compatibility
 // ============================================================================

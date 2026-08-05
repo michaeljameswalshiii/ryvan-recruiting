@@ -73,6 +73,11 @@ import {
   runGeminiByokChat,
 } from "@/lib/ai/providers/gemini-byok";
 import { getSession } from "@/lib/server-auth";
+import {
+  AI_TENANT_ISOLATION_PROMPT,
+  buildToolContext,
+  resolveAiTenantFromRequest,
+} from "@/lib/ai/tenant-scope";
 
 // ============================================================================
 // TypeScript Interfaces
@@ -2124,14 +2129,7 @@ try {
         ? rawPageContext.trim().slice(0, 4000)
         : "";
 
-    const generalSystemPrompt = pageContext
-      ? `${buildGeneralAiSystemPrompt()}
-
-CURRENT UI CONTEXT (user is viewing this in the ATS — use these IDs with tools when relevant):
-${pageContext}`
-      : buildGeneralAiSystemPrompt();
-    
-// Validate messages exist
+    // Validate messages exist
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json(
         { error: "messages array is required and cannot be empty" },
@@ -2140,23 +2138,47 @@ ${pageContext}`
     }
 
     // ============================================================================
-    // Tenant / user context (headers first, then session cookie)
+    // Tenant isolation — session is source of truth (never model body.tenantId)
+    // Site admin may pass X-Act-As-Tenant-Id only.
     // ============================================================================
-    tenantId = request.headers.get("x-tenant-id");
-    let userId = request.headers.get("x-user-id");
-    if (!userId || !tenantId) {
-      try {
-        const session = await getSession();
-        if (session) {
-          userId = userId || session.userId || null;
-          tenantId = tenantId || session.tenantId || null;
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    console.log("Tenant ID:", tenantId || "none provided");
-    console.log("User ID:", userId || "none");
+    const actAsFromBody =
+      body &&
+      typeof body === "object" &&
+      "actAsTenantId" in (body as object)
+        ? (body as { actAsTenantId?: unknown }).actAsTenantId
+        : undefined;
+    // Ignore actAsTenantId if it looks like it came from the chat messages (model)
+    // Only trust explicit top-level body field from client UI for site admin.
+    const tenantResolution = await resolveAiTenantFromRequest(request, {
+      bodyActAsTenantId: actAsFromBody,
+    });
+    tenantId = tenantResolution.tenantId;
+    const userId = tenantResolution.userId;
+    console.log(
+      JSON.stringify({
+        msg: "ai_request_tenant_scope",
+        tenantId: tenantId || null,
+        sessionTenantId: tenantResolution.sessionTenantId,
+        actAsTenantId: tenantResolution.actAsTenantId,
+        scopeSource: tenantResolution.scopeSource,
+        userId: userId || null,
+        role: tenantResolution.role,
+        isSiteAdmin: tenantResolution.isSiteAdmin,
+      })
+    );
+
+    const isolationBlock = `\n\n${AI_TENANT_ISOLATION_PROMPT}\nEffective workspace tenant is bound server-side${
+      tenantResolution.actAsTenantId
+        ? ` (site admin acting as ${tenantResolution.actAsTenantId})`
+        : ""
+    }.`;
+
+    const generalSystemPrompt = pageContext
+      ? `${buildGeneralAiSystemPrompt()}${isolationBlock}
+
+CURRENT UI CONTEXT (user is viewing this in the ATS — use these IDs with tools when relevant; IDs are already in this tenant):
+${pageContext}`
+      : `${buildGeneralAiSystemPrompt()}${isolationBlock}`;
 
     // Resolve provider: explicit request > user preference > bedrock
     let provider: AiProviderId = "bedrock";
@@ -2297,6 +2319,25 @@ ${pageContext}`
     /** Shared accumulator for AgentCore / third-party tool USD spend this turn */
     const toolSpendAcc: NonNullable<ToolContext["toolSpend"]> = [];
 
+    /** Locked tenant context for every tool path (session / act-as only) */
+    const makeToolContext = (extra?: {
+      agentWriteApproved?: boolean;
+      agentMaxCreatesPerWave?: number;
+    }): ToolContext =>
+      buildToolContext(tenantResolution, {
+        requestUrl: appUrl,
+        generatedFiles: [],
+        toolSpend: toolSpendAcc,
+        agentWriteApproved: extra?.agentWriteApproved,
+        agentMaxCreatesPerWave: extra?.agentMaxCreatesPerWave,
+      });
+
+    const baseSystemWithIsolation =
+      SYSTEM_PROMPTS.base +
+      "\n\n" +
+      (SYSTEM_PROMPTS.override || "") +
+      isolationBlock;
+
     // ---------- BYOK Anthropic ----------
     if (provider === "anthropic") {
       if (!userId) {
@@ -2321,15 +2362,9 @@ ${pageContext}`
         );
       }
 
-      const toolContext: ToolContext = {
-        tenantId,
-        userId,
-        requestUrl: appUrl,
-        toolSpend: toolSpendAcc,
-      };
+      const toolContext: ToolContext = makeToolContext();
 
-      const systemPrompt =
-        SYSTEM_PROMPTS.base + "\n\n" + (SYSTEM_PROMPTS.override || "");
+      const systemPrompt = baseSystemWithIsolation;
 
       if (assistantMode || !useTools) {
         console.log("[BYOK] Anthropic chat (no tools)...");
@@ -2383,16 +2418,10 @@ ${pageContext}`
           { status: 400 }
         );
       }
-      const toolContext: ToolContext = {
-        tenantId,
-        userId,
-        requestUrl: appUrl,
-        generatedFiles: [],
-        toolSpend: toolSpendAcc,
-      };
+      const toolContext: ToolContext = makeToolContext();
       const systemPrompt = generalMode
         ? generalSystemPrompt
-        : SYSTEM_PROMPTS.base + "\n\n" + (SYSTEM_PROMPTS.override || "");
+        : baseSystemWithIsolation;
       const grokModel = MODEL_GROK_43_XAI_API;
       if (assistantMode || (!useTools && !generalMode)) {
         const conversation = buildConversationMessages(messages);
@@ -2458,16 +2487,9 @@ ${pageContext}`
         );
       }
 
-      const toolContext: ToolContext = {
-        tenantId,
-        userId,
-        requestUrl: appUrl,
-        generatedFiles: [],
-        toolSpend: toolSpendAcc,
-      };
+      const toolContext: ToolContext = makeToolContext();
 
-      const systemPrompt =
-        SYSTEM_PROMPTS.base + "\n\n" + (SYSTEM_PROMPTS.override || "");
+      const systemPrompt = baseSystemWithIsolation;
 
       if (assistantMode || !useTools) {
         console.log("[BYOK] OpenAI chat (no tools)...");
@@ -2531,16 +2553,9 @@ ${pageContext}`
         );
       }
 
-      const toolContext: ToolContext = {
-        tenantId,
-        userId,
-        requestUrl: appUrl,
-        generatedFiles: [],
-        toolSpend: toolSpendAcc,
-      };
+      const toolContext: ToolContext = makeToolContext();
 
-      const systemPrompt =
-        SYSTEM_PROMPTS.base + "\n\n" + (SYSTEM_PROMPTS.override || "");
+      const systemPrompt = baseSystemWithIsolation;
 
       if (assistantMode || !useTools) {
         console.log("[BYOK] Gemini chat (no tools)...");
@@ -2583,16 +2598,12 @@ ${pageContext}`
     // ---------- Platform: Grok 4.3 on Bedrock Mantle (OpenAI-compatible) ----------
     // Not Converse/Invoke — https://bedrock-mantle.{region}.api.aws/openai/v1
     else if (provider === "bedrock" && isGrokModelId(usedModel)) {
-      const toolContext: ToolContext = {
-        tenantId,
-        userId,
-        requestUrl: appUrl,
-        generatedFiles: [],
-        toolSpend: toolSpendAcc,
-      };
+      const toolContext: ToolContext = makeToolContext({
+        agentWriteApproved: !!agentWriteApproved,
+      });
       const systemPrompt = generalMode
         ? generalSystemPrompt
-        : SYSTEM_PROMPTS.base + "\n\n" + SYSTEM_PROMPTS.override;
+        : baseSystemWithIsolation;
       const conversation = buildConversationMessages(messages);
       const history = conversation
         .filter((m) => m.role === "user" || m.role === "assistant")
@@ -2654,14 +2665,9 @@ ${pageContext}`
         );
         usedModel = MODEL_SONNET;
         modelLabel = friendlyModelLabel(MODEL_SONNET);
-        const toolContextFb: ToolContext = {
-          tenantId,
-          userId,
-          requestUrl: appUrl,
-          generatedFiles: [],
-          toolSpend: toolSpendAcc,
+        const toolContextFb: ToolContext = makeToolContext({
           agentWriteApproved: !!agentWriteApproved,
-        };
+        });
         const agentResult = await runMCPAgent(lastUserQuery, toolContextFb, {
           history: conversation.slice(0, -1),
           systemPrompt: generalMode ? generalSystemPrompt : undefined,
@@ -2728,15 +2734,10 @@ ${pageContext}`
       usedModel = result.modelId;
       toolsUsed = [];
     } else if ((useTools || generalMode) && lastUserQuery) {
-      const toolContext: ToolContext = {
-        tenantId,
-        userId,
-        requestUrl: appUrl,
-        generatedFiles: [],
-        toolSpend: toolSpendAcc,
+      const toolContext: ToolContext = makeToolContext({
         agentWriteApproved: !!agentWriteApproved,
         agentMaxCreatesPerWave: agentMode ? 8 : undefined,
-      };
+      });
 
       const conversation = buildConversationMessages(messages);
       // Prior turns only (current query is passed separately)
