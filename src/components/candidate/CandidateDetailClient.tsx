@@ -372,8 +372,6 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [savingField, setSavingField] = useState(false);
 
   const currentStep = stageIndex(status);
-  const currentStepLabel =
-    currentStep >= 0 ? PIPELINE_STEPS[currentStep].label : 'Rejected';
   const primaryJob =
     linkedJobs.length > 0 ? linkedJobs[0] : null;
 
@@ -1469,16 +1467,27 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 )}
               </div>
               <div className="flex flex-wrap gap-1.5 pt-1">
+                {/* Linked jobs only — these are req titles, NOT the candidate's job title.
+                    Never show Rejected/stage here (pipeline lives in Overview → Pipeline Stage). */}
                 {linkedJobs.map((job: any) => {
                   const jid = job.jobId || job.id;
                   const title = job.jobTitle || job.title || 'Linked job';
+                  const company = job.companyName || job.company_name || '';
+                  const tip = company
+                    ? `Attached job: ${title} · ${company}`
+                    : `Attached job: ${title}`;
+                  const chipClass =
+                    'inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-800 max-w-[16rem]';
+                  const inner = (
+                    <>
+                      <Briefcase className="h-3 w-3 shrink-0 opacity-70" />
+                      <span className="truncate">{title}</span>
+                    </>
+                  );
                   if (!jid) {
                     return (
-                      <span
-                        key={`job-tag-${title}`}
-                        className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-800"
-                      >
-                        {title}
+                      <span key={`job-tag-${title}`} className={chipClass} title={tip}>
+                        {inner}
                       </span>
                     );
                   }
@@ -1486,20 +1495,13 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                     <Link
                       key={jid}
                       href={`/dashboard/jobs/${jid}`}
-                      title={
-                        job.companyName
-                          ? `Open job: ${title} · ${job.companyName}`
-                          : `Open job: ${title}`
-                      }
-                      className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-800 hover:bg-indigo-100 hover:border-indigo-300 hover:underline"
+                      title={tip}
+                      className={`${chipClass} hover:bg-indigo-100 hover:border-indigo-300 hover:underline`}
                     >
-                      {title}
+                      {inner}
                     </Link>
                   );
                 })}
-                <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-800">
-                  {currentStepLabel}
-                </span>
                 <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">
                   Added {formatShortDate(safe.createdAt)} · {safe.source || 'Manual'}
                 </span>
