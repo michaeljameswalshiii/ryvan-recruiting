@@ -12,6 +12,10 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useClients, useAddContact } from "@/lib/hooks/query-client";
 import { toast } from "sonner";
+import {
+  SearchableSelect,
+  companyOptionsFromList,
+} from "@/components/ui/searchable-select";
 
 // Phone types
 const PHONE_TYPES = [
@@ -211,22 +215,19 @@ const handleAddPhone = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Company - Optional Dropdown */}
-<div>
+            <div>
               <Label htmlFor="company">Company *</Label>
-              <select
+              <SearchableSelect
                 id="company"
                 value={formData.companyId}
-                onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
-                className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm w-full"
+                onValueChange={(companyId) =>
+                  setFormData({ ...formData, companyId })
+                }
+                options={companyOptionsFromList(clients)}
+                placeholder="Select a company…"
+                searchPlaceholder="Search companies…"
                 required
-              >
-                <option value="">Select a company...</option>
-                {clients.map((company: any) => (
-                  <option key={company.id} value={company.id}>
-                    {company.name} {company.location ? `- ${company.location}` : ""}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div>

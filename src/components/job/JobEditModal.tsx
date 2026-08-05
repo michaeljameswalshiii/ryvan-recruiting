@@ -19,6 +19,10 @@ import {
   sanitizeJobHtml,
 } from '@/lib/careers/sanitize-job-html';
 import { normalizeJobDescriptionPaste } from '@/lib/careers/format-description';
+import {
+  SearchableSelect,
+  companyOptionsFromList,
+} from '@/components/ui/searchable-select';
 
 interface JobEditModalProps {
   isOpen: boolean;
@@ -269,11 +273,10 @@ export default function JobEditModal({
             <div>
               <Label htmlFor="edit-companyId">Company</Label>
               {companies.length > 0 ? (
-                <select
+                <SearchableSelect
                   id="edit-companyId"
                   value={formData.companyId}
-                  onChange={(e) => {
-                    const companyId = e.target.value;
+                  onValueChange={(companyId) => {
                     const company = companies.find(
                       (c: any) =>
                         String(c.id) === String(companyId) ||
@@ -289,21 +292,10 @@ export default function JobEditModal({
                     });
                     setHiringManager({});
                   }}
-                  className="w-full h-10 border border-input rounded-md px-3 text-sm bg-background"
-                >
-                  <option value="">Select company…</option>
-                  {[...companies]
-                    .sort((a: any, b: any) =>
-                      String(a.name || a.companyName || '').localeCompare(
-                        String(b.name || b.companyName || '')
-                      )
-                    )
-                    .map((c: any) => (
-                      <option key={c.id || c.PK} value={c.id || c.PK}>
-                        {c.name || c.companyName || c.id || c.PK}
-                      </option>
-                    ))}
-                </select>
+                  options={companyOptionsFromList(companies)}
+                  placeholder="Select company…"
+                  searchPlaceholder="Search companies…"
+                />
               ) : (
                 <p className="text-sm text-muted-foreground py-2">
                   {formData.companyName || 'No company linked'}

@@ -28,6 +28,10 @@ import {
 } from '@/lib/careers/sanitize-job-html';
 import { normalizeJobDescriptionPaste } from '@/lib/careers/format-description';
 import { toast } from 'sonner';
+import {
+  SearchableSelect,
+  companyOptionsFromList,
+} from '@/components/ui/searchable-select';
 
 export default function JobsPage() {
   const router = useRouter();
@@ -277,26 +281,15 @@ export default function JobsPage() {
               <div>
                 <Label htmlFor="companyId">Company *</Label>
                 {companies.length > 0 ? (
-                  <select
+                  <SearchableSelect
                     id="companyId"
                     value={formData.companyId}
-                    onChange={(e) => handleCompanySelect(e.target.value)}
-                    className="w-full h-10 border border-input rounded-md px-3 text-sm bg-background"
+                    onValueChange={handleCompanySelect}
+                    options={companyOptionsFromList(companies)}
+                    placeholder="Select company…"
+                    searchPlaceholder="Search companies…"
                     required
-                  >
-                    <option value="">Select company…</option>
-                    {[...companies]
-                      .sort((a: any, b: any) =>
-                        String(a.name || a.companyName || '').localeCompare(
-                          String(b.name || b.companyName || '')
-                        )
-                      )
-                      .map((c: any) => (
-                        <option key={c.id || c.PK} value={c.id || c.PK}>
-                          {c.name || c.companyName || c.id || c.PK}
-                        </option>
-                      ))}
-                  </select>
+                  />
                 ) : (
                   <div className="rounded-md border border-dashed border-input px-3 py-3 text-sm text-muted-foreground">
                     No companies yet.{' '}

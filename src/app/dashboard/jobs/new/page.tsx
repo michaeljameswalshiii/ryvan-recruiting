@@ -26,6 +26,10 @@ import {
   sanitizeJobHtml,
 } from '@/lib/careers/sanitize-job-html';
 import { normalizeJobDescriptionPaste } from '@/lib/careers/format-description';
+import {
+  SearchableSelect,
+  companyOptionsFromList,
+} from '@/components/ui/searchable-select';
 
 interface Job {
   id: string;
@@ -194,15 +198,14 @@ export default function NewJobPage() {
           />
         </div>
         
-        {/* Company Selection - dropdown only (name resolved from selection) */}
+        {/* Company Selection - searchable typeahead */}
         <div className="grid gap-2">
           <Label htmlFor="company">Company *</Label>
           {companies.length > 0 ? (
-            <select
+            <SearchableSelect
               id="company"
               value={newJobCompanyId}
-              onChange={(e) => {
-                const companyId = e.target.value;
+              onValueChange={(companyId) => {
                 setNewJobCompanyId(companyId);
                 const company = companies.find(
                   (c: any) =>
@@ -240,24 +243,11 @@ export default function NewJobPage() {
                   setHiringManager({});
                 }
               }}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="">Select a company...</option>
-              {[...companies]
-                .sort((a: any, b: any) =>
-                  String(a.name || a.companyName || "").localeCompare(
-                    String(b.name || b.companyName || "")
-                  )
-                )
-                .map((company: any) => (
-                  <option
-                    key={company.id || company.PK}
-                    value={company.id || company.PK}
-                  >
-                    {company.name || company.companyName || company.id}
-                  </option>
-                ))}
-            </select>
+              options={companyOptionsFromList(companies)}
+              placeholder="Select a company…"
+              searchPlaceholder="Search companies…"
+              required
+            />
           ) : (
             <p className="text-sm text-muted-foreground rounded-md border border-dashed px-3 py-3">
               No companies yet. Add a company first, then create the job.

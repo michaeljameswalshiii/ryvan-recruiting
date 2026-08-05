@@ -13,9 +13,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SimpleDialog } from "@/components/ui/simple-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  SearchableSelect,
+  companyOptionsFromList,
+} from "@/components/ui/searchable-select";
 // Use TanStack Query hooks - server actions for DB access
 import { usePipeline, useCreatePipeline, useUpdatePipeline, pipelineKeys } from "@/lib/hooks/query-pipeline";
 import { leadKeys } from "@/lib/hooks/query-lead";
@@ -301,18 +304,14 @@ return (
           </div>
           <div className="grid gap-2">
             <Label htmlFor="clientId">Company (optional)</Label>
-            <Select value={newLeadClientId} onValueChange={setNewLeadClientId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a company..." />
-              </SelectTrigger>
-              <SelectContent>
-                {clients.map((client: any) => (
-                  <SelectItem key={client.id} value={client.id}>
-                    {client.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="clientId"
+              value={newLeadClientId}
+              onValueChange={setNewLeadClientId}
+              options={companyOptionsFromList(clients)}
+              placeholder="Select a company…"
+              searchPlaceholder="Search companies…"
+            />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="company">Or enter company manually</Label>

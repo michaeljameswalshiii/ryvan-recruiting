@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useClient, useClients } from '@/lib/hooks/query-client';
 import { useUpdateJob } from '@/lib/hooks/query-job';
 import { toast } from 'sonner';
@@ -254,25 +255,26 @@ export function JobHiringManagerCard({
             {hasHm ? 'Change contact' : 'Select contact'}
           </label>
           <div className="flex gap-2 items-center">
-            <select
-              className="flex-1 h-9 rounded-lg border border-gray-200 bg-white px-2 text-sm disabled:opacity-60"
+            <SearchableSelect
+              className="flex-1"
               value={currentId}
               disabled={saving || contacts.length === 0}
-              onChange={(e) => void applyContact(e.target.value)}
-            >
-              <option value="">
-                {contacts.length === 0
+              onValueChange={(v) => void applyContact(v)}
+              placeholder={
+                contacts.length === 0
                   ? 'No contacts on company'
-                  : 'Select hiring manager…'}
-              </option>
-              {contacts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.title ? ` — ${c.title}` : ''}
-                  {c.isPrimary ? ' (Primary)' : ''}
-                </option>
-              ))}
-            </select>
+                  : 'Select hiring manager…'
+              }
+              searchPlaceholder="Search contacts…"
+              options={contacts.map((c) => ({
+                value: c.id,
+                label: c.name + (c.isPrimary ? ' (Primary)' : ''),
+                description: c.title || undefined,
+                keywords: [c.name, c.title, c.email, c.phone]
+                  .filter(Boolean)
+                  .join(' '),
+              }))}
+            />
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin text-gray-400 shrink-0" />
             ) : null}
@@ -346,12 +348,26 @@ export function HiringManagerSelect({
 
   return (
     <div className="space-y-1.5">
-      <select
-        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
+      <SearchableSelect
         value={valueContactId || ''}
         disabled={disabled || loading || contacts.length === 0}
-        onChange={(e) => {
-          const id = e.target.value;
+        placeholder={
+          contacts.length === 0
+            ? loading
+              ? 'Loading contacts…'
+              : 'No contacts on company'
+            : 'Select hiring manager…'
+        }
+        searchPlaceholder="Search contacts…"
+        options={contacts.map((c) => ({
+          value: c.id,
+          label: c.name + (c.isPrimary ? ' (Primary)' : ''),
+          description: c.title || undefined,
+          keywords: [c.name, c.title, c.email, c.phone]
+            .filter(Boolean)
+            .join(' '),
+        }))}
+        onValueChange={(id) => {
           if (!id) {
             onChange({
               hiringManagerContactId: '',
@@ -372,22 +388,7 @@ export function HiringManagerSelect({
             hiringManagerPhone: c.phone || '',
           });
         }}
-      >
-        <option value="">
-          {loading
-            ? 'Loading contacts…'
-            : contacts.length === 0
-              ? 'No contacts — add on company page'
-              : 'None / select contact…'}
-        </option>
-        {contacts.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-            {c.title ? ` — ${c.title}` : ''}
-            {c.isPrimary ? ' (Primary)' : ''}
-          </option>
-        ))}
-      </select>
+      />
       {!loading && contacts.length === 0 && (
         <Link
           href={`/dashboard/companies/${companyId}?tab=contacts`}

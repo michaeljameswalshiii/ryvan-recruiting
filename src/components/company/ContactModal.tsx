@@ -16,6 +16,10 @@ import {
 } from "@/lib/contacts/phone";
 import { toast } from "sonner";
 import { Loader2, Star, Building2 } from "lucide-react";
+import {
+  SearchableSelect,
+  companyOptionsFromList,
+} from "@/components/ui/searchable-select";
 
 interface Contact {
   id?: string;
@@ -291,19 +295,17 @@ export default function ContactModal({
                 No companies found. Add a company first.
               </div>
             ) : (
-              <select
+              <SearchableSelect
                 id="contact-company"
                 value={formData.clientId}
-                onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <option value="">Select a company...</option>
-                {sortedCompanies.map((company: any) => (
-                  <option key={company.id} value={company.id}>
-                    {company.name}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(clientId) =>
+                  setFormData({ ...formData, clientId })
+                }
+                options={companyOptionsFromList(sortedCompanies)}
+                placeholder="Select a company…"
+                searchPlaceholder="Search companies…"
+                required
+              />
             )}
           </div>
 

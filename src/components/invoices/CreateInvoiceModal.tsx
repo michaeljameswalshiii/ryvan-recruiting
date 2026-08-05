@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { parseSalaryBasis, formatMoney, computePlacementFee } from "@/lib/invoices/fee";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type Template = {
   id: string;
@@ -243,27 +244,23 @@ export function CreateInvoiceModal({
             {candidates.length > 0 && (
               <div>
                 <Label>Candidate (optional)</Label>
-                <select
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                <SearchableSelect
                   value={candidateId}
-                  onChange={(e) => setCandidateId(e.target.value)}
-                >
-                  <option value="">— None —</option>
-                  {candidates.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setCandidateId}
+                  placeholder="— None —"
+                  searchPlaceholder="Search candidates…"
+                  options={candidates.map((c) => ({
+                    value: c.id,
+                    label: c.name,
+                  }))}
+                />
               </div>
             )}
             <div>
               <Label>Template</Label>
-              <select
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              <SearchableSelect
                 value={templateId}
-                onChange={(e) => {
-                  const id = e.target.value;
+                onValueChange={(id) => {
                   setTemplateId(id);
                   const t = templates.find((x) => x.id === id);
                   if (t) {
@@ -272,17 +269,18 @@ export function CreateInvoiceModal({
                     setFeeFlat(t.default_fee_flat || 0);
                   }
                 }}
-              >
-                {templates.length === 0 && (
-                  <option value="">Default (no custom template)</option>
-                )}
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                    {t.is_default ? " (default)" : ""}
-                  </option>
-                ))}
-              </select>
+                placeholder={
+                  templates.length === 0
+                    ? "Default (no custom template)"
+                    : "Select template…"
+                }
+                searchPlaceholder="Search templates…"
+                options={templates.map((t) => ({
+                  value: t.id,
+                  label: t.name + (t.is_default ? " (default)" : ""),
+                }))}
+                allowClear={templates.length > 0}
+              />
               {templates.length === 0 && (
                 <p className="text-[11px] text-slate-500 mt-1">
                   Tip: create branded templates under Settings → Invoices.

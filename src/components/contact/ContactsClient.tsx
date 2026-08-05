@@ -10,6 +10,10 @@ import {
   PaginationBar,
   paginateItems,
 } from '@/components/ui/pagination-bar';
+import {
+  SearchableSelect,
+  companyOptionsFromList,
+} from '@/components/ui/searchable-select';
 
 export function ContactsClient() {
   const router = useRouter();
@@ -174,18 +178,14 @@ export function ContactsClient() {
           <div className="grid gap-4 max-w-xl">
             <div>
               <label className="block text-sm font-medium mb-1">Company *</label>
-              <select
+              <SearchableSelect
                 value={selectedCompany}
-                onChange={(e) => setSelectedCompany(e.target.value)}
-                className="w-full h-10 px-3 border rounded-md bg-background"
-              >
-                <option value="">Select a company...</option>
-                {clients.map((company: any) => (
-                  <option key={company.id} value={company.id}>
-                    {company.name}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setSelectedCompany}
+                options={companyOptionsFromList(clients)}
+                placeholder="Select a company…"
+                searchPlaceholder="Search companies…"
+                required
+              />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Contact Name *</label>

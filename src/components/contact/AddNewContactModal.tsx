@@ -4,10 +4,13 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, User, Building, Mail, Phone, Briefcase } from 'lucide-react';
+import {
+  SearchableSelect,
+  companyOptionsFromList,
+} from '@/components/ui/searchable-select';
 
 interface AddNewContactModalProps {
   isOpen: boolean;
@@ -61,16 +64,16 @@ export default function AddNewContactModal({ isOpen, onClose, companies = [], on
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Select value={formData.companyId} onValueChange={(v) => setFormData({ ...formData, companyId: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select company" />
-                </SelectTrigger>
-                <SelectContent>
-                  {companies.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={formData.companyId}
+                onValueChange={(v) =>
+                  setFormData({ ...formData, companyId: v })
+                }
+                options={companyOptionsFromList(companies)}
+                placeholder="Select company"
+                searchPlaceholder="Search companies…"
+                required
+              />
             </CardContent>
           </Card>
 
