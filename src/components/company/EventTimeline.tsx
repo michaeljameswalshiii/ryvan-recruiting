@@ -105,6 +105,7 @@ function getActivityLabel(event: CompanyEvent): string {
   if (event.eventType === 'STATUS_CHANGE') return 'Status change';
   if (event.eventType === 'COMPANY_ADDED') return 'Company added';
   if (event.eventType === 'CONTACT_ADDED') return 'Contact added';
+  if (event.eventType === 'INVOICE_CREATED') return 'Invoice';
   return (
     event.title ||
     String(event.eventType || 'Activity')
