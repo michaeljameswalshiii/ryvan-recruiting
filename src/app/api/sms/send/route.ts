@@ -1,5 +1,5 @@
 /**
- * POST /api/sms/send — send SMS to a candidate (compliance-checked)
+ * POST /api/sms/send — send SMS to a candidate or contact (compliance-checked)
  *
  * @serverOnly
  */
@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionTenantId, getSessionUserId } from '@/lib/server-auth';
 import { sendSmsInputSchema } from '@/lib/schemas/sms';
-import { sendSmsToCandidate } from '@/lib/sms/service';
+import { sendSms } from '@/lib/sms/service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const result = await sendSmsToCandidate(
+    const result = await sendSms(
       tenantId,
       parsed.data,
       userId || undefined

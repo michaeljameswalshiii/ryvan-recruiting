@@ -8,8 +8,8 @@ This guide wires **live texting** into Trio using **AWS End User Messaging SMS**
 |--------|--------|
 | Enable texting, business name, STOP signature | **Settings → Texting** |
 | Quiet hours, daily limits, require consent | Same |
-| Record opt-in / opt-out | Candidate → **Text candidate** panel |
-| Send SMS + thread log | Candidate panel |
+| Record opt-in / opt-out | Candidate → **Text candidate**; Contact → **Text contact** |
+| Send SMS + thread log | Candidate panel + Contact detail panel |
 | STOP / START / HELP auto-replies | Webhook `/api/public/sms/inbound` |
 | Simulated mode (no AWS number yet) | Messages log with status `simulated` |
 
@@ -87,13 +87,15 @@ Until AWS is fully live, sends still work in **simulated** mode (logged in the t
 
 ---
 
-## Step 5 — First real candidate text
+## Step 5 — First real candidate or contact text
 
-1. Open a candidate with a US phone.
-2. Expand **Text candidate**.
+1. Open a **candidate** or **contact** with a US phone.
+2. Expand **Text candidate** / **Text contact**.
 3. Click **Record opt-in** (or check “Also mark opt-in when sending” if appropriate).
 4. Type a short message → **Send text**.
 5. Confirm delivery on the phone when AWS is out of sandbox.
+
+Contacts use the same consent/compliance rules as candidates. Phone preference for contacts: mobile/cell first, then work/preferred.
 
 ---
 

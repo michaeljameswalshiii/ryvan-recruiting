@@ -46,6 +46,7 @@ import {
   stripActivityTypePrefix,
 } from '@/lib/contacts/activity-types';
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
+import { EntitySmsPanel } from '@/components/shared/EntitySmsPanel';
 
 /** Contact activity types (canonical order) */
 const NOTE_TYPES = [...CONTACT_ACTIVITY_TYPES];
@@ -448,6 +449,12 @@ export default function ContactDetailClient({
     getPhoneByType(contact, 'mobile') ||
     getPhoneByType(contact, 'cell');
   const phone = workPhone || mobilePhone || displayPhone;
+  /** Prefer mobile/cell for SMS when available */
+  const smsPhone =
+    (mobilePhone || '').trim() ||
+    (workPhone || '').trim() ||
+    (displayPhone || '').trim() ||
+    '';
   const email = form.email || contact.email || '';
 
   return (
@@ -873,6 +880,15 @@ export default function ContactDetailClient({
 
           {/* Right column */}
           <div className="xl:col-span-5 space-y-5">
+            {contactId && companyId ? (
+              <EntitySmsPanel
+                entity="contact"
+                entityId={contactId}
+                companyId={companyId}
+                phone={smsPhone}
+                entityName={form.name || contact.name}
+              />
+            ) : null}
             <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-4">
                 Quick Stats

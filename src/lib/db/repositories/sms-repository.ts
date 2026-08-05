@@ -36,6 +36,9 @@ function msgIndexKey(tenantId: string) {
 function candMsgIndexKey(tenantId: string, candidateId: string) {
   return `sms-cand-msg#${tenantId}#${candidateId}`;
 }
+function contactMsgIndexKey(tenantId: string, contactId: string) {
+  return `sms-contact-msg#${tenantId}#${contactId}`;
+}
 function dailyCountKey(tenantId: string, day: string) {
   return `sms-daily#${tenantId}#${day}`;
 }
@@ -153,6 +156,8 @@ export async function upsertConsent(params: {
   status: 'opted_in' | 'opted_out' | 'unknown';
   source: SmsConsentSource;
   candidateId?: string;
+  contactId?: string;
+  companyId?: string;
   notes?: string;
   lastKeyword?: string;
 }): Promise<SmsConsentRecord> {
@@ -164,6 +169,8 @@ export async function upsertConsent(params: {
     type: 'sms_consent',
     phoneE164: params.phoneE164,
     candidateId: params.candidateId || existing?.candidateId,
+    contactId: params.contactId || existing?.contactId,
+    companyId: params.companyId || existing?.companyId,
     status: params.status,
     source: params.source,
     optedInAt:
@@ -213,14 +220,23 @@ export async function saveSmsMessage(
       200
     );
   }
+  if (msg.contactId) {
+    await addToIndex(
+      contactMsgIndexKey(tenantId, msg.contactId),
+      tenantId,
+      'sms_contact_msg_index',
+      id,
+      200
+    );
+  }
   return record;
 }
 
-export async function listMessagesForCandidate(
+async function listMessagesFromIndex(
   tenantId: string,
-  candidateId: string
+  indexId: string
 ): Promise<SmsMessage[]> {
-  const idx = await getIndex(candMsgIndexKey(tenantId, candidateId));
+  const idx = await getIndex(indexId);
   if (!idx?.ids?.length) return [];
   const out: SmsMessage[] = [];
   for (const id of idx.ids) {
@@ -233,6 +249,26 @@ export async function listMessagesForCandidate(
   }
   return out.sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+}
+
+export async function listMessagesForCandidate(
+  tenantId: string,
+  candidateId: string
+): Promise<SmsMessage[]> {
+  return listMessagesFromIndex(
+    tenantId,
+    candMsgIndexKey(tenantId, candidateId)
+  );
+}
+
+export async function listMessagesForContact(
+  tenantId: string,
+  contactId: string
+): Promise<SmsMessage[]> {
+  return listMessagesFromIndex(
+    tenantId,
+    contactMsgIndexKey(tenantId, contactId)
   );
 }
 

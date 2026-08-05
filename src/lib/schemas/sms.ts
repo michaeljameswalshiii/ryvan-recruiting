@@ -93,6 +93,8 @@ export const smsConsentRecordSchema = z.object({
   type: z.literal('sms_consent').default('sms_consent'),
   phoneE164: z.string(),
   candidateId: z.string().optional(),
+  contactId: z.string().optional(),
+  companyId: z.string().optional(),
   status: z.enum(['opted_in', 'opted_out', 'unknown']).default('unknown'),
   source: smsConsentSourceSchema.default('unknown'),
   optedInAt: z.string().optional(),
@@ -112,6 +114,9 @@ export const smsMessageSchema = z.object({
   status: smsStatusSchema,
   candidateId: z.string().optional(),
   candidateName: z.string().optional(),
+  contactId: z.string().optional(),
+  contactName: z.string().optional(),
+  companyId: z.string().optional(),
   phoneE164: z.string(),
   body: z.string().max(1600),
   segments: z.number().int().min(1).default(1),
@@ -124,21 +129,33 @@ export const smsMessageSchema = z.object({
 });
 export type SmsMessage = z.infer<typeof smsMessageSchema>;
 
-export const sendSmsInputSchema = z.object({
-  candidateId: z.string().min(1),
-  body: z.string().min(1).max(1500),
-  phone: z.string().optional(),
-  /** Override quiet hours (admin / urgent interview only) */
-  bypassQuietHours: z.boolean().optional(),
-  /** Record consent at send time */
-  consentSource: smsConsentSourceSchema.optional(),
-  markConsent: z.boolean().optional(),
-});
+export const sendSmsInputSchema = z
+  .object({
+    /** Candidate id (leads) — required if contactId not set */
+    candidateId: z.string().min(1).optional(),
+    /** Company contact id — required if candidateId not set */
+    contactId: z.string().min(1).optional(),
+    /** Company id (required when texting a contact so we can load phone) */
+    companyId: z.string().min(1).optional(),
+    body: z.string().min(1).max(1500),
+    phone: z.string().optional(),
+    /** Override quiet hours (admin / urgent interview only) */
+    bypassQuietHours: z.boolean().optional(),
+    /** Record consent at send time */
+    consentSource: smsConsentSourceSchema.optional(),
+    markConsent: z.boolean().optional(),
+  })
+  .refine((d) => !!(d.candidateId || d.contactId), {
+    message: 'candidateId or contactId is required',
+    path: ['candidateId'],
+  });
 export type SendSmsInput = z.infer<typeof sendSmsInputSchema>;
 
 export const recordConsentInputSchema = z.object({
   phone: z.string().min(7),
   candidateId: z.string().optional(),
+  contactId: z.string().optional(),
+  companyId: z.string().optional(),
   status: z.enum(['opted_in', 'opted_out']),
   source: smsConsentSourceSchema.default('manual'),
   notes: z.string().max(1000).optional(),

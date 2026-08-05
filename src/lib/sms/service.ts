@@ -10,6 +10,7 @@ import {
   upsertConsent,
   saveSmsMessage,
   listMessagesForCandidate,
+  listMessagesForContact,
   getDailySendCount,
   incrementDailySendCount,
   updateSmsConfig,
@@ -38,6 +39,8 @@ import {
   providerSendSms,
 } from './provider';
 import { getLeadById } from '@/lib/db/repositories/lead-repository';
+import { getContactById } from '@/lib/db/repositories/contact-repository';
+import { getDisplayPhone, getPhoneByType } from '@/lib/contacts/phone';
 
 export type SendSmsResult =
   | { ok: true; message: SmsMessage; simulated: boolean }
@@ -84,12 +87,33 @@ export async function recordConsent(
     status: input.status,
     source: input.source,
     candidateId: input.candidateId,
+    contactId: input.contactId,
+    companyId: input.companyId,
     notes: input.notes,
   });
   return { ok: true as const, record };
 }
 
-export async function sendSmsToCandidate(
+function resolveContactSmsPhone(contact: {
+  phone?: string;
+  preferredPhone?: string;
+  phones?: Array<{ type?: string; number?: string; isPreferred?: boolean }>;
+}): string {
+  // Prefer mobile/cell for SMS, then preferred display, then any phone
+  const mobile =
+    getPhoneByType(contact, 'mobile') ||
+    getPhoneByType(contact, 'cell') ||
+    getPhoneByType(contact, 'direct') ||
+    '';
+  if (mobile.trim()) return mobile.trim();
+  return getDisplayPhone(contact) || (contact.phone || '').trim();
+}
+
+/**
+ * Send SMS to a candidate or company contact (same compliance rules).
+ * Prefer sendSmsToCandidate / sendSmsToContact wrappers for call sites.
+ */
+export async function sendSms(
   tenantId: string,
   input: SendSmsInput,
   userId?: string
@@ -103,11 +127,48 @@ export async function sendSmsToCandidate(
     };
   }
 
-  const lead = await getLeadById(tenantId, input.candidateId);
-  const rawPhone =
-    input.phone ||
-    (lead as { phone?: string } | null)?.phone ||
-    '';
+  const isContact = !!input.contactId;
+  let displayName: string | undefined;
+  let rawPhone = input.phone || '';
+
+  if (isContact) {
+    if (!input.companyId) {
+      return {
+        ok: false,
+        error: 'Company is required when texting a contact',
+        code: 'missing_company',
+      };
+    }
+    const contact = await getContactById(
+      tenantId,
+      input.companyId,
+      input.contactId!
+    );
+    if (!contact) {
+      return {
+        ok: false,
+        error: 'Contact not found',
+        code: 'not_found',
+      };
+    }
+    displayName = contact.name;
+    if (!rawPhone) {
+      rawPhone = resolveContactSmsPhone(contact);
+    }
+  } else if (input.candidateId) {
+    const lead = await getLeadById(tenantId, input.candidateId);
+    displayName = (lead as { name?: string } | null)?.name;
+    if (!rawPhone) {
+      rawPhone = (lead as { phone?: string } | null)?.phone || '';
+    }
+  } else {
+    return {
+      ok: false,
+      error: 'candidateId or contactId is required',
+      code: 'invalid_input',
+    };
+  }
+
   const norm = normalizeToE164(rawPhone, config.defaultCountry);
   if (!norm.ok) {
     return {
@@ -124,6 +185,8 @@ export async function sendSmsToCandidate(
       status: 'opted_in',
       source: input.consentSource,
       candidateId: input.candidateId,
+      contactId: input.contactId,
+      companyId: input.companyId,
     });
   }
 
@@ -137,16 +200,12 @@ export async function sendSmsToCandidate(
   }
 
   if (config.requireConsent && consent?.status !== 'opted_in') {
-    // Allow if allowColdOutreach and not require strict — requireConsent wins
     return {
       ok: false,
       error: complianceBlockMessage('consent_required'),
       code: 'consent_required',
     };
   }
-
-  // Soft preference: allowColdOutreach=false is documented in Settings;
-  // hard block remains requireConsent + opt-out.
 
   if (!input.bypassQuietHours && isInQuietHours(config)) {
     return {
@@ -166,10 +225,12 @@ export async function sendSmsToCandidate(
   }
 
   const origination = resolveOrigination(config);
-  // Without a from-number we still allow simulated sends so UI/compliance can be tested.
 
-  const history = await listMessagesForCandidate(tenantId, input.candidateId);
-  const isFirst = history.filter((m) => m.direction === 'outbound').length === 0;
+  const history = isContact
+    ? await listMessagesForContact(tenantId, input.contactId!)
+    : await listMessagesForCandidate(tenantId, input.candidateId!);
+  const isFirst =
+    history.filter((m) => m.direction === 'outbound').length === 0;
   const { body, segments } = composeOutboundBody(input.body, config, {
     isFirstMessage: isFirst,
   });
@@ -181,12 +242,22 @@ export async function sendSmsToCandidate(
     configurationSetName: config.configurationSetName,
   });
 
+  const entityFields = isContact
+    ? {
+        contactId: input.contactId,
+        contactName: displayName,
+        companyId: input.companyId,
+      }
+    : {
+        candidateId: input.candidateId,
+        candidateName: displayName,
+      };
+
   if (!providerResult.ok) {
-    const failed = await saveSmsMessage(tenantId, {
+    await saveSmsMessage(tenantId, {
       direction: 'outbound',
       status: 'failed',
-      candidateId: input.candidateId,
-      candidateName: (lead as { name?: string } | null)?.name,
+      ...entityFields,
       phoneE164: norm.e164,
       body,
       segments,
@@ -202,8 +273,7 @@ export async function sendSmsToCandidate(
   const message = await saveSmsMessage(tenantId, {
     direction: 'outbound',
     status: providerResult.provider === 'simulated' ? 'simulated' : 'sent',
-    candidateId: input.candidateId,
-    candidateName: (lead as { name?: string } | null)?.name,
+    ...entityFields,
     phoneE164: norm.e164,
     body,
     segments,
@@ -214,15 +284,27 @@ export async function sendSmsToCandidate(
 
   // Soft activity note (non-fatal)
   try {
-    const { addNoteToCandidate } = await import(
-      '@/lib/events/candidate-events'
-    );
-    await addNoteToCandidate(
-      input.candidateId,
-      `SMS sent: ${body.slice(0, 200)}${body.length > 200 ? '…' : ''}`,
-      userId || 'system',
-      { noteType: 'SMS' }
-    );
+    const note = `SMS sent: ${body.slice(0, 200)}${body.length > 200 ? '…' : ''}`;
+    if (isContact && input.contactId) {
+      const { createEvent } = await import(
+        '@/lib/db/repositories/event-repository'
+      );
+      await createEvent({
+        contactId: input.contactId,
+        companyId: input.companyId,
+        type: 'Text Sent',
+        content: note,
+        createdBy: userId || 'system',
+        metadata: { noteText: note, noteType: 'Text Sent', channel: 'sms' },
+      });
+    } else if (input.candidateId) {
+      const { addNoteToCandidate } = await import(
+        '@/lib/events/candidate-events'
+      );
+      await addNoteToCandidate(input.candidateId, note, userId || 'system', {
+        noteType: 'Text Sent',
+      });
+    }
   } catch {
     /* optional */
   }
@@ -232,6 +314,23 @@ export async function sendSmsToCandidate(
     message,
     simulated: providerResult.provider === 'simulated',
   };
+}
+
+/** @deprecated prefer sendSms — kept for call sites */
+export async function sendSmsToCandidate(
+  tenantId: string,
+  input: SendSmsInput,
+  userId?: string
+): Promise<SendSmsResult> {
+  return sendSms(tenantId, input, userId);
+}
+
+export async function sendSmsToContact(
+  tenantId: string,
+  input: SendSmsInput,
+  userId?: string
+): Promise<SendSmsResult> {
+  return sendSms(tenantId, input, userId);
 }
 
 /**
