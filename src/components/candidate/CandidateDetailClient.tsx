@@ -62,7 +62,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   STAGE_CHANGED: 'Stage change',
   STAGE_CHANGE: 'Stage change',
   PIPELINE_MOVE: 'Pipeline',
-  JOB_LINKED: 'Job linked',
+  JOB_LINKED: 'Attached',
   JOB_UNLINKED: 'Job unlinked',
   JOB_STAGE_CHANGED: 'Job stage',
   PROFILE_UPDATED: 'Profile update',
@@ -239,6 +239,9 @@ function formatDateTime(value?: string) {
 
 function noteTypeBadgeClass(label: string) {
   const l = label.toLowerCase();
+  // Attached-to-job — orange, distinct from light-blue email / slate Other
+  if (l.includes('attach') || l === 'attached' || l === 'job_linked')
+    return 'bg-orange-100 text-orange-900 border-orange-300';
   if (l.includes('interview')) return 'bg-violet-100 text-violet-800 border-violet-200';
   if (l.includes('submit')) return 'bg-sky-100 text-sky-800 border-sky-200';
   if (l.includes('em sent') || l.includes('email sent') || l === 'email')
@@ -396,6 +399,18 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
 
   const getNoteTypeLabel = (note: any): string => {
     const meta = note?.metadata || {};
+    // System job-attach events (including older rows stored as Other + systemKind)
+    if (
+      meta.systemKind === 'job_linked' ||
+      note?.eventType === 'JOB_LINKED'
+    ) {
+      return 'Attached';
+    }
+    const body =
+      String(meta.noteText || note?.description || note?.title || '');
+    if (/^linked to job:/i.test(body) || /^attached to job:/i.test(body)) {
+      return 'Attached';
+    }
     // Prefer raw noteType → normalize (legacy → canonical / Other)
     if (meta.noteType) {
       return normalizeNoteTypeLabel(String(meta.noteType));
@@ -1478,7 +1493,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
               onClick={() => setLinkJobOpen(true)}
             >
               <Link2 className="h-3.5 w-3.5 mr-1.5" />
-              Link to job
+              Attach to Job
             </Button>
             <Button
               variant="outline"
@@ -2165,7 +2180,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             <div className="flex gap-2">
               <Button size="sm" onClick={() => setLinkJobOpen(true)}>
                 <Link2 className="h-4 w-4 mr-1.5" />
-                Link to job
+                Attach to Job
               </Button>
               <Button
                 size="sm"
@@ -2183,7 +2198,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
               </p>
               <Button size="sm" onClick={() => setLinkJobOpen(true)}>
                 <Link2 className="h-4 w-4 mr-1.5" />
-                Link to job
+                Attach to Job
               </Button>
             </div>
           ) : (

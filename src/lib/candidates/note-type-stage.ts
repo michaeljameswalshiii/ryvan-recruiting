@@ -34,6 +34,8 @@ export const ACTIVITY_NOTE_TYPES: readonly ActivityNoteType[] = [
   { value: 'Rejected', label: 'Rejected', drivesStage: true },
   { value: 'Not Interested', label: 'Not Interested', drivesStage: true },
   { value: 'DNU', label: 'DNU', drivesStage: true },
+  /** Candidate attached to a job req (system + optional manual) */
+  { value: 'Attached', label: 'Attached', drivesStage: false },
   { value: 'Other', label: 'Other', drivesStage: false },
 ] as const;
 
@@ -125,8 +127,13 @@ const LEGACY_NOTE_TYPE_ALIASES: Record<string, string> = {
   'check in': 'Other',
   stage_change: 'Other',
   'stage change': 'Other',
-  job_linked: 'Other',
-  'job linked': 'Other',
+  job_linked: 'Attached',
+  'job linked': 'Attached',
+  linked: 'Attached',
+  attach: 'Attached',
+  attached: 'Attached',
+  'attach job': 'Attached',
+  'attached to job': 'Attached',
   job_unlinked: 'Other',
   'job unlinked': 'Other',
   job_stage_change: 'Other',
@@ -264,6 +271,8 @@ export function normalizeNoteTypeLabel(
   if (key.includes('accept') || key.includes('plac') || key.includes('converted'))
     return 'Accepted';
   if (key.includes('conversation')) return 'Conversation';
+  if (key.includes('attach') || key.includes('job linked') || key === 'job_linked')
+    return 'Attached';
 
   return 'Other';
 }

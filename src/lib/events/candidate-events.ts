@@ -450,7 +450,8 @@ const candidateNoteTypes = [
   { value: 'meeting', label: 'Other' },
   { value: 'follow_up', label: 'Follow-up' },
   { value: 'stage_change', label: 'Other' },
-  { value: 'job_linked', label: 'Other' },
+  { value: 'job_linked', label: 'Attached' },
+  { value: 'Attached', label: 'Attached' },
   { value: 'job_unlinked', label: 'Other' },
   { value: 'job_stage_change', label: 'Other' },
   { value: 'profile_updated', label: 'Other' },
@@ -846,13 +847,12 @@ export async function recordJobLinked(
     candidateId,
     "JOB_LINKED",
     {
-      title: "Linked to job",
-      description: `Linked to ${jobTitle}${company} · stage: ${stage.replace(/_/g, " ")}`,
+      title: "Attached to job",
+      description: `Attached to ${jobTitle}${company} · stage: ${stage.replace(/_/g, " ")}`,
       metadata: {
-        noteText: `Linked to job: ${jobTitle}${company}`,
-        // Canonical activity list: system events that aren't in the list → Other
-        noteType: "Other",
-        noteTypeLabel: "Other",
+        noteText: `Attached to job: ${jobTitle}${company}`,
+        noteType: "Attached",
+        noteTypeLabel: "Attached",
         systemKind: "job_linked",
         jobId,
         jobTitle,

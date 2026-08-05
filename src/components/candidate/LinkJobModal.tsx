@@ -140,8 +140,8 @@ export function LinkJobModal({
       onLinked?.(next);
       toast.success(
         selectedJobIds.length > 0
-          ? `Linked ${selectedJobIds.length} job(s)`
-          : "Jobs unlinked"
+          ? `Attached ${selectedJobIds.length} job(s)`
+          : "Jobs detached"
       );
       onOpenChange(false);
     } catch (err: any) {
@@ -170,7 +170,7 @@ export function LinkJobModal({
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-slate-50">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Link to job</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Attach to Job</h2>
             <p className="text-sm text-slate-600">{candidateName}</p>
           </div>
           <Button
@@ -262,9 +262,9 @@ export function LinkJobModal({
                         {isAlreadyLinked && (
                           <Badge
                             variant="outline"
-                            className="text-xs border-slate-300 text-slate-700 bg-white"
+                            className="text-xs border-orange-300 text-orange-900 bg-orange-50"
                           >
-                            Linked
+                            Attached
                           </Badge>
                         )}
                       </div>
@@ -338,7 +338,7 @@ export function LinkJobModal({
                   Saving...
                 </>
               ) : (
-                "Save links"
+                "Save attachments"
               )}
             </Button>
           </div>
