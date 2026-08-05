@@ -47,6 +47,7 @@ import {
 } from '@/lib/contacts/activity-types';
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
 import { EntitySmsPanel } from '@/components/shared/EntitySmsPanel';
+import { EntityFilesPanel } from '@/components/shared/EntityFilesPanel';
 
 /** Contact activity types (canonical order) */
 const NOTE_TYPES = [...CONTACT_ACTIVITY_TYPES];
@@ -145,7 +146,7 @@ export default function ContactDetailClient({
     (displayPhoneType === 'mobile' || displayPhoneType === 'cell' ? displayPhone : '');
 
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'timeline' | 'jobs' | 'company'
+    'overview' | 'timeline' | 'jobs' | 'company' | 'files'
   >('overview');
   const [activities, setActivities] = useState<any[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
@@ -441,6 +442,7 @@ export default function ContactDetailClient({
     { id: 'timeline' as const, label: 'Timeline' },
     { id: 'jobs' as const, label: 'Open Jobs' },
     { id: 'company' as const, label: 'Company' },
+    { id: 'files' as const, label: 'Files' },
   ];
 
   const workPhone = form.workPhone || getPhoneByType(contact, 'work');
@@ -1154,6 +1156,14 @@ export default function ContactDetailClient({
           )}
         </section>
       )}
+
+      {activeTab === 'files' && contactId ? (
+        <EntityFilesPanel
+          entityType="contact"
+          entityId={contactId}
+          companyId={companyId || undefined}
+        />
+      ) : null}
 
       {/* Edit modal — always light surface (readable in dark theme) */}
       {showEditModal && (

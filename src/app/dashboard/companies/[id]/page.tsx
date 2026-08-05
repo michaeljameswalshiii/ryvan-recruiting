@@ -22,6 +22,7 @@ import { SendEmailModal } from "@/components/email/send-email-modal";
 import { companyStageLabel } from "@/lib/schemas/client";
 import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
 import { hasPermission } from "@/lib/roles";
+import { EntityFilesPanel } from "@/components/shared/EntityFilesPanel";
 
 // Dynamic import for EventTimeline to avoid SSR issues
 const CompanyEventTimeline = dynamic(() => 
@@ -35,6 +36,7 @@ const tabs = [
   { id: "history", label: "Timeline", icon: Clock },
   { id: "jobs", label: "Jobs", icon: Briefcase },
   { id: "contacts", label: "Contacts", icon: User },
+  { id: "files", label: "Files", icon: FileText },
 ];
 
 const validTabIds = new Set(tabs.map((tab) => tab.id));
@@ -414,6 +416,9 @@ export default function CompanyDetailPage() {
             onEmailClick={handleEmailClick}
           />
         )}
+        {activeTab === "files" && company?.id ? (
+          <EntityFilesPanel entityType="company" entityId={company.id} />
+        ) : null}
       </div>
 
       {/* Send Email Modal */}

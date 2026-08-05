@@ -48,6 +48,7 @@ import {
   stageDisplayLabel,
 } from '@/lib/candidates/note-type-stage';
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
+import { EntityFilesPanel } from '@/components/shared/EntityFilesPanel';
 
 /** Activity / note types shown in the log composer (canonical order) */
 const NOTE_TYPES = ACTIVITY_NOTE_TYPES;
@@ -275,7 +276,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const candidateId = safe.id || '';
 
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'timeline' | 'resume' | 'jobs'
+    'overview' | 'timeline' | 'resume' | 'jobs' | 'files'
   >('overview');
   const [notes, setNotes] = useState<any[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
@@ -1159,6 +1160,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     { id: 'timeline' as const, label: 'Timeline' },
     { id: 'resume' as const, label: 'Resume' },
     { id: 'jobs' as const, label: 'Linked Jobs' },
+    { id: 'files' as const, label: 'Files' },
   ];
 
   const activityRows = useMemo(() => {
@@ -2419,6 +2421,10 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
           )}
         </section>
       )}
+
+      {activeTab === 'files' && candidateId ? (
+        <EntityFilesPanel entityType="candidate" entityId={candidateId} />
+      ) : null}
 
       <LinkJobModal
         open={linkJobOpen}

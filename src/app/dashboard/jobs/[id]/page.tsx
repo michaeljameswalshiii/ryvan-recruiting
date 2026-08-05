@@ -20,6 +20,7 @@ import {
   UserPlus,
   Briefcase,
   Users,
+  Paperclip,
 } from "lucide-react";
 import {
   useJob,
@@ -53,6 +54,7 @@ import {
 import { toast } from "sonner";
 import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
 import { hasPermission } from "@/lib/roles";
+import { EntityFilesPanel } from "@/components/shared/EntityFilesPanel";
 
 type FitScoreClient = {
   score: number;
@@ -138,6 +140,7 @@ export default function JobDetailPage() {
   }, []);
 
   const canInvoice = hasPermission(userRole, "team_admin");
+  const [detailTab, setDetailTab] = useState<"overview" | "files">("overview");
   const [candidateSearch, setCandidateSearch] = useState("");
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -617,6 +620,40 @@ export default function JobDetailPage() {
         </div>
       </div>
 
+      {/* Job detail tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="flex gap-1 overflow-x-auto">
+          {(
+            [
+              { id: "overview" as const, label: "Overview", icon: Briefcase },
+              { id: "files" as const, label: "Files", icon: Paperclip },
+            ] as const
+          ).map((t) => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setDetailTab(t.id)}
+                className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+                  detailTab === t.id
+                    ? "border-blue-600 text-blue-700"
+                    : "border-transparent text-gray-500 hover:text-gray-800"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {t.label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {detailTab === "files" && job.id ? (
+        <EntityFilesPanel entityType="job" entityId={job.id} />
+      ) : null}
+
+      {detailTab === "overview" ? (
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
         {/* ─── Main column ─── */}
         <div className="xl:col-span-8 space-y-5">
@@ -1110,6 +1147,7 @@ export default function JobDetailPage() {
           </section>
         </div>
       </div>
+      ) : null}
 
       <JobEditModal
         isOpen={editOpen}
