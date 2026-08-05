@@ -264,9 +264,18 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [notes, setNotes] = useState<any[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [activityPage, setActivityPage] = useState(1);
-  /** Focus = active-job activity; All = full history */
+  /** Focus = active-job activity (default); All = full history */
   const [activityViewMode, setActivityViewMode] =
-    useState<ActivityViewMode>('focus');
+    useState<ActivityViewMode>(() => {
+      if (typeof window === 'undefined') return 'focus';
+      try {
+        const saved = localStorage.getItem('trio-activity-view');
+        if (saved === 'all' || saved === 'focus') return saved;
+      } catch {
+        /* ignore */
+      }
+      return 'focus';
+    });
   const [showArchivedActivity, setShowArchivedActivity] = useState(false);
   const [archivedPage, setArchivedPage] = useState(1);
   const [newNote, setNewNote] = useState('');
@@ -1237,6 +1246,14 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     setArchivedPage(1);
     setShowArchivedActivity(false);
   }, [notes.length, candidateId, activityViewMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('trio-activity-view', activityViewMode);
+    } catch {
+      /* ignore */
+    }
+  }, [activityViewMode]);
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-5 pb-10">

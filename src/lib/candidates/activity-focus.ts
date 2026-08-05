@@ -18,6 +18,27 @@ export const TERMINAL_JOB_STAGES = new Set([
   "withdrawn",
 ]);
 
+/**
+ * Note / action types that should never appear in Focus (closed outcomes).
+ * Matched against noteType, noteTypeLabel, and display badge labels.
+ */
+export const TERMINAL_NOTE_TYPES = new Set([
+  "rejected",
+  "reject",
+  "not_interested",
+  "not interested",
+  "dnu",
+  "do not use",
+  "placed",
+  "accept",
+  "accepted",
+  "hired",
+  "offer declined",
+  "withdrawn",
+  "unlinked",
+  "job_unlinked",
+]);
+
 const FREE_NOTE_FOCUS_DAYS = 14;
 
 export function normalizeStageKey(stage?: string | null): string {
@@ -53,10 +74,48 @@ export function getEventJobId(note: any): string | null {
   return null;
 }
 
+/** True if this activity is a closed/negative outcome note type */
+export function isTerminalNoteActivity(note: any): boolean {
+  const meta = note?.metadata || {};
+  const candidates = [
+    meta.noteType,
+    meta.noteTypeLabel,
+    meta.systemKind,
+    note?.eventType,
+    note?.title,
+  ]
+    .filter(Boolean)
+    .map((s) =>
+      String(s)
+        .trim()
+        .toLowerCase()
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ")
+    );
+
+  for (const c of candidates) {
+    if (TERMINAL_NOTE_TYPES.has(c)) return true;
+    // "Note - Rejected", "Rejected", etc.
+    if (c.includes("rejected") || c.includes("not interested")) return true;
+    if (c === "dnu" || c.endsWith(" dnu") || c.startsWith("dnu ")) return true;
+    if (c.includes("job unlinked") || c === "job_unlinked") return true;
+  }
+
+  const body = String(
+    meta.noteText || note?.description || note?.title || ""
+  ).toLowerCase();
+  // Stage-driven reject notes often have type Rejected already; body alone is weaker
+  if (meta.noteType || meta.noteTypeLabel) return false;
+  if (/^rejected\b/.test(body) || body.startsWith("not interested")) {
+    return true;
+  }
+  return false;
+}
+
 /**
- * Focus = tied to an active linked job, OR free-form / unscoped activity
- * in the last FREE_NOTE_FOCUS_DAYS days.
- * Explicitly archived rows are never focus.
+ * Focus = tied to an active linked job (and not a terminal note type),
+ * OR recent free-form notes that are not terminal outcomes.
+ * Explicitly archived / Rejected / Not Interested / etc. are never Focus.
  */
 export function isFocusActivity(
   note: any,
@@ -66,7 +125,30 @@ export function isFocusActivity(
   const meta = note?.metadata || {};
   if (meta.archived === true || meta.archivedAt) return false;
 
+  // Closed outcomes (Rejected, etc.) always go to archive — even if recent
+  if (isTerminalNoteActivity(note)) return false;
+
   const jobId = getEventJobId(note);
+  const body = String(
+    meta.noteText || note?.description || note?.title || ""
+  );
+  const isAiFit =
+    meta.systemKind === "ai_fit" ||
+    typeof meta.fitScore === "number" ||
+    /^ai fit for/i.test(body);
+  const isJobAttach =
+    meta.systemKind === "job_linked" ||
+    meta.systemKind === "job_unlinked" ||
+    note?.eventType === "JOB_LINKED" ||
+    note?.eventType === "JOB_UNLINKED" ||
+    /^linked to job:/i.test(body);
+
+  // Job-scoped system rows only belong in Focus when that job is still active
+  if (isAiFit || isJobAttach) {
+    if (!jobId) return false;
+    return activeJobIds.has(jobId);
+  }
+
   if (jobId) {
     return activeJobIds.has(jobId);
   }
