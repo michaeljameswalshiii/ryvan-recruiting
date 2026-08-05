@@ -54,10 +54,8 @@ import {
   activityBadgeStyle,
 } from '@/lib/ui/activity-badge-colors';
 import {
-  splitFocusAndArchived,
   getActiveLinkedJobIds,
-  getEventJobId,
-  type ActivityViewMode,
+  resolveActivityJobTag,
 } from '@/lib/candidates/activity-focus';
 
 /** Activity / note types shown in the log composer (canonical order) */
@@ -265,26 +263,8 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [notes, setNotes] = useState<any[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [activityPage, setActivityPage] = useState(1);
-  /**
-   * Timeline scope: All jobs (default) | Focus (open jobs only).
-   * Job chip filter is separate (activityJobFilter).
-   */
-  const [activityViewMode, setActivityViewMode] =
-    useState<ActivityViewMode>(() => {
-      if (typeof window === 'undefined') return 'all';
-      try {
-        const saved = localStorage.getItem('trio-activity-view');
-        // Prefer All jobs as product default; migrate old "focus" only if saved
-        if (saved === 'all' || saved === 'focus') return saved;
-      } catch {
-        /* ignore */
-      }
-      return 'all';
-    });
   /** 'all' | jobId | 'candidate' (notes with no job tag) */
   const [activityJobFilter, setActivityJobFilter] = useState<string>('all');
-  const [showArchivedActivity, setShowArchivedActivity] = useState(false);
-  const [archivedPage, setArchivedPage] = useState(1);
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('Conversation');
   /** Job tag for new notes — primary active linked job when present */
@@ -1247,15 +1227,6 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notes, safe.notes, safe.createdAt]);
 
-  const {
-    focus: focusActivityRows,
-    archived: archivedActivityRows,
-    focusJobIds,
-  } = useMemo(
-    () => splitFocusAndArchived(activityRows, linkedJobs),
-    [activityRows, linkedJobs]
-  );
-
   const activeLinkedJobIds = useMemo(
     () => getActiveLinkedJobIds(linkedJobs),
     [linkedJobs]
@@ -1289,52 +1260,37 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     }
   }, [primaryLogJobId, linkedJobs, logJobId]);
 
-  /** Scope: All vs Focus (open jobs), then optional job chip */
+  /** Always full history; optional job chip filters the list */
   const visibleActivityRows = useMemo(() => {
-    let rows =
-      activityViewMode === 'all' ? activityRows : focusActivityRows;
-
-    if (activityJobFilter === 'all') return rows;
+    if (activityJobFilter === 'all') return activityRows;
     if (activityJobFilter === 'candidate') {
-      return rows.filter((n) => !getEventJobId(n));
+      return activityRows.filter((n) => {
+        const tag = resolveActivityJobTag(n, linkedJobs);
+        return !tag.jobId && !tag.jobTitle;
+      });
     }
-    // Specific job: that job's notes + candidate-level (null jobId)
-    return rows.filter((n) => {
-      const jid = getEventJobId(n);
-      if (!jid) return true;
-      return jid === activityJobFilter;
+    // Specific job: that job's notes + candidate-level (no job tag)
+    return activityRows.filter((n) => {
+      const tag = resolveActivityJobTag(n, linkedJobs);
+      if (!tag.jobId && !tag.jobTitle) return true;
+      if (tag.jobId === activityJobFilter) return true;
+      const j = linkedJobs.find(
+        (x) => String(x?.jobId || x?.id || '') === activityJobFilter
+      );
+      const title = (j?.jobTitle || j?.title || '').toLowerCase();
+      if (title && tag.jobTitle?.toLowerCase() === title) return true;
+      return false;
     });
-  }, [
-    activityViewMode,
-    activityRows,
-    focusActivityRows,
-    activityJobFilter,
-  ]);
+  }, [activityRows, activityJobFilter, linkedJobs]);
 
   const pagedActivity = useMemo(
     () => paginateItems(visibleActivityRows, activityPage, DEFAULT_PAGE_SIZE),
     [visibleActivityRows, activityPage]
   );
 
-  const pagedArchived = useMemo(
-    () =>
-      paginateItems(archivedActivityRows, archivedPage, DEFAULT_PAGE_SIZE),
-    [archivedActivityRows, archivedPage]
-  );
-
   useEffect(() => {
     setActivityPage(1);
-    setArchivedPage(1);
-    setShowArchivedActivity(false);
-  }, [notes.length, candidateId, activityViewMode, activityJobFilter]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('trio-activity-view', activityViewMode);
-    } catch {
-      /* ignore */
-    }
-  }, [activityViewMode]);
+  }, [notes.length, candidateId, activityJobFilter]);
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-5 pb-10">
@@ -1799,53 +1755,17 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
 
             {/* Notes & activity log */}
             <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-                    Notes & Activity Log
-                  </h2>
-                  <p className="text-xs text-gray-400 mt-1">
-                    Each note stores action type + optional job. Filter by job
-                    anytime — closed jobs keep their history.
-                  </p>
-                </div>
-                <div
-                  className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 shrink-0"
-                  role="group"
-                  aria-label="Activity view"
-                >
-                  <button
-                    type="button"
-                    onClick={() => setActivityViewMode('all')}
-                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                      activityViewMode === 'all'
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    All jobs
-                    {activityRows.length > 0
-                      ? ` (${activityRows.length})`
-                      : ''}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActivityViewMode('focus')}
-                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                      activityViewMode === 'focus'
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Open jobs
-                    {activityRows.length > 0
-                      ? ` (${focusActivityRows.length})`
-                      : ''}
-                  </button>
-                </div>
+              <div className="mb-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Notes & Activity Log
+                </h2>
+                <p className="text-xs text-gray-400 mt-1">
+                  Full history for this candidate. Each note has an action type
+                  and optional job tag — filter chips are views only.
+                </p>
               </div>
 
-              {/* Job filter chips — convenience view over stored jobId */}
+              {/* Job filter chips — convenience view over stored/inferred jobId */}
               {linkedJobs.length > 0 && (
                 <div className="mb-3 flex flex-wrap gap-1.5">
                   <button
@@ -1857,7 +1777,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                         : 'border-gray-200 bg-white text-slate-600 hover:border-slate-300'
                     }`}
                   >
-                    All jobs
+                    All jobs ({activityRows.length})
                   </button>
                   {linkedJobs.map((j: any) => {
                     const id = String(j?.jobId || j?.id || '');
@@ -1966,119 +1886,19 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 <p className="text-sm text-gray-500 text-center py-8">
                   No activity yet. Log the first note above.
                 </p>
-              ) : visibleActivityRows.length === 0 &&
-                activityViewMode === 'focus' ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-gray-500 text-center py-6">
-                    No focus activity for active jobs.
-                    {archivedActivityRows.length > 0
-                      ? ` ${archivedActivityRows.length} older item${
-                          archivedActivityRows.length === 1 ? '' : 's'
-                        } are archived.`
-                      : ''}
-                  </p>
-                  {archivedActivityRows.length > 0 && (
-                    <div className="flex justify-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowArchivedActivity(true)}
-                      >
-                        Show archived ({archivedActivityRows.length})
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setActivityViewMode('all')}
-                      >
-                        View all activity
-                      </Button>
-                    </div>
-                  )}
-                  {showArchivedActivity && archivedActivityRows.length > 0 && (
-                    <div className="space-y-2 pt-2 border-t border-gray-100">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Archived / past jobs
-                      </p>
-                      <PaginationBar
-                        page={pagedArchived.page}
-                        totalPages={pagedArchived.totalPages}
-                        total={pagedArchived.total}
-                        onPageChange={setArchivedPage}
-                        itemLabel={
-                          pagedArchived.total === 1
-                            ? 'archived activity'
-                            : 'archived activities'
-                        }
-                      />
-                      <div className="overflow-x-auto rounded-xl border border-dashed border-slate-200 bg-slate-50/40">
-                        <table className="w-full text-sm min-w-[560px]">
-                          <thead>
-                            <tr className="border-b border-gray-100 text-left">
-                              <th className="px-3 py-2 text-[11px] font-semibold uppercase text-gray-500 w-36">
-                                Date
-                              </th>
-                              <th className="px-3 py-2 text-[11px] font-semibold uppercase text-gray-500 w-40">
-                                Action Type
-                              </th>
-                              <th className="px-3 py-2 text-[11px] font-semibold uppercase text-gray-500">
-                                Note
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {pagedArchived.slice.map(
-                              (note: any, index: number) => {
-                                const label = getNoteTypeLabel(note);
-                                return (
-                                  <tr
-                                    key={
-                                      note.id || note.SK || `arch-${index}`
-                                    }
-                                    className="opacity-90"
-                                  >
-                                    <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap align-top">
-                                      {formatDateTime(
-                                        note.createdAt ||
-                                          note.timestamp ||
-                                          note.created_at
-                                      )}
-                                    </td>
-                                    <td className="px-3 py-2.5 align-top">
-                                      <span
-                                        className={ACTIVITY_BADGE_BASE_CLASS}
-                                        style={activityBadgeStyle(label)}
-                                      >
-                                        {label}
-                                      </span>
-                                    </td>
-                                    <td className="px-3 py-2.5 text-sm text-gray-700 align-top">
-                                      <ExpandableNoteText
-                                        text={getNoteBody(note)}
-                                      />
-                                    </td>
-                                  </tr>
-                                );
-                              }
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
+              ) : visibleActivityRows.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">
+                  No activity matches this job filter.{' '}
+                  <button
+                    type="button"
+                    className="font-semibold text-blue-600 hover:underline"
+                    onClick={() => setActivityJobFilter('all')}
+                  >
+                    Show all activity
+                  </button>
+                </p>
               ) : (
                 <div className="space-y-3">
-                  {activityViewMode === 'focus' &&
-                    focusJobIds.size === 0 &&
-                    focusActivityRows.length > 0 && (
-                      <p className="text-[11px] text-slate-500">
-                        No open jobs in play — showing recent free-form notes
-                        only. Closed / rejected reqs are under archived.
-                      </p>
-                    )}
                   <PaginationBar
                     page={pagedActivity.page}
                     totalPages={pagedActivity.totalPages}
@@ -2088,250 +1908,177 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                       pagedActivity.total === 1 ? 'activity' : 'activities'
                     }
                   />
-                <div className="overflow-x-auto rounded-xl border border-gray-100">
-                  <table className="w-full text-sm min-w-[560px]">
-                    <thead>
-                      <tr className="bg-gray-50/80 border-b border-gray-100 text-left">
-                        <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-36">
-                          Date
-                        </th>
-                        <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-40">
-                          Action Type
-                        </th>
-                        <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                          Note
-                        </th>
-                        <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-24 text-right">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {pagedActivity.slice.map((note: any, index: number) => {
-                        const label = getNoteTypeLabel(note);
-                        const rowId = String(note.id || note.timestamp || index);
-                        const mutable = isMutableActivity(note);
-                        const isEditing = editingEventId === rowId;
-                        const isDeleting = deletingEventId === rowId;
+                  <div className="overflow-x-auto rounded-xl border border-gray-100">
+                    <table className="w-full text-sm min-w-[560px]">
+                      <thead>
+                        <tr className="bg-gray-50/80 border-b border-gray-100 text-left">
+                          <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-36">
+                            Date
+                          </th>
+                          <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-40">
+                            Action Type
+                          </th>
+                          <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            Note
+                          </th>
+                          <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-24 text-right">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {pagedActivity.slice.map((note: any, index: number) => {
+                          const label = getNoteTypeLabel(note);
+                          const rowId = String(
+                            note.id || note.timestamp || index
+                          );
+                          const mutable = isMutableActivity(note);
+                          const isEditing = editingEventId === rowId;
+                          const isDeleting = deletingEventId === rowId;
+                          const jobTag = resolveActivityJobTag(
+                            note,
+                            linkedJobs
+                          );
 
-                        return (
-                          <tr
-                            key={note.id || note.SK || index}
-                            className="hover:bg-gray-50/60 group"
-                          >
-                            <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap align-top">
-                              {formatDateTime(
-                                note.createdAt || note.timestamp || note.created_at
-                              )}
-                            </td>
-                            <td className="px-3 py-3 align-top">
-                              {isEditing ? (
-                                <select
-                                  value={editNoteType}
-                                  onChange={(e) => setEditNoteType(e.target.value)}
-                                  className="h-8 w-full max-w-[11rem] rounded-md border border-gray-200 bg-white px-2 text-xs"
-                                  disabled={savingEdit}
-                                >
-                                  {NOTE_TYPES.map((t) => (
-                                    <option key={t.value} value={t.value}>
-                                      {t.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <span
-                                  className={ACTIVITY_BADGE_BASE_CLASS}
-                                  style={activityBadgeStyle(label)}
-                                >
-                                  {label}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 text-sm text-gray-800 align-top">
-                              {isEditing ? (
-                                <div className="flex flex-col gap-2">
-                                  <Input
-                                    value={editNoteText}
-                                    onChange={(e) => setEditNoteText(e.target.value)}
-                                    className="bg-white text-sm h-9"
-                                    disabled={savingEdit}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' && !e.shiftKey) {
-                                        e.preventDefault();
-                                        void handleSaveEditActivity();
-                                      }
-                                      if (e.key === 'Escape') cancelEditActivity();
-                                    }}
-                                    autoFocus
-                                  />
-                                  <div className="flex gap-2">
-                                    <Button
-                                      size="sm"
-                                      className="h-7 text-xs bg-blue-600 hover:bg-blue-700"
-                                      onClick={() => void handleSaveEditActivity()}
-                                      disabled={savingEdit || !editNoteText.trim()}
-                                    >
-                                      {savingEdit ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                      ) : (
-                                        'Save'
-                                      )}
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-7 text-xs"
-                                      onClick={cancelEditActivity}
-                                      disabled={savingEdit}
-                                    >
-                                      Cancel
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="space-y-1">
-                                  {(note?.metadata?.jobTitle ||
-                                    note?.metadata?.companyName) && (
-                                    <span className="inline-flex max-w-full truncate rounded-md border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
-                                      {note.metadata.jobTitle || 'Job'}
-                                      {note.metadata.companyName
-                                        ? ` @ ${note.metadata.companyName}`
-                                        : ''}
-                                    </span>
-                                  )}
-                                  <ExpandableNoteText text={getNoteBody(note)} />
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 align-top text-right">
-                              {mutable && !isEditing && (
-                                <div className="inline-flex items-center gap-0.5 opacity-70 group-hover:opacity-100">
-                                  <button
-                                    type="button"
-                                    title="Edit"
-                                    onClick={() => startEditActivity(note)}
-                                    disabled={!!deletingEventId || savingEdit}
-                                    className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 disabled:opacity-40"
-                                  >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    title="Delete"
-                                    onClick={() => void handleDeleteActivity(note)}
-                                    disabled={isDeleting || savingEdit}
-                                    className="p-1.5 rounded-md text-red-600 hover:bg-red-50 disabled:opacity-40"
-                                  >
-                                    {isDeleting ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    )}
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                  {activityViewMode === 'focus' &&
-                    archivedActivityRows.length > 0 && (
-                      <div className="pt-2 border-t border-gray-100 space-y-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowArchivedActivity((v) => !v)
-                          }
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
-                        >
-                          <ChevronDown
-                            className={`h-3.5 w-3.5 transition-transform ${
-                              showArchivedActivity ? 'rotate-180' : ''
-                            }`}
-                          />
-                          {showArchivedActivity ? 'Hide' : 'Show'} archived
-                          {' / '}
-                          past jobs ({archivedActivityRows.length})
-                        </button>
-                        {showArchivedActivity && (
-                          <div className="space-y-2">
-                            <PaginationBar
-                              page={pagedArchived.page}
-                              totalPages={pagedArchived.totalPages}
-                              total={pagedArchived.total}
-                              onPageChange={setArchivedPage}
-                              itemLabel={
-                                pagedArchived.total === 1
-                                  ? 'archived activity'
-                                  : 'archived activities'
-                              }
-                            />
-                            <div className="overflow-x-auto rounded-xl border border-dashed border-slate-200 bg-slate-50/50">
-                              <table className="w-full text-sm min-w-[560px]">
-                                <thead>
-                                  <tr className="border-b border-gray-100 text-left">
-                                    <th className="px-3 py-2 text-[11px] font-semibold uppercase text-gray-500 w-36">
-                                      Date
-                                    </th>
-                                    <th className="px-3 py-2 text-[11px] font-semibold uppercase text-gray-500 w-40">
-                                      Action Type
-                                    </th>
-                                    <th className="px-3 py-2 text-[11px] font-semibold uppercase text-gray-500">
-                                      Note
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                  {pagedArchived.slice.map(
-                                    (note: any, index: number) => {
-                                      const label = getNoteTypeLabel(note);
-                                      return (
-                                        <tr
-                                          key={
-                                            note.id ||
-                                            note.SK ||
-                                            `arch-main-${index}`
-                                          }
-                                        >
-                                          <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap align-top">
-                                            {formatDateTime(
-                                              note.createdAt ||
-                                                note.timestamp ||
-                                                note.created_at
-                                            )}
-                                          </td>
-                                          <td className="px-3 py-2.5 align-top">
-                                            <span
-                                              className={
-                                                ACTIVITY_BADGE_BASE_CLASS
-                                              }
-                                              style={activityBadgeStyle(
-                                                label
-                                              )}
-                                            >
-                                              {label}
-                                            </span>
-                                          </td>
-                                          <td className="px-3 py-2.5 text-sm text-gray-700 align-top">
-                                            <ExpandableNoteText
-                                              text={getNoteBody(note)}
-                                            />
-                                          </td>
-                                        </tr>
-                                      );
+                          return (
+                            <tr
+                              key={note.id || note.SK || index}
+                              className="hover:bg-gray-50/60 group"
+                            >
+                              <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap align-top">
+                                {formatDateTime(
+                                  note.createdAt ||
+                                    note.timestamp ||
+                                    note.created_at
+                                )}
+                              </td>
+                              <td className="px-3 py-3 align-top">
+                                {isEditing ? (
+                                  <select
+                                    value={editNoteType}
+                                    onChange={(e) =>
+                                      setEditNoteType(e.target.value)
                                     }
-                                  )}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                                    className="h-8 w-full max-w-[11rem] rounded-md border border-gray-200 bg-white px-2 text-xs"
+                                    disabled={savingEdit}
+                                  >
+                                    {NOTE_TYPES.map((t) => (
+                                      <option key={t.value} value={t.value}>
+                                        {t.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span
+                                    className={ACTIVITY_BADGE_BASE_CLASS}
+                                    style={activityBadgeStyle(label)}
+                                  >
+                                    {label}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 text-sm text-gray-800 align-top">
+                                {isEditing ? (
+                                  <div className="flex flex-col gap-2">
+                                    <Input
+                                      value={editNoteText}
+                                      onChange={(e) =>
+                                        setEditNoteText(e.target.value)
+                                      }
+                                      className="bg-white text-sm h-9"
+                                      disabled={savingEdit}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                          e.preventDefault();
+                                          void handleSaveEditActivity();
+                                        }
+                                        if (e.key === 'Escape')
+                                          cancelEditActivity();
+                                      }}
+                                      autoFocus
+                                    />
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        className="h-7 text-xs bg-blue-600 hover:bg-blue-700"
+                                        onClick={() =>
+                                          void handleSaveEditActivity()
+                                        }
+                                        disabled={
+                                          savingEdit || !editNoteText.trim()
+                                        }
+                                      >
+                                        {savingEdit ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          'Save'
+                                        )}
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs"
+                                        onClick={cancelEditActivity}
+                                        disabled={savingEdit}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {jobTag.label && (
+                                      <span
+                                        className="inline-flex max-w-full truncate rounded-md border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800"
+                                        title={jobTag.label}
+                                      >
+                                        {jobTag.label}
+                                      </span>
+                                    )}
+                                    <ExpandableNoteText
+                                      text={getNoteBody(note)}
+                                    />
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 align-top text-right">
+                                {mutable && !isEditing && (
+                                  <div className="inline-flex items-center gap-0.5 opacity-70 group-hover:opacity-100">
+                                    <button
+                                      type="button"
+                                      title="Edit"
+                                      onClick={() => startEditActivity(note)}
+                                      disabled={
+                                        !!deletingEventId || savingEdit
+                                      }
+                                      className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Delete"
+                                      onClick={() =>
+                                        void handleDeleteActivity(note)
+                                      }
+                                      disabled={isDeleting || savingEdit}
+                                      className="p-1.5 rounded-md text-red-600 hover:bg-red-50 disabled:opacity-40"
+                                    >
+                                      {isDeleting ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </section>
@@ -2456,44 +2203,11 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
       {/* ── Timeline tab ─────────────────────────────────────────── */}
       {activeTab === 'timeline' && (
         <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">
-                Timeline
-              </h2>
-              <p className="text-xs text-gray-500 mt-0.5">
-                All jobs by default · each note can be tagged to a job · Open
-                jobs filter is optional
-              </p>
-            </div>
-            <div
-              className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 shrink-0"
-              role="group"
-              aria-label="Timeline view"
-            >
-              <button
-                type="button"
-                onClick={() => setActivityViewMode('all')}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                  activityViewMode === 'all'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                All jobs ({activityRows.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setActivityViewMode('focus')}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                  activityViewMode === 'focus'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Open jobs ({focusActivityRows.length})
-              </button>
-            </div>
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-gray-900">Timeline</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Full history for this candidate. Filter by job chip anytime.
+            </p>
           </div>
           {linkedJobs.length > 0 && (
             <div className="mb-4 flex flex-wrap gap-1.5">
@@ -2506,7 +2220,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                     : 'border-gray-200 bg-white text-slate-600'
                 }`}
               >
-                All jobs
+                All jobs ({activityRows.length})
               </button>
               {linkedJobs.map((j: any) => {
                 const id = String(j?.jobId || j?.id || '');
@@ -2527,6 +2241,17 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={() => setActivityJobFilter('candidate')}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                  activityJobFilter === 'candidate'
+                    ? 'border-slate-400 bg-slate-100 text-slate-900'
+                    : 'border-gray-200 bg-white text-slate-600'
+                }`}
+              >
+                Candidate only
+              </button>
             </div>
           )}
           {notesLoading ? (
@@ -2537,23 +2262,17 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
             <p className="text-sm text-gray-500 text-center py-10">
               No timeline events yet.
             </p>
-          ) : visibleActivityRows.length === 0 &&
-            activityViewMode === 'focus' ? (
-            <div className="space-y-3 text-center py-8">
-              <p className="text-sm text-gray-500">
-                No focus activity for active jobs.
-              </p>
-              {archivedActivityRows.length > 0 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setActivityViewMode('all')}
-                >
-                  View all activity ({activityRows.length})
-                </Button>
-              )}
-            </div>
+          ) : visibleActivityRows.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-10">
+              No activity matches this job filter.{' '}
+              <button
+                type="button"
+                className="font-semibold text-blue-600 hover:underline"
+                onClick={() => setActivityJobFilter('all')}
+              >
+                Show all activity
+              </button>
+            </p>
           ) : (
             <div className="space-y-3">
               <PaginationBar
@@ -2571,6 +2290,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 const mutable = isMutableActivity(note);
                 const isEditing = editingEventId === rowId;
                 const isDeleting = deletingEventId === rowId;
+                const jobTag = resolveActivityJobTag(note, linkedJobs);
 
                 return (
                   <div
@@ -2629,12 +2349,22 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                         </div>
                       ) : (
                         <>
-                          <span
-                            className={`${ACTIVITY_BADGE_BASE_CLASS} mb-2`}
-                            style={activityBadgeStyle(label)}
-                          >
-                            {label}
-                          </span>
+                          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                            <span
+                              className={ACTIVITY_BADGE_BASE_CLASS}
+                              style={activityBadgeStyle(label)}
+                            >
+                              {label}
+                            </span>
+                            {jobTag.label && (
+                              <span
+                                className="inline-flex max-w-full truncate rounded-md border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800"
+                                title={jobTag.label}
+                              >
+                                {jobTag.label}
+                              </span>
+                            )}
+                          </div>
                           <ExpandableNoteText text={getNoteBody(note)} />
                         </>
                       )}
@@ -2668,64 +2398,6 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   </div>
                 );
               })}
-
-              {activityViewMode === 'focus' &&
-                archivedActivityRows.length > 0 && (
-                  <div className="pt-3 border-t border-gray-100 space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowArchivedActivity((v) => !v)}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
-                    >
-                      <ChevronDown
-                        className={`h-3.5 w-3.5 transition-transform ${
-                          showArchivedActivity ? 'rotate-180' : ''
-                        }`}
-                      />
-                      {showArchivedActivity ? 'Hide' : 'Show'} archived / past
-                      jobs ({archivedActivityRows.length})
-                    </button>
-                    {showArchivedActivity &&
-                      pagedArchived.slice.map((note: any, index: number) => {
-                        const label = getNoteTypeLabel(note);
-                        return (
-                          <div
-                            key={
-                              note.id || note.SK || `tl-arch-${index}`
-                            }
-                            className="flex gap-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4"
-                          >
-                            <div className="w-36 shrink-0 text-xs text-gray-500">
-                              {formatDateTime(
-                                note.createdAt ||
-                                  note.timestamp ||
-                                  note.created_at
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <span
-                                className={`${ACTIVITY_BADGE_BASE_CLASS} mb-2`}
-                                style={activityBadgeStyle(label)}
-                              >
-                                {label}
-                              </span>
-                              <ExpandableNoteText text={getNoteBody(note)} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    {showArchivedActivity &&
-                      pagedArchived.totalPages > 1 && (
-                        <PaginationBar
-                          page={pagedArchived.page}
-                          totalPages={pagedArchived.totalPages}
-                          total={pagedArchived.total}
-                          onPageChange={setArchivedPage}
-                          itemLabel="archived"
-                        />
-                      )}
-                  </div>
-                )}
             </div>
           )}
         </section>

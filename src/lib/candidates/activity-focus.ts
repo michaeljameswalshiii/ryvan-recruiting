@@ -352,3 +352,109 @@ export function splitFocusAndArchived(
 }
 
 export type ActivityViewMode = "focus" | "all";
+
+export type ResolvedJobTag = {
+  jobId: string | null;
+  jobTitle: string | null;
+  companyName: string | null;
+  /** Single chip label: "Title @ Company" or "Title" */
+  label: string | null;
+};
+
+/**
+ * Resolve a consistent job tag for display on any activity row.
+ * Uses stored metadata first, then body/title matching against linked jobs.
+ */
+export function resolveActivityJobTag(
+  note: any,
+  linkedJobs: LinkedJobLike[] | null | undefined
+): ResolvedJobTag {
+  const empty: ResolvedJobTag = {
+    jobId: null,
+    jobTitle: null,
+    companyName: null,
+    label: null,
+  };
+  const jobs = Array.isArray(linkedJobs) ? linkedJobs : [];
+  const meta = note?.metadata || {};
+
+  let jobId = getEventJobId(note);
+  let jobTitle = meta.jobTitle ? String(meta.jobTitle).trim() : null;
+  let companyName = meta.companyName ? String(meta.companyName).trim() : null;
+
+  // Snapshot-only title without id
+  if (!jobId && jobTitle) {
+    const match = jobs.find(
+      (j) =>
+        jobRecordTitle(j).toLowerCase() === jobTitle!.toLowerCase() ||
+        jobRecordTitle(j).toLowerCase().includes(jobTitle!.toLowerCase()) ||
+        jobTitle!.toLowerCase().includes(jobRecordTitle(j).toLowerCase())
+    );
+    if (match) {
+      jobId = jobRecordId(match) || jobId;
+      if (!companyName) {
+        companyName =
+          String(
+            (match as any).companyName || (match as any).company_name || ""
+          ).trim() || null;
+      }
+      jobTitle = jobRecordTitle(match) || jobTitle;
+    }
+  }
+
+  // Infer from body (AI fit for "X", Linked to job: X @ Y, free-form)
+  if (!jobId || !jobTitle) {
+    const body = eventBody(note);
+    const inferredId = matchJobIdFromText(body, jobs);
+    if (inferredId) {
+      jobId = jobId || inferredId;
+      const j = jobs.find((x) => jobRecordId(x) === inferredId);
+      if (j) {
+        jobTitle = jobTitle || jobRecordTitle(j) || null;
+        companyName =
+          companyName ||
+          String(
+            (j as any).companyName || (j as any).company_name || ""
+          ).trim() ||
+          null;
+      }
+    }
+    // Parse "Linked to job: Title @ Company" even if not in linkedJobs anymore
+    if (!jobTitle) {
+      const linked = body.match(
+        /^(?:linked to job|attached to job):\s*(.+?)(?:\s*@\s*(.+))?$/i
+      );
+      if (linked) {
+        jobTitle = linked[1]?.trim() || null;
+        companyName = companyName || linked[2]?.trim() || null;
+      }
+    }
+    // Parse AI fit for "Title"
+    if (!jobTitle) {
+      const ai = body.match(/ai fit for\s*["“]?([^"”\n]+?)["”]?\s*:/i);
+      if (ai) jobTitle = ai[1]?.trim() || null;
+    }
+  }
+
+  // Enrich company from linkedJobs by id
+  if (jobId && !companyName) {
+    const j = jobs.find((x) => jobRecordId(x) === jobId);
+    if (j) {
+      companyName =
+        String(
+          (j as any).companyName || (j as any).company_name || ""
+        ).trim() || null;
+      if (!jobTitle) jobTitle = jobRecordTitle(j) || null;
+    }
+  }
+
+  if (!jobTitle && !jobId) return empty;
+
+  const label = jobTitle
+    ? companyName
+      ? `${jobTitle} @ ${companyName}`
+      : jobTitle
+    : null;
+
+  return { jobId, jobTitle, companyName, label };
+}
