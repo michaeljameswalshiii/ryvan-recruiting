@@ -20,8 +20,11 @@ type Template = {
 type Props = {
   open: boolean;
   onClose: () => void;
-  jobId: string;
+  /** Optional — invoices can be created from company without a job */
+  jobId?: string;
   jobTitle?: string;
+  /** Company Dynamo id — used for activity/notes on the company record */
+  companyId?: string;
   companyName?: string;
   salaryRange?: string;
   candidates?: Array<{ id: string; name: string }>;
@@ -33,6 +36,7 @@ export function CreateInvoiceModal({
   onClose,
   jobId,
   jobTitle,
+  companyId,
   companyName,
   salaryRange,
   candidates = [],
@@ -113,7 +117,8 @@ export function CreateInvoiceModal({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          job_id: jobId,
+          job_id: jobId || undefined,
+          client_id: companyId || undefined,
           client_name: clientName.trim(),
           client_email: clientEmail.trim() || undefined,
           candidate_id: candidateId || undefined,
@@ -122,7 +127,8 @@ export function CreateInvoiceModal({
           fee_type: feeType,
           fee_percent: feeType === "percent" ? feePercent : undefined,
           fee_flat: feeType === "flat" ? feeFlat : undefined,
-          salary_basis: feeType === "percent" ? salaryBasis || undefined : undefined,
+          salary_basis:
+            feeType === "percent" ? salaryBasis || undefined : undefined,
           salary_range_label: salaryRange,
           notes: notes.trim() || undefined,
           status: "draft",
@@ -169,7 +175,13 @@ export function CreateInvoiceModal({
               Create invoice
             </h2>
             <p className="text-xs text-slate-600 mt-0.5">
-              Placement fee for {jobTitle || "this job"} · PDF download available
+              Placement fee
+              {jobTitle
+                ? ` for ${jobTitle}`
+                : companyName
+                  ? ` for ${companyName}`
+                  : ""}{" "}
+              · logged on company activity · PDF download
             </p>
           </div>
           <button
@@ -190,6 +202,9 @@ export function CreateInvoiceModal({
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
               <p className="font-semibold">{createdNumber} saved as Draft</p>
               <p className="text-xs mt-1">
+                {companyId
+                  ? "Logged on this company timeline / notes. "
+                  : ""}
                 Manage status under Settings → Invoices or download the PDF now.
               </p>
             </div>

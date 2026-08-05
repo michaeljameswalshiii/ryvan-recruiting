@@ -20,6 +20,8 @@ import { Building2, MapPin, Users, Globe, Linkedin, Mail, Phone, ArrowLeft, File
 import { toast } from "sonner";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { companyStageLabel } from "@/lib/schemas/client";
+import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
+import { hasPermission } from "@/lib/roles";
 
 // Dynamic import for EventTimeline to avoid SSR issues
 const CompanyEventTimeline = dynamic(() => 
@@ -48,6 +50,24 @@ export default function CompanyDetailPage() {
   // Overview is the hub: header identity + primary contact + notes
   const initialTab = tabFromUrl && validTabIds.has(tabFromUrl) ? tabFromUrl : "overview";
   const [activeTab, setActiveTab] = useState(initialTab);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [timelineKey, setTimelineKey] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/session", { credentials: "include" });
+        if (!res.ok) return;
+        const data = await res.json();
+        setUserRole(data?.user?.role || data?.role || null);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, []);
+
+  const canInvoice = hasPermission(userRole, "team_admin");
 
   // Keep tab state in sync when URL changes (e.g. in-app links with ?tab=contacts)
   useEffect(() => {
@@ -317,6 +337,15 @@ export default function CompanyDetailPage() {
         </div>
 
         <div className="flex flex-wrap gap-2 shrink-0 sm:justify-end">
+          {canInvoice && (
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => setInvoiceOpen(true)}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Create invoice
+            </Button>
+          )}
           <Button asChild>
             <Link href={`/dashboard/companies/${company.id}/edit`}>
               <Pencil className="mr-2 h-4 w-4" />
@@ -370,10 +399,13 @@ export default function CompanyDetailPage() {
         {activeTab === "overview" && (
           <OverviewTab
             company={company}
+            timelineKey={timelineKey}
             onViewContacts={() => handleTabChange("contacts")}
           />
         )}
-        {activeTab === "history" && <HistoryTab company={company} />}
+        {activeTab === "history" && (
+          <HistoryTab company={company} timelineKey={timelineKey} />
+        )}
         {activeTab === "jobs" && <JobsTab companyId={company.id} companyName={company.name} />}
         {activeTab === "contacts" && (
           <ContactsTab
@@ -394,6 +426,19 @@ export default function CompanyDetailPage() {
         } : null}
         onSend={handleSendEmail}
       />
+
+      {canInvoice && (
+        <CreateInvoiceModal
+          open={invoiceOpen}
+          onClose={() => setInvoiceOpen(false)}
+          companyId={company.id}
+          companyName={company.name}
+          onCreated={() => {
+            setTimelineKey((k) => k + 1);
+            toast.success("Invoice logged on company timeline");
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -401,9 +446,11 @@ export default function CompanyDetailPage() {
 // Overview Tab — primary contact + notes/activity (identity is in the page header)
 function OverviewTab({
   company,
+  timelineKey = 0,
   onViewContacts,
 }: {
   company: any;
+  timelineKey?: number;
   onViewContacts?: () => void;
 }) {
   const contacts = Array.isArray(company.contacts) ? company.contacts : [];
@@ -527,16 +574,22 @@ function OverviewTab({
       )}
 
       {/* Notes & activity (same component as Timeline tab) */}
-      <CompanyEventTimeline companyId={company.id} />
+      <CompanyEventTimeline key={timelineKey} companyId={company.id} />
     </div>
   );
 }
 
 // History Tab — full activity (also shown on Overview under Primary Contact)
-function HistoryTab({ company }: { company: any }) {
+function HistoryTab({
+  company,
+  timelineKey = 0,
+}: {
+  company: any;
+  timelineKey?: number;
+}) {
   return (
     <div className="space-y-4">
-      <CompanyEventTimeline companyId={company.id} />
+      <CompanyEventTimeline key={timelineKey} companyId={company.id} />
     </div>
   );
 }

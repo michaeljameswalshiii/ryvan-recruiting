@@ -1127,6 +1127,7 @@ export default function JobDetailPage() {
           onClose={() => setInvoiceOpen(false)}
           jobId={job.id}
           jobTitle={job.title}
+          companyId={job.companyId || job.company_id}
           companyName={job.companyName || job.company_name}
           salaryRange={job.salaryRange || job.salary_range}
           candidates={linkedCandidates.map((lc: any) => ({

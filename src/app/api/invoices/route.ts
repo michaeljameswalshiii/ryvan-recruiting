@@ -22,6 +22,7 @@ import {
 import { getTenantById } from "@/lib/db/repositories/tenant-repository";
 import { getJobById } from "@/lib/db/repositories/job-repository";
 import { parseSalaryBasis } from "@/lib/invoices/fee";
+import { recordInvoiceOnCompany } from "@/lib/events/company-events";
 
 export async function GET() {
   try {
@@ -64,11 +65,19 @@ export async function POST(request: NextRequest) {
     let salaryBasis = data.salary_basis;
     let salaryLabel = data.salary_range_label;
     let clientName = data.client_name;
+    /** Company record to attach activity/notes */
+    let companyId = data.client_id || undefined;
 
     if (data.job_id) {
       const job = await getJobById(tenantId, data.job_id);
       if (job) {
         jobTitle = job.title;
+        if (!companyId) {
+          companyId =
+            (job as { companyId?: string }).companyId ||
+            (job as { company_id?: string }).company_id ||
+            undefined;
+        }
         if (!salaryBasis) {
           const parsedSal = parseSalaryBasis(
             (job as { salaryRange?: string }).salaryRange ||
@@ -94,6 +103,7 @@ export async function POST(request: NextRequest) {
       tenantId,
       {
         ...data,
+        client_id: companyId,
         client_name: clientName,
         salary_basis: salaryBasis,
         salary_range_label: salaryLabel,
@@ -108,7 +118,32 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    return NextResponse.json({ invoice }, { status: 201 });
+    // Activity + notes on the company record
+    if (companyId) {
+      try {
+        await recordInvoiceOnCompany(
+          companyId,
+          {
+            id: invoice.id,
+            invoice_number: invoice.invoice_number,
+            total: invoice.total,
+            status: invoice.status,
+            job_id: invoice.job_id,
+            job_title: invoice.job_title,
+            candidate_name: invoice.candidate_name,
+            currency: invoice.currency,
+          },
+          auth.email || auth.userId
+        );
+      } catch (logErr) {
+        console.warn("[invoices] company activity log failed:", logErr);
+      }
+    }
+
+    return NextResponse.json(
+      { invoice, company_activity_logged: !!companyId },
+      { status: 201 }
+    );
   } catch (e) {
     console.error("[invoices POST]", e);
     return NextResponse.json({ error: "Failed to create invoice" }, { status: 500 });

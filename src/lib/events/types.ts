@@ -125,6 +125,7 @@ export type CompanyEventType =
   | 'EMAIL_OPENED'
   | 'EMAIL_CLICKED'
   | 'NOTE'
+  | 'INVOICE_CREATED'
   | 'COMPANY_IMPORTED'
   | 'COMPANY_CREATED'
   | 'COMPANY_VIEWED'

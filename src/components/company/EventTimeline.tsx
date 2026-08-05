@@ -74,6 +74,8 @@ function noteTypeBadgeClass(label: string) {
   if (l.includes('phone') || l.includes('call') || l.includes('conversation'))
     return 'bg-emerald-100 text-emerald-800 border-emerald-200';
   if (l.includes('follow')) return 'bg-sky-100 text-sky-800 border-sky-200';
+  if (l.includes('invoice') || l.includes('billing'))
+    return 'bg-emerald-100 text-emerald-900 border-emerald-200';
   if (l.includes('placement') || l.includes('check'))
     return 'bg-teal-100 text-teal-800 border-teal-200';
   if (l.includes('status') || l.includes('stage'))

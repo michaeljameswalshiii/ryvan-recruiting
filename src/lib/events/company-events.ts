@@ -146,9 +146,81 @@ const noteTypes = [
   { value: 'proposal_sent', label: 'Proposal sent' },
   { value: 'contract_signed', label: 'Contract signed' },
   { value: 'placement_made', label: 'Placement made' },
+  { value: 'invoice', label: 'Invoice' },
   { value: 'check_in', label: 'Check-in' },
   { value: 'other', label: 'Other' },
 ];
+
+/**
+ * Log placement invoice on the company timeline (activity + notes).
+ * Writes both INVOICE_CREATED and a NOTE so it surfaces in History / notes.
+ */
+export async function recordInvoiceOnCompany(
+  companyId: string,
+  invoice: {
+    id: string;
+    invoice_number: string;
+    total: number;
+    status?: string;
+    job_id?: string;
+    job_title?: string;
+    candidate_name?: string;
+    currency?: string;
+  },
+  createdBy: string
+): Promise<RecordCompanyEventResponse> {
+  const totalLabel =
+    typeof invoice.total === "number"
+      ? `$${invoice.total.toLocaleString("en-US", {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        })}`
+      : "";
+  const bits = [
+    invoice.invoice_number,
+    totalLabel,
+    invoice.job_title ? `Job: ${invoice.job_title}` : null,
+    invoice.candidate_name ? `Candidate: ${invoice.candidate_name}` : null,
+    invoice.status ? `Status: ${invoice.status}` : null,
+  ].filter(Boolean);
+
+  const noteText = [
+    `Invoice ${invoice.invoice_number} created${totalLabel ? ` for ${totalLabel}` : ""}.`,
+    invoice.job_title ? `Job: ${invoice.job_title}.` : "",
+    invoice.candidate_name ? `Candidate: ${invoice.candidate_name}.` : "",
+    "Download PDF from Settings → Invoices or the invoice link.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  // Primary activity event
+  const primary = await recordCompanyEvent(
+    companyId,
+    "INVOICE_CREATED",
+    {
+      title: `Invoice ${invoice.invoice_number}`,
+      description: bits.join(" · "),
+      metadata: {
+        systemKind: "invoice_created",
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoice_number,
+        total: invoice.total,
+        status: invoice.status || "draft",
+        jobId: invoice.job_id,
+        jobTitle: invoice.job_title,
+        candidateName: invoice.candidate_name,
+        currency: invoice.currency || "USD",
+        changedBy: createdBy,
+      },
+    },
+    createdBy
+  );
+
+  // Also as NOTE so it appears in notes-style lists
+  await addNoteToCompany(companyId, noteText, createdBy, "invoice");
+
+  return primary;
+}
 
 export async function recordEmailSentToCompany(
   companyId: string,
