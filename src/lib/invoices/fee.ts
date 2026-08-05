@@ -24,8 +24,9 @@ export function parseSalaryBasis(salaryRange?: string | null): {
     return Number.isFinite(n) && n > 0 ? n : null;
   };
 
+  // Separators: hyphen, en/em dash, or the word "to"
   const range = normalized.match(
-    /(\d+(?:\.\d+)?\s*k?)\s*[-–—to]+\s*(\d+(?:\.\d+)?\s*k?)/i
+    /(\d+(?:\.\d+)?\s*k?)\s*(?:[-–—]|to)\s*(\d+(?:\.\d+)?\s*k?)/i
   );
   if (range) {
     const a = toNum(range[1]);
