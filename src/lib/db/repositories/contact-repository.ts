@@ -82,17 +82,32 @@ export async function getContactById(
   contactId: string
 ): Promise<Contact | null> {
   // Get from DynamoDB using composite key
-  const contact = await getItem<Contact>(clientsTable, {
-    tenant_id: tenantId,
-    SK: `CONTACT#${contactId}`,
-  });
+  const contact = await getItem<Contact & { clientId?: string; companyId?: string }>(
+    clientsTable,
+    {
+      tenant_id: tenantId,
+      SK: `CONTACT#${contactId}`,
+    }
+  );
 
-  // Verify it belongs to the company
-  if (contact && contact.companyId === companyId) {
-    return contact;
+  if (!contact) return null;
+
+  // Verify it belongs to the company when both sides have an id.
+  // Some older rows store clientId instead of companyId, or omit the field —
+  // still return the contact if SK matched under this tenant (SMS / detail).
+  const storedCompany = String(
+    contact.companyId || contact.clientId || ''
+  ).trim();
+  const wantCompany = String(companyId || '').trim();
+  if (
+    wantCompany &&
+    storedCompany &&
+    storedCompany !== wantCompany
+  ) {
+    return null;
   }
 
-  return null;
+  return contact as Contact;
 }
 
 /**

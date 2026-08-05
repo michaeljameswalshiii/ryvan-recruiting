@@ -109,6 +109,23 @@ export default function SettingsPage() {
   // Get user ID from session (in real app, get from auth)
   const userId = 'demo-user'; // TODO: Get from session
   
+  // Deep-link ?tab=texting|account|...
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (
+      t === 'account' ||
+      t === 'team' ||
+      t === 'organization' ||
+      t === 'plan' ||
+      t === 'integrations' ||
+      t === 'texting' ||
+      t === 'security' ||
+      t === 'invoices'
+    ) {
+      setTab(t as SettingsTab);
+    }
+  }, [searchParams]);
+
   // Handle OAuth callback messages
   useEffect(() => {
     const emailConnected = searchParams.get('email_connected');

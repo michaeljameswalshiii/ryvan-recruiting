@@ -57,16 +57,30 @@ export function EntitySmsPanel({
   const [consent, setConsent] = useState<Consent>(null);
   const [phoneE164, setPhoneE164] = useState<string | null>(null);
   const [body, setBody] = useState('');
-  const [markConsent, setMarkConsent] = useState(false);
+  const [markConsent, setMarkConsent] = useState(true);
   const [bypassQuiet, setBypassQuiet] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [textingEnabled, setTextingEnabled] = useState<boolean | null>(null);
 
   const title =
     entity === 'contact' ? 'Text contact' : 'Text candidate';
+
+  const loadConfigHint = useCallback(async () => {
+    try {
+      const res = await fetch('/api/sms/config', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      setTextingEnabled(!!data?.config?.enabled);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const load = useCallback(async () => {
     if (!entityId) return;
     if (entity === 'contact' && !companyId) return;
     setLoading(true);
+    setLastError(null);
     try {
       const qs =
         entity === 'contact'
@@ -81,15 +95,20 @@ export function EntitySmsPanel({
       setConsent(data.consent || null);
       setPhoneE164(data.phoneE164 || null);
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to load SMS');
+      const msg = e instanceof Error ? e.message : 'Failed to load SMS';
+      setLastError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
   }, [entity, entityId, companyId]);
 
   useEffect(() => {
-    if (open) load();
-  }, [open, load]);
+    if (open) {
+      load();
+      loadConfigHint();
+    }
+  }, [open, load, loadConfigHint]);
 
   const recordConsent = async (status: 'opted_in' | 'opted_out') => {
     const p = phone || phoneE164;
@@ -97,6 +116,7 @@ export function EntitySmsPanel({
       toast.error('Add a phone number first');
       return;
     }
+    setLastError(null);
     try {
       const res = await fetch('/api/sms/consent', {
         method: 'POST',
@@ -112,14 +132,16 @@ export function EntitySmsPanel({
           notes: `Recorded from ${entity} profile for ${entityName || entityId}`,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Failed');
       setConsent(data.record);
       toast.success(
         status === 'opted_in' ? 'Opt-in recorded' : 'Opt-out recorded'
       );
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Consent failed');
+      const msg = e instanceof Error ? e.message : 'Consent failed';
+      setLastError(msg);
+      toast.error(msg);
     }
   };
 
@@ -129,10 +151,19 @@ export function EntitySmsPanel({
       return;
     }
     if (entity === 'contact' && !companyId) {
-      toast.error('Missing company for this contact');
+      const msg = 'Missing company for this contact — open from company/contact-info with company linked.';
+      setLastError(msg);
+      toast.error(msg);
+      return;
+    }
+    if (!phone && !phoneE164) {
+      const msg = 'Add a phone number before texting.';
+      setLastError(msg);
+      toast.error(msg);
       return;
     }
     setSending(true);
+    setLastError(null);
     try {
       const res = await fetch('/api/sms/send', {
         method: 'POST',
@@ -143,27 +174,39 @@ export function EntitySmsPanel({
           contactId: entity === 'contact' ? entityId : undefined,
           companyId: entity === 'contact' ? companyId : undefined,
           body: body.trim(),
-          phone: phone || undefined,
+          phone: phone || phoneE164 || undefined,
           markConsent: markConsent || undefined,
           consentSource: markConsent ? 'manual' : undefined,
           bypassQuietHours: bypassQuiet || undefined,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Send failed');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg =
+          typeof data.error === 'string'
+            ? data.error
+            : data.details
+              ? 'Invalid request — check phone and Settings → Texting'
+              : 'Send failed';
+        throw new Error(msg);
+      }
       toast.success(
         data.simulated
-          ? 'SMS simulated (logged only — finish AWS setup for live send)'
+          ? 'SMS simulated (logged in thread — finish AWS setup for live delivery)'
           : 'SMS sent'
       );
       setBody('');
       load();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Send failed');
+      const msg = e instanceof Error ? e.message : 'Send failed';
+      setLastError(msg);
+      toast.error(msg, { duration: 8000 });
     } finally {
       setSending(false);
     }
   };
+
+  const hasPhone = !!(phone || phoneE164);
 
   return (
     <div
@@ -196,10 +239,39 @@ export function EntitySmsPanel({
 
       {open && (
         <div className="border-t border-slate-200 px-4 py-3 space-y-3 bg-white text-slate-900">
-          {!phone && !phoneE164 && (
+          {textingEnabled === false && (
+            <div className="flex items-start gap-2 text-xs text-rose-900 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+              <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>
+                Texting is <strong>disabled</strong> for this workspace.{' '}
+                <a
+                  href="/dashboard/settings?tab=texting"
+                  className="underline font-semibold"
+                >
+                  Settings → Texting
+                </a>{' '}
+                → enable texting, then try again.
+              </span>
+            </div>
+          )}
+
+          {!hasPhone && (
             <div className="flex items-start gap-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
               Add a phone number on this {entity} before texting.
+            </div>
+          )}
+
+          {hasPhone && (
+            <p className="text-[11px] text-slate-500">
+              To: {phoneE164 || phone}
+            </p>
+          )}
+
+          {lastError && (
+            <div className="flex items-start gap-2 text-xs text-rose-900 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+              <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>{lastError}</span>
             </div>
           )}
 
@@ -296,7 +368,7 @@ export function EntitySmsPanel({
             data-ink-keep
             className="bg-violet-600 hover:bg-violet-700 text-white"
             onClick={send}
-            disabled={sending || (!phone && !phoneE164)}
+            disabled={sending || !hasPhone || !body.trim()}
           >
             {sending ? (
               <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />

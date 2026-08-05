@@ -135,7 +135,7 @@ export function complianceBlockMessage(reason: ComplianceBlockReason): string {
     case 'opted_out':
       return 'This number has opted out (STOP). Record START/consent before texting again.';
     case 'consent_required':
-      return 'Consent required before first text. Record opt-in on the candidate or disable requireConsent in Settings.';
+      return 'Consent required before first text. Click “Record opt-in”, or check “Also mark opt-in when sending”. You can also turn off requireConsent under Settings → Texting.';
     case 'quiet_hours':
       return 'Quiet hours are active. Disable quiet hours or wait until morning (or use bypass for urgent only).';
     case 'daily_limit':

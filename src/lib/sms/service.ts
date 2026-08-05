@@ -132,28 +132,39 @@ export async function sendSms(
   let rawPhone = input.phone || '';
 
   if (isContact) {
-    if (!input.companyId) {
+    if (!input.companyId && !rawPhone) {
       return {
         ok: false,
         error: 'Company is required when texting a contact',
         code: 'missing_company',
       };
     }
-    const contact = await getContactById(
-      tenantId,
-      input.companyId,
-      input.contactId!
-    );
-    if (!contact) {
+    // Load contact for name/phone when possible; if lookup fails but the UI
+    // already sent a phone, still allow the send (avoids companyId mismatch).
+    if (input.companyId) {
+      try {
+        const contact = await getContactById(
+          tenantId,
+          input.companyId,
+          input.contactId!
+        );
+        if (contact) {
+          displayName = contact.name;
+          if (!rawPhone) {
+            rawPhone = resolveContactSmsPhone(contact);
+          }
+        }
+      } catch (err) {
+        console.warn('[SMS] contact lookup failed', err);
+      }
+    }
+    if (!rawPhone) {
       return {
         ok: false,
-        error: 'Contact not found',
-        code: 'not_found',
+        error:
+          'No phone number on this contact. Add a mobile/work number, then try again.',
+        code: 'invalid_phone',
       };
-    }
-    displayName = contact.name;
-    if (!rawPhone) {
-      rawPhone = resolveContactSmsPhone(contact);
     }
   } else if (input.candidateId) {
     const lead = await getLeadById(tenantId, input.candidateId);
@@ -178,20 +189,32 @@ export async function sendSms(
     };
   }
 
+  let justRecordedOptIn = false;
   if (input.markConsent && input.consentSource) {
-    await upsertConsent({
-      tenantId,
-      phoneE164: norm.e164,
-      status: 'opted_in',
-      source: input.consentSource,
-      candidateId: input.candidateId,
-      contactId: input.contactId,
-      companyId: input.companyId,
-    });
+    try {
+      await upsertConsent({
+        tenantId,
+        phoneE164: norm.e164,
+        status: 'opted_in',
+        source: input.consentSource,
+        candidateId: input.candidateId,
+        contactId: input.contactId,
+        companyId: input.companyId,
+      });
+      justRecordedOptIn = true;
+    } catch (err) {
+      console.error('[SMS] markConsent upsert failed', err);
+      return {
+        ok: false,
+        error:
+          'Could not save opt-in consent. Check Settings → Texting is set up, then try Record opt-in again.',
+        code: 'consent_write_failed',
+      };
+    }
   }
 
   const consent = await getConsent(tenantId, norm.e164);
-  if (consent?.status === 'opted_out') {
+  if (consent?.status === 'opted_out' && !justRecordedOptIn) {
     return {
       ok: false,
       error: complianceBlockMessage('opted_out'),
@@ -199,7 +222,11 @@ export async function sendSms(
     };
   }
 
-  if (config.requireConsent && consent?.status !== 'opted_in') {
+  if (
+    config.requireConsent &&
+    consent?.status !== 'opted_in' &&
+    !justRecordedOptIn
+  ) {
     return {
       ok: false,
       error: complianceBlockMessage('consent_required'),
