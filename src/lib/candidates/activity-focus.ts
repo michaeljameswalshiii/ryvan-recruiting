@@ -132,7 +132,7 @@ export function isTerminalNoteActivity(note: any): boolean {
   return false;
 }
 
-/** Match free-text / titles to a linked job id */
+/** Match free-text / titles to a linked job id (longest title wins). */
 export function matchJobIdFromText(
   text: string,
   linkedJobs: LinkedJobLike[]
@@ -156,13 +156,45 @@ export function matchJobIdFromText(
 }
 
 /**
+ * Jobs named as a *different / other / alternative* opportunity in free text
+ * (still in play — should stay in Focus).
+ */
+export function extractDifferentOpportunityJobIds(
+  text: string,
+  linkedJobs: LinkedJobLike[]
+): Set<string> {
+  const protectedIds = new Set<string>();
+  const jobs = Array.isArray(linkedJobs) ? linkedJobs : [];
+  if (!text || !jobs.length) return protectedIds;
+
+  const patterns = [
+    /different opportunity[:\s—–-]+([^\n.;]+)/gi,
+    /another opportunity[:\s—–-]+([^\n.;]+)/gi,
+    /different role[:\s—–-]+([^\n.;]+)/gi,
+    /other opportunity[:\s—–-]+([^\n.;]+)/gi,
+    /alternative(?: opportunity| role)?[:\s—–-]+([^\n.;]+)/gi,
+    /instead (?:for|about|on)\s+([^\n.;]+)/gi,
+    /inquire(?:d)? about (?:a |the )?([^\n.;]+)/gi,
+  ];
+
+  for (const re of patterns) {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const chunk = m[1] || "";
+      const id = matchJobIdFromText(chunk, jobs);
+      if (id) protectedIds.add(id);
+    }
+  }
+  return protectedIds;
+}
+
+/**
  * Job IDs that must leave Focus entirely:
  * - linked job stage is terminal, OR
- * - a terminal note (Rejected, etc.) with an explicit metadata.jobId
- *
- * Free-form Rejected text that merely *mentions* a job title is NOT enough
- * to archive the whole thread (e.g. “not moving forward … but asked about
- * Operations Specialist” must not hide Attached / AI fit for Ops).
+ * - terminal note with explicit metadata.jobId, OR
+ * - free-form Rejected that names a "different opportunity" → close all *other* linked jobs
+ *   (the named opportunity stays open; e.g. Finance rejected, Ops still in play)
+ * - free-form Rejected with a clear job title match and no protected opportunity
  */
 export function getClosedJobIds(
   rows: any[],
@@ -178,9 +210,29 @@ export function getClosedJobIds(
 
   for (const note of rows) {
     if (!isTerminalNoteActivity(note)) continue;
-    // Only explicit job linkage closes the whole req thread
+
     const jid = getEventJobId(note);
-    if (jid) closed.add(jid);
+    if (jid) {
+      closed.add(jid);
+      continue;
+    }
+
+    const body = eventBody(note);
+    const protectedIds = extractDifferentOpportunityJobIds(body, jobs);
+
+    if (protectedIds.size > 0) {
+      // “Not moving forward on this role … different opportunity – Ops”
+      // → close every other linked job (Finance, etc.), keep Ops open
+      for (const j of jobs) {
+        const id = jobRecordId(j);
+        if (id && !protectedIds.has(id)) closed.add(id);
+      }
+      continue;
+    }
+
+    // No “different opportunity” clause: title match closes that one job only
+    const matched = matchJobIdFromText(body, jobs);
+    if (matched) closed.add(matched);
   }
 
   return closed;
