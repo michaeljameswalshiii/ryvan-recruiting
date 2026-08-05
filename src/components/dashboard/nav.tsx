@@ -112,13 +112,13 @@ export function DashboardNav({ session }: DashboardNavProps) {
       <div className="px-3 pt-3 pb-2 border-b border-border flex items-start justify-between gap-2">
         <Link
           href="/dashboard"
-          className="min-w-0 flex-1 flex items-center justify-center rounded-lg bg-white px-2 py-3 shadow-sm border border-gray-100 min-h-[7.5rem]"
+          className="min-w-0 flex-1 flex items-center justify-center rounded-lg bg-white px-1.5 py-2.5 shadow-sm border border-gray-100 min-h-[7.5rem]"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/branding/trio-sourcing-logo.png?v=20260804"
             alt="TRIO — Connecting GREAT Companies with GREAT Candidates through GREAT Recruiters"
-            className="w-[95%] h-auto max-h-[7rem] object-contain object-center mx-auto"
+            className="w-full h-auto max-h-[8.75rem] object-contain object-center mx-auto scale-125 origin-center"
           />
         </Link>
         {/* Theme Toggle */}
