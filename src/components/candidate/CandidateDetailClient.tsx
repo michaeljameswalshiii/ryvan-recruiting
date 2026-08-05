@@ -240,10 +240,20 @@ function formatDateTime(value?: string) {
 
 function noteTypeBadgeClass(label: string) {
   const l = label.toLowerCase();
+  // AI fit / applicant rating
+  if (
+    l.includes('ai review') ||
+    l === 'ai_fit' ||
+    l.includes('ai fit') ||
+    (l.includes('ai') && l.includes('fit'))
+  ) {
+    return 'bg-violet-100 text-violet-900 border-violet-300';
+  }
   // Attached-to-job — orange, distinct from light-blue email / slate Other
   if (l.includes('attach') || l === 'attached' || l === 'job_linked')
     return 'bg-orange-100 text-orange-900 border-orange-300';
-  if (l.includes('interview')) return 'bg-violet-100 text-violet-800 border-violet-200';
+  if (l.includes('interview') && !l.includes('ai'))
+    return 'bg-violet-100 text-violet-800 border-violet-200';
   if (l.includes('submit')) return 'bg-sky-100 text-sky-800 border-sky-200';
   if (l.includes('em sent') || l.includes('email sent') || l === 'email')
     return 'bg-blue-100 text-blue-800 border-blue-200';
@@ -407,10 +417,28 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     ) {
       return 'Attached';
     }
+    // AI fit / applicant rating (including older rows stored as Other + systemKind)
+    if (meta.systemKind === 'ai_fit') {
+      return 'AI Review';
+    }
     const body =
       String(meta.noteText || note?.description || note?.title || '');
     if (/^linked to job:/i.test(body) || /^attached to job:/i.test(body)) {
       return 'Attached';
+    }
+    if (
+      /^ai fit for/i.test(body) ||
+      /^ai review/i.test(body) ||
+      (typeof meta.fitScore === 'number' && meta.systemKind !== 'job_linked')
+    ) {
+      // Older fit notes may only have fitScore metadata without systemKind
+      if (
+        meta.systemKind === 'ai_fit' ||
+        /^ai fit for/i.test(body) ||
+        typeof meta.fitScore === 'number'
+      ) {
+        return 'AI Review';
+      }
     }
     // Prefer raw noteType → normalize (legacy → canonical / Other)
     if (meta.noteType) {

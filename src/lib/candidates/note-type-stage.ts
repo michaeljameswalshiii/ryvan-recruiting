@@ -36,6 +36,8 @@ export const ACTIVITY_NOTE_TYPES: readonly ActivityNoteType[] = [
   { value: 'DNU', label: 'DNU', drivesStage: true },
   /** Candidate attached to a job req (system + optional manual) */
   { value: 'Attached', label: 'Attached', drivesStage: false },
+  /** AI job-fit / applicant rating (system + optional manual) */
+  { value: 'AI Review', label: 'AI Review', drivesStage: false },
   { value: 'Other', label: 'Other', drivesStage: false },
 ] as const;
 
@@ -134,6 +136,13 @@ const LEGACY_NOTE_TYPE_ALIASES: Record<string, string> = {
   attached: 'Attached',
   'attach job': 'Attached',
   'attached to job': 'Attached',
+  ai_fit: 'AI Review',
+  'ai fit': 'AI Review',
+  'ai review': 'AI Review',
+  aireview: 'AI Review',
+  'fit score': 'AI Review',
+  fit_score: 'AI Review',
+  'ai assessment': 'AI Review',
   job_unlinked: 'Other',
   'job unlinked': 'Other',
   job_stage_change: 'Other',
@@ -273,6 +282,15 @@ export function normalizeNoteTypeLabel(
   if (key.includes('conversation')) return 'Conversation';
   if (key.includes('attach') || key.includes('job linked') || key === 'job_linked')
     return 'Attached';
+  if (
+    key.includes('ai review') ||
+    key.includes('ai fit') ||
+    key === 'ai_fit' ||
+    key.includes('fit score') ||
+    (key.includes('ai') && key.includes('fit'))
+  ) {
+    return 'AI Review';
+  }
 
   return 'Other';
 }

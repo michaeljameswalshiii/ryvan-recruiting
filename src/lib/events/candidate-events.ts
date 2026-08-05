@@ -928,8 +928,7 @@ export async function recordJobStageChanged(
 
 /**
  * AI job-fit assessment completed (or re-run).
- * Stored as NOTE / Other so it shows in the activity list; systemKind distinguishes it.
- * Does not change pipeline stage.
+ * Action type: AI Review (systemKind ai_fit). Does not change pipeline stage.
  */
 export async function recordAiFitAssessed(
   candidateId: string,
@@ -978,12 +977,12 @@ export async function recordAiFitAssessed(
     candidateId,
     "NOTE",
     {
-      title: `AI fit · ${jobTitle}`,
+      title: `AI Review · ${jobTitle}`,
       description: splitLine || `Fit ${fit.score}/100 (${fit.grade}) for ${jobTitle}`,
       metadata: {
         noteText,
-        noteType: "Other",
-        noteTypeLabel: "Other",
+        noteType: "AI Review",
+        noteTypeLabel: "AI Review",
         systemKind: "ai_fit",
         jobId,
         jobTitle,

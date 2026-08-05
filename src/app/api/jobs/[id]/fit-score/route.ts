@@ -6,7 +6,7 @@
  *   optional: recruiterNotes — free text folded into candidate signal (manual match)
  *
  * On persist: stamps fit fields on job.candidates[] + lead.linkedJobs[] (dual-write)
- * and appends an activity note (type Other, systemKind ai_fit). No pipeline stage change.
+ * and appends an activity note (type AI Review, systemKind ai_fit). No pipeline stage change.
  *
  * @serverOnly
  */
