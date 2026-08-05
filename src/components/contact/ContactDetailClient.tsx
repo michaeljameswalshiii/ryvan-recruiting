@@ -48,6 +48,10 @@ import {
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
 import { EntitySmsPanel } from '@/components/shared/EntitySmsPanel';
 import { EntityFilesPanel } from '@/components/shared/EntityFilesPanel';
+import {
+  ACTIVITY_BADGE_BASE_CLASS,
+  activityBadgeStyle,
+} from '@/lib/ui/activity-badge-colors';
 
 /** Contact activity types (canonical order) */
 const NOTE_TYPES = [...CONTACT_ACTIVITY_TYPES];
@@ -90,28 +94,7 @@ function formatShortDate(value?: string) {
   }
 }
 
-function noteTypeBadgeClass(label: string) {
-  const l = String(label || '').toLowerCase();
-  if (l.includes('em sent') || l.includes('email sent'))
-    return 'bg-blue-100 text-blue-800 border-blue-200';
-  if (l.includes('em received') || l.includes('email received'))
-    return 'bg-indigo-100 text-indigo-800 border-indigo-200';
-  if (l.includes('text sent') || l.includes('text received'))
-    return 'bg-cyan-100 text-cyan-800 border-cyan-200';
-  if (l === 'lm' || l.includes('voicemail') || l.includes('left message'))
-    return 'bg-slate-100 text-slate-700 border-slate-200';
-  if (l.includes('conversation'))
-    return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-  if (l.includes('intake') || l.includes('call'))
-    return 'bg-teal-100 text-teal-800 border-teal-200';
-  if (l.includes('proposal'))
-    return 'bg-amber-100 text-amber-900 border-amber-200';
-  if (l.includes('contract'))
-    return 'bg-violet-100 text-violet-800 border-violet-200';
-  if (l.includes('linkedin')) return 'bg-sky-100 text-sky-800 border-sky-200';
-  if (l.includes('follow')) return 'bg-orange-100 text-orange-900 border-orange-200';
-  return 'bg-indigo-50 text-indigo-800 border-indigo-100';
-}
+// Badge colors: shared palette — see activity-badge-colors.ts
 
 
 interface ContactDetailClientProps {
@@ -861,7 +844,8 @@ export default function ContactDetailClient({
                             </td>
                             <td className="px-3 py-3 align-top">
                               <span
-                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${noteTypeBadgeClass(label)}`}
+                                className={ACTIVITY_BADGE_BASE_CLASS}
+                                style={activityBadgeStyle(label)}
                               >
                                 {label}
                               </span>
@@ -1073,7 +1057,8 @@ export default function ContactDetailClient({
                     </div>
                     <div className="min-w-0 flex-1">
                       <span
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium mb-2 ${noteTypeBadgeClass(label)}`}
+                        className={`${ACTIVITY_BADGE_BASE_CLASS} mb-2`}
+                        style={activityBadgeStyle(label)}
                       >
                         {label}
                       </span>

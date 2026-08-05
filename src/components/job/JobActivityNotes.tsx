@@ -11,6 +11,10 @@ import {
   PaginationBar,
   paginateItems,
 } from '@/components/ui/pagination-bar';
+import {
+  ACTIVITY_BADGE_BASE_CLASS,
+  activityBadgeStyle,
+} from '@/lib/ui/activity-badge-colors';
 
 /** Job activity log page size (15 rows per page). */
 const PAGE_SIZE = 15;
@@ -55,21 +59,7 @@ function formatDateTime(value?: string) {
   }
 }
 
-function noteTypeBadgeClass(label: string) {
-  const l = String(label || '').toLowerCase();
-  if (l.includes('email') || l.includes('submit'))
-    return 'bg-blue-100 text-blue-800 border-blue-200';
-  if (l.includes('interview') || l.includes('meeting') || l.includes('call'))
-    return 'bg-violet-100 text-violet-800 border-violet-200';
-  if (l.includes('stage') || l.includes('linked') || l.includes('unlink'))
-    return 'bg-amber-100 text-amber-900 border-amber-200';
-  if (l.includes('follow')) return 'bg-sky-100 text-sky-800 border-sky-200';
-  if (l.includes('note') || l.includes('general'))
-    return 'bg-indigo-50 text-indigo-800 border-indigo-100';
-  if (l.includes('contact') || l.includes('company'))
-    return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-  return 'bg-slate-100 text-slate-700 border-slate-200';
-}
+// Badge colors: shared palette — see activity-badge-colors.ts
 
 function eventLabel(ev: any): string {
   const meta = ev.metadata || {};
@@ -412,7 +402,8 @@ export function JobActivityNotes({
                     </td>
                     <td className="px-3 py-3 align-top">
                       <span
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${noteTypeBadgeClass(row.label)}`}
+                        className={ACTIVITY_BADGE_BASE_CLASS}
+                        style={activityBadgeStyle(row.label)}
                       >
                         {row.label}
                       </span>

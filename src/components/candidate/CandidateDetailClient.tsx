@@ -49,6 +49,10 @@ import {
 } from '@/lib/candidates/note-type-stage';
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
 import { EntityFilesPanel } from '@/components/shared/EntityFilesPanel';
+import {
+  ACTIVITY_BADGE_BASE_CLASS,
+  activityBadgeStyle,
+} from '@/lib/ui/activity-badge-colors';
 
 /** Activity / note types shown in the log composer (canonical order) */
 const NOTE_TYPES = ACTIVITY_NOTE_TYPES;
@@ -238,43 +242,7 @@ function formatDateTime(value?: string) {
   }
 }
 
-function noteTypeBadgeClass(label: string) {
-  const l = label.toLowerCase();
-  // AI fit / applicant rating
-  if (
-    l.includes('ai review') ||
-    l === 'ai_fit' ||
-    l.includes('ai fit') ||
-    (l.includes('ai') && l.includes('fit'))
-  ) {
-    return 'bg-violet-100 text-violet-900 border-violet-300';
-  }
-  // Attached-to-job — orange, distinct from light-blue email / slate Other
-  if (l.includes('attach') || l === 'attached' || l === 'job_linked')
-    return 'bg-orange-100 text-orange-900 border-orange-300';
-  if (l.includes('interview') && !l.includes('ai'))
-    return 'bg-violet-100 text-violet-800 border-violet-200';
-  if (l.includes('submit')) return 'bg-sky-100 text-sky-800 border-sky-200';
-  if (l.includes('em sent') || l.includes('email sent') || l === 'email')
-    return 'bg-blue-100 text-blue-800 border-blue-200';
-  if (l.includes('em received') || l.includes('email received'))
-    return 'bg-indigo-100 text-indigo-800 border-indigo-200';
-  if (l === 'lm' || l.includes('left message'))
-    return 'bg-amber-100 text-amber-900 border-amber-200';
-  if (l.includes('text sent') || l.includes('text received'))
-    return 'bg-cyan-100 text-cyan-800 border-cyan-200';
-  if (l.includes('conversation'))
-    return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-  if (l.includes('follow')) return 'bg-teal-100 text-teal-800 border-teal-200';
-  if (l.includes('offer')) return 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200';
-  if (l.includes('accept') || l.includes('placed'))
-    return 'bg-green-100 text-green-800 border-green-200';
-  if (l.includes('reject') || l.includes('not interest') || l === 'dnu')
-    return 'bg-rose-100 text-rose-800 border-rose-200';
-  if (l.includes('sourced') || l.includes('applied'))
-    return 'bg-slate-100 text-slate-800 border-slate-200';
-  return 'bg-slate-100 text-slate-700 border-slate-200';
-}
+// Badge colors: shared palette (types unchanged) — see activity-badge-colors.ts
 
 interface CandidateDetailClientProps {
   candidate: any;
@@ -1815,7 +1783,8 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                                 </select>
                               ) : (
                                 <span
-                                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${noteTypeBadgeClass(label)}`}
+                                  className={ACTIVITY_BADGE_BASE_CLASS}
+                                  style={activityBadgeStyle(label)}
                                 >
                                   {label}
                                 </span>
@@ -2111,7 +2080,8 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                       ) : (
                         <>
                           <span
-                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium mb-2 ${noteTypeBadgeClass(label)}`}
+                            className={`${ACTIVITY_BADGE_BASE_CLASS} mb-2`}
+                            style={activityBadgeStyle(label)}
                           >
                             {label}
                           </span>

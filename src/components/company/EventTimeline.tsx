@@ -11,6 +11,10 @@ import {
   PaginationBar,
   paginateItems,
 } from '@/components/ui/pagination-bar';
+import {
+  ACTIVITY_BADGE_BASE_CLASS,
+  activityBadgeStyle,
+} from '@/lib/ui/activity-badge-colors';
 
 type CompanyEventType =
   | 'NOTE'
@@ -64,27 +68,7 @@ function formatDateTime(value?: string) {
   }
 }
 
-function noteTypeBadgeClass(label: string) {
-  const l = String(label || '').toLowerCase();
-  if (l.includes('email')) return 'bg-blue-100 text-blue-800 border-blue-200';
-  if (l.includes('meeting') || l.includes('demo'))
-    return 'bg-violet-100 text-violet-800 border-violet-200';
-  if (l.includes('proposal') || l.includes('contract'))
-    return 'bg-amber-100 text-amber-900 border-amber-200';
-  if (l.includes('phone') || l.includes('call') || l.includes('conversation'))
-    return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-  if (l.includes('follow')) return 'bg-sky-100 text-sky-800 border-sky-200';
-  if (l.includes('invoice') || l.includes('billing'))
-    return 'bg-emerald-100 text-emerald-900 border-emerald-200';
-  if (l.includes('placement') || l.includes('check'))
-    return 'bg-teal-100 text-teal-800 border-teal-200';
-  if (l.includes('status') || l.includes('stage'))
-    return 'bg-purple-100 text-purple-800 border-purple-200';
-  if (l.includes('contact')) return 'bg-indigo-100 text-indigo-800 border-indigo-200';
-  if (l.includes('added') || l.includes('created'))
-    return 'bg-green-100 text-green-800 border-green-200';
-  return 'bg-indigo-50 text-indigo-800 border-indigo-100';
-}
+// Badge colors: shared palette — see activity-badge-colors.ts
 
 function getActivityLabel(event: CompanyEvent): string {
   const meta = event.metadata || {};
@@ -313,7 +297,8 @@ export function CompanyEventTimeline({
                     </td>
                     <td className="px-3 py-3 align-top">
                       <span
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${noteTypeBadgeClass(label)}`}
+                        className={ACTIVITY_BADGE_BASE_CLASS}
+                        style={activityBadgeStyle(label)}
                       >
                         {label}
                       </span>
