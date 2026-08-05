@@ -486,20 +486,15 @@ export function resolveActivityJobTag(
       let inferredId = matchJobIdFromText(bodyForMatch, jobs);
 
       // Rejected + "different opportunity – Ops" with no other title in body:
-      // the subject is the *other* linked job (Finance), not Ops.
+      // the subject is the *other* linked job with real activity (Finance), not Ops.
       if (!inferredId && isTerminal && differentOppIds.size > 0) {
         const closedCandidates = jobs.filter((j) => {
           const id = jobRecordId(j);
           return Boolean(id) && !differentOppIds.has(id);
         });
+        // Without full timeline here, only auto-pick when unambiguous
         if (closedCandidates.length === 1) {
           inferredId = jobRecordId(closedCandidates[0]);
-        } else if (closedCandidates.length > 1) {
-          // Prefer a linked job already in a terminal stage
-          const terminal = closedCandidates.find((j) =>
-            isTerminalJobStage(j?.stage)
-          );
-          if (terminal) inferredId = jobRecordId(terminal);
         }
       }
 
@@ -537,21 +532,12 @@ export function resolveActivityJobTag(
         const id = jobRecordId(j);
         return Boolean(id) && !differentOppIds.has(id);
       });
+      // Only auto-fill when exactly one other linked job (otherwise timeline picks)
       if (closedCandidates.length === 1) {
         jobId = jobRecordId(closedCandidates[0]);
         const en = enrichFromJob(closedCandidates[0], null, null);
         jobTitle = en.jobTitle;
         companyName = en.companyName;
-      } else if (closedCandidates.length > 1) {
-        const terminal = closedCandidates.find((j) =>
-          isTerminalJobStage(j?.stage)
-        );
-        if (terminal) {
-          jobId = jobRecordId(terminal);
-          const en = enrichFromJob(terminal, null, null);
-          jobTitle = en.jobTitle;
-          companyName = en.companyName;
-        }
       }
     }
   }
@@ -590,23 +576,65 @@ function bodyMentionsJobTitle(body: string, title: string): boolean {
 
 /**
  * Strong evidence the note is *about* a job (not weak metadata / empty body).
- * AI fit, attach lines, or a linked job title appearing outside a
+ * AI fit, real attach lines, or a linked job title appearing outside a
  * "different opportunity" clause.
+ * Synthetic / inferred attaches are NOT strong (they must not pollute timeline).
  */
 export function hasStrongBodyJobSignal(
   note: any,
   linkedJobs: LinkedJobLike[] | null | undefined
 ): boolean {
+  const meta = note?.metadata || {};
+  if (meta.synthetic || meta.inferredMissingAttach || note?._synthetic) {
+    return false;
+  }
   const jobs = Array.isArray(linkedJobs) ? linkedJobs : [];
   const body = eventBody(note);
-  const meta = note?.metadata || {};
   const kind = String(meta.systemKind || "").toLowerCase();
-  if (kind === "ai_fit" || kind === "job_linked") return true;
+  if (kind === "ai_fit") return true;
+  if (kind === "job_linked") return true;
   if (/ai fit for\s*["“]/i.test(body)) return true;
   if (/^(?:linked to job|attached to job):/i.test(body.trim())) return true;
   const stripped = stripDifferentOpportunityClauses(body);
   if (matchJobIdFromText(stripped, jobs)) return true;
   return false;
+}
+
+/**
+ * Among candidate closed roles, prefer the one with real activity evidence
+ * (AI fit / stage notes / title in body) — never a silent third linked job.
+ */
+function pickClosedRoleFromCandidates(
+  closedCandidates: LinkedJobLike[],
+  rows: any[],
+  jobs: LinkedJobLike[]
+): LinkedJobLike | null {
+  if (!closedCandidates.length) return null;
+  if (closedCandidates.length === 1) return closedCandidates[0];
+
+  const scored = closedCandidates.map((j) => {
+    const id = jobRecordId(j);
+    const title = jobRecordTitle(j).toLowerCase();
+    let score = 0;
+    if (isTerminalJobStage(j?.stage)) score += 2;
+    for (const n of rows) {
+      if (n?.metadata?.synthetic || n?._synthetic) continue;
+      const meta = n?.metadata || {};
+      const body = eventBody(n);
+      const jid = String(meta.jobId || meta.job_id || "").trim();
+      if (jid && jid === id) {
+        score += String(meta.systemKind || "").toLowerCase() === "ai_fit" ? 10 : 4;
+      }
+      if (title.length >= 5 && body.toLowerCase().includes(title)) {
+        score += 6;
+      }
+    }
+    return { j, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  // Require some evidence when multiple candidates — avoid random Senior Engineer
+  if (scored[0].score <= 0) return null;
+  return scored[0].j;
 }
 
 function tagFromJobId(
@@ -701,22 +729,38 @@ function collectRejectionPivots(
     const body = eventBody(row);
     const protectedIds = extractDifferentOpportunityJobIds(body, jobs);
     if (protectedIds.size === 0) continue;
-    const closed = resolveActivityJobTag(row, jobs);
-    // Must resolve to something that is not only the protected job
-    if (closed.jobId && protectedIds.has(closed.jobId)) continue;
-    if (!closed.jobId && !closed.jobTitle) {
-      // Try timeline among non-protected strong tags around this rejection
+
+    // Prefer closed role with real activity evidence (AI fit etc.) over a
+    // silent third linked job like Senior Engineer
+    const closedCandidates = jobs.filter((j) => {
+      const id = jobRecordId(j);
+      return Boolean(id) && !protectedIds.has(id);
+    });
+    const picked = pickClosedRoleFromCandidates(closedCandidates, rows, jobs);
+
+    let closed: ResolvedJobTag | null = null;
+    if (picked) {
+      closed = tagFromJobId(jobRecordId(picked), jobs);
+    } else {
+      const base = resolveActivityJobTag(row, jobs);
+      if (base.jobId && !protectedIds.has(base.jobId)) {
+        closed = base;
+      } else if (base.jobTitle && !(base.jobId && protectedIds.has(base.jobId))) {
+        const tid = matchJobIdFromText(base.jobTitle, jobs);
+        if (!tid || !protectedIds.has(tid)) closed = base;
+      }
+    }
+
+    if (!closed || (!closed.jobId && !closed.jobTitle)) {
       const borrowed = nearestStrongJobTag(row, rows, jobs, {
         excludeJobIds: protectedIds,
       });
       if (!borrowed) continue;
-      pivots.push({
-        time: noteTimeMs(row),
-        protectedIds,
-        closed: borrowed,
-      });
-      continue;
+      closed = borrowed;
     }
+
+    if (closed.jobId && protectedIds.has(closed.jobId)) continue;
+
     pivots.push({
       time: noteTimeMs(row),
       protectedIds,
@@ -758,8 +802,10 @@ export function isAttachActivityForJob(note: any, jobId: string): boolean {
 }
 
 /**
- * Build display-only Attached rows for linked jobs that have no JOB_LINKED
- * activity (legacy links, imports, dual-write gaps). Not persisted.
+ * Build display-only Attached rows ONLY when a linked job has real activity
+ * evidence (AI fit / explicit jobId notes / title in structured body) but no
+ * JOB_LINKED event. Never invent attaches for silent third jobs (e.g. Senior
+ * Engineer sitting on linkedJobs with no history).
  */
 export function buildMissingAttachActivities(
   rows: any[],
@@ -773,6 +819,7 @@ export function buildMissingAttachActivities(
     const jobId = jobRecordId(j);
     if (!jobId) continue;
     const title = jobRecordTitle(j) || "Job";
+    const titleLower = title.toLowerCase();
     const company = String(
       (j as any).companyName || (j as any).company_name || ""
     ).trim();
@@ -783,34 +830,61 @@ export function buildMissingAttachActivities(
       if (!/^(?:linked to job|attached to job):/i.test(body.trim())) {
         return false;
       }
-      return body.toLowerCase().includes(title.toLowerCase());
+      const meta = n?.metadata || {};
+      if (String(meta.jobId || "") === jobId) return true;
+      return (
+        titleLower.length >= 5 && body.toLowerCase().includes(titleLower)
+      );
     });
     if (hasAttach) continue;
 
-    // Timestamp: just before earliest activity that already tags this job
+    // Require real evidence this job was worked — not merely linked, and not
+    // a Rejected note that only names this job as a "different opportunity".
     let earliest = Number.POSITIVE_INFINITY;
+    let evidence = 0;
     for (const n of existing) {
-      const tag = resolveActivityJobTag(n, jobs);
+      if (n?.metadata?.synthetic || n?._synthetic) continue;
+      const meta = n?.metadata || {};
       const body = eventBody(n);
-      const aboutJob =
-        tag.jobId === jobId ||
-        (tag.jobTitle &&
-          tag.jobTitle.toLowerCase() === title.toLowerCase()) ||
-        body.toLowerCase().includes(title.toLowerCase());
+      const jid = String(meta.jobId || meta.job_id || "").trim();
+      const kind = String(meta.systemKind || "").toLowerCase();
+      const diffOpp = extractDifferentOpportunityJobIds(body, jobs);
+      // Rejected "… different opportunity – Ops" must not count as Ops work
+      if (diffOpp.has(jobId)) continue;
+
+      let aboutJob = false;
+      if (kind === "ai_fit" && jid === jobId) {
+        aboutJob = true;
+        evidence += 10;
+      } else if (
+        kind === "ai_fit" &&
+        titleLower.length >= 5 &&
+        body.toLowerCase().includes(titleLower)
+      ) {
+        aboutJob = true;
+        evidence += 10;
+      } else if (
+        (kind === "job_linked" ||
+          /^(?:linked to job|attached to job):/i.test(body.trim())) &&
+        (jid === jobId ||
+          (titleLower.length >= 5 && body.toLowerCase().includes(titleLower)))
+      ) {
+        aboutJob = true;
+        evidence += 8;
+      } else if (jid === jobId && kind !== "job_linked") {
+        // Explicit jobId on a real note (stage change, etc.) — weaker signal
+        aboutJob = true;
+        evidence += 3;
+      }
       if (!aboutJob) continue;
       const t = noteTimeMs(n);
       if (t > 0 && t < earliest) earliest = t;
     }
 
-    const stageAt = (j as any).stageUpdatedAt || (j as any).linkedAt;
-    const stageMs = stageAt ? new Date(stageAt).getTime() : NaN;
-    let createdMs = Number.isFinite(earliest)
-      ? earliest - 1000
-      : Number.isFinite(stageMs)
-        ? stageMs
-        : Date.now();
-    if (!Number.isFinite(createdMs) || createdMs <= 0) createdMs = Date.now();
+    // Need solid evidence (AI fit / real attach), not only a stray jobId
+    if (evidence < 8 || !Number.isFinite(earliest)) continue;
 
+    const createdMs = earliest - 1000;
     const companyBit = company ? ` @ ${company}` : "";
     out.push({
       id: `synthetic-attach-${jobId}`,
@@ -907,21 +981,20 @@ export function resolveActivityJobTagInTimeline(
     const bodyCorroboratesBase =
       !!base.jobTitle && bodyMentionsJobTitle(body, base.jobTitle);
 
+    // Empty tag → inherit closed role from rejection pivot
     if (!base.jobId && !base.jobTitle) {
       return pivot.closed.jobId || pivot.closed.jobTitle
         ? pivot.closed
         : base;
     }
+    // Tagged as the different-opportunity job without body support → closed role
     if (taggedProtected && !bodyCorroboratesBase) {
       return pivot.closed.jobId || pivot.closed.jobTitle
         ? pivot.closed
         : base;
     }
-    if (!bodyCorroboratesBase && !strongBody) {
-      // e.g. "2nd Interview" + calendar invite from Auxilio, wrong default job
-      // while the rejection says Finance was "this role"
-      if (pivot.closed.jobId || pivot.closed.jobTitle) return pivot.closed;
-    }
+    // Do NOT rewrite every weak note (with some other jobId like Senior Engineer
+    // or a correct Finance id) onto the pivot — that caused wrong tags.
   }
 
   // No pivot applied: fill empty tags from nearest strong neighbor
