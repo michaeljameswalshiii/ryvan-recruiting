@@ -871,6 +871,39 @@
   color: #2563eb !important;
 }
 
+/*
+ * Dark form panels (e.g. Add Candidate Basic/Pipeline/Additional):
+ * Keep charcoal surface + white titles/labels; light inputs for typing.
+ */
+html.dark [data-dark-form-panel],
+html.dark [data-dark-form-panel] label,
+html.dark [data-dark-form-panel] h1,
+html.dark [data-dark-form-panel] h2,
+html.dark [data-dark-form-panel] h3,
+html.dark [data-dark-form-panel] h4,
+html.dark [data-dark-form-panel] .text-muted-foreground,
+html.dark [data-dark-form-panel] [class*="CardTitle"],
+html.dark [data-dark-form-panel] p {
+  color: #f8fafc !important;
+  -webkit-text-fill-color: #f8fafc !important;
+}
+html.dark [data-dark-form-panel] svg {
+  color: #e2e8f0 !important;
+}
+html.dark [data-dark-form-panel] input,
+html.dark [data-dark-form-panel] select,
+html.dark [data-dark-form-panel] textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+html.dark [data-dark-form-panel] input::placeholder,
+html.dark [data-dark-form-panel] textarea::placeholder {
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+}
+
 /* Keep brand link colors on light panels */
 .dark .surface-light .text-blue-600,
 .dark .bg-white .text-blue-600,
