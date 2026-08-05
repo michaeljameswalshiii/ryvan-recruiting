@@ -1466,42 +1466,27 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   </button>
                 )}
               </div>
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {/* Linked jobs only — these are req titles, NOT the candidate's job title.
-                    Never show Rejected/stage here (pipeline lives in Overview → Pipeline Stage). */}
-                {linkedJobs.map((job: any) => {
-                  const jid = job.jobId || job.id;
-                  const title = job.jobTitle || job.title || 'Linked job';
-                  const company = job.companyName || job.company_name || '';
-                  const tip = company
-                    ? `Attached job: ${title} · ${company}`
-                    : `Attached job: ${title}`;
-                  const chipClass =
-                    'inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-800 max-w-[16rem]';
-                  const inner = (
-                    <>
-                      <Briefcase className="h-3 w-3 shrink-0 opacity-70" />
-                      <span className="truncate">{title}</span>
-                    </>
-                  );
-                  if (!jid) {
-                    return (
-                      <span key={`job-tag-${title}`} className={chipClass} title={tip}>
-                        {inner}
-                      </span>
-                    );
-                  }
-                  return (
-                    <Link
-                      key={jid}
-                      href={`/dashboard/jobs/${jid}`}
-                      title={tip}
-                      className={`${chipClass} hover:bg-indigo-100 hover:border-indigo-300 hover:underline`}
-                    >
-                      {inner}
-                    </Link>
-                  );
-                })}
+              <div className="flex flex-wrap gap-1.5 pt-1 items-center">
+                {/* Do NOT list job titles here — they look like the candidate's title/tags.
+                    Manage attachments under Linked Jobs. */}
+                {linkedJobs.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('jobs')}
+                    className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-800 hover:bg-indigo-100 hover:border-indigo-300"
+                    title={linkedJobs
+                      .map(
+                        (j: any) =>
+                          j.jobTitle || j.title || 'Job'
+                      )
+                      .join(', ')}
+                  >
+                    <Briefcase className="h-3 w-3 shrink-0 opacity-70" />
+                    {linkedJobs.length === 1
+                      ? '1 attached job'
+                      : `${linkedJobs.length} attached jobs`}
+                  </button>
+                ) : null}
                 <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">
                   Added {formatShortDate(safe.createdAt)} · {safe.source || 'Manual'}
                 </span>
