@@ -55,7 +55,7 @@ import {
 } from '@/lib/ui/activity-badge-colors';
 import {
   getActiveLinkedJobIds,
-  resolveActivityJobTag,
+  resolveActivityJobTagInTimeline,
 } from '@/lib/candidates/activity-focus';
 
 /** Activity / note types shown in the log composer (canonical order) */
@@ -1260,18 +1260,26 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     }
   }, [primaryLogJobId, linkedJobs, logJobId]);
 
+  /** Job chip for a row — timeline-aware (Rejected pivots, thread inheritance) */
+  const jobTagFor = (note: any) =>
+    resolveActivityJobTagInTimeline(note, linkedJobs, activityRows);
+
   /** Always full history; optional job chip filters the list */
   const visibleActivityRows = useMemo(() => {
     if (activityJobFilter === 'all') return activityRows;
     if (activityJobFilter === 'candidate') {
       return activityRows.filter((n) => {
-        const tag = resolveActivityJobTag(n, linkedJobs);
+        const tag = resolveActivityJobTagInTimeline(
+          n,
+          linkedJobs,
+          activityRows
+        );
         return !tag.jobId && !tag.jobTitle;
       });
     }
     // Specific job: that job's notes + candidate-level (no job tag)
     return activityRows.filter((n) => {
-      const tag = resolveActivityJobTag(n, linkedJobs);
+      const tag = resolveActivityJobTagInTimeline(n, linkedJobs, activityRows);
       if (!tag.jobId && !tag.jobTitle) return true;
       if (tag.jobId === activityJobFilter) return true;
       const j = linkedJobs.find(
@@ -1935,10 +1943,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                           const mutable = isMutableActivity(note);
                           const isEditing = editingEventId === rowId;
                           const isDeleting = deletingEventId === rowId;
-                          const jobTag = resolveActivityJobTag(
-                            note,
-                            linkedJobs
-                          );
+                          const jobTag = jobTagFor(note);
 
                           return (
                             <tr
@@ -2290,7 +2295,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                 const mutable = isMutableActivity(note);
                 const isEditing = editingEventId === rowId;
                 const isDeleting = deletingEventId === rowId;
-                const jobTag = resolveActivityJobTag(note, linkedJobs);
+                const jobTag = jobTagFor(note);
 
                 return (
                   <div

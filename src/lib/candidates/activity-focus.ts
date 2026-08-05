@@ -554,3 +554,251 @@ export function resolveActivityJobTag(
 
   return { jobId, jobTitle, companyName, label };
 }
+
+function noteTimeMs(note: any): number {
+  const t = new Date(
+    note?.createdAt || note?.timestamp || note?.created_at || 0
+  ).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+function bodyMentionsJobTitle(body: string, title: string): boolean {
+  const t = String(title || "").trim().toLowerCase();
+  if (!t || t.length < 3) return false;
+  return stripDifferentOpportunityClauses(body).toLowerCase().includes(t);
+}
+
+/**
+ * Strong evidence the note is *about* a job (not weak metadata / empty body).
+ * AI fit, attach lines, or a linked job title appearing outside a
+ * "different opportunity" clause.
+ */
+export function hasStrongBodyJobSignal(
+  note: any,
+  linkedJobs: LinkedJobLike[] | null | undefined
+): boolean {
+  const jobs = Array.isArray(linkedJobs) ? linkedJobs : [];
+  const body = eventBody(note);
+  const meta = note?.metadata || {};
+  const kind = String(meta.systemKind || "").toLowerCase();
+  if (kind === "ai_fit" || kind === "job_linked") return true;
+  if (/ai fit for\s*["“]/i.test(body)) return true;
+  if (/^(?:linked to job|attached to job):/i.test(body.trim())) return true;
+  const stripped = stripDifferentOpportunityClauses(body);
+  if (matchJobIdFromText(stripped, jobs)) return true;
+  return false;
+}
+
+function tagFromJobId(
+  jobId: string | null,
+  jobs: LinkedJobLike[],
+  fallbackTitle?: string | null,
+  fallbackCompany?: string | null
+): ResolvedJobTag {
+  const empty: ResolvedJobTag = {
+    jobId: null,
+    jobTitle: null,
+    companyName: null,
+    label: null,
+  };
+  if (!jobId && !fallbackTitle) return empty;
+  const j = jobId ? jobs.find((x) => jobRecordId(x) === jobId) : undefined;
+  const jobTitle =
+    (j ? jobRecordTitle(j) : null) || fallbackTitle || null;
+  const companyName =
+    (j
+      ? String(
+          (j as any).companyName || (j as any).company_name || ""
+        ).trim() || null
+      : null) ||
+    fallbackCompany ||
+    null;
+  const label = jobTitle
+    ? companyName
+      ? `${jobTitle} @ ${companyName}`
+      : jobTitle
+    : null;
+  return { jobId: jobId || null, jobTitle, companyName, label };
+}
+
+/**
+ * Nearest row with a strong body job signal (or a resolved Rejected subject).
+ */
+function nearestStrongJobTag(
+  note: any,
+  rows: any[],
+  jobs: LinkedJobLike[],
+  opts?: { excludeJobIds?: Set<string> }
+): ResolvedJobTag | null {
+  const t0 = noteTimeMs(note);
+  const selfKey = String(note?.id || note?.SK || note?.timestamp || "");
+  let best: { dist: number; tag: ResolvedJobTag } | null = null;
+
+  for (const row of rows) {
+    const rowKey = String(row?.id || row?.SK || row?.timestamp || "");
+    if (selfKey && rowKey && selfKey === rowKey) continue;
+
+    const body = eventBody(row);
+    const diffIds = extractDifferentOpportunityJobIds(body, jobs);
+    const terminalDiff =
+      isTerminalNoteActivity(row) && diffIds.size > 0;
+    const strong = hasStrongBodyJobSignal(row, jobs);
+    if (!strong && !terminalDiff) continue;
+
+    const tag = resolveActivityJobTag(row, jobs);
+    if (!tag.jobId && !tag.jobTitle) continue;
+    if (
+      opts?.excludeJobIds &&
+      tag.jobId &&
+      opts.excludeJobIds.has(tag.jobId)
+    ) {
+      continue;
+    }
+
+    const dist = Math.abs(noteTimeMs(row) - t0);
+    if (!best || dist < best.dist) best = { dist, tag };
+  }
+  return best?.tag || null;
+}
+
+type RejectionPivot = {
+  time: number;
+  protectedIds: Set<string>;
+  closed: ResolvedJobTag;
+};
+
+/**
+ * Rejected notes that name a different opportunity define a pivot:
+ * "this role" = closed job; the named opportunity stays in play.
+ */
+function collectRejectionPivots(
+  rows: any[],
+  jobs: LinkedJobLike[]
+): RejectionPivot[] {
+  const pivots: RejectionPivot[] = [];
+  for (const row of rows) {
+    if (!isTerminalNoteActivity(row)) continue;
+    const body = eventBody(row);
+    const protectedIds = extractDifferentOpportunityJobIds(body, jobs);
+    if (protectedIds.size === 0) continue;
+    const closed = resolveActivityJobTag(row, jobs);
+    // Must resolve to something that is not only the protected job
+    if (closed.jobId && protectedIds.has(closed.jobId)) continue;
+    if (!closed.jobId && !closed.jobTitle) {
+      // Try timeline among non-protected strong tags around this rejection
+      const borrowed = nearestStrongJobTag(row, rows, jobs, {
+        excludeJobIds: protectedIds,
+      });
+      if (!borrowed) continue;
+      pivots.push({
+        time: noteTimeMs(row),
+        protectedIds,
+        closed: borrowed,
+      });
+      continue;
+    }
+    pivots.push({
+      time: noteTimeMs(row),
+      protectedIds,
+      closed,
+    });
+  }
+  return pivots.sort((a, b) => b.time - a.time);
+}
+
+/**
+ * Timeline-aware job tag for display.
+ *
+ * Reads the whole activity list so we can:
+ * 1. Tag Rejected "this role" as Finance when Ops is only the different opportunity
+ * 2. Fill Text / Interview / empty rows from the Finance thread
+ * 3. Not leave Ops on notes that only mention Auxilio and sit in the Finance pipeline
+ *    before a rejection that names Ops as the alternative
+ */
+export function resolveActivityJobTagInTimeline(
+  note: any,
+  linkedJobs: LinkedJobLike[] | null | undefined,
+  allRows: any[] | null | undefined
+): ResolvedJobTag {
+  const jobs = Array.isArray(linkedJobs) ? linkedJobs : [];
+  const rows = Array.isArray(allRows) ? allRows : [];
+  const base = resolveActivityJobTag(note, jobs);
+  const body = eventBody(note);
+  const t = noteTimeMs(note);
+
+  if (rows.length === 0) return base;
+
+  const pivots = collectRejectionPivots(rows, jobs);
+  const strongBody = hasStrongBodyJobSignal(note, jobs);
+
+  // Apply the nearest rejection pivot that is at/after this note (this note is
+  // part of the closed "this role" story, not the different opportunity).
+  for (const pivot of pivots) {
+    // Allow a small clock skew; notes on the rejection day still count
+    if (t > pivot.time + 60_000) continue;
+
+    // Body explicitly about the different-opportunity job → keep that
+    const bodyIsProtected = [...pivot.protectedIds].some((id) => {
+      const j = jobs.find((x) => jobRecordId(x) === id);
+      return j ? bodyMentionsJobTitle(body, jobRecordTitle(j)) : false;
+    });
+    if (bodyIsProtected) {
+      // Prefer resolving to the protected job from body
+      if (base.jobId && pivot.protectedIds.has(base.jobId)) return base;
+      const protId = [...pivot.protectedIds][0];
+      return tagFromJobId(protId, jobs) || base;
+    }
+
+    // Strong body about some other job (e.g. AI fit Finance) → keep base
+    if (strongBody) {
+      if (base.jobId && pivot.protectedIds.has(base.jobId)) {
+        // Strong text somehow resolved to protected job only via title in
+        // different-opportunity clause — prefer closed role
+        return pivot.closed.jobId || pivot.closed.jobTitle
+          ? pivot.closed
+          : base;
+      }
+      return base;
+    }
+
+    // Weak / empty / uncorroborated: if tagged as the different opportunity
+    // without body support, or empty → closed role (Finance)
+    const taggedProtected =
+      (base.jobId && pivot.protectedIds.has(base.jobId)) ||
+      [...pivot.protectedIds].some((id) => {
+        const j = jobs.find((x) => jobRecordId(x) === id);
+        return (
+          j &&
+          base.jobTitle &&
+          jobRecordTitle(j).toLowerCase() === base.jobTitle.toLowerCase()
+        );
+      });
+
+    const bodyCorroboratesBase =
+      !!base.jobTitle && bodyMentionsJobTitle(body, base.jobTitle);
+
+    if (!base.jobId && !base.jobTitle) {
+      return pivot.closed.jobId || pivot.closed.jobTitle
+        ? pivot.closed
+        : base;
+    }
+    if (taggedProtected && !bodyCorroboratesBase) {
+      return pivot.closed.jobId || pivot.closed.jobTitle
+        ? pivot.closed
+        : base;
+    }
+    if (!bodyCorroboratesBase && !strongBody) {
+      // e.g. "2nd Interview" + calendar invite from Auxilio, wrong default job
+      // while the rejection says Finance was "this role"
+      if (pivot.closed.jobId || pivot.closed.jobTitle) return pivot.closed;
+    }
+  }
+
+  // No pivot applied: fill empty tags from nearest strong neighbor
+  if (!base.jobId && !base.jobTitle) {
+    const near = nearestStrongJobTag(note, rows, jobs);
+    if (near) return near;
+  }
+
+  return base;
+}
