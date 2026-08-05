@@ -420,19 +420,30 @@ export function resolveActivityJobTag(
   let jobTitle = meta.jobTitle ? String(meta.jobTitle).trim() : null;
   let companyName = meta.companyName ? String(meta.companyName).trim() : null;
 
-  // Explicit metadata must not point at the "different opportunity" job on a
-  // free-form Rejected note when that would invert the meaning. Prefer stored
-  // jobId always (recruiter deliberately tagged it); only free-form inference
-  // is corrected below.
+  // Rejected notes often keep the *open* job selected in the Log form
+  // (e.g. Ops) while the body says that role is only a different opportunity.
+  // Clear stored/meta tags that point at the protected opportunity so we can
+  // resolve the closed role (Finance) instead.
+  if (isTerminal && differentOppIds.size > 0) {
+    if (jobId && differentOppIds.has(jobId)) {
+      jobId = null;
+    }
+    if (jobTitle) {
+      const titleMatchId = matchJobIdFromText(jobTitle, jobs);
+      if (titleMatchId && differentOppIds.has(titleMatchId)) {
+        jobTitle = null;
+        companyName = null;
+      }
+    }
+  }
+
   // Snapshot-only title without id
   if (!jobId && jobTitle) {
-    // If title is only the different-opportunity role on a terminal note, drop it
     const titleMatchId = matchJobIdFromText(jobTitle, jobs);
     if (
       isTerminal &&
       titleMatchId &&
-      differentOppIds.has(titleMatchId) &&
-      !getEventJobId(note)
+      differentOppIds.has(titleMatchId)
     ) {
       jobTitle = null;
     } else {
@@ -502,37 +513,46 @@ export function resolveActivityJobTag(
       }
 
       if (inferredId) {
-        jobId = jobId || inferredId;
-        const j = jobs.find((x) => jobRecordId(x) === inferredId);
-        const en = enrichFromJob(j, jobTitle, companyName);
-        jobTitle = en.jobTitle;
-        companyName = en.companyName;
+        // Never re-apply a protected different-opportunity id on terminal notes
+        if (!(isTerminal && differentOppIds.has(inferredId))) {
+          jobId = jobId || inferredId;
+          const j = jobs.find((x) => jobRecordId(x) === inferredId);
+          const en = enrichFromJob(j, jobTitle, companyName);
+          jobTitle = en.jobTitle;
+          companyName = en.companyName;
+        }
       }
     }
   }
 
-  // If we still tagged a terminal note with the different-opportunity job and
-  // have no explicit stored jobId, flip to the closed role.
-  if (
-    isTerminal &&
-    !getEventJobId(note) &&
-    jobId &&
-    differentOppIds.has(jobId)
-  ) {
-    const closedCandidates = jobs.filter((j) => {
-      const id = jobRecordId(j);
-      return Boolean(id) && !differentOppIds.has(id);
-    });
-    if (closedCandidates.length === 1) {
-      jobId = jobRecordId(closedCandidates[0]);
-      const en = enrichFromJob(closedCandidates[0], null, null);
-      jobTitle = en.jobTitle;
-      companyName = en.companyName;
-    } else {
-      // Ambiguous — do not show the wrong (protected) job as the chip
+  // Terminal + different opportunity still pointing at protected job → closed role
+  if (isTerminal && differentOppIds.size > 0) {
+    if (jobId && differentOppIds.has(jobId)) {
       jobId = null;
       jobTitle = null;
       companyName = null;
+    }
+    if (!jobId) {
+      const closedCandidates = jobs.filter((j) => {
+        const id = jobRecordId(j);
+        return Boolean(id) && !differentOppIds.has(id);
+      });
+      if (closedCandidates.length === 1) {
+        jobId = jobRecordId(closedCandidates[0]);
+        const en = enrichFromJob(closedCandidates[0], null, null);
+        jobTitle = en.jobTitle;
+        companyName = en.companyName;
+      } else if (closedCandidates.length > 1) {
+        const terminal = closedCandidates.find((j) =>
+          isTerminalJobStage(j?.stage)
+        );
+        if (terminal) {
+          jobId = jobRecordId(terminal);
+          const en = enrichFromJob(terminal, null, null);
+          jobTitle = en.jobTitle;
+          companyName = en.companyName;
+        }
+      }
     }
   }
 
@@ -704,6 +724,116 @@ function collectRejectionPivots(
     });
   }
   return pivots.sort((a, b) => b.time - a.time);
+}
+
+/** True if this activity is a real or synthetic job-attach row for jobId */
+export function isAttachActivityForJob(note: any, jobId: string): boolean {
+  if (!jobId) return false;
+  const meta = note?.metadata || {};
+  const id = String(meta.jobId || meta.job_id || "").trim();
+  const kind = String(meta.systemKind || "").toLowerCase();
+  const et = String(note?.eventType || "").toUpperCase();
+  if (
+    (kind === "job_linked" || et === "JOB_LINKED") &&
+    id === String(jobId)
+  ) {
+    return true;
+  }
+  const body = eventBody(note);
+  if (
+    /^(?:linked to job|attached to job):/i.test(body.trim()) &&
+    id === String(jobId)
+  ) {
+    return true;
+  }
+  // Body names the attach without jobId (legacy)
+  if (
+    /^(?:linked to job|attached to job):/i.test(body.trim()) &&
+    !id &&
+    meta.jobTitle
+  ) {
+    return false; // caller may match by title
+  }
+  return false;
+}
+
+/**
+ * Build display-only Attached rows for linked jobs that have no JOB_LINKED
+ * activity (legacy links, imports, dual-write gaps). Not persisted.
+ */
+export function buildMissingAttachActivities(
+  rows: any[],
+  linkedJobs: LinkedJobLike[] | null | undefined
+): any[] {
+  const jobs = Array.isArray(linkedJobs) ? linkedJobs : [];
+  const existing = Array.isArray(rows) ? rows : [];
+  const out: any[] = [];
+
+  for (const j of jobs) {
+    const jobId = jobRecordId(j);
+    if (!jobId) continue;
+    const title = jobRecordTitle(j) || "Job";
+    const company = String(
+      (j as any).companyName || (j as any).company_name || ""
+    ).trim();
+
+    const hasAttach = existing.some((n) => {
+      if (isAttachActivityForJob(n, jobId)) return true;
+      const body = eventBody(n);
+      if (!/^(?:linked to job|attached to job):/i.test(body.trim())) {
+        return false;
+      }
+      return body.toLowerCase().includes(title.toLowerCase());
+    });
+    if (hasAttach) continue;
+
+    // Timestamp: just before earliest activity that already tags this job
+    let earliest = Number.POSITIVE_INFINITY;
+    for (const n of existing) {
+      const tag = resolveActivityJobTag(n, jobs);
+      const body = eventBody(n);
+      const aboutJob =
+        tag.jobId === jobId ||
+        (tag.jobTitle &&
+          tag.jobTitle.toLowerCase() === title.toLowerCase()) ||
+        body.toLowerCase().includes(title.toLowerCase());
+      if (!aboutJob) continue;
+      const t = noteTimeMs(n);
+      if (t > 0 && t < earliest) earliest = t;
+    }
+
+    const stageAt = (j as any).stageUpdatedAt || (j as any).linkedAt;
+    const stageMs = stageAt ? new Date(stageAt).getTime() : NaN;
+    let createdMs = Number.isFinite(earliest)
+      ? earliest - 1000
+      : Number.isFinite(stageMs)
+        ? stageMs
+        : Date.now();
+    if (!Number.isFinite(createdMs) || createdMs <= 0) createdMs = Date.now();
+
+    const companyBit = company ? ` @ ${company}` : "";
+    out.push({
+      id: `synthetic-attach-${jobId}`,
+      eventType: "JOB_LINKED",
+      createdAt: new Date(createdMs).toISOString(),
+      timestamp: new Date(createdMs).toISOString(),
+      metadata: {
+        noteText: `Attached to job: ${title}${companyBit}`,
+        noteType: "Attached",
+        noteTypeLabel: "Attached",
+        systemKind: "job_linked",
+        jobId,
+        jobTitle: title,
+        companyName: company || undefined,
+        synthetic: true,
+        inferredMissingAttach: true,
+      },
+      description: `Attached to ${title}${companyBit}`,
+      _synthetic: true,
+    });
+  }
+
+  return out;
 }
 
 /**

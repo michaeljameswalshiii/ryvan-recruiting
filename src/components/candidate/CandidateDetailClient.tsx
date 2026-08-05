@@ -54,6 +54,7 @@ import {
   activityBadgeStyle,
 } from '@/lib/ui/activity-badge-colors';
 import {
+  buildMissingAttachActivities,
   getActiveLinkedJobIds,
   resolveActivityJobTagInTimeline,
 } from '@/lib/candidates/activity-focus';
@@ -529,7 +530,9 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const isMutableActivity = (note: any): boolean => {
     const id = note?.id || note?.timestamp;
     if (!id || id === 'profile-notes') return false;
+    if (note?._synthetic || note?.metadata?.synthetic) return false;
     if (note?.metadata?.fromProfileNotes) return false;
+    if (String(id).startsWith('synthetic-attach-')) return false;
     return true;
   };
 
@@ -1217,6 +1220,10 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
         });
       }
     }
+    // Linked jobs with no JOB_LINKED activity (legacy / import / dual-write gap)
+    for (const synthetic of buildMissingAttachActivities(rows, linkedJobs)) {
+      rows.push(synthetic);
+    }
     // Newest first
     rows.sort((a, b) => {
       const ta = new Date(a.createdAt || a.timestamp || 0).getTime();
@@ -1225,7 +1232,7 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     });
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notes, safe.notes, safe.createdAt]);
+  }, [notes, safe.notes, safe.createdAt, linkedJobs]);
 
   const activeLinkedJobIds = useMemo(
     () => getActiveLinkedJobIds(linkedJobs),
