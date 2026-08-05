@@ -778,6 +778,7 @@ export default function JobDetailPage() {
           {/* Activity & notes — main column (job + candidates + company) */}
           <JobActivityNotes
             jobId={job.id || jobId}
+            jobTitle={job.title || job.jobTitle}
             linkedCandidates={linkedCandidates}
             companyId={job.companyId}
             companyName={job.companyName}

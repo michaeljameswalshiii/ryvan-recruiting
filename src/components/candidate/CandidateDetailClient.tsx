@@ -1284,16 +1284,23 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
         return !tag.jobId && !tag.jobTitle;
       });
     }
-    // Specific job: that job's notes + candidate-level (no job tag)
+    // Specific job: only notes tagged/inferred for that job (not untagged, not other jobs)
     return activityRows.filter((n) => {
       const tag = resolveActivityJobTagInTimeline(n, linkedJobs, activityRows);
-      if (!tag.jobId && !tag.jobTitle) return true;
       if (tag.jobId === activityJobFilter) return true;
       const j = linkedJobs.find(
         (x) => String(x?.jobId || x?.id || '') === activityJobFilter
       );
-      const title = (j?.jobTitle || j?.title || '').toLowerCase();
-      if (title && tag.jobTitle?.toLowerCase() === title) return true;
+      const title = (j?.jobTitle || j?.title || '').toLowerCase().trim();
+      if (
+        title &&
+        tag.jobTitle &&
+        (tag.jobTitle.toLowerCase() === title ||
+          tag.jobTitle.toLowerCase().includes(title) ||
+          title.includes(tag.jobTitle.toLowerCase()))
+      ) {
+        return true;
+      }
       return false;
     });
   }, [activityRows, activityJobFilter, linkedJobs]);

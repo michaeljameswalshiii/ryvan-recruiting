@@ -94,13 +94,107 @@ function eventBody(ev: any): string {
   return '—';
 }
 
+/**
+ * Only show candidate events that belong to THIS job.
+ * Prevents Ops Interested / AI fit / Attached from appearing on Finance (and vice versa).
+ */
+export function candidateEventBelongsToJob(
+  ev: any,
+  jobId: string,
+  jobTitle?: string
+): boolean {
+  const meta = ev?.metadata || {};
+  const jid = String(meta.jobId || meta.job_id || '').trim();
+  if (jid) return jid === String(jobId);
+
+  const titleMeta = String(meta.jobTitle || '').trim().toLowerCase();
+  const body = eventBody(ev).toLowerCase();
+  const jt = String(jobTitle || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  const jtCompact = jt.replace(/\s+/g, '');
+
+  const mentionsTitle = (text: string) => {
+    if (!jt || jt.length < 4) return false;
+    const t = text.toLowerCase().replace(/\s+/g, ' ');
+    return t.includes(jt) || t.replace(/\s+/g, '').includes(jtCompact);
+  };
+
+  // Explicit snapshot title
+  if (titleMeta && jt) {
+    if (
+      titleMeta === jt ||
+      titleMeta.includes(jt) ||
+      jt.includes(titleMeta) ||
+      titleMeta.replace(/\s+/g, '') === jtCompact
+    ) {
+      return true;
+    }
+  }
+
+  // Body names this job (AI fit, attached, free text) — but not only as
+  // "different opportunity" (that means a *different* role).
+  if (mentionsTitle(body)) {
+    const diffOpp = body.match(
+      /different opportunity[:\s—–-]+([^\n.;]+)/i
+    );
+    if (diffOpp) {
+      const chunk = (diffOpp[1] || '').toLowerCase();
+      // If the only match is inside the different-opportunity clause, this
+      // event is NOT about that opportunity job.
+      const before = body.slice(0, diffOpp.index ?? 0);
+      if (!mentionsTitle(before) && mentionsTitle(chunk)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Rejected / terminal: "not moving forward on this role … different opportunity – Other"
+  // When this job is NOT the different opportunity, treat as belonging to this job
+  // (candidate is linked here; "this role" is the req page we're viewing).
+  const isTerminalType = (() => {
+    const t = String(
+      meta.noteType || meta.noteTypeLabel || ev?.eventType || ''
+    )
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ');
+    return (
+      t.includes('reject') ||
+      t.includes('not interested') ||
+      t === 'dnu' ||
+      t.includes('do not use')
+    );
+  })();
+  if (isTerminalType && /different opportunity/i.test(body)) {
+    // Belongs to current job unless the different opportunity IS this job
+    if (jt && mentionsTitle(body)) {
+      const m = body.match(/different opportunity[:\s—–-]+([^\n.;]+)/i);
+      const chunk = (m?.[1] || '').toLowerCase();
+      if (chunk.includes(jt) || chunk.replace(/\s+/g, '').includes(jtCompact)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Untagged notes that clearly name another role are excluded (no match above).
+  // Untagged generic notes without this job title: exclude from job log to avoid
+  // polluting Finance with Ops (and unrelated candidate chatter).
+  return false;
+}
+
 export function JobActivityNotes({
   jobId,
+  jobTitle,
   linkedCandidates = [],
   companyId,
   companyName,
 }: {
   jobId: string;
+  /** Used to match candidate events that only name the job in free text */
+  jobTitle?: string;
   linkedCandidates?: LinkedCandidate[];
   companyId?: string;
   companyName?: string;
@@ -179,7 +273,8 @@ export function JobActivityNotes({
         /* ignore */
       }
 
-      // Candidate events
+      // Candidate events — only those that belong to THIS job (not every
+      // note on a multi-job candidate like Ops activity under Finance).
       for (let i = 0; i < candIds.slice(0, 25).length; i++) {
         const res = responses[1 + i];
         const cid = candIds[i];
@@ -188,6 +283,7 @@ export function JobActivityNotes({
           if (res?.ok) {
             const data = await res.json();
             for (const ev of data.events || []) {
+              if (!candidateEventBelongsToJob(ev, jobId, jobTitle)) continue;
               merged.push({
                 id: `cand-${cid}-${ev.id || ev.SK || Math.random()}`,
                 createdAt: ev.createdAt || ev.timestamp || '',
@@ -248,13 +344,13 @@ export function JobActivityNotes({
     } finally {
       setLoading(false);
     }
-  }, [jobId, candidateKey, candidateNameById, companyId, companyName]);
+  }, [jobId, jobTitle, candidateKey, candidateNameById, companyId, companyName]);
 
   // Reset to page 1 only when the data sources change (not on every parent render)
   useEffect(() => {
     setPage(1);
     void load();
-  }, [jobId, candidateKey, companyId, companyName]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional: avoid re-fetch on name map identity
+  }, [jobId, jobTitle, candidateKey, companyId, companyName]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional: avoid re-fetch on name map identity
 
   const paged = useMemo(
     () => paginateItems(rows, page, PAGE_SIZE),
@@ -306,8 +402,8 @@ export function JobActivityNotes({
             Notes &amp; Activity Log
           </h2>
           <p className="text-xs text-gray-400 mt-1">
-            Job notes plus activity from linked candidates
-            {companyId ? ' and the company' : ''}
+            Job notes plus candidate activity tagged to this req
+            {companyId ? ' (company events included)' : ''}
           </p>
         </div>
         {!loading && rows.length > 0 && (
