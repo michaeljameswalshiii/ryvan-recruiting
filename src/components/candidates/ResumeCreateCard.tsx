@@ -80,11 +80,17 @@ export function ResumeCreateCard() {
 
   return (
     <div
+      data-ink-on-light
       className={`mb-8 rounded-xl border-2 border-dashed p-6 transition-colors ${
         dragActive
-          ? 'border-blue-500 bg-blue-100/80 ring-2 ring-blue-200'
-          : 'border-blue-300 bg-blue-50/60'
+          ? 'border-blue-500 bg-blue-100 ring-2 ring-blue-200'
+          : 'border-blue-300 bg-blue-50'
       } ${parsing ? 'opacity-80' : ''}`}
+      style={{
+        backgroundColor: dragActive ? '#dbeafe' : '#eff6ff',
+        color: '#0f172a',
+        WebkitTextFillColor: '#0f172a',
+      }}
       onDragEnter={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -119,16 +125,27 @@ export function ResumeCreateCard() {
             <FileText className="h-6 w-6 text-blue-700" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-blue-950">
+            <h2
+              className="text-lg font-semibold"
+              style={{ color: '#0f172a', WebkitTextFillColor: '#0f172a' }}
+            >
               Create candidate from resume
             </h2>
-            <p className="text-sm text-blue-900/70 mt-1">
+            <p
+              className="text-sm mt-1"
+              style={{ color: '#334155', WebkitTextFillColor: '#334155' }}
+            >
               {dragActive
                 ? 'Drop your resume to parse and continue…'
                 : 'Drag & drop a PDF or Word resume, or upload. We extract name, contact, title, skills, summary, experience, and education.'}
             </p>
             {fileName && (
-              <p className="text-xs text-blue-800 mt-2">Selected: {fileName}</p>
+              <p
+                className="text-xs mt-2"
+                style={{ color: '#1e40af', WebkitTextFillColor: '#1e40af' }}
+              >
+                Selected: {fileName}
+              </p>
             )}
           </div>
         </div>

@@ -325,16 +325,30 @@ export default function NewCandidatePage() {
           [ Pipeline      ] [ Additional         ]
         */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Top-left: Resume upload first */}
-          <Card className="border-2 border-blue-200 bg-blue-50/50">
+          {/* Top-left: Resume upload first — always light surface + dark ink */}
+          <Card
+            data-ink-on-light
+            className="border-2 border-blue-300 !bg-blue-50 text-slate-900 shadow-sm"
+            style={{
+              backgroundColor: '#eff6ff',
+              color: '#0f172a',
+              WebkitTextFillColor: '#0f172a',
+            }}
+          >
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-blue-950">
-                <Upload className="h-5 w-5" />
+              <CardTitle
+                className="flex items-center gap-2 !text-slate-900"
+                style={{ color: '#0f172a', WebkitTextFillColor: '#0f172a' }}
+              >
+                <Upload className="h-5 w-5 text-blue-700" style={{ color: '#1d4ed8' }} />
                 Upload Resume (auto-fills form)
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
+              <p
+                className="text-sm !text-slate-700"
+                style={{ color: '#334155', WebkitTextFillColor: '#334155' }}
+              >
                 Drag and drop a PDF or Word document, or choose a file. Parsing
                 fills name, email, phone, title, location, LinkedIn, skills, and
                 summary.
@@ -392,16 +406,25 @@ export default function NewCandidatePage() {
                 }}
                 className={`rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors cursor-pointer ${
                   dragActive
-                    ? 'border-blue-500 bg-blue-100/80 ring-2 ring-blue-200'
-                    : 'border-blue-300 bg-white/70 hover:border-blue-400 hover:bg-blue-50/80'
+                    ? 'border-blue-500 bg-blue-100 ring-2 ring-blue-200'
+                    : 'border-blue-300 bg-white hover:border-blue-400 hover:bg-blue-50'
                 } ${parsing ? 'pointer-events-none opacity-70' : ''}`}
+                style={{
+                  backgroundColor: dragActive ? '#dbeafe' : '#ffffff',
+                  color: '#0f172a',
+                }}
               >
                 {parsing ? (
-                  <div className="flex flex-col items-center gap-2 text-blue-900">
+                  <div
+                    className="flex flex-col items-center gap-2"
+                    style={{ color: '#0f172a' }}
+                  >
                     <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                    <p className="font-medium">Parsing resume…</p>
+                    <p className="font-medium" style={{ color: '#0f172a' }}>
+                      Parsing resume…
+                    </p>
                     {resumeFileName && (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm" style={{ color: '#475569' }}>
                         {resumeFileName}
                       </p>
                     )}
@@ -416,29 +439,36 @@ export default function NewCandidatePage() {
                       <Upload className="h-7 w-7 text-blue-700" />
                     </div>
                     <div>
-                      <p className="font-medium text-blue-950">
+                      <p
+                        className="font-medium"
+                        style={{ color: '#0f172a', WebkitTextFillColor: '#0f172a' }}
+                      >
                         {dragActive
                           ? 'Drop resume to upload'
                           : 'Drag & drop resume here'}
                       </p>
-                      <p className="mt-1 text-sm text-muted-foreground">
+                      <p
+                        className="mt-1 text-sm"
+                        style={{ color: '#475569', WebkitTextFillColor: '#475569' }}
+                      >
                         PDF, DOC, or DOCX — or click to browse
                       </p>
                     </div>
                     <Button
                       type="button"
                       disabled={parsing}
+                      data-ink-keep
                       onClick={(e) => {
                         e.stopPropagation();
                         fileInputRef.current?.click();
                       }}
-                      className="mt-1 bg-blue-600 hover:bg-blue-700"
+                      className="mt-1 bg-blue-600 hover:bg-blue-700 text-white"
                     >
                       <Upload className="mr-2 h-4 w-4" />
                       Choose Resume File
                     </Button>
                     {resumeFileName && (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm" style={{ color: '#475569' }}>
                         File: {resumeFileName}
                       </p>
                     )}
