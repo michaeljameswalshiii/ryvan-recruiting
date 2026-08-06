@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
   Briefcase,
   Calendar,
   CheckCircle2,
-  ChevronRight,
   DollarSign,
   Linkedin,
   Mail,
@@ -15,7 +14,6 @@ import {
   Phone,
   PhoneCall,
   Sparkles,
-  Video,
 } from "lucide-react";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { Button } from "@/components/ui/button";
@@ -24,7 +22,6 @@ import {
   activityBadgeStyle,
 } from "@/lib/ui/activity-badge-colors";
 import { normalizeNoteTypeLabel } from "@/lib/candidates/note-type-stage";
-import { resolveActivityJobTagInTimeline } from "@/lib/candidates/activity-focus";
 
 function date(value?: string) {
   if (!value) return "—";
@@ -102,6 +99,19 @@ const PIPELINE = [
   "accepted",
 ];
 
+function normalizedStage(value?: string) {
+  return String(value || "sourced").toLowerCase().replace(/\s+/g, "_");
+}
+
+function isRejectedApplication(job: any) {
+  return normalizedStage(job?.stage) === "rejected";
+}
+
+function applicationRank(job: any) {
+  if (isRejectedApplication(job)) return -1;
+  return Math.max(0, PIPELINE.indexOf(normalizedStage(job?.stage)));
+}
+
 export function CandidateDetailV2({
   candidate,
   initialJobId = "",
@@ -110,9 +120,25 @@ export function CandidateDetailV2({
   initialJobId?: string;
 }) {
   const jobs = Array.isArray(candidate?.linkedJobs) ? candidate.linkedJobs : [];
-  const [filter, setFilter] = useState(
-    initialJobId || jobs[0]?.jobId || jobs[0]?.id || "all",
+  const orderedJobs = [...jobs].sort((a: any, b: any) => {
+    const rankDifference = applicationRank(b) - applicationRank(a);
+    if (rankDifference) return rankDifference;
+    const aUpdated = new Date(a?.stageUpdatedAt || a?.createdAt || 0).getTime();
+    const bUpdated = new Date(b?.stageUpdatedAt || b?.createdAt || 0).getTime();
+    return bUpdated - aUpdated;
+  });
+  const requestedJob = orderedJobs.find(
+    (job: any) => String(job?.jobId || job?.id) === String(initialJobId),
   );
+  const defaultJob =
+    (requestedJob && !isRejectedApplication(requestedJob)
+      ? requestedJob
+      : orderedJobs.find((job: any) => !isRejectedApplication(job))) ||
+    orderedJobs[0];
+  const [selectedJobId, setSelectedJobId] = useState(
+    String(defaultJob?.jobId || defaultJob?.id || ""),
+  );
+  const [showAllApplications, setShowAllApplications] = useState(false);
   const [notes, setNotes] = useState<any[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [resumeUrl, setResumeUrl] = useState(candidate?.resumeUrl || "");
@@ -121,10 +147,6 @@ export function CandidateDetailV2({
   const [avatarUrl, setAvatarUrl] = useState(candidate?.avatarUrl || "");
   const [avatarBusy, setAvatarBusy] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const [stage, setStage] = useState(
-    String(jobs[0]?.stage || candidate?.status || "sourced").toLowerCase(),
-  );
-  const [stageBusy, setStageBusy] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [noteType, setNoteType] = useState("Conversation");
   const [noteBusy, setNoteBusy] = useState(false);
@@ -161,41 +183,16 @@ export function CandidateDetailV2({
     };
   }, [candidate.id]);
 
-  const visibleNotes = useMemo(() => {
-    if (filter === "all") return notes;
-    if (filter === "candidate") {
-      return notes.filter((note) => {
-        const tag = resolveActivityJobTagInTimeline(note, jobs, notes);
-        return !tag.jobId && !tag.jobTitle;
-      });
-    }
-    const selectedJob = jobs.find(
-      (job: any) => String(job?.jobId || job?.id || "") === String(filter),
-    );
-    const selectedTitle = String(
-      selectedJob?.jobTitle || selectedJob?.title || "",
-    )
-      .toLowerCase()
-      .trim();
-    return notes.filter((note) => {
-      const tag = resolveActivityJobTagInTimeline(note, jobs, notes);
-      if (String(tag.jobId || "") === String(filter)) return true;
-      const tagTitle = String(tag.jobTitle || "")
-        .toLowerCase()
-        .trim();
-      return Boolean(
-        selectedTitle &&
-        tagTitle &&
-        (tagTitle === selectedTitle ||
-          tagTitle.includes(selectedTitle) ||
-          selectedTitle.includes(tagTitle)),
-      );
-    });
-  }, [filter, jobs, notes]);
+  const visibleNotes = notes;
+  const visibleApplications = showAllApplications
+    ? orderedJobs
+    : orderedJobs.filter((job: any) => !isRejectedApplication(job));
 
   const currentJob =
-    jobs.find((job: any) => String(job.jobId || job.id) === String(filter)) ||
-    jobs[0];
+    orderedJobs.find(
+      (job: any) =>
+        String(job.jobId || job.id) === String(selectedJobId),
+    ) || defaultJob;
   const currentJobTitle = currentJob?.jobTitle || currentJob?.title || "";
   const currentCompany =
     currentJob?.companyName ||
@@ -231,13 +228,9 @@ export function CandidateDetailV2({
       setFitBusy(false);
     }
   };
-  const currentStageIndex = Math.max(0, PIPELINE.indexOf(stage));
   useEffect(() => {
-    setStage(
-      String(currentJob?.stage || candidate?.status || "sourced").toLowerCase(),
-    );
     setFitOverlay(null);
-  }, [filter, currentJob, candidate?.status]);
+  }, [selectedJobId]);
   const uploadAvatar = async (file?: File) => {
     if (!file || !file.type.startsWith("image/")) return;
     setAvatarBusy(true);
@@ -269,30 +262,6 @@ export function CandidateDetailV2({
       setAvatarUrl(dataUrl);
     } finally {
       setAvatarBusy(false);
-    }
-  };
-  const updateStage = async (next: string) => {
-    setStageBusy(true);
-    const previous = stage;
-    setStage(next);
-    try {
-      const response = await fetch(`/api/candidate/${candidate.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobId: currentJob?.jobId || currentJob?.id,
-          applicationStage: next,
-        }),
-      });
-      if (!response.ok) throw new Error("Unable to update stage");
-      const events = await fetch(
-        `/api/candidate/${candidate.id}/events?limit=100`,
-      ).then((r) => r.json());
-      setNotes(Array.isArray(events?.events) ? events.events : []);
-    } catch {
-      setStage(previous);
-    } finally {
-      setStageBusy(false);
     }
   };
   const addActivity = async () => {
@@ -347,7 +316,7 @@ export function CandidateDetailV2({
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2.2fr)_minmax(360px,1fr)]">
           <div className="space-y-4">
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <section className="px-1 py-2 sm:px-2">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <button
@@ -461,39 +430,7 @@ export function CandidateDetailV2({
                         Text
                       </a>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNoteType("Interview");
-                        setNoteText("Interview scheduled: ");
-                      }}
-                      className="rounded-md border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-800 hover:bg-orange-100"
-                    >
-                      Schedule interview
-                    </button>
                   </div>
-                </div>
-              </div>
-              <div className="rounded-xl border-2 border-blue-500 bg-blue-50/40 p-3 lg:min-w-[300px]">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Current Job (Viewing)
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-3">
-                  <span className="truncate text-sm font-semibold text-blue-800">
-                    {currentJob?.jobTitle ||
-                      currentJob?.title ||
-                      "No job selected"}
-                  </span>
-                  <ChevronRight className="h-4 w-4 text-blue-600" />
-                </div>
-                <div className="mt-1 text-xs text-slate-600">
-                  {stageLabel(currentJob?.stage || candidate?.status)} · Applied{" "}
-                  {date(
-                    currentJob?.appliedAt ||
-                      currentJob?.applied_at ||
-                      currentJob?.createdAt ||
-                      candidate?.createdAt,
-                  )}
                 </div>
               </div>
             </div>
@@ -593,149 +530,115 @@ export function CandidateDetailV2({
                   </h2>
                   <Briefcase className="h-4 w-4 text-slate-400" />
                 </div>
-                <div className="space-y-2">
-                  {jobs.map((job: any, index: number) => {
+                <div className="space-y-3">
+                  {visibleApplications.map((job: any, index: number) => {
                     const id = String(job.jobId || job.id || index);
-                    const active = id === String(filter);
+                    const active = id === String(selectedJobId);
+                    const rejected = isRejectedApplication(job);
+                    const track = rejected
+                      ? [
+                          "sourced",
+                          "applied",
+                          "interested",
+                          "submitted",
+                          "interviewing",
+                          "rejected",
+                        ]
+                      : PIPELINE;
+                    const activeStageIndex = rejected
+                      ? track.length - 1
+                      : Math.max(0, track.indexOf(normalizedStage(job.stage)));
                     return (
                       <button
                         key={id}
                         type="button"
-                        onClick={() => setFilter(id)}
-                        className={`w-full rounded-lg border p-3 text-left ${active ? "border-blue-500 bg-blue-50/50" : "border-slate-200 hover:border-blue-300"}`}
+                        onClick={() => setSelectedJobId(id)}
+                        className={`w-full rounded-lg border p-3 text-left transition ${rejected ? "border-red-200 bg-red-50/30" : active ? "border-blue-500 bg-blue-50/40 ring-1 ring-blue-100" : "border-slate-200 hover:border-blue-300"}`}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <span className="text-sm font-semibold">
-                            {job.jobTitle || job.title || "Untitled job"}
-                          </span>
-                          <span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+                          <div>
+                            <div className="text-sm font-semibold">
+                              {job.jobTitle || job.title || "Untitled job"}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {job.companyName ||
+                                job.company_name ||
+                                job.company ||
+                                "Company not specified"}
+                            </div>
+                          </div>
+                          <span
+                            className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${rejected ? "bg-red-100 text-red-700" : "bg-blue-50 text-blue-700"}`}
+                          >
                             {stageLabel(job.stage)}
                           </span>
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">
-                          {job.companyName ||
-                            job.company_name ||
-                            job.company ||
-                            "Company not specified"}
+                        <div className="mt-4 flex w-full items-start">
+                          {track.map((item, stageIndex) => {
+                            const reached = stageIndex <= activeStageIndex;
+                            const rejectedStep = item === "rejected";
+                            return (
+                              <div
+                                key={item}
+                                className="relative flex min-w-0 flex-1 flex-col items-center"
+                              >
+                                {stageIndex > 0 && (
+                                  <span
+                                    className={`absolute right-1/2 top-1.5 h-0.5 w-full ${reached ? rejectedStep ? "bg-red-400" : "bg-emerald-500" : "bg-slate-200"}`}
+                                  />
+                                )}
+                                <span
+                                  className={`relative z-10 flex h-3 w-3 items-center justify-center rounded-full border text-[7px] ${reached ? rejectedStep ? "border-red-500 bg-red-500 text-white" : "border-emerald-600 bg-emerald-600 text-white" : "border-slate-300 bg-white text-transparent"}`}
+                                >
+                                  {reached ? "✓" : ""}
+                                </span>
+                                <span className="mt-1 w-full truncate text-center text-[8px] text-slate-500">
+                                  {stageLabel(item)}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <div className="mt-2 text-[11px] text-slate-500">
-                          Applied{" "}
-                          {date(
-                            job.appliedAt ||
-                              job.applied_at ||
-                              job.createdAt ||
-                              candidate?.createdAt,
-                          )}
+                        <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
+                          <span>
+                            Applied {date(job.appliedAt || job.applied_at || job.createdAt || candidate?.createdAt)}
+                          </span>
+                          <span>
+                            {rejected ? "Rejected" : "Last Updated"}{" "}
+                            {date(job.stageUpdatedAt || job.modifiedAt || job.fitScoredAt)}
+                          </span>
                         </div>
                       </button>
                     );
                   })}
-                  {!jobs.length && (
+                  {!visibleApplications.length && (
                     <p className="py-5 text-center text-sm text-slate-500">
-                      No applications yet.
+                      No active applications.
                     </p>
                   )}
-                </div>
-              </section>
-              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-700">
-                  Pipeline Stage
-                </h2>
-                <div className="flex flex-wrap items-center gap-1">
-                  {PIPELINE.map((item, index) => (
+                  {jobs.some((job: any) => isRejectedApplication(job)) && (
                     <button
-                      key={item}
                       type="button"
-                      disabled={stageBusy}
-                      onClick={() => void updateStage(item)}
-                      className={`rounded-md border px-2 py-1.5 text-[10px] font-semibold transition ${index === currentStageIndex ? "border-blue-600 bg-blue-600 text-white" : index < currentStageIndex ? "border-blue-200 bg-blue-50 text-blue-800" : "border-slate-200 bg-white text-slate-500 hover:border-blue-300"}`}
+                      onClick={() => setShowAllApplications((value) => !value)}
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"
                     >
-                      {stageLabel(item)}
+                      {showAllApplications
+                        ? "Hide Rejected Applications"
+                        : "View All Applications"}
                     </button>
-                  ))}
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 text-xs"
-                    disabled={stageBusy || currentStageIndex === 0}
-                    onClick={() =>
-                      void updateStage(
-                        PIPELINE[Math.max(0, currentStageIndex - 1)],
-                      )
-                    }
-                  >
-                    Move Back
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="h-8 bg-blue-600 text-xs hover:bg-blue-700"
-                    disabled={
-                      stageBusy || currentStageIndex >= PIPELINE.length - 1
-                    }
-                    onClick={() =>
-                      void updateStage(
-                        PIPELINE[
-                          Math.min(PIPELINE.length - 1, currentStageIndex + 1)
-                        ],
-                      )
-                    }
-                  >
-                    Advance Stage
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 border-red-200 text-xs text-red-700 hover:bg-red-50"
-                    disabled={stageBusy}
-                    onClick={() => void updateStage("rejected")}
-                  >
-                    Reject
-                  </Button>
+                  )}
                 </div>
               </section>
             </div>
 
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                    Candidate Activity Timeline
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Only activity for the selected job is shown.
-                  </p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setFilter("all")}
-                    className={`rounded-md px-2 py-1 text-[11px] font-semibold ${filter === "all" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}
-                  >
-                    All
-                  </button>
-                  <button
-                    onClick={() => setFilter("candidate")}
-                    className={`rounded-md px-2 py-1 text-[11px] font-semibold ${filter === "candidate" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}
-                  >
-                    Candidate
-                  </button>
-                </div>
-              </div>
-              <div className="mb-3 flex flex-wrap gap-1.5">
-                {jobs.map((job: any, index: number) => {
-                  const id = String(job?.jobId || job?.id || index);
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setFilter(id)}
-                      className={`max-w-[12rem] truncate rounded-full border px-2.5 py-1 text-[11px] font-semibold ${String(filter) === id ? "border-violet-300 bg-violet-50 text-violet-900" : "border-slate-200 bg-white text-slate-600 hover:border-violet-200"}`}
-                    >
-                      {job?.jobTitle || job?.title || "Job"}
-                    </button>
-                  );
-                })}
+              <div className="mb-3">
+                <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                  Candidate Activity Timeline
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  All activity for this candidate is shown.
+                </p>
               </div>
               <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/40 p-2.5">
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -838,7 +741,7 @@ export function CandidateDetailV2({
                   })
                 ) : (
                   <p className="py-10 text-center text-sm text-slate-500">
-                    No activity for this filter.
+                    No activity yet.
                   </p>
                 )}
               </div>
