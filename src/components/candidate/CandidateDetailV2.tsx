@@ -522,7 +522,7 @@ export function CandidateDetailV2({
           </section>
 
           <div className="grid items-start gap-4 xl:grid-cols-[minmax(230px,0.85fr)_minmax(390px,1.35fr)]">
-            <div className="space-y-4">
+            <div className="space-y-4 xl:sticky xl:top-20 xl:self-start">
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
@@ -532,7 +532,8 @@ export function CandidateDetailV2({
                 </div>
                 <div className="space-y-3">
                   {visibleApplications.map((job: any, index: number) => {
-                    const id = String(job.jobId || job.id || index);
+                    const jobId = String(job.jobId || job.id || "");
+                    const id = jobId || `application-${index}`;
                     const active = id === String(selectedJobId);
                     const rejected = isRejectedApplication(job);
                     const track = rejected
@@ -549,17 +550,31 @@ export function CandidateDetailV2({
                       ? track.length - 1
                       : Math.max(0, track.indexOf(normalizedStage(job.stage)));
                     return (
-                      <button
+                      <div
                         key={id}
-                        type="button"
-                        onClick={() => setSelectedJobId(id)}
-                        className={`w-full rounded-lg border p-3 text-left transition ${rejected ? "border-red-200 bg-red-50/30" : active ? "border-blue-500 bg-blue-50/40 ring-1 ring-blue-100" : "border-slate-200 hover:border-blue-300"}`}
+                        className={`relative w-full rounded-lg border p-3 text-left transition ${rejected ? "border-red-200 bg-red-50/30" : active ? "border-blue-500 bg-blue-50/40 ring-1 ring-blue-100" : "border-slate-200 hover:border-blue-300"}`}
                       >
-                        <div className="flex items-start justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedJobId(id)}
+                          aria-label={`Select ${job.jobTitle || job.title || "application"}`}
+                          aria-pressed={active}
+                          className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                        />
+                        <div className="pointer-events-none relative flex items-start justify-between gap-2">
                           <div>
-                            <div className="text-sm font-semibold">
-                              {job.jobTitle || job.title || "Untitled job"}
-                            </div>
+                            {jobId ? (
+                              <Link
+                                href={`/dashboard/jobs/${encodeURIComponent(jobId)}`}
+                                className="pointer-events-auto relative z-10 text-sm font-semibold text-slate-900 hover:text-blue-700 hover:underline"
+                              >
+                                {job.jobTitle || job.title || "Untitled job"}
+                              </Link>
+                            ) : (
+                              <div className="text-sm font-semibold">
+                                {job.jobTitle || job.title || "Untitled job"}
+                              </div>
+                            )}
                             <div className="mt-1 text-xs text-slate-500">
                               {job.companyName ||
                                 job.company_name ||
@@ -573,7 +588,7 @@ export function CandidateDetailV2({
                             {stageLabel(job.stage)}
                           </span>
                         </div>
-                        <div className="mt-4 flex w-full items-start">
+                        <div className="pointer-events-none relative mt-4 flex w-full items-start">
                           {track.map((item, stageIndex) => {
                             const reached = stageIndex <= activeStageIndex;
                             const rejectedStep = item === "rejected";
@@ -599,7 +614,7 @@ export function CandidateDetailV2({
                             );
                           })}
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
+                        <div className="pointer-events-none relative mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
                           <span>
                             Applied {date(job.appliedAt || job.applied_at || job.createdAt || candidate?.createdAt)}
                           </span>
@@ -608,7 +623,7 @@ export function CandidateDetailV2({
                             {date(job.stageUpdatedAt || job.modifiedAt || job.fitScoredAt)}
                           </span>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                   {!visibleApplications.length && (
@@ -689,6 +704,24 @@ export function CandidateDetailV2({
                 ) : visibleNotes.length ? (
                   visibleNotes.map((note: any, index: number) => {
                     const kind = eventKind(note);
+                    const activityJobTitle =
+                      note.metadata?.jobTitle || note.jobTitle || "";
+                    const matchingJob = orderedJobs.find((job: any) => {
+                      const title = job.jobTitle || job.title || "";
+                      return (
+                        activityJobTitle &&
+                        title.toLowerCase() === activityJobTitle.toLowerCase()
+                      );
+                    });
+                    const activityJobId = String(
+                      note.metadata?.jobId ||
+                        note.metadata?.job_id ||
+                        note.jobId ||
+                        note.job_id ||
+                        matchingJob?.jobId ||
+                        matchingJob?.id ||
+                        "",
+                    );
                     const EventIcon =
                       kind === "interview"
                         ? Calendar
@@ -725,12 +758,22 @@ export function CandidateDetailV2({
                             "Activity recorded."}
                         </p>
                         {(note.metadata?.jobTitle ||
+                          note.jobTitle ||
                           note.metadata?.companyName ||
                           note.createdBy) && (
                           <div className="mt-2 text-[11px] text-slate-500">
-                            {note.metadata?.jobTitle ||
+                            {activityJobTitle && activityJobId ? (
+                              <Link
+                                href={`/dashboard/jobs/${encodeURIComponent(activityJobId)}`}
+                                className="font-medium text-blue-700 hover:underline"
+                              >
+                                {activityJobTitle}
+                              </Link>
+                            ) : (
+                              activityJobTitle ||
                               note.metadata?.companyName ||
-                              ""}
+                              ""
+                            )}
                             {note.createdBy
                               ? ` · Added by ${note.createdBy}`
                               : ""}
