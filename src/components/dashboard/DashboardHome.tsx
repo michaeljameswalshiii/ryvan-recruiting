@@ -310,7 +310,7 @@ export function DashboardHome({
       <div className="grid gap-4 lg:grid-cols-2">
         <DashboardCard title="Candidates added">
           <p className="mb-2 text-xs text-gray-500">{stats.periodLabel}</p>
-          <ResponsiveContainer width="100%" height={220}>
+          <ResponsiveContainer width="100%" height={170}>
             <AreaChart data={candidatesTrend}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} />
@@ -336,7 +336,7 @@ export function DashboardHome({
 
         <DashboardCard title="Companies added">
           <p className="mb-2 text-xs text-gray-500">{stats.periodLabel}</p>
-          <ResponsiveContainer width="100%" height={220}>
+          <ResponsiveContainer width="100%" height={170}>
             <AreaChart data={companiesTrend}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} />
