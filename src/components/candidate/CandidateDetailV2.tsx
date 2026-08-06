@@ -124,6 +124,9 @@ export function CandidateDetailV2({
     String(jobs[0]?.stage || candidate?.status || "sourced").toLowerCase(),
   );
   const [stageBusy, setStageBusy] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [noteType, setNoteType] = useState("Conversation");
+  const [noteBusy, setNoteBusy] = useState(false);
   const name = candidate?.name || "Unknown candidate";
 
   useEffect(() => {
@@ -195,6 +198,11 @@ export function CandidateDetailV2({
     "";
   const fitScore = currentJob?.fitScore ?? currentJob?.fit_score;
   const currentStageIndex = Math.max(0, PIPELINE.indexOf(stage));
+  useEffect(() => {
+    setStage(
+      String(currentJob?.stage || candidate?.status || "sourced").toLowerCase(),
+    );
+  }, [filter, currentJob, candidate?.status]);
   const uploadAvatar = async (file?: File) => {
     if (!file || !file.type.startsWith("image/")) return;
     setAvatarBusy(true);
@@ -259,6 +267,31 @@ export function CandidateDetailV2({
       setStage(previous);
     } finally {
       setStageBusy(false);
+    }
+  };
+  const addActivity = async () => {
+    if (!noteText.trim()) return;
+    setNoteBusy(true);
+    try {
+      const response = await fetch(`/api/candidate/${candidate.id}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          noteText: noteText.trim(),
+          noteType,
+          jobId: currentJob?.jobId || currentJob?.id,
+          jobTitle: currentJobTitle,
+          companyName: currentCompany,
+        }),
+      });
+      if (!response.ok) throw new Error("Unable to add activity");
+      const events = await fetch(
+        `/api/candidate/${candidate.id}/events?limit=100`,
+      ).then((r) => r.json());
+      setNotes(Array.isArray(events?.events) ? events.events : []);
+      setNoteText("");
+    } finally {
+      setNoteBusy(false);
     }
   };
 
@@ -492,6 +525,12 @@ export function CandidateDetailV2({
                   <MapPin className="h-4 w-4 text-slate-400" />
                   {candidate?.location || "No location"}
                 </div>
+                {candidate?.salaryRequirements && (
+                  <div className="flex gap-2">
+                    <span className="w-4 text-center text-slate-400">$</span>
+                    {candidate.salaryRequirements}
+                  </div>
+                )}
                 {candidate?.linkedin && (
                   <a
                     className="flex items-center gap-2 text-blue-700 hover:underline"
@@ -503,6 +542,19 @@ export function CandidateDetailV2({
                   </a>
                 )}
               </div>
+              {Array.isArray(candidate?.skills) &&
+                candidate.skills.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {candidate.skills.slice(0, 12).map((skill: string) => (
+                      <span
+                        key={skill}
+                        className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-800"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                )}
             </section>
           </div>
 
@@ -529,6 +581,62 @@ export function CandidateDetailV2({
                 >
                   Candidate
                 </button>
+              </div>
+            </div>
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {jobs.map((job: any, index: number) => {
+                const id = String(job?.jobId || job?.id || index);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setFilter(id)}
+                    className={`max-w-[12rem] truncate rounded-full border px-2.5 py-1 text-[11px] font-semibold ${String(filter) === id ? "border-violet-300 bg-violet-50 text-violet-900" : "border-slate-200 bg-white text-slate-600 hover:border-violet-200"}`}
+                  >
+                    {job?.jobTitle || job?.title || "Job"}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/40 p-2.5">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <select
+                  value={noteType}
+                  onChange={(event) => setNoteType(event.target.value)}
+                  className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs sm:w-36"
+                >
+                  <option>Conversation</option>
+                  <option>Interview</option>
+                  <option>Call</option>
+                  <option>Email sent</option>
+                  <option>Text sent</option>
+                  <option>Note</option>
+                  <option>Rejected</option>
+                </select>
+                <input
+                  value={noteText}
+                  onChange={(event) => setNoteText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void addActivity();
+                    }
+                  }}
+                  placeholder={
+                    currentJob
+                      ? `Add activity for ${currentJobTitle}...`
+                      : "Add activity..."
+                  }
+                  className="h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                />
+                <Button
+                  size="sm"
+                  disabled={noteBusy || !noteText.trim()}
+                  onClick={() => void addActivity()}
+                  className="h-9 bg-blue-600 text-xs hover:bg-blue-700"
+                >
+                  {noteBusy ? "Saving..." : "Log"}
+                </Button>
               </div>
             </div>
             <div className="max-h-[680px] space-y-2 overflow-y-auto pr-1">
