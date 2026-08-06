@@ -809,7 +809,17 @@ export function CandidateDetailV2({
               <div className="mb-3 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
                 <div>
                   <div className="text-xs text-slate-500">Overall fit</div>
-                  <div className="mt-1 text-3xl font-semibold text-emerald-700">
+                  <div
+                    className="relative mt-2 flex h-20 w-20 items-center justify-center rounded-full"
+                    style={{
+                      background: `conic-gradient(#16a34a ${Math.max(0, Math.min(100, Number(fitScore) || 0)) * 3.6}deg, #d1d5db 0deg)`,
+                    }}
+                  >
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-lg font-semibold text-slate-900">
+                      {fitScore != null ? Math.round(Number(fitScore)) : "—"}
+                    </div>
+                  </div>
+                  <div className="hidden mt-1 text-3xl font-semibold text-emerald-700">
                     {fitScore != null ? `${fitScore}/100` : "—"}
                   </div>
                   <div className="mt-1 text-xs font-semibold text-emerald-700">
