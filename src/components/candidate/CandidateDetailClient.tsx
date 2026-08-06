@@ -1690,6 +1690,75 @@ export function CandidateDetailClient({ candidate, initialJobId = '' }: Candidat
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
           {/* Left column */}
           <div className="xl:col-span-7 space-y-5">
+            {/* Applications — the candidate's job-specific view */}
+            <section data-ink-on-light className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
+                  Applications ({linkedJobs.length})
+                </h2>
+                <Button variant="ghost" size="sm" className="h-8 text-xs text-blue-700" onClick={() => setLinkJobOpen(true)}>
+                  <Link2 className="mr-1 h-3.5 w-3.5" /> Add to Job
+                </Button>
+              </div>
+              {linkedJobs.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-gray-200 px-3 py-5 text-center text-sm text-gray-500">
+                  No applications yet. Attach this candidate to a job to start tracking their progress.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {linkedJobs.map((job: any, index: number) => {
+                    const jobId = String(job?.jobId || job?.id || '');
+                    const jobTitle = job?.jobTitle || job?.title || 'Untitled job';
+                    const company = job?.companyName || job?.company || 'Company not specified';
+                    const jobStage = stageDisplayLabel(job?.stage || status);
+                    const isCurrent = jobId === primaryLogJobId || (!primaryLogJobId && index === 0);
+                    const score = fitOverlayByJob[jobId]?.fitScore ?? job?.fitScore ?? job?.fit_score;
+                    return (
+                      <button
+                        key={jobId || index}
+                        type="button"
+                        onClick={() => {
+                          if (jobId) {
+                            setActivityJobFilter(jobId);
+                            setLogJobId(jobId);
+                          }
+                          setActiveTab('timeline');
+                        }}
+                        className={`w-full rounded-xl border p-3 text-left transition-colors hover:border-blue-300 hover:bg-blue-50/30 ${isCurrent ? 'border-blue-300 bg-blue-50/30' : 'border-gray-200'}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-gray-900">{jobTitle}</div>
+                            <div className="mt-0.5 truncate text-xs text-gray-500">{company}{job?.location ? ` · ${job.location}` : ''}</div>
+                          </div>
+                          <span className="shrink-0 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-800">{jobStage}</span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                          {job?.appliedAt || job?.createdAt ? <span>Applied {formatShortDate(job.appliedAt || job.createdAt)}</span> : null}
+                          {score !== undefined && score !== null ? <span className="font-semibold text-emerald-700">Fit {score}/100</span> : null}
+                          {isCurrent ? <span className="font-semibold text-blue-700">Current application</span> : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* Candidate details — compact contact card matching the reference layout */}
+            <section data-ink-on-light className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">Candidate Details</h2>
+                <button type="button" onClick={() => { setEditForm({ ...contactInfo }); setShowEditModal(true); }} className="text-xs font-semibold text-blue-700 hover:underline">Edit</button>
+              </div>
+              <div className="grid gap-3 text-sm sm:grid-cols-2">
+                <div className="flex items-center gap-2 text-gray-600"><Mail className="h-4 w-4 text-gray-400" /><span className="truncate">{contactInfo.email || 'No email'}</span></div>
+                <div className="flex items-center gap-2 text-gray-600"><Phone className="h-4 w-4 text-gray-400" /><span>{contactInfo.phone || 'No phone'}</span></div>
+                <div className="flex items-center gap-2 text-gray-600"><MapPin className="h-4 w-4 text-gray-400" /><span>{contactInfo.location || 'No location'}</span></div>
+                {contactInfo.linkedin ? <a href={/^https?:\/\//i.test(contactInfo.linkedin) ? contactInfo.linkedin : `https://${contactInfo.linkedin}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[#0A66C2] hover:underline"><Linkedin className="h-4 w-4" /> LinkedIn</a> : null}
+              </div>
+            </section>
+
             {typeof safe.notes === 'string' && safe.notes.trim() && (
               <section className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-900/80">
