@@ -322,7 +322,7 @@ export default function JobPipelinePage() {
                           </div>
                           <div className="min-w-0">
                             <Link
-                              href={`/dashboard/candidates/${cid}`}
+                              href={`/dashboard/candidates/${cid}?jobId=${encodeURIComponent(jobId)}`}
                               className="font-medium text-blue-600 hover:underline truncate block"
                             >
                               {name}
@@ -391,7 +391,7 @@ export default function JobPipelinePage() {
                             size="sm"
                             className="h-8 text-xs text-slate-700"
                           >
-                            <Link href={`/dashboard/candidates/${cid}`}>
+                            <Link href={`/dashboard/candidates/${cid}?jobId=${encodeURIComponent(jobId)}`}>
                               <ExternalLink className="h-3.5 w-3.5 mr-1" />
                               Open
                             </Link>

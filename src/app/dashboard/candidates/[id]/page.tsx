@@ -5,10 +5,12 @@ import { getSessionTenantId } from "@/lib/server-auth";
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ jobId?: string }>;
 }
 
-export default async function CandidateDetailPage({ params }: Props) {
+export default async function CandidateDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const { jobId } = await searchParams;
 
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
@@ -66,5 +68,5 @@ export default async function CandidateDetailPage({ params }: Props) {
     linkedJobs: Array.isArray(c.linkedJobs) ? c.linkedJobs : [],
   };
 
-  return <CandidateDetailClient candidate={candidateData} />;
+  return <CandidateDetailClient candidate={candidateData} initialJobId={jobId || ''} />;
 }

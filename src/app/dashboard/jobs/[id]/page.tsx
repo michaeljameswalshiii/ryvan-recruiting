@@ -871,7 +871,7 @@ export default function JobDetailPage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                             <Link
-                              href={`/dashboard/candidates/${lc.candidateId}`}
+                              href={`/dashboard/candidates/${lc.candidateId}?jobId=${encodeURIComponent(jobId)}`}
                               className="text-sm font-medium text-blue-600 hover:underline truncate"
                             >
                               {name}

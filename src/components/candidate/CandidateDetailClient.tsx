@@ -251,9 +251,11 @@ function formatDateTime(value?: string) {
 
 interface CandidateDetailClientProps {
   candidate: any;
+  /** Job context preserved when opening a candidate from a job pipeline. */
+  initialJobId?: string;
 }
 
-export function CandidateDetailClient({ candidate }: CandidateDetailClientProps) {
+export function CandidateDetailClient({ candidate, initialJobId = '' }: CandidateDetailClientProps) {
   const router = useRouter();
   const safe = candidate || {};
   const candidateId = safe.id || '';
@@ -265,11 +267,11 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
   const [notesLoading, setNotesLoading] = useState(true);
   const [activityPage, setActivityPage] = useState(1);
   /** 'all' | jobId | 'candidate' (notes with no job tag) */
-  const [activityJobFilter, setActivityJobFilter] = useState<string>('all');
+  const [activityJobFilter, setActivityJobFilter] = useState<string>(initialJobId || 'all');
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('Conversation');
   /** Job tag for new notes — primary active linked job when present */
-  const [logJobId, setLogJobId] = useState<string>('');
+  const [logJobId, setLogJobId] = useState<string>(initialJobId);
   const [addingNote, setAddingNote] = useState(false);
   /** Inline edit state for activity log rows */
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -1267,6 +1269,15 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
     }
   }, [primaryLogJobId, linkedJobs, logJobId]);
 
+  // The candidate detail page is job-scoped by default. Keep the activity log
+  // aligned with the active job, while still allowing an explicit All jobs view.
+  useEffect(() => {
+    if (!primaryLogJobId) return;
+    setActivityJobFilter((current) =>
+      current === 'all' || current === 'candidate' ? primaryLogJobId : current
+    );
+  }, [primaryLogJobId]);
+
   /** Job chip for a row — timeline-aware (Rejected pivots, thread inheritance) */
   const jobTagFor = (note: any) =>
     resolveActivityJobTagInTimeline(note, linkedJobs, activityRows);
@@ -1782,8 +1793,8 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   Notes & Activity Log
                 </h2>
                 <p className="text-xs text-gray-400 mt-1">
-                  Full history for this candidate. Each note has an action type
-                  and optional job tag — filter chips are views only.
+                  Showing notes for the selected job by default. Use All jobs
+                  when you need the candidate’s complete history.
                 </p>
               </div>
 
@@ -1851,7 +1862,11 @@ export function CandidateDetailClient({ candidate }: CandidateDetailClientProps)
                   </select>
                   <select
                     value={logJobId}
-                    onChange={(e) => setLogJobId(e.target.value)}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setLogJobId(id);
+                      setActivityJobFilter(id || 'candidate');
+                    }}
                     className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm sm:min-w-[12rem] sm:max-w-[18rem]"
                     aria-label="Job for this note"
                   >
