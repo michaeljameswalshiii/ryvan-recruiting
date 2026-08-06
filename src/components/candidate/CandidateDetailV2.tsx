@@ -778,7 +778,7 @@ export function CandidateDetailV2({
             </div>
           </section>
 
-          <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+          <div className="space-y-4 xl:sticky xl:top-4 xl:-mt-[160px] xl:self-start">
             <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-4 py-3">
                 <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
