@@ -32,6 +32,10 @@ export function LoginForm() {
   const [success, setSuccess] = useState(false);
   const [mfa, setMfa] = useState<MfaState | null>(null);
   const [mfaCode, setMfaCode] = useState("");
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotMessage, setForgotMessage] = useState("");
+  const [forgotBusy, setForgotBusy] = useState(false);
 
   const registered = searchParams.get("registered");
   const redirectTo = searchParams.get("redirect") || "/dashboard";
@@ -123,6 +127,20 @@ export function LoginForm() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const onForgotPassword = async () => {
+    setForgotBusy(true); setForgotMessage("");
+    try {
+      const response = await fetch("/api/auth/forgot-password", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      const result = await response.json().catch(() => ({}));
+      setForgotMessage(result.message || "If an account matches that email, a reset link has been sent.");
+    } catch {
+      setForgotMessage("If an account matches that email, a reset link has been sent.");
+    } finally { setForgotBusy(false); }
   };
 
   if (mfa) {
@@ -258,6 +276,17 @@ export function LoginForm() {
           "Sign in"
         )}
       </button>
+      <button type="button" className="w-full text-sm text-blue-600 hover:underline" onClick={() => { setForgotOpen((v) => !v); setForgotEmail(getValues("email") || ""); setForgotMessage(""); }}>
+        Forgot password?
+      </button>
+      {forgotOpen && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+          <p className="text-xs text-slate-600">Enter your email and we’ll send a secure reset link.</p>
+          <Input type="email" required placeholder="name@company.com" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} />
+          <button type="button" disabled={forgotBusy} onClick={() => void onForgotPassword()} className="w-full h-9 rounded-md bg-slate-800 text-sm text-white disabled:opacity-50">{forgotBusy ? "Sending…" : "Send reset link"}</button>
+          {forgotMessage && <p className="text-xs text-green-700">{forgotMessage}</p>}
+        </div>
+      )}
       {/* Prefill email hidden helper for MFA back-nav */}
       <span className="sr-only">{getValues("email")}</span>
     </form>
