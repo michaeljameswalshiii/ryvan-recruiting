@@ -363,7 +363,7 @@ export function DashboardHome({
 
       {/* Active jobs + On Deck */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <DashboardCard title="Active jobs">
+        <DashboardCard title="Active jobs" defaultCollapsed>
           <div className="mb-3 flex items-center justify-between">
             <Link
               href="/dashboard/jobs"
@@ -406,7 +406,7 @@ export function DashboardHome({
 
       {/* Top sources + funnel */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <DashboardCard title="Top sources">
+        <DashboardCard title="Top sources" defaultCollapsed>
           <div className="space-y-2">
             {stats.sources.slice(0, 5).map((s) => (
               <div
@@ -434,7 +434,7 @@ export function DashboardHome({
           </div>
         </DashboardCard>
 
-        <DashboardCard title="Candidate funnel">
+        <DashboardCard title="Candidate funnel" defaultCollapsed>
           <div className="mb-4 flex items-center justify-between">
             <div>
               <p className="text-xs text-gray-500">

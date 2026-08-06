@@ -208,7 +208,7 @@ export function DeskNextActions({
   // ── On Deck card (dashboard pulse design) ──────────────────────────
   if (onDeck) {
     return (
-      <DashboardCard title="On deck" className={className}>
+      <DashboardCard title="On deck" className={className} defaultCollapsed>
         <div className="mb-3 flex items-start justify-between gap-2">
           <p className="mt-0.5 text-xs text-gray-500">
             Action items to keep your pipeline moving.
