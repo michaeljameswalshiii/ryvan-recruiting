@@ -23,6 +23,7 @@ import {
   activityBadgeStyle,
 } from "@/lib/ui/activity-badge-colors";
 import { normalizeNoteTypeLabel } from "@/lib/candidates/note-type-stage";
+import { resolveActivityJobTagInTimeline } from "@/lib/candidates/activity-focus";
 
 function date(value?: string) {
   if (!value) return "—";
@@ -150,13 +151,33 @@ export function CandidateDetailV2({
 
   const visibleNotes = useMemo(() => {
     if (filter === "all") return notes;
+    if (filter === "candidate") {
+      return notes.filter((note) => {
+        const tag = resolveActivityJobTagInTimeline(note, jobs, notes);
+        return !tag.jobId && !tag.jobTitle;
+      });
+    }
+    const selectedJob = jobs.find(
+      (job: any) => String(job?.jobId || job?.id || "") === String(filter),
+    );
+    const selectedTitle = String(
+      selectedJob?.jobTitle || selectedJob?.title || "",
+    )
+      .toLowerCase()
+      .trim();
     return notes.filter((note) => {
-      const jobId = String(
-        note?.jobId || note?.metadata?.jobId || note?.job_id || "",
+      const tag = resolveActivityJobTagInTimeline(note, jobs, notes);
+      if (String(tag.jobId || "") === String(filter)) return true;
+      const tagTitle = String(tag.jobTitle || "").toLowerCase().trim();
+      return Boolean(
+        selectedTitle &&
+          tagTitle &&
+          (tagTitle === selectedTitle ||
+            tagTitle.includes(selectedTitle) ||
+            selectedTitle.includes(tagTitle)),
       );
-      return jobId === String(filter) || (!jobId && filter === "candidate");
     });
-  }, [filter, notes]);
+  }, [filter, jobs, notes]);
 
   const currentJob =
     jobs.find((job: any) => String(job.jobId || job.id) === String(filter)) ||
