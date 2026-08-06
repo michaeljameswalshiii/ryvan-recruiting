@@ -341,9 +341,9 @@ export function CandidateDetailV2({
           </Link>
         </div>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <section className="bg-transparent p-0 shadow-none">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 items-center gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
               <button
                 type="button"
                 onClick={() => avatarInputRef.current?.click()}
@@ -447,7 +447,7 @@ export function CandidateDetailV2({
             </div>
             <div className="rounded-xl border-2 border-blue-500 bg-blue-50/40 p-3 lg:min-w-[300px]">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Current job
+                Current Job (Viewing)
               </div>
               <div className="mt-1 flex items-center justify-between gap-3">
                 <span className="truncate text-sm font-semibold text-blue-800">
