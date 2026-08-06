@@ -24,7 +24,6 @@ import {
   Briefcase,
   Building2,
   Target,
-  Clock,
   TrendingUp,
   Sparkles,
   ArrowUpRight,
@@ -33,6 +32,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { DeskNextActions } from '@/components/desk/DeskNextActions';
+import { DashboardCard } from '@/components/dashboard/DashboardCard';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#64748b'];
 
@@ -44,12 +44,9 @@ const PERIODS: { key: PeriodKey; label: string }[] = [
 ];
 
 function DeltaBadge({ deltaPct }: { deltaPct: number | null }) {
+  // Hide when we have no prior baseline (avoids noisy "− n/a")
   if (deltaPct === null) {
-    return (
-      <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-slate-600">
-        <Minus className="h-3 w-3" /> n/a
-      </span>
-    );
+    return <span className="h-4" aria-hidden />;
   }
   if (deltaPct === 0) {
     return (
@@ -116,15 +113,17 @@ export function DashboardHome({
 
   const funnelMax = Math.max(...stats.funnel.map((f) => f.count), 1);
 
+  // KPI set: Interviews · Open jobs · New candidates · New companies · Placements
+  // (same card chrome; metrics + drill links aligned to each page)
   const kpis = [
     {
-      title: 'Placements',
-      value: stats.placementsKpi.value,
-      delta: stats.placementsKpi.deltaPct,
-      sub: `vs prior (${stats.placementsKpi.previous})`,
-      icon: Target,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50',
+      title: 'Interviews',
+      value: stats.interviewsKpi?.value ?? stats.interviews ?? 0,
+      delta: stats.interviewsKpi?.deltaPct ?? null,
+      sub: `${stats.inMotion} in motion`,
+      icon: Users,
+      color: 'text-violet-600',
+      bg: 'bg-violet-50',
       href: '/dashboard/candidates',
     },
     {
@@ -138,16 +137,6 @@ export function DashboardHome({
       href: '/dashboard/jobs',
     },
     {
-      title: 'In motion',
-      value: stats.inMotion,
-      delta: null as number | null,
-      sub: `${stats.totalCandidates} total candidates`,
-      icon: Users,
-      color: 'text-violet-600',
-      bg: 'bg-violet-50',
-      href: '/dashboard/candidates',
-    },
-    {
       title: 'New candidates',
       value: stats.candidatesAddedKpi.value,
       delta: stats.candidatesAddedKpi.deltaPct,
@@ -158,9 +147,9 @@ export function DashboardHome({
       href: '/dashboard/candidates',
     },
     {
-      title: 'Companies',
-      value: stats.companies.total,
-      delta: null as number | null,
+      title: 'New companies',
+      value: stats.companiesAddedKpi?.value ?? 0,
+      delta: stats.companiesAddedKpi?.deltaPct ?? null,
       sub: `${stats.companies.closedWon} closed won`,
       icon: Building2,
       color: 'text-indigo-600',
@@ -168,18 +157,14 @@ export function DashboardHome({
       href: '/dashboard/companies',
     },
     {
-      title: 'Time to hire',
-      value: stats.avgTimeToHire > 0 ? `${stats.avgTimeToHire}d` : '—',
-      delta: null as number | null,
-      sub:
-        stats.avgTimeToFill > 0
-          ? `Fill avg ${stats.avgTimeToFill}d`
-          : 'Avg for placed',
-      icon: Clock,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50',
+      title: 'Placements',
+      value: stats.placementsKpi.value,
+      delta: stats.placementsKpi.deltaPct,
+      sub: `vs prior (${stats.placementsKpi.previous})`,
+      icon: Target,
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-50',
       href: '/dashboard/candidates',
-      isString: true,
     },
   ];
 
@@ -217,13 +202,10 @@ export function DashboardHome({
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
         {kpis.map((c) => (
-          <Link
-            key={c.title}
-            href={c.href}
-            className="surface-light rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm hover:border-blue-200 hover:shadow transition-all"
-          >
+          <DashboardCard key={c.title} title={c.title} className="overflow-hidden">
+          <Link href={c.href} className="block hover:opacity-90 transition-opacity">
             <div className="flex items-start justify-between gap-2">
               <div className={`p-2 rounded-xl ${c.bg}`}>
                 <c.icon className={`h-4 w-4 ${c.color}`} />
@@ -231,15 +213,13 @@ export function DashboardHome({
               <DeltaBadge deltaPct={c.delta} />
             </div>
             <div className="mt-3 text-2xl font-semibold tabular-nums text-slate-900">
-              {c.isString ? c.value : Number(c.value).toLocaleString()}
-            </div>
-            <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-700">
-              {c.title}
+              {Number(c.value).toLocaleString()}
             </div>
             <div className="mt-0.5 truncate text-[11px] font-medium text-slate-600">
               {c.sub}
             </div>
           </Link>
+          </DashboardCard>
         ))}
       </div>
 
@@ -306,13 +286,8 @@ export function DashboardHome({
 
       {/* Trend charts: candidates + companies */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="mb-2">
-            <h2 className="text-base font-semibold text-gray-900">
-              Candidates added
-            </h2>
-            <p className="text-xs text-gray-500">{stats.periodLabel}</p>
-          </div>
+        <DashboardCard title="Candidates added">
+          <p className="mb-2 text-xs text-gray-500">{stats.periodLabel}</p>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={candidatesTrend}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -335,15 +310,10 @@ export function DashboardHome({
               />
             </AreaChart>
           </ResponsiveContainer>
-        </div>
+        </DashboardCard>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="mb-2">
-            <h2 className="text-base font-semibold text-gray-900">
-              Companies added
-            </h2>
-            <p className="text-xs text-gray-500">{stats.periodLabel}</p>
-          </div>
+        <DashboardCard title="Companies added">
+          <p className="mb-2 text-xs text-gray-500">{stats.periodLabel}</p>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={companiesTrend}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -366,14 +336,13 @@ export function DashboardHome({
               />
             </AreaChart>
           </ResponsiveContainer>
-        </div>
+        </DashboardCard>
       </div>
 
       {/* Active jobs + On Deck */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <DashboardCard title="Active jobs">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-gray-900">Active jobs</h2>
             <Link
               href="/dashboard/jobs"
               className="text-xs font-medium text-blue-600 hover:underline"
@@ -408,17 +377,14 @@ export function DashboardHome({
               <p className="py-8 text-center text-sm text-gray-500">No open jobs</p>
             )}
           </div>
-        </div>
+        </DashboardCard>
 
         <DeskNextActions variant="onDeck" limit={8} />
       </div>
 
       {/* Top sources + funnel */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="mb-3">
-            <h2 className="text-base font-semibold text-gray-900">Top sources</h2>
-          </div>
+        <DashboardCard title="Top sources">
           <div className="space-y-2">
             {stats.sources.slice(0, 5).map((s) => (
               <div
@@ -444,14 +410,11 @@ export function DashboardHome({
               </p>
             )}
           </div>
-        </div>
+        </DashboardCard>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <DashboardCard title="Candidate funnel">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-gray-900">
-                Candidate funnel
-              </h2>
               <p className="text-xs text-gray-500">
                 Reached stage or beyond · conversion between steps
               </p>
@@ -496,7 +459,7 @@ export function DashboardHome({
               );
             })}
           </div>
-        </div>
+        </DashboardCard>
       </div>
     </div>
   );
