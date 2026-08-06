@@ -244,21 +244,12 @@ export function CandidateDetailV2({
       const response = await fetch(`/api/candidate/${candidate.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: next }),
-      });
-      if (!response.ok) throw new Error("Unable to update stage");
-      await fetch(`/api/candidate/${candidate.id}/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          noteText: `Moved to ${stageLabel(next)}`,
-          noteType: stageLabel(next),
-          stage: next,
           jobId: currentJob?.jobId || currentJob?.id,
-          jobTitle: currentJobTitle,
-          companyName: currentCompany,
+          applicationStage: next,
         }),
       });
+      if (!response.ok) throw new Error("Unable to update stage");
       const events = await fetch(
         `/api/candidate/${candidate.id}/events?limit=100`,
       ).then((r) => r.json());
