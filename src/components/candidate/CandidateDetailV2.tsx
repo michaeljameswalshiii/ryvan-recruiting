@@ -8,6 +8,8 @@ import {
   Calendar,
   CheckCircle2,
   ChevronRight,
+  DollarSign,
+  Linkedin,
   Mail,
   MapPin,
   Phone,
@@ -408,6 +410,23 @@ export function CandidateDetailV2({
                         <MapPin className="h-3.5 w-3.5" />
                         {candidate?.location || currentJob.location}
                       </span>
+                    )}
+                    {candidate?.salaryRequirements && (
+                      <span className="inline-flex items-center gap-1">
+                        <DollarSign className="h-3.5 w-3.5" />
+                        {candidate.salaryRequirements}
+                      </span>
+                    )}
+                    {candidate?.linkedin && (
+                      <a
+                        className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline"
+                        href={candidate.linkedin}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <Linkedin className="h-3.5 w-3.5" />
+                        LinkedIn
+                      </a>
                     )}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
