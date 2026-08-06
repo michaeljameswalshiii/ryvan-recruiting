@@ -341,136 +341,221 @@ export function CandidateDetailV2({
           </Link>
         </div>
 
-        <section className="bg-transparent p-0 shadow-none">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-              <button
-                type="button"
-                onClick={() => avatarInputRef.current?.click()}
-                disabled={avatarBusy}
-                className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-slate-900 text-xl font-semibold text-white"
-                title="Upload candidate picture"
-              >
-                {avatarUrl ? (
-                  <img
-                    src={avatarUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  initials(name)
-                )}
-                <span className="absolute inset-0 hidden items-center justify-center bg-black/55 text-[10px] font-semibold group-hover:flex">
-                  {avatarBusy ? "Saving" : "Change"}
-                </span>
-              </button>
-              <input
-                ref={avatarInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={(event) => void uploadAvatar(event.target.files?.[0])}
-              />
-              <div className="min-w-0">
-                <h1 className="truncate text-2xl font-semibold tracking-tight">
-                  {name}
-                </h1>
-                <p className="truncate text-sm text-slate-600">
-                  {candidate?.title || currentJobTitle || "Candidate"}
-                  {candidate?.company || currentCompany
-                    ? ` · ${candidate?.company || currentCompany}`
-                    : ""}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
-                  {candidate?.email && (
-                    <a
-                      className="inline-flex items-center gap-1 hover:text-blue-700"
-                      href={`mailto:${candidate.email}`}
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
+          <section className="bg-transparent p-0 shadow-none">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarBusy}
+                  className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-slate-900 text-xl font-semibold text-white"
+                  title="Upload candidate picture"
+                >
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    initials(name)
+                  )}
+                  <span className="absolute inset-0 hidden items-center justify-center bg-black/55 text-[10px] font-semibold group-hover:flex">
+                    {avatarBusy ? "Saving" : "Change"}
+                  </span>
+                </button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(event) =>
+                    void uploadAvatar(event.target.files?.[0])
+                  }
+                />
+                <div className="min-w-0">
+                  <h1 className="truncate text-2xl font-semibold tracking-tight">
+                    {name}
+                  </h1>
+                  <p className="truncate text-sm text-slate-600">
+                    {candidate?.title || currentJobTitle || "Candidate"}
+                    {candidate?.company || currentCompany
+                      ? ` · ${candidate?.company || currentCompany}`
+                      : ""}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                    {candidate?.email && (
+                      <a
+                        className="inline-flex items-center gap-1 hover:text-blue-700"
+                        href={`mailto:${candidate.email}`}
+                      >
+                        <Mail className="h-3.5 w-3.5" />
+                        {candidate.email}
+                      </a>
+                    )}
+                    {candidate?.phone && (
+                      <a
+                        className="inline-flex items-center gap-1 hover:text-blue-700"
+                        href={`tel:${candidate.phone}`}
+                      >
+                        <Phone className="h-3.5 w-3.5" />
+                        {candidate.phone}
+                      </a>
+                    )}
+                    {(candidate?.location || currentJob?.location) && (
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5" />
+                        {candidate?.location || currentJob.location}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {candidate?.email && (
+                      <a
+                        href={`mailto:${candidate.email}`}
+                        className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+                      >
+                        Email
+                      </a>
+                    )}
+                    {candidate?.phone && (
+                      <a
+                        href={`tel:${candidate.phone}`}
+                        className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                      >
+                        Call
+                      </a>
+                    )}
+                    {candidate?.phone && (
+                      <a
+                        href={`sms:${candidate.phone}`}
+                        className="rounded-md border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-100"
+                      >
+                        Text
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNoteType("Interview");
+                        setNoteText("Interview scheduled: ");
+                      }}
+                      className="rounded-md border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-800 hover:bg-orange-100"
                     >
-                      <Mail className="h-3.5 w-3.5" />
-                      {candidate.email}
-                    </a>
-                  )}
-                  {candidate?.phone && (
-                    <a
-                      className="inline-flex items-center gap-1 hover:text-blue-700"
-                      href={`tel:${candidate.phone}`}
-                    >
-                      <Phone className="h-3.5 w-3.5" />
-                      {candidate.phone}
-                    </a>
-                  )}
-                  {(candidate?.location || currentJob?.location) && (
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="h-3.5 w-3.5" />
-                      {candidate?.location || currentJob.location}
-                    </span>
-                  )}
+                      Schedule interview
+                    </button>
+                  </div>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {candidate?.email && (
-                    <a
-                      href={`mailto:${candidate.email}`}
-                      className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100"
-                    >
-                      Email
-                    </a>
+              </div>
+              <div className="rounded-xl border-2 border-blue-500 bg-blue-50/40 p-3 lg:min-w-[300px]">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Current Job (Viewing)
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <span className="truncate text-sm font-semibold text-blue-800">
+                    {currentJob?.jobTitle ||
+                      currentJob?.title ||
+                      "No job selected"}
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-blue-600" />
+                </div>
+                <div className="mt-1 text-xs text-slate-600">
+                  {stageLabel(currentJob?.stage || candidate?.status)} · Applied{" "}
+                  {date(
+                    currentJob?.appliedAt ||
+                      currentJob?.applied_at ||
+                      currentJob?.createdAt ||
+                      candidate?.createdAt,
                   )}
-                  {candidate?.phone && (
-                    <a
-                      href={`tel:${candidate.phone}`}
-                      className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
-                    >
-                      Call
-                    </a>
-                  )}
-                  {candidate?.phone && (
-                    <a
-                      href={`sms:${candidate.phone}`}
-                      className="rounded-md border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-100"
-                    >
-                      Text
-                    </a>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNoteType("Interview");
-                      setNoteText("Interview scheduled: ");
-                    }}
-                    className="rounded-md border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-800 hover:bg-orange-100"
-                  >
-                    Schedule interview
-                  </button>
                 </div>
               </div>
             </div>
-            <div className="rounded-xl border-2 border-blue-500 bg-blue-50/40 p-3 lg:min-w-[300px]">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Current Job (Viewing)
-              </div>
-              <div className="mt-1 flex items-center justify-between gap-3">
-                <span className="truncate text-sm font-semibold text-blue-800">
-                  {currentJob?.jobTitle ||
-                    currentJob?.title ||
-                    "No job selected"}
-                </span>
-                <ChevronRight className="h-4 w-4 text-blue-600" />
-              </div>
-              <div className="mt-1 text-xs text-slate-600">
-                {stageLabel(currentJob?.stage || candidate?.status)} · Applied{" "}
-                {date(
-                  currentJob?.appliedAt ||
-                    currentJob?.applied_at ||
-                    currentJob?.createdAt ||
-                    candidate?.createdAt,
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
+          </section>
 
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(230px,0.85fr)_minmax(390px,1.35fr)_minmax(360px,1fr)]">
+          <div className="space-y-4">
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-200 px-4 py-3">
+                <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                  Resume
+                </h2>
+              </div>
+              <div className="h-[min(68vh,720px)] min-h-[420px]">
+                <ResumeViewer
+                  url={resumeUrl}
+                  fileName={resumeName}
+                  fileKey={resumeKey}
+                  candidateId={candidate.id}
+                  className="h-full"
+                  onUrlUpdated={setResumeUrl}
+                  onResumeChanged={(info) => {
+                    if (!info) return;
+                    setResumeUrl(info.resumeUrl || "");
+                    setResumeName(info.fileName || "");
+                    setResumeKey(info.fileKey || info.resumeUrl || "");
+                  }}
+                />
+              </div>
+            </section>
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <div className="text-xs text-slate-500">Overall fit</div>
+                  <div
+                    className="mt-2 flex h-16 w-16 items-center justify-center rounded-full"
+                    style={{
+                      background: `conic-gradient(#16a34a ${Math.max(0, Math.min(100, Number(fitScore) || 0)) * 3.6}deg, #d1d5db 0deg)`,
+                    }}
+                  >
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-sm font-semibold">
+                      {fitScore != null ? Math.round(Number(fitScore)) : "—"}
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-600">
+                    Key strengths
+                  </div>
+                  <ul className="mt-1 space-y-1 text-xs text-slate-700">
+                    {(fit.fitStrengths || [])
+                      .slice(0, 3)
+                      .map((item: string) => (
+                        <li key={item}>✓ {item}</li>
+                      ))}
+                  </ul>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-600">
+                    Potential concerns
+                  </div>
+                  <ul className="mt-1 space-y-1 text-xs text-slate-700">
+                    {(fit.fitGaps || []).slice(0, 3).map((item: string) => (
+                      <li key={item}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-3 w-full text-xs"
+                disabled={fitBusy || !currentJob}
+                onClick={() => void runFit()}
+              >
+                {fitBusy
+                  ? "Scoring application..."
+                  : fitScore != null
+                    ? "Refresh AI Fit"
+                    : "Run AI Fit"}
+              </Button>
+            </section>
+          </div>
+        </div>
+
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(230px,0.85fr)_minmax(390px,1.35fr)]">
           <div className="space-y-4">
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between">
@@ -778,7 +863,7 @@ export function CandidateDetailV2({
             </div>
           </section>
 
-          <div className="space-y-4 xl:sticky xl:top-4 xl:-mt-[160px] xl:self-start">
+          <div className="hidden space-y-4">
             <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-4 py-3">
                 <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
