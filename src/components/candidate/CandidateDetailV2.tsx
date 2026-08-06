@@ -898,7 +898,7 @@ export function CandidateDetailV2({
                 <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
                   <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
                 </h2>
-                <div className="mb-3 grid gap-3 sm:grid-cols-3 xl:grid-cols-3">
+                <div className="mb-3 grid gap-4 sm:grid-cols-[0.75fr_1.2fr_1.2fr]">
                   <div>
                     <div className="text-xs text-slate-500">Overall fit</div>
                     <div
@@ -947,10 +947,10 @@ export function CandidateDetailV2({
                       Potential concerns
                     </div>
                     <ul className="mt-1 space-y-1.5 text-xs text-slate-700">
-                      {(fit.fitGaps || []).slice(0, 2).map((item: string) => (
+                      {(fit.fitGaps || []).slice(0, 3).map((item: string) => (
                         <li key={item} className="flex gap-1.5" title={item}>
                           <span className="shrink-0 text-amber-500">•</span>
-                          <span className="line-clamp-2">{item}</span>
+                          <span>{item}</span>
                         </li>
                       ))}
                       {!(fit.fitGaps || []).length && (
