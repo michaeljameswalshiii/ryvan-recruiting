@@ -54,8 +54,12 @@ export function DashboardCard({
 
   return (
     <>
-      <section className={`rounded-2xl border border-gray-200 bg-white shadow-sm ${className}`}>
-        <header className="flex items-center gap-2 border-b border-gray-100 px-5 py-3">
+      <section className={`self-start rounded-2xl border border-gray-200 bg-white shadow-sm ${className}`}>
+        <header
+          className={`flex items-center gap-2 border-b border-gray-100 ${
+            collapsed ? 'px-3 py-2' : 'px-5 py-3'
+          }`}
+        >
           <h2 className="text-base font-semibold text-gray-900">{title}</h2>
           {controls()}
         </header>
