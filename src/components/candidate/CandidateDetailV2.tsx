@@ -319,7 +319,7 @@ export function CandidateDetailV2({
 
   return (
     <div className="min-h-screen bg-[#f7f8fa] px-3 py-4 text-slate-900 sm:px-5 lg:px-7">
-      <div className="mx-auto max-w-[1600px] space-y-4">
+      <div className="mx-auto max-w-[1600px] space-y-5 pt-1">
         <div className="flex items-center justify-between">
           <Link
             href="/dashboard/candidates"
@@ -470,7 +470,7 @@ export function CandidateDetailV2({
           </div>
         </section>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(230px,0.85fr)_minmax(390px,1.35fr)_minmax(360px,1fr)]">
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(230px,0.85fr)_minmax(390px,1.35fr)_minmax(360px,1fr)]">
           <div className="space-y-4">
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between">
@@ -778,7 +778,7 @@ export function CandidateDetailV2({
             </div>
           </section>
 
-          <div className="space-y-4">
+          <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
             <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-4 py-3">
                 <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
