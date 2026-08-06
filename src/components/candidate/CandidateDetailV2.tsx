@@ -127,6 +127,8 @@ export function CandidateDetailV2({
   const [noteText, setNoteText] = useState("");
   const [noteType, setNoteType] = useState("Conversation");
   const [noteBusy, setNoteBusy] = useState(false);
+  const [fitBusy, setFitBusy] = useState(false);
+  const [fitOverlay, setFitOverlay] = useState<any>(null);
   const name = candidate?.name || "Unknown candidate";
 
   useEffect(() => {
@@ -196,12 +198,41 @@ export function CandidateDetailV2({
     currentJob?.company_name ||
     currentJob?.company ||
     "";
-  const fitScore = currentJob?.fitScore ?? currentJob?.fit_score;
+  const fit = fitOverlay || currentJob || {};
+  const fitScore = fit.fitScore ?? fit.fit_score;
+  const runFit = async () => {
+    const jobId = currentJob?.jobId || currentJob?.id;
+    if (!jobId) return;
+    setFitBusy(true);
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/fit-score`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateId: candidate.id, persist: true }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error || "Fit scoring failed");
+      const scored =
+        body?.fit || body?.scores?.[0]?.fit || body?.scores?.[0] || {};
+      setFitOverlay({
+        fitScore: scored.score,
+        fitGrade: scored.grade,
+        fitDomainScore: scored.domainFit?.score ?? scored.domainScore,
+        fitToolScore: scored.toolReadiness?.score ?? scored.toolScore,
+        fitStrengths: scored.strengths || [],
+        fitGaps: scored.gaps || [],
+        fitSummary: scored.summary || "",
+      });
+    } finally {
+      setFitBusy(false);
+    }
+  };
   const currentStageIndex = Math.max(0, PIPELINE.indexOf(stage));
   useEffect(() => {
     setStage(
       String(currentJob?.stage || candidate?.status || "sourced").toLowerCase(),
     );
+    setFitOverlay(null);
   }, [filter, currentJob, candidate?.status]);
   const uploadAvatar = async (file?: File) => {
     if (!file || !file.type.startsWith("image/")) return;
@@ -369,6 +400,42 @@ export function CandidateDetailV2({
                       {candidate?.location || currentJob.location}
                     </span>
                   )}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {candidate?.email && (
+                    <a
+                      href={`mailto:${candidate.email}`}
+                      className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+                    >
+                      Email
+                    </a>
+                  )}
+                  {candidate?.phone && (
+                    <a
+                      href={`tel:${candidate.phone}`}
+                      className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                    >
+                      Call
+                    </a>
+                  )}
+                  {candidate?.phone && (
+                    <a
+                      href={`sms:${candidate.phone}`}
+                      className="rounded-md border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-100"
+                    >
+                      Text
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNoteType("Interview");
+                      setNoteText("Interview scheduled: ");
+                    }}
+                    className="rounded-md border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-800 hover:bg-orange-100"
+                  >
+                    Schedule interview
+                  </button>
                 </div>
               </div>
             </div>
@@ -696,30 +763,76 @@ export function CandidateDetailV2({
               <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
                 <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
               </h2>
-              <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+              <div className="mb-3 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
                 <div>
                   <div className="text-xs text-slate-500">Overall fit</div>
                   <div className="mt-1 text-3xl font-semibold text-emerald-700">
                     {fitScore != null ? `${fitScore}/100` : "—"}
                   </div>
-                </div>
-                <div>
-                  <div className="text-xs text-slate-500">Strengths</div>
-                  <div className="mt-1 text-sm text-slate-700">
-                    {(currentJob?.fitStrengths || []).slice(0, 3).join(" · ") ||
-                      "Run AI fit from V1 to score this application."}
+                  <div className="mt-1 text-xs font-semibold text-emerald-700">
+                    {fit.fitGrade
+                      ? `Grade ${fit.fitGrade}`
+                      : fitScore != null
+                        ? "Strong fit"
+                        : "Not scored"}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500">
-                    Potential concerns
+                  <div className="text-xs text-slate-500">Domain / tools</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-700">
+                    {fit.fitDomainScore != null
+                      ? `${fit.fitDomainScore}/100 domain`
+                      : "—"}
+                    {fit.fitToolScore != null
+                      ? ` · ${fit.fitToolScore}/100 tools`
+                      : ""}
                   </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">Summary</div>
                   <div className="mt-1 text-sm text-slate-700">
-                    {(currentJob?.fitGaps || []).slice(0, 3).join(" · ") ||
-                      "No concerns recorded."}
+                    {fit.fitSummary ||
+                      "Run AI Fit to evaluate this application."}
                   </div>
                 </div>
               </div>
+              <div className="grid gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2">
+                <div>
+                  <div className="text-xs font-semibold text-slate-600">
+                    Key strengths
+                  </div>
+                  <ul className="mt-1 space-y-1 text-sm text-slate-700">
+                    {(fit.fitStrengths || [])
+                      .slice(0, 4)
+                      .map((item: string) => (
+                        <li key={item}>✓ {item}</li>
+                      ))}
+                  </ul>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-600">
+                    Potential concerns
+                  </div>
+                  <ul className="mt-1 space-y-1 text-sm text-slate-700">
+                    {(fit.fitGaps || []).slice(0, 4).map((item: string) => (
+                      <li key={item}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-4 w-full text-xs"
+                disabled={fitBusy || !currentJob}
+                onClick={() => void runFit()}
+              >
+                {fitBusy
+                  ? "Scoring application..."
+                  : fitScore != null
+                    ? "Refresh AI Fit"
+                    : "Run AI Fit"}
+              </Button>
             </section>
           </div>
         </div>
