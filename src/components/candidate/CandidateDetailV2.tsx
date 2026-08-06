@@ -1,0 +1,104 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { ArrowLeft, Briefcase, Calendar, ChevronRight, ExternalLink, Mail, MapPin, Phone, Sparkles } from 'lucide-react';
+import { ResumeViewer } from '@/components/candidate/ResumeViewer';
+import { Button } from '@/components/ui/button';
+
+function date(value?: string) {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || '?';
+}
+
+function stageLabel(value?: string) {
+  return String(value || 'Sourced').replace(/_/g, ' ').replace(/\b\w/g, (x) => x.toUpperCase());
+}
+
+export function CandidateDetailV2({ candidate, initialJobId = '' }: { candidate: any; initialJobId?: string }) {
+  const jobs = Array.isArray(candidate?.linkedJobs) ? candidate.linkedJobs : [];
+  const [filter, setFilter] = useState(initialJobId || (jobs[0]?.jobId || jobs[0]?.id || 'all'));
+  const [notes, setNotes] = useState<any[]>([]);
+  const [notesLoading, setNotesLoading] = useState(true);
+  const [resumeUrl, setResumeUrl] = useState(candidate?.resumeUrl || '');
+  const [resumeKey, setResumeKey] = useState(candidate?.resumeKey || '');
+  const [resumeName, setResumeName] = useState(candidate?.resumeFileName || '');
+  const name = candidate?.name || 'Unknown candidate';
+
+  useEffect(() => {
+    let cancelled = false;
+    setNotesLoading(true);
+    fetch(`/api/candidate/${candidate.id}/notes`)
+      .then((response) => response.ok ? response.json() : { notes: [] })
+      .then((body) => { if (!cancelled) setNotes(Array.isArray(body?.notes) ? body.notes : Array.isArray(body) ? body : []); })
+      .catch(() => { if (!cancelled) setNotes([]); })
+      .finally(() => { if (!cancelled) setNotesLoading(false); });
+    return () => { cancelled = true; };
+  }, [candidate.id]);
+
+  const visibleNotes = useMemo(() => {
+    if (filter === 'all') return notes;
+    return notes.filter((note) => {
+      const jobId = String(note?.jobId || note?.metadata?.jobId || note?.job_id || '');
+      return jobId === String(filter) || (!jobId && filter === 'candidate');
+    });
+  }, [filter, notes]);
+
+  const currentJob = jobs.find((job: any) => String(job.jobId || job.id) === String(filter)) || jobs[0];
+  const fitScore = currentJob?.fitScore ?? currentJob?.fit_score;
+
+  return (
+    <div className="min-h-screen bg-[#f7f8fa] px-3 py-4 text-slate-900 sm:px-5 lg:px-7">
+      <div className="mx-auto max-w-[1600px] space-y-4">
+        <div className="flex items-center justify-between">
+          <Link href="/dashboard/candidates" className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-blue-700"><ArrowLeft className="h-4 w-4" /> Back to Candidates</Link>
+          <Link href={`/dashboard/candidates/${candidate.id}`} className="text-xs font-semibold text-blue-700 hover:underline">Open V1 detail</Link>
+        </div>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xl font-semibold text-white">{initials(name)}</div>
+              <div className="min-w-0">
+                <h1 className="truncate text-2xl font-semibold tracking-tight">{name}</h1>
+                <p className="truncate text-sm text-slate-600">{candidate?.title || 'Candidate'}{candidate?.company ? ` · ${candidate.company}` : ''}</p>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                  {candidate?.email && <a className="inline-flex items-center gap-1 hover:text-blue-700" href={`mailto:${candidate.email}`}><Mail className="h-3.5 w-3.5" />{candidate.email}</a>}
+                  {candidate?.phone && <a className="inline-flex items-center gap-1 hover:text-blue-700" href={`tel:${candidate.phone}`}><Phone className="h-3.5 w-3.5" />{candidate.phone}</a>}
+                  {candidate?.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{candidate.location}</span>}
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border-2 border-blue-500 bg-blue-50/40 p-3 lg:min-w-[300px]">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current job</div>
+              <div className="mt-1 flex items-center justify-between gap-3"><span className="truncate text-sm font-semibold text-blue-800">{currentJob?.jobTitle || currentJob?.title || 'No job selected'}</span><ChevronRight className="h-4 w-4 text-blue-600" /></div>
+              <div className="mt-1 text-xs text-slate-600">{stageLabel(currentJob?.stage || candidate?.status)} · Applied {date(currentJob?.appliedAt || currentJob?.createdAt || candidate?.createdAt)}</div>
+            </div>
+          </div>
+        </section>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(230px,0.85fr)_minmax(390px,1.35fr)_minmax(360px,1fr)]">
+          <div className="space-y-4">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between"><h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">Applications ({jobs.length})</h2><Briefcase className="h-4 w-4 text-slate-400" /></div>
+              <div className="space-y-2">
+                {jobs.map((job: any, index: number) => { const id = String(job.jobId || job.id || index); const active = id === String(filter); return <button key={id} type="button" onClick={() => setFilter(id)} className={`w-full rounded-lg border p-3 text-left ${active ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 hover:border-blue-300'}`}><div className="flex items-start justify-between gap-2"><span className="text-sm font-semibold">{job.jobTitle || job.title || 'Untitled job'}</span><span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">{stageLabel(job.stage)}</span></div><div className="mt-1 text-xs text-slate-500">{job.companyName || job.company || 'Company not specified'}</div><div className="mt-2 text-[11px] text-slate-500">Applied {date(job.appliedAt || job.createdAt)}</div></button>; })}
+                {!jobs.length && <p className="py-5 text-center text-sm text-slate-500">No applications yet.</p>}
+              </div>
+            </section>
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-700">Candidate Details</h2><div className="space-y-2 text-sm text-slate-600"><div className="flex gap-2"><Mail className="h-4 w-4 text-slate-400" />{candidate?.email || 'No email'}</div><div className="flex gap-2"><Phone className="h-4 w-4 text-slate-400" />{candidate?.phone || 'No phone'}</div><div className="flex gap-2"><MapPin className="h-4 w-4 text-slate-400" />{candidate?.location || 'No location'}</div>{candidate?.linkedin && <a className="flex items-center gap-2 text-blue-700 hover:underline" href={candidate.linkedin} target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4" /> LinkedIn</a>}</div></section>
+          </div>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="mb-3 flex items-center justify-between"><div><h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">Candidate Activity Timeline</h2><p className="mt-1 text-xs text-slate-500">Only activity for the selected job is shown.</p></div><div className="flex items-center gap-1"><button onClick={() => setFilter('all')} className={`rounded-md px-2 py-1 text-[11px] font-semibold ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>All</button><button onClick={() => setFilter('candidate')} className={`rounded-md px-2 py-1 text-[11px] font-semibold ${filter === 'candidate' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>Candidate</button></div></div><div className="max-h-[680px] space-y-2 overflow-y-auto pr-1">{notesLoading ? <p className="py-10 text-center text-sm text-slate-500">Loading activity…</p> : visibleNotes.length ? visibleNotes.map((note: any, index: number) => <div key={note.id || index} className="rounded-lg border border-slate-200 p-3"><div className="flex items-start justify-between gap-2"><span className="text-sm font-semibold">{note.noteTypeLabel || note.noteType || note.eventType || 'Activity'}</span><span className="text-[11px] text-slate-500">{date(note.createdAt || note.timestamp)}</span></div><p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{note.description || note.note || note.metadata?.noteText || 'Activity recorded.'}</p></div>) : <p className="py-10 text-center text-sm text-slate-500">No activity for this filter.</p>}</div></section>
+
+          <div className="space-y-4"><section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="border-b border-slate-200 px-4 py-3"><h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">Resume</h2></div><div className="h-[min(68vh,720px)] min-h-[420px]"><ResumeViewer url={resumeUrl} fileName={resumeName} fileKey={resumeKey} candidateId={candidate.id} className="h-full" onUrlUpdated={setResumeUrl} onResumeChanged={(info) => { if (!info) return; setResumeUrl(info.resumeUrl || ''); setResumeName(info.fileName || ''); setResumeKey(info.fileKey || info.resumeUrl || ''); }} /></div></section><section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700"><Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation</h2><div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1"><div><div className="text-xs text-slate-500">Overall fit</div><div className="mt-1 text-3xl font-semibold text-emerald-700">{fitScore != null ? `${fitScore}/100` : '—'}</div></div><div><div className="text-xs text-slate-500">Strengths</div><div className="mt-1 text-sm text-slate-700">{(currentJob?.fitStrengths || []).slice(0, 3).join(' · ') || 'Run AI fit from V1 to score this application.'}</div></div><div><div className="text-xs text-slate-500">Potential concerns</div><div className="mt-1 text-sm text-slate-700">{(currentJob?.fitGaps || []).slice(0, 3).join(' · ') || 'No concerns recorded.'}</div></div></div></section></div>
+        </div>
+      </div>
+    </div>
+  );
+}
