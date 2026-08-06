@@ -12,18 +12,23 @@ import {
   deleteItem,
   updateItem,
   leadsTable,
-} from '../dynamodb';
-import { getCached, setCached, invalidateTenantCache, makeCacheKey } from '../../cache';
-import { 
-  type Lead, 
-  type CreateLeadInput, 
-  type UpdateLeadInput, 
+} from "../dynamodb";
+import {
+  getCached,
+  setCached,
+  invalidateTenantCache,
+  makeCacheKey,
+} from "../../cache";
+import {
+  type Lead,
+  type CreateLeadInput,
+  type UpdateLeadInput,
   type LinkedJob,
   APPLICATION_STAGES,
   APPLICATION_STAGE_VALUES,
   type JobNote,
-} from '../../schemas/lead';
-import { getJobById, getAllJobs } from './job-repository';
+} from "../../schemas/lead";
+import { getJobById, getAllJobs } from "./job-repository";
 
 // Cache TTL: 5 minutes
 const CACHE_TTL = 300;
@@ -31,15 +36,15 @@ const CACHE_TTL = 300;
 // Pipeline stages that show in the UI pipeline
 // Also include legacy statuses for backward compatibility with migrated data
 export const PIPELINE_STAGES = [
-  'identification',
-  'outreach',
-  'conversation',
-  'presented',
-  'interview',
-  'accept',
-  'rejected',
-  'new',         // Legacy - new lead not yet contacted
-  'converted',   // Legacy - lead converted to client
+  "identification",
+  "outreach",
+  "conversation",
+  "presented",
+  "interview",
+  "accept",
+  "rejected",
+  "new", // Legacy - new lead not yet contacted
+  "converted", // Legacy - lead converted to client
 ];
 
 // ============================================================================
@@ -53,29 +58,29 @@ export const PIPELINE_STAGES = [
  */
 export function mapLegacyStageToApplicationStage(legacyStage: string): string {
   const stageMapping: Record<string, string> = {
-    'Applied': 'sourced',
-    'Screening': 'pre_screened',
-    'Interviewing': 'interviewing',
-    'Offered': 'offer_out',
-    'Placed': 'placed',
-    'Rejected': 'rejected',
-    'Withdrawn': 'not_interested',
+    Applied: "sourced",
+    Screening: "pre_screened",
+    Interviewing: "interviewing",
+    Offered: "offer_out",
+    Placed: "placed",
+    Rejected: "rejected",
+    Withdrawn: "not_interested",
     // Legacy lead statuses
-    'identification': 'sourced',
-    'outreach': 'contacted',
-    'conversation': 'pre_screened',
-    'presented': 'submitted',
-    'interview': 'interviewing',
-    'accept': 'offer_accepted',
-    'new': 'sourced',
-    'converted': 'placed',
-    'contacted': 'contacted',
-    'qualified': 'pre_screened',
-    'interested': 'contacted',
-    'not_interested': 'not_interested',
+    identification: "sourced",
+    outreach: "contacted",
+    conversation: "pre_screened",
+    presented: "submitted",
+    interview: "interviewing",
+    accept: "offer_accepted",
+    new: "sourced",
+    converted: "placed",
+    contacted: "contacted",
+    qualified: "pre_screened",
+    interested: "contacted",
+    not_interested: "not_interested",
   };
-  
-  return stageMapping[legacyStage] || 'sourced';
+
+  return stageMapping[legacyStage] || "sourced";
 }
 
 /**
@@ -89,9 +94,9 @@ export function isValidApplicationStage(stage: string): boolean {
  * Generate a new UUID for notes
  */
 function generateNoteId(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
 }
@@ -100,9 +105,9 @@ function generateNoteId(): string {
  * Generate a UUID
  */
 function generateId(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
 }
@@ -112,20 +117,18 @@ function generateId(): string {
  * Always returns an array, guarding against corrupted DynamoDB data
  */
 export async function getAllLeads(tenantId: string): Promise<Lead[]> {
-  const cacheKey = makeCacheKey(tenantId, 'leads', 'all');
+  const cacheKey = makeCacheKey(tenantId, "leads", "all");
 
   try {
     // Always query DynamoDB for list accuracy (avoid empty-cache after create on other instances)
-    const result = await queryItems<Lead>(
-      leadsTable,
-      'tenant_id = :tenantId',
-      { ':tenantId': tenantId }
-    );
+    const result = await queryItems<Lead>(leadsTable, "tenant_id = :tenantId", {
+      ":tenantId": tenantId,
+    });
 
     // GUARD: Ensure we always have an array - even if DynamoDB returns corrupted data
     const leads = Array.isArray(result.items) ? result.items : [];
 
-    console.log('[getAllLeads] tenant=', tenantId, 'count=', leads.length);
+    console.log("[getAllLeads] tenant=", tenantId, "count=", leads.length);
 
     // Cache briefly for detail enrichment paths
     await setCached(cacheKey, leads, 30);
@@ -133,7 +136,7 @@ export async function getAllLeads(tenantId: string): Promise<Lead[]> {
     return leads;
   } catch (error: any) {
     // Table doesn't exist or other error - return empty array gracefully
-    console.error('[getAllLeads] Error fetching leads:', error?.message);
+    console.error("[getAllLeads] Error fetching leads:", error?.message);
     // Fall back to cache if present
     const cached = await getCached<Lead[]>(cacheKey);
     if (cached && Array.isArray(cached)) return cached;
@@ -162,23 +165,25 @@ function normalizeLinkedJobs(linkedJobs: unknown): LinkedJob[] {
  * Fetches job info for all linkedJobIds and returns enriched leads
  * Includes defensive normalization for corrupted data
  */
-export async function getAllLeadsWithLinkedJobs(tenantId: string): Promise<(Lead & { linkedJobs: LinkedJob[] })[]> {
+export async function getAllLeadsWithLinkedJobs(
+  tenantId: string,
+): Promise<(Lead & { linkedJobs: LinkedJob[] })[]> {
   const leads = await getAllLeads(tenantId);
-  
+
   // Get all jobs for the tenant to look up by ID
   const allJobs = await getAllJobs(tenantId);
-  const jobsMap = new Map(allJobs.map(job => [job.id, job]));
-  
+  const jobsMap = new Map(allJobs.map((job) => [job.id, job]));
+
   // Enrich leads with linked job data
-  const enrichedLeads = leads.map(lead => {
+  const enrichedLeads = leads.map((lead) => {
     // NORMALIZE linkedJobIds to always be an array
     const safeLinkedJobIds = normalizeLinkedJobIds(lead.linkedJobIds);
-    
+
     // NORMALIZE linkedJobs to always be an array (new application-centric model)
     const safeExistingLinkedJobs = normalizeLinkedJobs(lead.linkedJobs);
-    
+
     const linkedJobs: LinkedJob[] = [];
-    
+
     // First, add any explicitly stored linkedJobs
     if (safeExistingLinkedJobs.length > 0) {
       for (const linkedJob of safeExistingLinkedJobs) {
@@ -187,11 +192,11 @@ export async function getAllLeadsWithLinkedJobs(tenantId: string): Promise<(Lead
         }
       }
     }
-    
+
     // Then, add any from linkedJobIds that aren't already included
     if (safeLinkedJobIds.length > 0) {
       for (const jobId of safeLinkedJobIds) {
-        const alreadyIncluded = linkedJobs.some(j => j.jobId === jobId);
+        const alreadyIncluded = linkedJobs.some((j) => j.jobId === jobId);
         if (!alreadyIncluded) {
           const job = jobsMap.get(jobId);
           if (job) {
@@ -199,32 +204,35 @@ export async function getAllLeadsWithLinkedJobs(tenantId: string): Promise<(Lead
               jobId: job.id,
               jobTitle: job.title,
               companyName: job.companyName,
-              stage: 'sourced',
+              stage: "sourced",
             });
           }
         }
       }
     }
-    
+
     return {
       ...lead,
       linkedJobIds: safeLinkedJobIds,
       linkedJobs,
     };
   });
-  
+
   return enrichedLeads;
 }
 
 /**
  * Get leads by status
  */
-export async function getLeadsByStatus(tenantId: string, status: string): Promise<Lead[]> {
+export async function getLeadsByStatus(
+  tenantId: string,
+  status: string,
+): Promise<Lead[]> {
   const result = await queryItems<Lead>(
     leadsTable,
-    'tenant_id = :tenantId AND #status = :status',
-    { ':tenantId': tenantId, ':status': status },
-    { '#status': 'status' }
+    "tenant_id = :tenantId AND #status = :status",
+    { ":tenantId": tenantId, ":status": status },
+    { "#status": "status" },
   );
   return result.items || [];
 }
@@ -234,14 +242,19 @@ export async function getLeadsByStatus(tenantId: string, status: string): Promis
  */
 export async function getLeadsNotInPipeline(tenantId: string): Promise<Lead[]> {
   const allLeads = await getAllLeads(tenantId);
-  return allLeads.filter(lead => !PIPELINE_STAGES.includes(lead.status || ''));
+  return allLeads.filter(
+    (lead) => !PIPELINE_STAGES.includes(lead.status || ""),
+  );
 }
 
 /**
  * Get a single lead by ID
  */
-export async function getLeadById(tenantId: string, leadId: string): Promise<Lead | null> {
-  const cacheKey = makeCacheKey(tenantId, 'leads', leadId);
+export async function getLeadById(
+  tenantId: string,
+  leadId: string,
+): Promise<Lead | null> {
+  const cacheKey = makeCacheKey(tenantId, "leads", leadId);
 
   // Try cache first
   const cached = await getCached<Lead>(cacheKey);
@@ -265,34 +278,39 @@ export async function getLeadById(tenantId: string, leadId: string): Promise<Lea
 /**
  * Create a new lead
  */
-export async function createLead(tenantId: string, data: CreateLeadInput): Promise<Lead> {
+export async function createLead(
+  tenantId: string,
+  data: CreateLeadInput,
+): Promise<Lead> {
   const validated = data;
 
-const extra = data as Record<string, unknown>;
+  const extra = data as Record<string, unknown>;
   const lead: Lead & Record<string, unknown> = {
     id: generateId(),
     tenant_id: tenantId,
     name: validated.name,
-    email: validated.email || '',
-    phone: validated.phone || '',
-    location: validated.location || '',
-    title: validated.title || '',
-    status: validated.status || 'identification',
-    source: validated.source || '',
-    notes: validated.notes || '',
-    linkedin_url: validated.linkedin_url || '',
-    resume_url: validated.resume_url || '',
+    email: validated.email || "",
+    phone: validated.phone || "",
+    location: validated.location || "",
+    title: validated.title || "",
+    status: validated.status || "identification",
+    source: validated.source || "",
+    notes: validated.notes || "",
+    linkedin_url: validated.linkedin_url || "",
+    resume_url: validated.resume_url || "",
     linkedJobIds: validated.linkedJobIds || [],
     created_at: new Date().toISOString(),
   };
 
   // Resume metadata (careers apply + dashboard upload) — not all on base Lead type
   if (extra.resume_file_name || extra.resumeFileName) {
-    lead.resume_file_name = String(extra.resume_file_name || extra.resumeFileName);
+    lead.resume_file_name = String(
+      extra.resume_file_name || extra.resumeFileName,
+    );
   }
   if (extra.resume_key || extra.resumeKey || extra.resume_s3_key) {
     const key = String(
-      extra.resume_key || extra.resumeKey || extra.resume_s3_key || ''
+      extra.resume_key || extra.resumeKey || extra.resume_s3_key || "",
     );
     lead.resume_key = key;
     lead.resume_s3_key = key;
@@ -300,7 +318,7 @@ const extra = data as Record<string, unknown>;
   // When resume_url is already an S3 key, mirror it into key fields
   if (
     lead.resume_url &&
-    !String(lead.resume_url).startsWith('http') &&
+    !String(lead.resume_url).startsWith("http") &&
     !lead.resume_key
   ) {
     lead.resume_key = lead.resume_url;
@@ -334,7 +352,7 @@ const extra = data as Record<string, unknown>;
 export async function updateLead(
   tenantId: string,
   leadId: string,
-  data: UpdateLeadInput
+  data: UpdateLeadInput,
 ): Promise<Lead | null> {
   // Build update expression
   const updates: string[] = [];
@@ -342,106 +360,111 @@ export async function updateLead(
   const names: Record<string, string> = {};
 
   if (data.name !== undefined) {
-    updates.push('#name = :name');
-    values[':name'] = data.name;
-    names['#name'] = 'name';
+    updates.push("#name = :name");
+    values[":name"] = data.name;
+    names["#name"] = "name";
   }
   if (data.email !== undefined) {
-    updates.push('#email = :email');
-    values[':email'] = data.email;
-    names['#email'] = 'email';
+    updates.push("#email = :email");
+    values[":email"] = data.email;
+    names["#email"] = "email";
   }
   if (data.phone !== undefined) {
-    updates.push('#phone = :phone');
-    values[':phone'] = data.phone;
-    names['#phone'] = 'phone';
+    updates.push("#phone = :phone");
+    values[":phone"] = data.phone;
+    names["#phone"] = "phone";
   }
   if (data.location !== undefined) {
-    updates.push('#location = :location');
-    values[':location'] = data.location;
-    names['#location'] = 'location';
+    updates.push("#location = :location");
+    values[":location"] = data.location;
+    names["#location"] = "location";
   }
   if (data.title !== undefined) {
-    updates.push('#title = :title');
-    values[':title'] = data.title;
-    names['#title'] = 'title';
+    updates.push("#title = :title");
+    values[":title"] = data.title;
+    names["#title"] = "title";
   }
   if (data.company !== undefined) {
-    updates.push('#company = :company');
-    values[':company'] = data.company;
-    names['#company'] = 'company';
+    updates.push("#company = :company");
+    values[":company"] = data.company;
+    names["#company"] = "company";
   }
   if (data.status !== undefined) {
-    updates.push('#status = :status');
-    values[':status'] = data.status;
-    names['#status'] = 'status';
+    updates.push("#status = :status");
+    values[":status"] = data.status;
+    names["#status"] = "status";
   }
   if (data.source !== undefined) {
-    updates.push('#source = :source');
-    values[':source'] = data.source;
-    names['#source'] = 'source';
+    updates.push("#source = :source");
+    values[":source"] = data.source;
+    names["#source"] = "source";
   }
   if (data.notes !== undefined) {
-    updates.push('#notes = :notes');
-    values[':notes'] = data.notes;
-    names['#notes'] = 'notes';
+    updates.push("#notes = :notes");
+    values[":notes"] = data.notes;
+    names["#notes"] = "notes";
   }
-if (data.linkedin_url !== undefined) {
-    updates.push('#linkedin_url = :linkedin_url');
-    values[':linkedin_url'] = data.linkedin_url;
-    names['#linkedin_url'] = 'linkedin_url';
+  if (data.linkedin_url !== undefined) {
+    updates.push("#linkedin_url = :linkedin_url");
+    values[":linkedin_url"] = data.linkedin_url;
+    names["#linkedin_url"] = "linkedin_url";
   }
-if (data.resume_url !== undefined) {
-    updates.push('#resume_url = :resume_url');
-    values[':resume_url'] = data.resume_url;
-    names['#resume_url'] = 'resume_url';
+  if (data.resume_url !== undefined) {
+    updates.push("#resume_url = :resume_url");
+    values[":resume_url"] = data.resume_url;
+    names["#resume_url"] = "resume_url";
+  }
+  if (data.avatar_url !== undefined) {
+    updates.push("#avatar_url = :avatar_url");
+    values[":avatar_url"] = data.avatar_url;
+    names["#avatar_url"] = "avatar_url";
   }
   if (data.full_address !== undefined) {
-    updates.push('#full_address = :full_address');
-    values[':full_address'] = data.full_address;
-    names['#full_address'] = 'full_address';
+    updates.push("#full_address = :full_address");
+    values[":full_address"] = data.full_address;
+    names["#full_address"] = "full_address";
   }
   if (data.salary_requirements !== undefined) {
-    updates.push('#salary_requirements = :salary_requirements');
-    values[':salary_requirements'] = data.salary_requirements;
-    names['#salary_requirements'] = 'salary_requirements';
+    updates.push("#salary_requirements = :salary_requirements");
+    values[":salary_requirements"] = data.salary_requirements;
+    names["#salary_requirements"] = "salary_requirements";
   }
   if (data.summary !== undefined) {
-    updates.push('#summary = :summary');
-    values[':summary'] = data.summary;
-    names['#summary'] = 'summary';
+    updates.push("#summary = :summary");
+    values[":summary"] = data.summary;
+    names["#summary"] = "summary";
   }
   if (data.skills !== undefined) {
-    updates.push('#skills = :skills');
-    values[':skills'] = data.skills;
-    names['#skills'] = 'skills';
+    updates.push("#skills = :skills");
+    values[":skills"] = data.skills;
+    names["#skills"] = "skills";
   }
   if (data.experience !== undefined) {
-    updates.push('#experience = :experience');
-    values[':experience'] = data.experience;
-    names['#experience'] = 'experience';
+    updates.push("#experience = :experience");
+    values[":experience"] = data.experience;
+    names["#experience"] = "experience";
   }
   if (data.education !== undefined) {
-    updates.push('#education = :education');
-    values[':education'] = data.education;
-    names['#education'] = 'education';
+    updates.push("#education = :education");
+    values[":education"] = data.education;
+    names["#education"] = "education";
   }
-if (data.certifications !== undefined) {
-    updates.push('#certifications = :certifications');
-    values[':certifications'] = data.certifications;
-    names['#certifications'] = 'certifications';
+  if (data.certifications !== undefined) {
+    updates.push("#certifications = :certifications");
+    values[":certifications"] = data.certifications;
+    names["#certifications"] = "certifications";
   }
-if (data.linkedJobIds !== undefined) {
-    updates.push('#linkedJobIds = :linkedJobIds');
-    values[':linkedJobIds'] = data.linkedJobIds;
-    names['#linkedJobIds'] = 'linkedJobIds';
+  if (data.linkedJobIds !== undefined) {
+    updates.push("#linkedJobIds = :linkedJobIds");
+    values[":linkedJobIds"] = data.linkedJobIds;
+    names["#linkedJobIds"] = "linkedJobIds";
   }
 
   // NEW: Support for linkedJobs (application-centric model)
   if (data.linkedJobs !== undefined) {
-    updates.push('#linkedJobs = :linkedJobs');
-    values[':linkedJobs'] = data.linkedJobs;
-    names['#linkedJobs'] = 'linkedJobs';
+    updates.push("#linkedJobs = :linkedJobs");
+    values[":linkedJobs"] = data.linkedJobs;
+    names["#linkedJobs"] = "linkedJobs";
   }
 
   if (updates.length === 0) {
@@ -449,16 +472,16 @@ if (data.linkedJobIds !== undefined) {
   }
 
   // Always update modified_at
-  updates.push('#modified_at = :modified_at');
-  values[':modified_at'] = new Date().toISOString();
-  names['#modified_at'] = 'modified_at';
+  updates.push("#modified_at = :modified_at");
+  values[":modified_at"] = new Date().toISOString();
+  names["#modified_at"] = "modified_at";
 
   const updated = await updateItem<Lead>(
     leadsTable,
     { tenant_id: tenantId, id: leadId },
-    `SET ${updates.join(', ')}`,
+    `SET ${updates.join(", ")}`,
     values,
-    names
+    names,
   );
 
   // Invalidate cache
@@ -472,14 +495,16 @@ if (data.linkedJobIds !== undefined) {
  */
 export async function updateLeadsToIdentification(
   tenantId: string,
-  leadIds: string[]
+  leadIds: string[],
 ): Promise<{ updated: number; errors: string[] }> {
   let updated = 0;
   const errors: string[] = [];
 
   for (const leadId of leadIds) {
     try {
-      const result = await updateLead(tenantId, leadId, { status: 'identification' });
+      const result = await updateLead(tenantId, leadId, {
+        status: "identification",
+      });
       if (result) {
         updated++;
       } else {
@@ -496,7 +521,10 @@ export async function updateLeadsToIdentification(
 /**
  * Delete a lead
  */
-export async function deleteLead(tenantId: string, leadId: string): Promise<void> {
+export async function deleteLead(
+  tenantId: string,
+  leadId: string,
+): Promise<void> {
   await deleteItem(leadsTable, { tenant_id: tenantId, id: leadId });
 
   // Invalidate cache
@@ -506,7 +534,10 @@ export async function deleteLead(tenantId: string, leadId: string): Promise<void
 /**
  * Get a lead by email (for duplicate detection)
  */
-export async function getLeadByEmail(tenantId: string, email: string): Promise<Lead | null> {
+export async function getLeadByEmail(
+  tenantId: string,
+  email: string,
+): Promise<Lead | null> {
   if (!email) return null;
 
   const normalizedEmail = email.toLowerCase().trim();
@@ -515,8 +546,8 @@ export async function getLeadByEmail(tenantId: string, email: string): Promise<L
   try {
     const leads = await queryItems<Lead>(
       leadsTable,
-      'tenant_id = :tenantId AND email = :email',
-      { ':tenantId': tenantId, ':email': normalizedEmail }
+      "tenant_id = :tenantId AND email = :email",
+      { ":tenantId": tenantId, ":email": normalizedEmail },
     );
     if (leads.length > 0) {
       return leads[0];
@@ -527,25 +558,32 @@ export async function getLeadByEmail(tenantId: string, email: string): Promise<L
 
   // Fallback: scan all leads for this tenant (not ideal but works)
   const allLeads = await getAllLeads(tenantId);
-  return allLeads.find(lead =>
-    lead.email?.toLowerCase() === normalizedEmail
-  ) || null;
+  return (
+    allLeads.find((lead) => lead.email?.toLowerCase() === normalizedEmail) ||
+    null
+  );
 }
 
 /**
  * Get a lead by LinkedIn URL (for duplicate detection)
  */
-export async function getLeadByLinkedIn(tenantId: string, linkedinUrl: string): Promise<Lead | null> {
+export async function getLeadByLinkedIn(
+  tenantId: string,
+  linkedinUrl: string,
+): Promise<Lead | null> {
   if (!linkedinUrl) return null;
 
   const normalizedUrl = linkedinUrl.toLowerCase().trim();
 
   // Scan leads for matching LinkedIn
   const allLeads = await getAllLeads(tenantId);
-  return allLeads.find(lead =>
-    lead.linkedin_url?.toLowerCase().includes(normalizedUrl) ||
-    normalizedUrl.includes(lead.linkedin_url?.toLowerCase() || '')
-  ) || null;
+  return (
+    allLeads.find(
+      (lead) =>
+        lead.linkedin_url?.toLowerCase().includes(normalizedUrl) ||
+        normalizedUrl.includes(lead.linkedin_url?.toLowerCase() || ""),
+    ) || null
+  );
 }
 
 // ============================================================================
@@ -561,24 +599,24 @@ export async function updateCandidateStageInJob(
   leadId: string,
   jobId: string,
   newStage: string,
-  userId?: string
+  userId?: string,
 ): Promise<Lead | null> {
   // Get the current lead
   const lead = await getLeadById(tenantId, leadId);
   if (!lead) {
-    throw new Error('Candidate not found');
+    throw new Error("Candidate not found");
   }
 
   // Get current linkedJobs array or initialize empty
   const currentLinkedJobs = lead.linkedJobs || [];
-  
+
   // Find the job in linkedJobs
-  const jobIndex = currentLinkedJobs.findIndex(j => j.jobId === jobId);
-  
+  const jobIndex = currentLinkedJobs.findIndex((j) => j.jobId === jobId);
+
   const now = new Date().toISOString();
   let oldStage = "";
   let jobTitle = "Job";
-  
+
   if (jobIndex >= 0) {
     oldStage = currentLinkedJobs[jobIndex].stage || "";
     jobTitle = currentLinkedJobs[jobIndex].jobTitle || "Job";
@@ -587,11 +625,11 @@ export async function updateCandidateStageInJob(
       ...currentLinkedJobs[jobIndex],
       stage: newStage,
       stageUpdatedAt: now,
-      stageUpdatedBy: userId || '',
+      stageUpdatedBy: userId || "",
     };
   } else {
     // This should not happen if candidate is properly linked, but handle gracefully
-    throw new Error('Candidate is not linked to this job');
+    throw new Error("Candidate is not linked to this job");
   }
 
   // Update the lead with new linkedJobs
@@ -600,16 +638,15 @@ export async function updateCandidateStageInJob(
   });
 
   try {
-    const { recordJobStageChanged } = await import(
-      "@/lib/events/candidate-events"
-    );
+    const { recordJobStageChanged } =
+      await import("@/lib/events/candidate-events");
     await recordJobStageChanged(
       leadId,
       jobId,
       jobTitle,
       oldStage,
       newStage,
-      userId || "system"
+      userId || "system",
     );
   } catch (e) {
     console.warn("[updateCandidateStageInJob] activity:", e);
@@ -628,22 +665,22 @@ export async function addJobSpecificNote(
   noteContent: string,
   userId: string,
   userName?: string,
-  relatedStage?: string
+  relatedStage?: string,
 ): Promise<Lead | null> {
   // Get the current lead
   const lead = await getLeadById(tenantId, leadId);
   if (!lead) {
-    throw new Error('Candidate not found');
+    throw new Error("Candidate not found");
   }
 
   // Get current linkedJobs array or initialize empty
   const currentLinkedJobs = lead.linkedJobs || [];
-  
+
   // Find the job in linkedJobs
-  const jobIndex = currentLinkedJobs.findIndex(j => j.jobId === jobId);
-  
+  const jobIndex = currentLinkedJobs.findIndex((j) => j.jobId === jobId);
+
   if (jobIndex < 0) {
-    throw new Error('Candidate is not linked to this job');
+    throw new Error("Candidate is not linked to this job");
   }
 
   // Create the new note
@@ -678,32 +715,32 @@ export async function linkCandidateToJobForApplication(
   jobTitle: string,
   companyId?: string,
   companyName?: string,
-  initialStage: string = 'sourced',
-  options?: { skipDualWrite?: boolean; skipActivityLog?: boolean }
+  initialStage: string = "sourced",
+  options?: { skipDualWrite?: boolean; skipActivityLog?: boolean },
 ): Promise<Lead | null> {
   // Get the current lead
   const lead = await getLeadById(tenantId, leadId);
   if (!lead) {
-    throw new Error('Candidate not found');
+    throw new Error("Candidate not found");
   }
 
   // Get current linkedJobs array or initialize empty
   const currentLinkedJobs = lead.linkedJobs || [];
-  
+
   // Check if already linked
-  if (currentLinkedJobs.some(j => j.jobId === jobId)) {
-    throw new Error('Candidate already linked to this job');
+  if (currentLinkedJobs.some((j) => j.jobId === jobId)) {
+    throw new Error("Candidate already linked to this job");
   }
 
   const now = new Date().toISOString();
-  
+
   // Add new job entry (avoid undefined properties for DynamoDB map/list values)
   const newLinkedJob: any = {
     jobId,
     jobTitle,
     stage: initialStage,
     stageUpdatedAt: now,
-    stageUpdatedBy: '',
+    stageUpdatedBy: "",
     notes: [],
   };
 
@@ -738,7 +775,7 @@ export async function linkCandidateToJobForApplication(
           candidateEmail: lead.email || "",
           stage: initialStage,
         },
-        { skipDualWrite: true }
+        { skipDualWrite: true },
       );
     } catch (err: any) {
       // Already linked on job side is fine
@@ -747,10 +784,7 @@ export async function linkCandidateToJobForApplication(
           .toLowerCase()
           .includes("already linked")
       ) {
-        console.warn(
-          "[linkCandidateToJobForApplication] job dual-write:",
-          err
-        );
+        console.warn("[linkCandidateToJobForApplication] job dual-write:", err);
       }
     }
   }
@@ -779,22 +813,22 @@ export async function unlinkCandidateFromJobForApplication(
   tenantId: string,
   leadId: string,
   jobId: string,
-  options?: { skipDualWrite?: boolean; skipActivityLog?: boolean }
+  options?: { skipDualWrite?: boolean; skipActivityLog?: boolean },
 ): Promise<Lead | null> {
   // Get the current lead
   const lead = await getLeadById(tenantId, leadId);
   if (!lead) {
-    throw new Error('Candidate not found');
+    throw new Error("Candidate not found");
   }
 
   // Filter out the job from linkedJobs
   const currentLinkedJobs = lead.linkedJobs || [];
   const removed = currentLinkedJobs.find((j) => j.jobId === jobId);
-  const newLinkedJobs = currentLinkedJobs.filter(j => j.jobId !== jobId);
-  
+  const newLinkedJobs = currentLinkedJobs.filter((j) => j.jobId !== jobId);
+
   // Also update legacy linkedJobIds
   const currentLinkedJobIds = lead.linkedJobIds || [];
-  const newLinkedJobIds = currentLinkedJobIds.filter(id => id !== jobId);
+  const newLinkedJobIds = currentLinkedJobIds.filter((id) => id !== jobId);
 
   // If nothing changed, job was not linked (or wrong jobId)
   if (newLinkedJobs.length === currentLinkedJobs.length) {
@@ -817,26 +851,25 @@ export async function unlinkCandidateFromJobForApplication(
     } catch (err) {
       console.warn(
         "[unlinkCandidateFromJobForApplication] job dual-write:",
-        err
+        err,
       );
     }
   }
 
   if (!options?.skipActivityLog) {
     try {
-      const { recordJobUnlinked } = await import(
-        "@/lib/events/candidate-events"
-      );
+      const { recordJobUnlinked } =
+        await import("@/lib/events/candidate-events");
       const result = await recordJobUnlinked(
         leadId,
         jobId,
         removed?.jobTitle || jobId,
-        "system"
+        "system",
       );
       if (!result.success) {
         console.warn(
           "[unlinkCandidateFromJobForApplication] activity failed:",
-          result.error
+          result.error,
         );
       }
     } catch (e) {
@@ -853,7 +886,7 @@ export async function unlinkCandidateFromJobForApplication(
 export async function getJobSpecificNotes(
   tenantId: string,
   leadId: string,
-  jobId: string
+  jobId: string,
 ): Promise<JobNote[]> {
   const lead = await getLeadById(tenantId, leadId);
   if (!lead) {
@@ -861,8 +894,8 @@ export async function getJobSpecificNotes(
   }
 
   const currentLinkedJobs = lead.linkedJobs || [];
-  const jobEntry = currentLinkedJobs.find(j => j.jobId === jobId);
-  
+  const jobEntry = currentLinkedJobs.find((j) => j.jobId === jobId);
+
   return jobEntry?.notes || [];
 }
 
@@ -872,7 +905,7 @@ export async function getJobSpecificNotes(
 export async function isCandidateLinkedToJob(
   tenantId: string,
   leadId: string,
-  jobId: string
+  jobId: string,
 ): Promise<boolean> {
   const lead = await getLeadById(tenantId, leadId);
   if (!lead) {
@@ -880,7 +913,7 @@ export async function isCandidateLinkedToJob(
   }
 
   const currentLinkedJobs = lead.linkedJobs || [];
-  return currentLinkedJobs.some(j => j.jobId === jobId);
+  return currentLinkedJobs.some((j) => j.jobId === jobId);
 }
 
 /**
@@ -888,7 +921,7 @@ export async function isCandidateLinkedToJob(
  */
 export async function getLinkedJobsForCandidate(
   tenantId: string,
-  leadId: string
+  leadId: string,
 ): Promise<LinkedJob[]> {
   const lead = await getLeadById(tenantId, leadId);
   if (!lead) {
