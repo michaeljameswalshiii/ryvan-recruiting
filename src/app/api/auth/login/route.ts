@@ -54,18 +54,20 @@ async function authenticateSimple(email: string, password: string) {
   const scanResult = await client.send(
     new ScanCommand({
       TableName: profilesTable,
-      FilterExpression: "email = :email",
-      ExpressionAttributeValues: {
-        ":email": { S: emailNorm },
-      },
+      // Email addresses are case-insensitive, but legacy profile rows may
+      // contain mixed-case values. Compare normalized values in application
+      // code instead of relying on DynamoDB's case-sensitive equality filter.
+      ProjectionExpression: "id,email,tenant_id,password_hash,#s,#r",
+      ExpressionAttributeNames: { "#s": "status", "#r": "role" },
     })
   );
 
-  if (!scanResult.Items || scanResult.Items.length === 0) {
+  const profile = (scanResult.Items || []).find(
+    (item) => item.email?.S?.trim().toLowerCase() === emailNorm
+  );
+  if (!profile) {
     throw new Error("Invalid credentials");
   }
-
-  const profile = scanResult.Items[0];
   const userId = profile.id?.S;
   const tenantId = profile.tenant_id?.S;
   const storedHash = profile.password_hash?.S;
