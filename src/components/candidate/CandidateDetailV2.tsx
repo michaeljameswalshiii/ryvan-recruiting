@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Briefcase, Calendar, ChevronRight, ExternalLink, Mail, MapPin, Phone, Sparkles } from 'lucide-react';
+import { ArrowLeft, Briefcase, Calendar, CheckCircle2, ChevronRight, ExternalLink, Mail, MapPin, Phone, PhoneCall, Sparkles, Video } from 'lucide-react';
 import { ResumeViewer } from '@/components/candidate/ResumeViewer';
 import { Button } from '@/components/ui/button';
 
@@ -20,6 +20,17 @@ function stageLabel(value?: string) {
   return String(value || 'Sourced').replace(/_/g, ' ').replace(/\b\w/g, (x) => x.toUpperCase());
 }
 
+function eventKind(note: any) {
+  const value = String(note?.eventType || note?.noteType || '').toLowerCase();
+  if (value.includes('interview')) return 'interview';
+  if (value.includes('email')) return 'email';
+  if (value.includes('call') || value.includes('phone')) return 'call';
+  if (value.includes('stage') || value.includes('status')) return 'stage';
+  return 'note';
+}
+
+const PIPELINE = ['sourced', 'applied', 'interested', 'submitted', 'interviewing', 'offer_out', 'accepted'];
+
 export function CandidateDetailV2({ candidate, initialJobId = '' }: { candidate: any; initialJobId?: string }) {
   const jobs = Array.isArray(candidate?.linkedJobs) ? candidate.linkedJobs : [];
   const [filter, setFilter] = useState(initialJobId || (jobs[0]?.jobId || jobs[0]?.id || 'all'));
@@ -28,6 +39,8 @@ export function CandidateDetailV2({ candidate, initialJobId = '' }: { candidate:
   const [resumeUrl, setResumeUrl] = useState(candidate?.resumeUrl || '');
   const [resumeKey, setResumeKey] = useState(candidate?.resumeKey || '');
   const [resumeName, setResumeName] = useState(candidate?.resumeFileName || '');
+  const [stage, setStage] = useState(String(jobs[0]?.stage || candidate?.status || 'sourced').toLowerCase());
+  const [stageBusy, setStageBusy] = useState(false);
   const name = candidate?.name || 'Unknown candidate';
 
   useEffect(() => {
@@ -53,6 +66,19 @@ export function CandidateDetailV2({ candidate, initialJobId = '' }: { candidate:
   const currentJobTitle = currentJob?.jobTitle || currentJob?.title || '';
   const currentCompany = currentJob?.companyName || currentJob?.company_name || currentJob?.company || '';
   const fitScore = currentJob?.fitScore ?? currentJob?.fit_score;
+  const currentStageIndex = Math.max(0, PIPELINE.indexOf(stage));
+  const updateStage = async (next: string) => {
+    setStageBusy(true);
+    const previous = stage;
+    setStage(next);
+    try {
+      const response = await fetch(`/api/candidate/${candidate.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: next }) });
+      if (!response.ok) throw new Error('Unable to update stage');
+      await fetch(`/api/candidate/${candidate.id}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ noteText: `Moved to ${stageLabel(next)}`, noteType: stageLabel(next), stage: next, jobId: currentJob?.jobId || currentJob?.id, jobTitle: currentJobTitle, companyName: currentCompany }) });
+      const events = await fetch(`/api/candidate/${candidate.id}/events?limit=100`).then((r) => r.json());
+      setNotes(Array.isArray(events?.events) ? events.events : []);
+    } catch { setStage(previous); } finally { setStageBusy(false); }
+  };
 
   return (
     <div className="min-h-screen bg-[#f7f8fa] px-3 py-4 text-slate-900 sm:px-5 lg:px-7">
@@ -92,6 +118,13 @@ export function CandidateDetailV2({ candidate, initialJobId = '' }: { candidate:
                 {jobs.map((job: any, index: number) => { const id = String(job.jobId || job.id || index); const active = id === String(filter); return <button key={id} type="button" onClick={() => setFilter(id)} className={`w-full rounded-lg border p-3 text-left ${active ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 hover:border-blue-300'}`}><div className="flex items-start justify-between gap-2"><span className="text-sm font-semibold">{job.jobTitle || job.title || 'Untitled job'}</span><span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">{stageLabel(job.stage)}</span></div><div className="mt-1 text-xs text-slate-500">{job.companyName || job.company_name || job.company || 'Company not specified'}</div><div className="mt-2 text-[11px] text-slate-500">Applied {date(job.appliedAt || job.applied_at || job.createdAt || candidate?.createdAt)}</div></button>; })}
                 {!jobs.length && <p className="py-5 text-center text-sm text-slate-500">No applications yet.</p>}
               </div>
+            </section>
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-700">Pipeline Stage</h2>
+              <div className="flex flex-wrap items-center gap-1">
+                {PIPELINE.map((item, index) => <button key={item} type="button" disabled={stageBusy} onClick={() => void updateStage(item)} className={`rounded-md border px-2 py-1.5 text-[10px] font-semibold transition ${index === currentStageIndex ? 'border-blue-600 bg-blue-600 text-white' : index < currentStageIndex ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-500 hover:border-blue-300'}`}>{stageLabel(item)}</button>)}
+              </div>
+              <div className="mt-3 flex gap-2"><Button size="sm" variant="outline" className="h-8 text-xs" disabled={stageBusy || currentStageIndex === 0} onClick={() => void updateStage(PIPELINE[Math.max(0, currentStageIndex - 1)])}>Move Back</Button><Button size="sm" className="h-8 bg-blue-600 text-xs hover:bg-blue-700" disabled={stageBusy || currentStageIndex >= PIPELINE.length - 1} onClick={() => void updateStage(PIPELINE[Math.min(PIPELINE.length - 1, currentStageIndex + 1)])}>Advance Stage</Button></div>
             </section>
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-700">Candidate Details</h2><div className="space-y-2 text-sm text-slate-600"><div className="flex gap-2"><Mail className="h-4 w-4 text-slate-400" />{candidate?.email || 'No email'}</div><div className="flex gap-2"><Phone className="h-4 w-4 text-slate-400" />{candidate?.phone || 'No phone'}</div><div className="flex gap-2"><MapPin className="h-4 w-4 text-slate-400" />{candidate?.location || 'No location'}</div>{candidate?.linkedin && <a className="flex items-center gap-2 text-blue-700 hover:underline" href={candidate.linkedin} target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4" /> LinkedIn</a>}</div></section>
           </div>
