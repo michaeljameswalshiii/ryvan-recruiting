@@ -316,7 +316,7 @@ export function CandidateDetailV2({
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2.2fr)_minmax(360px,1fr)]">
           <div className="space-y-4">
-          <section className="px-1 py-2 sm:px-2">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <button
