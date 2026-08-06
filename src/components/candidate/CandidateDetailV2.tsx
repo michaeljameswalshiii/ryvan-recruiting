@@ -16,6 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
+import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
 import { Button } from "@/components/ui/button";
 import {
   ACTIVITY_BADGE_BASE_CLASS,
@@ -432,6 +433,11 @@ export function CandidateDetailV2({
                     )}
                   </div>
                 </div>
+                <ObjectAssignments
+                  objectType="candidate"
+                  objectId={String(candidate.id)}
+                  compact
+                />
               </div>
             </div>
             {false && (

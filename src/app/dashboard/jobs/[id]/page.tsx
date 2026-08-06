@@ -55,6 +55,7 @@ import { toast } from "sonner";
 import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
 import { hasPermission } from "@/lib/roles";
 import { EntityFilesPanel } from "@/components/shared/EntityFilesPanel";
+import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
 
 type FitScoreClient = {
   score: number;
@@ -619,6 +620,8 @@ export default function JobDetailPage() {
           <JobDeleteButton jobId={job.id} jobTitle={job.title} />
         </div>
       </div>
+
+      <ObjectAssignments objectType="job" objectId={String(job.id || jobId)} />
 
       {/* Job detail tabs */}
       <div className="border-b border-gray-200">

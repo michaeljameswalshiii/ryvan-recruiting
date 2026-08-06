@@ -16,6 +16,7 @@ import {
 import type { CandidateEventType, EventDetails } from '@/lib/events/types';
 import { applyStageFromNoteType } from '@/lib/candidates/stage-sync';
 import { stageDisplayLabel } from '@/lib/candidates/note-type-stage';
+import { getSession } from '@/lib/server-auth';
 
 export async function GET(
   request: NextRequest,
@@ -69,7 +70,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { eventType, title, description, metadata, createdBy } = body;
+    const { eventType, title, description, metadata } = body;
 
     if (!eventType || !title) {
       return NextResponse.json(
@@ -78,14 +79,22 @@ export async function POST(
       );
     }
 
+    const session = await getSession();
+    if (!session?.userId || !session?.tenantId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const details: EventDetails = {
       title,
       description: description || '',
-      metadata: metadata || {},
+      metadata: {
+        ...(metadata || {}),
+        actorUserId: session.userId,
+        actorEmail: session.email,
+      },
     };
 
-    // Use provided createdBy or fallback to system
-    const userCreatedBy = createdBy || 'system';
+    const userCreatedBy = session.email || session.userId;
 
     const result = await recordEvent(
       candidateId,

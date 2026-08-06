@@ -496,6 +496,12 @@ export async function addNoteToCandidate(
     noteTypeLabel,
     changedBy: createdBy,
   };
+  if (options?.actorUserId) {
+    metadata.actorUserId = String(options.actorUserId);
+  }
+  if (options?.actorEmail) {
+    metadata.actorEmail = String(options.actorEmail);
+  }
   
   if (options?.stage) {
     metadata.stage = options.stage;

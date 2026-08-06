@@ -33,7 +33,6 @@ export async function POST(
     const {
       noteText,
       noteType = 'general',
-      createdBy,
       stage,
       jobId,
       jobTitle,
@@ -45,8 +44,10 @@ export async function POST(
       typeof noteText === 'string' ? noteText.trim() : '';
 
     const session = await getSession();
-    const user =
-      createdBy || session?.email || session?.userId || 'system';
+    if (!session?.userId || !session?.tenantId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const user = session.email || session.userId;
 
     const scopedJobId =
       typeof jobId === 'string' && jobId.trim() ? jobId.trim() : null;
@@ -80,6 +81,8 @@ export async function POST(
       previousStage,
       newStage: newStage || stageToStore,
       autoStageSync: stageUpdated,
+      actorUserId: session.userId,
+      actorEmail: session.email,
     });
 
     if (!result.success) {

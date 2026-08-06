@@ -23,6 +23,7 @@ import { companyStageLabel } from "@/lib/schemas/client";
 import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
 import { hasPermission } from "@/lib/roles";
 import { EntityFilesPanel } from "@/components/shared/EntityFilesPanel";
+import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
 
 // Dynamic import for EventTimeline to avoid SSR issues
 const CompanyEventTimeline = dynamic(() => 
@@ -372,6 +373,11 @@ export default function CompanyDetailPage() {
           />
         </div>
       </div>
+
+      <ObjectAssignments
+        objectType="company"
+        objectId={String(company.id)}
+      />
 
       {/* Tabs */}
       <div className="border-b border-border">
