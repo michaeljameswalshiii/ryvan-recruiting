@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -117,6 +117,9 @@ export function CandidateDetailV2({
   const [resumeUrl, setResumeUrl] = useState(candidate?.resumeUrl || "");
   const [resumeKey, setResumeKey] = useState(candidate?.resumeKey || "");
   const [resumeName, setResumeName] = useState(candidate?.resumeFileName || "");
+  const [avatarUrl, setAvatarUrl] = useState(candidate?.avatarUrl || "");
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [stage, setStage] = useState(
     String(jobs[0]?.stage || candidate?.status || "sourced").toLowerCase(),
   );
@@ -168,13 +171,15 @@ export function CandidateDetailV2({
     return notes.filter((note) => {
       const tag = resolveActivityJobTagInTimeline(note, jobs, notes);
       if (String(tag.jobId || "") === String(filter)) return true;
-      const tagTitle = String(tag.jobTitle || "").toLowerCase().trim();
+      const tagTitle = String(tag.jobTitle || "")
+        .toLowerCase()
+        .trim();
       return Boolean(
         selectedTitle &&
-          tagTitle &&
-          (tagTitle === selectedTitle ||
-            tagTitle.includes(selectedTitle) ||
-            selectedTitle.includes(tagTitle)),
+        tagTitle &&
+        (tagTitle === selectedTitle ||
+          tagTitle.includes(selectedTitle) ||
+          selectedTitle.includes(tagTitle)),
       );
     });
   }, [filter, jobs, notes]);
@@ -190,6 +195,39 @@ export function CandidateDetailV2({
     "";
   const fitScore = currentJob?.fitScore ?? currentJob?.fit_score;
   const currentStageIndex = Math.max(0, PIPELINE.indexOf(stage));
+  const uploadAvatar = async (file?: File) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    setAvatarBusy(true);
+    try {
+      const source = await createImageBitmap(file);
+      const size = 256;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Image preview unavailable");
+      const scale = Math.max(size / source.width, size / source.height);
+      const width = source.width * scale;
+      const height = source.height * scale;
+      context.drawImage(
+        source,
+        (size - width) / 2,
+        (size - height) / 2,
+        width,
+        height,
+      );
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.78);
+      const response = await fetch(`/api/candidate/${candidate.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar_url: dataUrl }),
+      });
+      if (!response.ok) throw new Error("Unable to save candidate picture");
+      setAvatarUrl(dataUrl);
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
   const updateStage = async (next: string) => {
     setStageBusy(true);
     const previous = stage;
@@ -245,9 +283,33 @@ export function CandidateDetailV2({
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xl font-semibold text-white">
-                {initials(name)}
-              </div>
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={avatarBusy}
+                className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-slate-900 text-xl font-semibold text-white"
+                title="Upload candidate picture"
+              >
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  initials(name)
+                )}
+                <span className="absolute inset-0 hidden items-center justify-center bg-black/55 text-[10px] font-semibold group-hover:flex">
+                  {avatarBusy ? "Saving" : "Change"}
+                </span>
+              </button>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(event) => void uploadAvatar(event.target.files?.[0])}
+              />
               <div className="min-w-0">
                 <h1 className="truncate text-2xl font-semibold tracking-tight">
                   {name}

@@ -39,6 +39,7 @@ export default async function CandidateDetailPage({ params, searchParams }: Prop
     createdAt: (c.created_at || c.createdAt || "") as string,
     modifiedAt: (c.modified_at || c.modifiedAt || "") as string,
     linkedin: (c.linkedin_url || c.linkedin || "") as string,
+    avatarUrl: (c.avatar_url || c.avatarUrl || "") as string,
     resumeUrl: (c.resume_url || c.resumeUrl || "") as string,
     resumeFileName: (c.resume_file_name || c.resumeFileName || "") as string,
     // Prefer explicit key; careers applies store the S3 key in resume_url
