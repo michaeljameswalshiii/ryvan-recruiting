@@ -333,6 +333,12 @@ export function CandidateDetailV2({
           >
             Open V1 detail
           </Link>
+          <Link
+            href={`/dashboard/candidates/${candidate.id}/edit`}
+            className="ml-3 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700"
+          >
+            Edit Candidate
+          </Link>
         </div>
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -564,6 +570,15 @@ export function CandidateDetailV2({
                 >
                   Advance Stage
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 border-red-200 text-xs text-red-700 hover:bg-red-50"
+                  disabled={stageBusy}
+                  onClick={() => void updateStage("rejected")}
+                >
+                  Reject
+                </Button>
               </div>
             </section>
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -703,30 +718,58 @@ export function CandidateDetailV2({
                   Loading activity…
                 </p>
               ) : visibleNotes.length ? (
-                visibleNotes.map((note: any, index: number) => (
-                  <div
-                    key={note.id || index}
-                    className="rounded-lg border border-slate-200 p-3"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span
-                        className={ACTIVITY_BADGE_BASE_CLASS}
-                        style={activityBadgeStyle(noteLabel(note))}
-                      >
-                        {noteLabel(note)}
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        {date(note.createdAt || note.timestamp)}
-                      </span>
+                visibleNotes.map((note: any, index: number) => {
+                  const kind = eventKind(note);
+                  const EventIcon =
+                    kind === "interview"
+                      ? Calendar
+                      : kind === "email"
+                        ? Mail
+                        : kind === "call"
+                          ? PhoneCall
+                          : kind === "stage"
+                            ? CheckCircle2
+                            : Briefcase;
+                  return (
+                    <div
+                      key={note.id || index}
+                      className="relative rounded-lg border border-slate-200 p-3 pl-11"
+                    >
+                      <div className="absolute left-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                        <EventIcon className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <span
+                          className={ACTIVITY_BADGE_BASE_CLASS}
+                          style={activityBadgeStyle(noteLabel(note))}
+                        >
+                          {noteLabel(note)}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          {date(note.createdAt || note.timestamp)}
+                        </span>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                        {note.description ||
+                          note.note ||
+                          note.metadata?.noteText ||
+                          "Activity recorded."}
+                      </p>
+                      {(note.metadata?.jobTitle ||
+                        note.metadata?.companyName ||
+                        note.createdBy) && (
+                        <div className="mt-2 text-[11px] text-slate-500">
+                          {note.metadata?.jobTitle ||
+                            note.metadata?.companyName ||
+                            ""}
+                          {note.createdBy
+                            ? ` · Added by ${note.createdBy}`
+                            : ""}
+                        </div>
+                      )}
                     </div>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-                      {note.description ||
-                        note.note ||
-                        note.metadata?.noteText ||
-                        "Activity recorded."}
-                    </p>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <p className="py-10 text-center text-sm text-slate-500">
                   No activity for this filter.
