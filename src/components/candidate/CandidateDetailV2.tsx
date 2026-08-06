@@ -131,6 +131,9 @@ export function CandidateDetailV2({
   const [fitBusy, setFitBusy] = useState(false);
   const [fitOverlay, setFitOverlay] = useState<any>(null);
   const name = candidate?.name || "Unknown candidate";
+  const salaryRequirement =
+    candidate?.salaryRequirements || candidate?.salary_requirements || "";
+  const linkedinUrl = candidate?.linkedin || candidate?.linkedin_url || "";
 
   useEffect(() => {
     let cancelled = false;
@@ -411,24 +414,28 @@ export function CandidateDetailV2({
                         {candidate?.location || currentJob.location}
                       </span>
                     )}
-                    {candidate?.salaryRequirements && (
-                      <span className="inline-flex items-center gap-1">
-                        <DollarSign className="h-3.5 w-3.5" />
-                        {candidate.salaryRequirements}
-                      </span>
-                    )}
-                    {candidate?.linkedin && (
-                      <a
-                        className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline"
-                        href={candidate.linkedin}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <Linkedin className="h-3.5 w-3.5" />
-                        LinkedIn
-                      </a>
-                    )}
                   </div>
+                  {(salaryRequirement || linkedinUrl) && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {salaryRequirement && (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">
+                          <DollarSign className="h-3.5 w-3.5" />
+                          {salaryRequirement}
+                        </span>
+                      )}
+                      {linkedinUrl && (
+                        <a
+                          className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                          href={linkedinUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <Linkedin className="h-3.5 w-3.5" />
+                          LinkedIn profile
+                        </a>
+                      )}
+                    </div>
+                  )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {candidate?.email && (
                       <a
