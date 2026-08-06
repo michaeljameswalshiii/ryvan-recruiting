@@ -33,9 +33,9 @@ export function CandidateDetailV2({ candidate, initialJobId = '' }: { candidate:
   useEffect(() => {
     let cancelled = false;
     setNotesLoading(true);
-    fetch(`/api/candidate/${candidate.id}/notes`)
+    fetch(`/api/candidate/${candidate.id}/events?limit=100`)
       .then((response) => response.ok ? response.json() : { notes: [] })
-      .then((body) => { if (!cancelled) setNotes(Array.isArray(body?.notes) ? body.notes : Array.isArray(body) ? body : []); })
+      .then((body) => { if (!cancelled) setNotes(Array.isArray(body?.events) ? body.events : Array.isArray(body) ? body : []); })
       .catch(() => { if (!cancelled) setNotes([]); })
       .finally(() => { if (!cancelled) setNotesLoading(false); });
     return () => { cancelled = true; };
@@ -50,6 +50,8 @@ export function CandidateDetailV2({ candidate, initialJobId = '' }: { candidate:
   }, [filter, notes]);
 
   const currentJob = jobs.find((job: any) => String(job.jobId || job.id) === String(filter)) || jobs[0];
+  const currentJobTitle = currentJob?.jobTitle || currentJob?.title || '';
+  const currentCompany = currentJob?.companyName || currentJob?.company_name || currentJob?.company || '';
   const fitScore = currentJob?.fitScore ?? currentJob?.fit_score;
 
   return (
@@ -66,18 +68,18 @@ export function CandidateDetailV2({ candidate, initialJobId = '' }: { candidate:
               <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xl font-semibold text-white">{initials(name)}</div>
               <div className="min-w-0">
                 <h1 className="truncate text-2xl font-semibold tracking-tight">{name}</h1>
-                <p className="truncate text-sm text-slate-600">{candidate?.title || 'Candidate'}{candidate?.company ? ` · ${candidate.company}` : ''}</p>
+                <p className="truncate text-sm text-slate-600">{candidate?.title || currentJobTitle || 'Candidate'}{candidate?.company || currentCompany ? ` · ${candidate?.company || currentCompany}` : ''}</p>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
                   {candidate?.email && <a className="inline-flex items-center gap-1 hover:text-blue-700" href={`mailto:${candidate.email}`}><Mail className="h-3.5 w-3.5" />{candidate.email}</a>}
                   {candidate?.phone && <a className="inline-flex items-center gap-1 hover:text-blue-700" href={`tel:${candidate.phone}`}><Phone className="h-3.5 w-3.5" />{candidate.phone}</a>}
-                  {candidate?.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{candidate.location}</span>}
+                  {(candidate?.location || currentJob?.location) && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{candidate?.location || currentJob.location}</span>}
                 </div>
               </div>
             </div>
             <div className="rounded-xl border-2 border-blue-500 bg-blue-50/40 p-3 lg:min-w-[300px]">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current job</div>
               <div className="mt-1 flex items-center justify-between gap-3"><span className="truncate text-sm font-semibold text-blue-800">{currentJob?.jobTitle || currentJob?.title || 'No job selected'}</span><ChevronRight className="h-4 w-4 text-blue-600" /></div>
-              <div className="mt-1 text-xs text-slate-600">{stageLabel(currentJob?.stage || candidate?.status)} · Applied {date(currentJob?.appliedAt || currentJob?.createdAt || candidate?.createdAt)}</div>
+              <div className="mt-1 text-xs text-slate-600">{stageLabel(currentJob?.stage || candidate?.status)} · Applied {date(currentJob?.appliedAt || currentJob?.applied_at || currentJob?.createdAt || candidate?.createdAt)}</div>
             </div>
           </div>
         </section>
@@ -87,7 +89,7 @@ export function CandidateDetailV2({ candidate, initialJobId = '' }: { candidate:
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between"><h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">Applications ({jobs.length})</h2><Briefcase className="h-4 w-4 text-slate-400" /></div>
               <div className="space-y-2">
-                {jobs.map((job: any, index: number) => { const id = String(job.jobId || job.id || index); const active = id === String(filter); return <button key={id} type="button" onClick={() => setFilter(id)} className={`w-full rounded-lg border p-3 text-left ${active ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 hover:border-blue-300'}`}><div className="flex items-start justify-between gap-2"><span className="text-sm font-semibold">{job.jobTitle || job.title || 'Untitled job'}</span><span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">{stageLabel(job.stage)}</span></div><div className="mt-1 text-xs text-slate-500">{job.companyName || job.company || 'Company not specified'}</div><div className="mt-2 text-[11px] text-slate-500">Applied {date(job.appliedAt || job.createdAt)}</div></button>; })}
+                {jobs.map((job: any, index: number) => { const id = String(job.jobId || job.id || index); const active = id === String(filter); return <button key={id} type="button" onClick={() => setFilter(id)} className={`w-full rounded-lg border p-3 text-left ${active ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 hover:border-blue-300'}`}><div className="flex items-start justify-between gap-2"><span className="text-sm font-semibold">{job.jobTitle || job.title || 'Untitled job'}</span><span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">{stageLabel(job.stage)}</span></div><div className="mt-1 text-xs text-slate-500">{job.companyName || job.company_name || job.company || 'Company not specified'}</div><div className="mt-2 text-[11px] text-slate-500">Applied {date(job.appliedAt || job.applied_at || job.createdAt || candidate?.createdAt)}</div></button>; })}
                 {!jobs.length && <p className="py-5 text-center text-sm text-slate-500">No applications yet.</p>}
               </div>
             </section>
