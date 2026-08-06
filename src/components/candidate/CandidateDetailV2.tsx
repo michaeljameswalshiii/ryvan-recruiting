@@ -946,15 +946,17 @@ export function CandidateDetailV2({
                     <div className="text-xs font-semibold text-slate-600">
                       Potential concerns
                     </div>
-                    <ul className="mt-1 space-y-1 text-xs text-slate-700">
-                      {(fit.fitGaps || []).slice(0, 4).map((item: string) => (
-                        <li key={item}>• {item}</li>
+                    <ul className="mt-1 space-y-1.5 text-xs text-slate-700">
+                      {(fit.fitGaps || []).slice(0, 2).map((item: string) => (
+                        <li key={item} className="flex gap-1.5" title={item}>
+                          <span className="shrink-0 text-amber-500">•</span>
+                          <span className="line-clamp-2">{item}</span>
+                        </li>
                       ))}
+                      {!(fit.fitGaps || []).length && (
+                        <li className="text-slate-500">No concerns identified.</li>
+                      )}
                     </ul>
-                    <div className="mt-1 text-sm text-slate-700">
-                      {fit.fitSummary ||
-                        "Run AI Fit to evaluate this application."}
-                    </div>
                   </div>
                 </div>
                 <div className="hidden grid gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2">
