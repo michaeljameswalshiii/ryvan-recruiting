@@ -15,6 +15,7 @@ import { DismissRowButton } from "@/components/ui/DismissRowButton";
 import { useDismissedItems } from "@/hooks/useDismissedItems";
 import { buildDismissKey } from "@/lib/ui/dismissed-items";
 import { toast } from "sonner";
+import { DashboardCard } from "@/components/dashboard/DashboardCard";
 
 type NextAction = {
   kind: string;
@@ -207,20 +208,11 @@ export function DeskNextActions({
   // ── On Deck card (dashboard pulse design) ──────────────────────────
   if (onDeck) {
     return (
-      <section
-        className={`rounded-2xl border border-gray-200 bg-white p-5 shadow-sm ${className || ""}`}
-      >
+      <DashboardCard title="On deck" className={className}>
         <div className="mb-3 flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                On deck
-              </span>
-            </div>
-            <p className="mt-0.5 text-xs text-gray-500">
-              Action items to keep your pipeline moving.
-            </p>
-          </div>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Action items to keep your pipeline moving.
+          </p>
           <div className="flex shrink-0 items-center gap-2">
             {dismissedCount > 0 && (
               <button
@@ -321,7 +313,7 @@ export function DeskNextActions({
             })}
           </ul>
         )}
-      </section>
+      </DashboardCard>
     );
   }
 
