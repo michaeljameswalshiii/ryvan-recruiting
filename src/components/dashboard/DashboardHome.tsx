@@ -204,7 +204,29 @@ export function DashboardHome({
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
         {kpis.map((c) => (
-          <DashboardCard key={c.title} title={c.title} className="overflow-hidden">
+          <DashboardCard
+            key={c.title}
+            title={c.title}
+            className="overflow-hidden"
+            expandedChildren={
+              <div className="flex min-h-[320px] flex-col items-center justify-center text-center">
+                <div className={`mb-5 rounded-2xl p-4 ${c.bg}`}>
+                  <c.icon className={`h-8 w-8 ${c.color}`} />
+                </div>
+                <div className="text-6xl font-semibold tabular-nums text-slate-900">
+                  {Number(c.value).toLocaleString()}
+                </div>
+                <p className="mt-3 text-sm font-medium text-slate-600">{c.sub}</p>
+                <div className="mt-4 flex items-center gap-3 text-sm text-slate-500">
+                  <span>Compared with the prior period</span>
+                  <DeltaBadge deltaPct={c.delta} />
+                </div>
+                <Link href={c.href} className="mt-8 text-sm font-semibold text-blue-600 hover:underline">
+                  Open {c.title.toLowerCase()} details
+                </Link>
+              </div>
+            }
+          >
           <Link href={c.href} className="block hover:opacity-90 transition-opacity">
             <div className="flex items-start justify-between gap-2">
               <div className={`p-2 rounded-xl ${c.bg}`}>

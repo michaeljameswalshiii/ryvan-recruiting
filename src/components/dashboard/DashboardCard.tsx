@@ -7,6 +7,7 @@ import { ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 type DashboardCardProps = {
   title: string;
   children: ReactNode;
+  expandedChildren?: ReactNode;
   className?: string;
   defaultCollapsed?: boolean;
 };
@@ -15,6 +16,7 @@ type DashboardCardProps = {
 export function DashboardCard({
   title,
   children,
+  expandedChildren,
   className = '',
   defaultCollapsed = false,
 }: DashboardCardProps) {
@@ -67,7 +69,9 @@ export function DashboardCard({
               <h2 className="text-base font-semibold text-gray-900">{title}</h2>
               {controls(true)}
             </header>
-            <div className="p-5 sm:p-8">{children}</div>
+            <div className="p-5 sm:p-8 [&_.recharts-responsive-container]:!h-[420px]">
+              {expandedChildren ?? children}
+            </div>
           </section>
         </div>
       )}
