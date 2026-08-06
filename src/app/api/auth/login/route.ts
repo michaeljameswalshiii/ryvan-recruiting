@@ -65,6 +65,13 @@ async function authenticateSimple(email: string, password: string) {
   const profile = (scanResult.Items || []).find(
     (item) => item.email?.S?.trim().toLowerCase() === emailNorm
   );
+  console.log("[LOGIN] Simple profile lookup", {
+    table: profilesTable,
+    region,
+    match: Boolean(profile),
+    profileId: profile?.id?.S || null,
+    hasPasswordHash: Boolean(profile?.password_hash?.S),
+  });
   if (!profile) {
     throw new Error("Invalid credentials");
   }
