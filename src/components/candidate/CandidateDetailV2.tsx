@@ -8,7 +8,6 @@ import {
   Calendar,
   CheckCircle2,
   ChevronRight,
-  ExternalLink,
   Mail,
   MapPin,
   Phone,
@@ -669,54 +668,6 @@ export function CandidateDetailV2({
                     Reject
                   </Button>
                 </div>
-              </section>
-              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-700">
-                  Candidate Details
-                </h2>
-                <div className="space-y-2 text-sm text-slate-600">
-                  <div className="flex gap-2">
-                    <Mail className="h-4 w-4 text-slate-400" />
-                    {candidate?.email || "No email"}
-                  </div>
-                  <div className="flex gap-2">
-                    <Phone className="h-4 w-4 text-slate-400" />
-                    {candidate?.phone || "No phone"}
-                  </div>
-                  <div className="flex gap-2">
-                    <MapPin className="h-4 w-4 text-slate-400" />
-                    {candidate?.location || "No location"}
-                  </div>
-                  {candidate?.salaryRequirements && (
-                    <div className="flex gap-2">
-                      <span className="w-4 text-center text-slate-400">$</span>
-                      {candidate.salaryRequirements}
-                    </div>
-                  )}
-                  {candidate?.linkedin && (
-                    <a
-                      className="flex items-center gap-2 text-blue-700 hover:underline"
-                      href={candidate.linkedin}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <ExternalLink className="h-4 w-4" /> LinkedIn
-                    </a>
-                  )}
-                </div>
-                {Array.isArray(candidate?.skills) &&
-                  candidate.skills.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {candidate.skills.slice(0, 12).map((skill: string) => (
-                        <span
-                          key={skill}
-                          className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-800"
-                        >
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  )}
               </section>
             </div>
 
