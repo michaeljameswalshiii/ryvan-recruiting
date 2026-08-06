@@ -806,7 +806,7 @@ export function CandidateDetailV2({
               <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
                 <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
               </h2>
-              <div className="mb-3 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+              <div className="mb-3 grid gap-3 sm:grid-cols-3 xl:grid-cols-3">
                 <div>
                   <div className="text-xs text-slate-500">Overall fit</div>
                   <div
@@ -831,7 +831,16 @@ export function CandidateDetailV2({
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500">Domain / tools</div>
+                  <div className="text-xs font-semibold text-slate-600">
+                    Key strengths
+                  </div>
+                  <ul className="mt-1 space-y-1 text-xs text-slate-700">
+                    {(fit.fitStrengths || [])
+                      .slice(0, 4)
+                      .map((item: string) => (
+                        <li key={item}>✓ {item}</li>
+                      ))}
+                  </ul>
                   <div className="mt-1 text-sm font-semibold text-slate-700">
                     {fit.fitDomainScore != null
                       ? `${fit.fitDomainScore}/100 domain`
@@ -842,14 +851,21 @@ export function CandidateDetailV2({
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500">Summary</div>
+                  <div className="text-xs font-semibold text-slate-600">
+                    Potential concerns
+                  </div>
+                  <ul className="mt-1 space-y-1 text-xs text-slate-700">
+                    {(fit.fitGaps || []).slice(0, 4).map((item: string) => (
+                      <li key={item}>• {item}</li>
+                    ))}
+                  </ul>
                   <div className="mt-1 text-sm text-slate-700">
                     {fit.fitSummary ||
                       "Run AI Fit to evaluate this application."}
                   </div>
                 </div>
               </div>
-              <div className="grid gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2">
+              <div className="hidden grid gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2">
                 <div>
                   <div className="text-xs font-semibold text-slate-600">
                     Key strengths
