@@ -341,9 +341,10 @@ export function CandidateDetailV2({
           </Link>
         </div>
 
-        <section className="bg-transparent p-0 shadow-none">
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(230px,0.85fr)_minmax(390px,1.35fr)_minmax(360px,1fr)]">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 xl:col-span-2 xl:col-start-1 xl:row-start-1">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
                 <button
                   type="button"
                   onClick={() => avatarInputRef.current?.click()}
@@ -470,521 +471,527 @@ export function CandidateDetailV2({
                 </div>
               </div>
             </div>
-          <div className="hidden space-y-4">
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-200 px-4 py-3">
-                <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                  Resume
-                </h2>
-              </div>
-              <div className="h-[min(68vh,720px)] min-h-[420px]">
-                <ResumeViewer
-                  url={resumeUrl}
-                  fileName={resumeName}
-                  fileKey={resumeKey}
-                  candidateId={candidate.id}
-                  className="h-full"
-                  onUrlUpdated={setResumeUrl}
-                  onResumeChanged={(info) => {
-                    if (!info) return;
-                    setResumeUrl(info.resumeUrl || "");
-                    setResumeName(info.fileName || "");
-                    setResumeKey(info.fileKey || info.resumeUrl || "");
-                  }}
-                />
-              </div>
-            </section>
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
-                <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
-              </h2>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div>
-                  <div className="text-xs text-slate-500">Overall fit</div>
-                  <div
-                    className="mt-2 flex h-16 w-16 items-center justify-center rounded-full"
-                    style={{
-                      background: `conic-gradient(#16a34a ${Math.max(0, Math.min(100, Number(fitScore) || 0)) * 3.6}deg, #d1d5db 0deg)`,
-                    }}
-                  >
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-sm font-semibold">
-                      {fitScore != null ? Math.round(Number(fitScore)) : "—"}
+            {false && (
+              <div className="hidden space-y-4">
+                <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 px-4 py-3">
+                    <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                      Resume
+                    </h2>
+                  </div>
+                  <div className="h-[min(68vh,720px)] min-h-[420px]">
+                    <ResumeViewer
+                      url={resumeUrl}
+                      fileName={resumeName}
+                      fileKey={resumeKey}
+                      candidateId={candidate.id}
+                      className="h-full"
+                      onUrlUpdated={setResumeUrl}
+                      onResumeChanged={(info) => {
+                        if (!info) return;
+                        setResumeUrl(info.resumeUrl || "");
+                        setResumeName(info.fileName || "");
+                        setResumeKey(info.fileKey || info.resumeUrl || "");
+                      }}
+                    />
+                  </div>
+                </section>
+                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                    <Sparkles className="h-4 w-4 text-violet-600" /> AI
+                    Evaluation
+                  </h2>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <div className="text-xs text-slate-500">Overall fit</div>
+                      <div
+                        className="mt-2 flex h-16 w-16 items-center justify-center rounded-full"
+                        style={{
+                          background: `conic-gradient(#16a34a ${Math.max(0, Math.min(100, Number(fitScore) || 0)) * 3.6}deg, #d1d5db 0deg)`,
+                        }}
+                      >
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-sm font-semibold">
+                          {fitScore != null
+                            ? Math.round(Number(fitScore))
+                            : "—"}
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-slate-600">
+                        Key strengths
+                      </div>
+                      <ul className="mt-1 space-y-1 text-xs text-slate-700">
+                        {(fit.fitStrengths || [])
+                          .slice(0, 3)
+                          .map((item: string) => (
+                            <li key={item}>✓ {item}</li>
+                          ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-slate-600">
+                        Potential concerns
+                      </div>
+                      <ul className="mt-1 space-y-1 text-xs text-slate-700">
+                        {(fit.fitGaps || []).slice(0, 3).map((item: string) => (
+                          <li key={item}>• {item}</li>
+                        ))}
+                      </ul>
                     </div>
                   </div>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-slate-600">
-                    Key strengths
-                  </div>
-                  <ul className="mt-1 space-y-1 text-xs text-slate-700">
-                    {(fit.fitStrengths || [])
-                      .slice(0, 3)
-                      .map((item: string) => (
-                        <li key={item}>✓ {item}</li>
-                      ))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-slate-600">
-                    Potential concerns
-                  </div>
-                  <ul className="mt-1 space-y-1 text-xs text-slate-700">
-                    {(fit.fitGaps || []).slice(0, 3).map((item: string) => (
-                      <li key={item}>• {item}</li>
-                    ))}
-                  </ul>
-                </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-3 w-full text-xs"
+                    disabled={fitBusy || !currentJob}
+                    onClick={() => void runFit()}
+                  >
+                    {fitBusy
+                      ? "Scoring application..."
+                      : fitScore != null
+                        ? "Refresh AI Fit"
+                        : "Run AI Fit"}
+                  </Button>
+                </section>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-3 w-full text-xs"
-                disabled={fitBusy || !currentJob}
-                onClick={() => void runFit()}
-              >
-                {fitBusy
-                  ? "Scoring application..."
-                  : fitScore != null
-                    ? "Refresh AI Fit"
-                    : "Run AI Fit"}
-              </Button>
-            </section>
-          </div>
-        </section>
+            )}
+          </section>
 
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(230px,0.85fr)_minmax(390px,1.35fr)_minmax(360px,1fr)]">
-          <div className="space-y-4">
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                  Applications ({jobs.length})
+          <div className="grid items-start gap-4 xl:contents">
+            <div className="space-y-4 xl:col-start-1 xl:row-start-2">
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                    Applications ({jobs.length})
+                  </h2>
+                  <Briefcase className="h-4 w-4 text-slate-400" />
+                </div>
+                <div className="space-y-2">
+                  {jobs.map((job: any, index: number) => {
+                    const id = String(job.jobId || job.id || index);
+                    const active = id === String(filter);
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setFilter(id)}
+                        className={`w-full rounded-lg border p-3 text-left ${active ? "border-blue-500 bg-blue-50/50" : "border-slate-200 hover:border-blue-300"}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-sm font-semibold">
+                            {job.jobTitle || job.title || "Untitled job"}
+                          </span>
+                          <span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+                            {stageLabel(job.stage)}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {job.companyName ||
+                            job.company_name ||
+                            job.company ||
+                            "Company not specified"}
+                        </div>
+                        <div className="mt-2 text-[11px] text-slate-500">
+                          Applied{" "}
+                          {date(
+                            job.appliedAt ||
+                              job.applied_at ||
+                              job.createdAt ||
+                              candidate?.createdAt,
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {!jobs.length && (
+                    <p className="py-5 text-center text-sm text-slate-500">
+                      No applications yet.
+                    </p>
+                  )}
+                </div>
+              </section>
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-700">
+                  Pipeline Stage
                 </h2>
-                <Briefcase className="h-4 w-4 text-slate-400" />
+                <div className="flex flex-wrap items-center gap-1">
+                  {PIPELINE.map((item, index) => (
+                    <button
+                      key={item}
+                      type="button"
+                      disabled={stageBusy}
+                      onClick={() => void updateStage(item)}
+                      className={`rounded-md border px-2 py-1.5 text-[10px] font-semibold transition ${index === currentStageIndex ? "border-blue-600 bg-blue-600 text-white" : index < currentStageIndex ? "border-blue-200 bg-blue-50 text-blue-800" : "border-slate-200 bg-white text-slate-500 hover:border-blue-300"}`}
+                    >
+                      {stageLabel(item)}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    disabled={stageBusy || currentStageIndex === 0}
+                    onClick={() =>
+                      void updateStage(
+                        PIPELINE[Math.max(0, currentStageIndex - 1)],
+                      )
+                    }
+                  >
+                    Move Back
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-8 bg-blue-600 text-xs hover:bg-blue-700"
+                    disabled={
+                      stageBusy || currentStageIndex >= PIPELINE.length - 1
+                    }
+                    onClick={() =>
+                      void updateStage(
+                        PIPELINE[
+                          Math.min(PIPELINE.length - 1, currentStageIndex + 1)
+                        ],
+                      )
+                    }
+                  >
+                    Advance Stage
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 border-red-200 text-xs text-red-700 hover:bg-red-50"
+                    disabled={stageBusy}
+                    onClick={() => void updateStage("rejected")}
+                  >
+                    Reject
+                  </Button>
+                </div>
+              </section>
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-700">
+                  Candidate Details
+                </h2>
+                <div className="space-y-2 text-sm text-slate-600">
+                  <div className="flex gap-2">
+                    <Mail className="h-4 w-4 text-slate-400" />
+                    {candidate?.email || "No email"}
+                  </div>
+                  <div className="flex gap-2">
+                    <Phone className="h-4 w-4 text-slate-400" />
+                    {candidate?.phone || "No phone"}
+                  </div>
+                  <div className="flex gap-2">
+                    <MapPin className="h-4 w-4 text-slate-400" />
+                    {candidate?.location || "No location"}
+                  </div>
+                  {candidate?.salaryRequirements && (
+                    <div className="flex gap-2">
+                      <span className="w-4 text-center text-slate-400">$</span>
+                      {candidate.salaryRequirements}
+                    </div>
+                  )}
+                  {candidate?.linkedin && (
+                    <a
+                      className="flex items-center gap-2 text-blue-700 hover:underline"
+                      href={candidate.linkedin}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <ExternalLink className="h-4 w-4" /> LinkedIn
+                    </a>
+                  )}
+                </div>
+                {Array.isArray(candidate?.skills) &&
+                  candidate.skills.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {candidate.skills.slice(0, 12).map((skill: string) => (
+                        <span
+                          key={skill}
+                          className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-800"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+              </section>
+            </div>
+
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-start-2 xl:row-start-2">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                    Candidate Activity Timeline
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Only activity for the selected job is shown.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setFilter("all")}
+                    className={`rounded-md px-2 py-1 text-[11px] font-semibold ${filter === "all" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setFilter("candidate")}
+                    className={`rounded-md px-2 py-1 text-[11px] font-semibold ${filter === "candidate" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}
+                  >
+                    Candidate
+                  </button>
+                </div>
               </div>
-              <div className="space-y-2">
+              <div className="mb-3 flex flex-wrap gap-1.5">
                 {jobs.map((job: any, index: number) => {
-                  const id = String(job.jobId || job.id || index);
-                  const active = id === String(filter);
+                  const id = String(job?.jobId || job?.id || index);
                   return (
                     <button
                       key={id}
                       type="button"
                       onClick={() => setFilter(id)}
-                      className={`w-full rounded-lg border p-3 text-left ${active ? "border-blue-500 bg-blue-50/50" : "border-slate-200 hover:border-blue-300"}`}
+                      className={`max-w-[12rem] truncate rounded-full border px-2.5 py-1 text-[11px] font-semibold ${String(filter) === id ? "border-violet-300 bg-violet-50 text-violet-900" : "border-slate-200 bg-white text-slate-600 hover:border-violet-200"}`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-sm font-semibold">
-                          {job.jobTitle || job.title || "Untitled job"}
-                        </span>
-                        <span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
-                          {stageLabel(job.stage)}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {job.companyName ||
-                          job.company_name ||
-                          job.company ||
-                          "Company not specified"}
-                      </div>
-                      <div className="mt-2 text-[11px] text-slate-500">
-                        Applied{" "}
-                        {date(
-                          job.appliedAt ||
-                            job.applied_at ||
-                            job.createdAt ||
-                            candidate?.createdAt,
-                        )}
-                      </div>
+                      {job?.jobTitle || job?.title || "Job"}
                     </button>
                   );
                 })}
-                {!jobs.length && (
-                  <p className="py-5 text-center text-sm text-slate-500">
-                    No applications yet.
+              </div>
+              <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/40 p-2.5">
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <select
+                    value={noteType}
+                    onChange={(event) => setNoteType(event.target.value)}
+                    className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs sm:w-36"
+                  >
+                    <option>Conversation</option>
+                    <option>Interview</option>
+                    <option>Call</option>
+                    <option>Email sent</option>
+                    <option>Text sent</option>
+                    <option>Note</option>
+                    <option>Rejected</option>
+                  </select>
+                  <input
+                    value={noteText}
+                    onChange={(event) => setNoteText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void addActivity();
+                      }
+                    }}
+                    placeholder={
+                      currentJob
+                        ? `Add activity for ${currentJobTitle}...`
+                        : "Add activity..."
+                    }
+                    className="h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    disabled={noteBusy || !noteText.trim()}
+                    onClick={() => void addActivity()}
+                    className="h-9 bg-blue-600 text-xs hover:bg-blue-700"
+                  >
+                    {noteBusy ? "Saving..." : "Log"}
+                  </Button>
+                </div>
+              </div>
+              <div className="max-h-[680px] space-y-2 overflow-y-auto pr-1">
+                {notesLoading ? (
+                  <p className="py-10 text-center text-sm text-slate-500">
+                    Loading activity…
+                  </p>
+                ) : visibleNotes.length ? (
+                  visibleNotes.map((note: any, index: number) => {
+                    const kind = eventKind(note);
+                    const EventIcon =
+                      kind === "interview"
+                        ? Calendar
+                        : kind === "email"
+                          ? Mail
+                          : kind === "call"
+                            ? PhoneCall
+                            : kind === "stage"
+                              ? CheckCircle2
+                              : Briefcase;
+                    return (
+                      <div
+                        key={note.id || index}
+                        className="relative rounded-lg border border-slate-200 p-3 pl-11"
+                      >
+                        <div className="absolute left-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                          <EventIcon className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="flex items-start justify-between gap-2">
+                          <span
+                            className={ACTIVITY_BADGE_BASE_CLASS}
+                            style={activityBadgeStyle(noteLabel(note))}
+                          >
+                            {noteLabel(note)}
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            {date(note.createdAt || note.timestamp)}
+                          </span>
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                          {note.description ||
+                            note.note ||
+                            note.metadata?.noteText ||
+                            "Activity recorded."}
+                        </p>
+                        {(note.metadata?.jobTitle ||
+                          note.metadata?.companyName ||
+                          note.createdBy) && (
+                          <div className="mt-2 text-[11px] text-slate-500">
+                            {note.metadata?.jobTitle ||
+                              note.metadata?.companyName ||
+                              ""}
+                            {note.createdBy
+                              ? ` · Added by ${note.createdBy}`
+                              : ""}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="py-10 text-center text-sm text-slate-500">
+                    No activity for this filter.
                   </p>
                 )}
               </div>
             </section>
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-700">
-                Pipeline Stage
-              </h2>
-              <div className="flex flex-wrap items-center gap-1">
-                {PIPELINE.map((item, index) => (
-                  <button
-                    key={item}
-                    type="button"
-                    disabled={stageBusy}
-                    onClick={() => void updateStage(item)}
-                    className={`rounded-md border px-2 py-1.5 text-[10px] font-semibold transition ${index === currentStageIndex ? "border-blue-600 bg-blue-600 text-white" : index < currentStageIndex ? "border-blue-200 bg-blue-50 text-blue-800" : "border-slate-200 bg-white text-slate-500 hover:border-blue-300"}`}
-                  >
-                    {stageLabel(item)}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-3 flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 text-xs"
-                  disabled={stageBusy || currentStageIndex === 0}
-                  onClick={() =>
-                    void updateStage(
-                      PIPELINE[Math.max(0, currentStageIndex - 1)],
-                    )
-                  }
-                >
-                  Move Back
-                </Button>
-                <Button
-                  size="sm"
-                  className="h-8 bg-blue-600 text-xs hover:bg-blue-700"
-                  disabled={
-                    stageBusy || currentStageIndex >= PIPELINE.length - 1
-                  }
-                  onClick={() =>
-                    void updateStage(
-                      PIPELINE[
-                        Math.min(PIPELINE.length - 1, currentStageIndex + 1)
-                      ],
-                    )
-                  }
-                >
-                  Advance Stage
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 border-red-200 text-xs text-red-700 hover:bg-red-50"
-                  disabled={stageBusy}
-                  onClick={() => void updateStage("rejected")}
-                >
-                  Reject
-                </Button>
-              </div>
-            </section>
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-700">
-                Candidate Details
-              </h2>
-              <div className="space-y-2 text-sm text-slate-600">
-                <div className="flex gap-2">
-                  <Mail className="h-4 w-4 text-slate-400" />
-                  {candidate?.email || "No email"}
-                </div>
-                <div className="flex gap-2">
-                  <Phone className="h-4 w-4 text-slate-400" />
-                  {candidate?.phone || "No phone"}
-                </div>
-                <div className="flex gap-2">
-                  <MapPin className="h-4 w-4 text-slate-400" />
-                  {candidate?.location || "No location"}
-                </div>
-                {candidate?.salaryRequirements && (
-                  <div className="flex gap-2">
-                    <span className="w-4 text-center text-slate-400">$</span>
-                    {candidate.salaryRequirements}
-                  </div>
-                )}
-                {candidate?.linkedin && (
-                  <a
-                    className="flex items-center gap-2 text-blue-700 hover:underline"
-                    href={candidate.linkedin}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <ExternalLink className="h-4 w-4" /> LinkedIn
-                  </a>
-                )}
-              </div>
-              {Array.isArray(candidate?.skills) &&
-                candidate.skills.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {candidate.skills.slice(0, 12).map((skill: string) => (
-                      <span
-                        key={skill}
-                        className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-800"
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                )}
-            </section>
-          </div>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                  Candidate Activity Timeline
-                </h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Only activity for the selected job is shown.
-                </p>
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setFilter("all")}
-                  className={`rounded-md px-2 py-1 text-[11px] font-semibold ${filter === "all" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}
-                >
-                  All
-                </button>
-                <button
-                  onClick={() => setFilter("candidate")}
-                  className={`rounded-md px-2 py-1 text-[11px] font-semibold ${filter === "candidate" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}
-                >
-                  Candidate
-                </button>
-              </div>
-            </div>
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {jobs.map((job: any, index: number) => {
-                const id = String(job?.jobId || job?.id || index);
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setFilter(id)}
-                    className={`max-w-[12rem] truncate rounded-full border px-2.5 py-1 text-[11px] font-semibold ${String(filter) === id ? "border-violet-300 bg-violet-50 text-violet-900" : "border-slate-200 bg-white text-slate-600 hover:border-violet-200"}`}
-                  >
-                    {job?.jobTitle || job?.title || "Job"}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/40 p-2.5">
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <select
-                  value={noteType}
-                  onChange={(event) => setNoteType(event.target.value)}
-                  className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs sm:w-36"
-                >
-                  <option>Conversation</option>
-                  <option>Interview</option>
-                  <option>Call</option>
-                  <option>Email sent</option>
-                  <option>Text sent</option>
-                  <option>Note</option>
-                  <option>Rejected</option>
-                </select>
-                <input
-                  value={noteText}
-                  onChange={(event) => setNoteText(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void addActivity();
-                    }
-                  }}
-                  placeholder={
-                    currentJob
-                      ? `Add activity for ${currentJobTitle}...`
-                      : "Add activity..."
-                  }
-                  className="h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-3 text-sm"
-                />
-                <Button
-                  size="sm"
-                  disabled={noteBusy || !noteText.trim()}
-                  onClick={() => void addActivity()}
-                  className="h-9 bg-blue-600 text-xs hover:bg-blue-700"
-                >
-                  {noteBusy ? "Saving..." : "Log"}
-                </Button>
-              </div>
-            </div>
-            <div className="max-h-[680px] space-y-2 overflow-y-auto pr-1">
-              {notesLoading ? (
-                <p className="py-10 text-center text-sm text-slate-500">
-                  Loading activity…
-                </p>
-              ) : visibleNotes.length ? (
-                visibleNotes.map((note: any, index: number) => {
-                  const kind = eventKind(note);
-                  const EventIcon =
-                    kind === "interview"
-                      ? Calendar
-                      : kind === "email"
-                        ? Mail
-                        : kind === "call"
-                          ? PhoneCall
-                          : kind === "stage"
-                            ? CheckCircle2
-                            : Briefcase;
-                  return (
-                    <div
-                      key={note.id || index}
-                      className="relative rounded-lg border border-slate-200 p-3 pl-11"
-                    >
-                      <div className="absolute left-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-                        <EventIcon className="h-3.5 w-3.5" />
-                      </div>
-                      <div className="flex items-start justify-between gap-2">
-                        <span
-                          className={ACTIVITY_BADGE_BASE_CLASS}
-                          style={activityBadgeStyle(noteLabel(note))}
-                        >
-                          {noteLabel(note)}
-                        </span>
-                        <span className="text-[11px] text-slate-500">
-                          {date(note.createdAt || note.timestamp)}
-                        </span>
-                      </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-                        {note.description ||
-                          note.note ||
-                          note.metadata?.noteText ||
-                          "Activity recorded."}
-                      </p>
-                      {(note.metadata?.jobTitle ||
-                        note.metadata?.companyName ||
-                        note.createdBy) && (
-                        <div className="mt-2 text-[11px] text-slate-500">
-                          {note.metadata?.jobTitle ||
-                            note.metadata?.companyName ||
-                            ""}
-                          {note.createdBy
-                            ? ` · Added by ${note.createdBy}`
-                            : ""}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="py-10 text-center text-sm text-slate-500">
-                  No activity for this filter.
-                </p>
-              )}
-            </div>
-          </section>
-
-          <div className="space-y-4">
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-200 px-4 py-3">
-                <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                  Resume
-                </h2>
-              </div>
-              <div className="h-[min(68vh,720px)] min-h-[420px]">
-                <ResumeViewer
-                  url={resumeUrl}
-                  fileName={resumeName}
-                  fileKey={resumeKey}
-                  candidateId={candidate.id}
-                  className="h-full"
-                  onUrlUpdated={setResumeUrl}
-                  onResumeChanged={(info) => {
-                    if (!info) return;
-                    setResumeUrl(info.resumeUrl || "");
-                    setResumeName(info.fileName || "");
-                    setResumeKey(info.fileKey || info.resumeUrl || "");
-                  }}
-                />
-              </div>
-            </section>
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
-                <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
-              </h2>
-              <div className="mb-3 grid gap-3 sm:grid-cols-3 xl:grid-cols-3">
-                <div>
-                  <div className="text-xs text-slate-500">Overall fit</div>
-                  <div
-                    className="relative mt-2 flex h-20 w-20 items-center justify-center rounded-full"
-                    style={{
-                      background: `conic-gradient(#16a34a ${Math.max(0, Math.min(100, Number(fitScore) || 0)) * 3.6}deg, #d1d5db 0deg)`,
+            <div className="space-y-4 xl:col-start-3 xl:row-span-2 xl:row-start-1">
+              <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 px-4 py-3">
+                  <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                    Resume
+                  </h2>
+                </div>
+                <div className="h-[min(68vh,720px)] min-h-[420px]">
+                  <ResumeViewer
+                    url={resumeUrl}
+                    fileName={resumeName}
+                    fileKey={resumeKey}
+                    candidateId={candidate.id}
+                    className="h-full"
+                    onUrlUpdated={setResumeUrl}
+                    onResumeChanged={(info) => {
+                      if (!info) return;
+                      setResumeUrl(info.resumeUrl || "");
+                      setResumeName(info.fileName || "");
+                      setResumeKey(info.fileKey || info.resumeUrl || "");
                     }}
-                  >
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-lg font-semibold text-slate-900">
-                      {fitScore != null ? Math.round(Number(fitScore)) : "—"}
+                  />
+                </div>
+              </section>
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                  <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
+                </h2>
+                <div className="mb-3 grid gap-3 sm:grid-cols-3 xl:grid-cols-3">
+                  <div>
+                    <div className="text-xs text-slate-500">Overall fit</div>
+                    <div
+                      className="relative mt-2 flex h-20 w-20 items-center justify-center rounded-full"
+                      style={{
+                        background: `conic-gradient(#16a34a ${Math.max(0, Math.min(100, Number(fitScore) || 0)) * 3.6}deg, #d1d5db 0deg)`,
+                      }}
+                    >
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-lg font-semibold text-slate-900">
+                        {fitScore != null ? Math.round(Number(fitScore)) : "—"}
+                      </div>
+                    </div>
+                    <div className="hidden mt-1 text-3xl font-semibold text-emerald-700">
+                      {fitScore != null ? `${fitScore}/100` : "—"}
+                    </div>
+                    <div className="mt-1 text-xs font-semibold text-emerald-700">
+                      {fit.fitGrade
+                        ? `Grade ${fit.fitGrade}`
+                        : fitScore != null
+                          ? "Strong fit"
+                          : "Not scored"}
                     </div>
                   </div>
-                  <div className="hidden mt-1 text-3xl font-semibold text-emerald-700">
-                    {fitScore != null ? `${fitScore}/100` : "—"}
+                  <div>
+                    <div className="text-xs font-semibold text-slate-600">
+                      Key strengths
+                    </div>
+                    <ul className="mt-1 space-y-1 text-xs text-slate-700">
+                      {(fit.fitStrengths || [])
+                        .slice(0, 4)
+                        .map((item: string) => (
+                          <li key={item}>✓ {item}</li>
+                        ))}
+                    </ul>
+                    <div className="mt-1 text-sm font-semibold text-slate-700">
+                      {fit.fitDomainScore != null
+                        ? `${fit.fitDomainScore}/100 domain`
+                        : "—"}
+                      {fit.fitToolScore != null
+                        ? ` · ${fit.fitToolScore}/100 tools`
+                        : ""}
+                    </div>
                   </div>
-                  <div className="mt-1 text-xs font-semibold text-emerald-700">
-                    {fit.fitGrade
-                      ? `Grade ${fit.fitGrade}`
-                      : fitScore != null
-                        ? "Strong fit"
-                        : "Not scored"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-slate-600">
-                    Key strengths
-                  </div>
-                  <ul className="mt-1 space-y-1 text-xs text-slate-700">
-                    {(fit.fitStrengths || [])
-                      .slice(0, 4)
-                      .map((item: string) => (
-                        <li key={item}>✓ {item}</li>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-600">
+                      Potential concerns
+                    </div>
+                    <ul className="mt-1 space-y-1 text-xs text-slate-700">
+                      {(fit.fitGaps || []).slice(0, 4).map((item: string) => (
+                        <li key={item}>• {item}</li>
                       ))}
-                  </ul>
-                  <div className="mt-1 text-sm font-semibold text-slate-700">
-                    {fit.fitDomainScore != null
-                      ? `${fit.fitDomainScore}/100 domain`
-                      : "—"}
-                    {fit.fitToolScore != null
-                      ? ` · ${fit.fitToolScore}/100 tools`
-                      : ""}
+                    </ul>
+                    <div className="mt-1 text-sm text-slate-700">
+                      {fit.fitSummary ||
+                        "Run AI Fit to evaluate this application."}
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <div className="text-xs font-semibold text-slate-600">
-                    Potential concerns
+                <div className="hidden grid gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-600">
+                      Key strengths
+                    </div>
+                    <ul className="mt-1 space-y-1 text-sm text-slate-700">
+                      {(fit.fitStrengths || [])
+                        .slice(0, 4)
+                        .map((item: string) => (
+                          <li key={item}>✓ {item}</li>
+                        ))}
+                    </ul>
                   </div>
-                  <ul className="mt-1 space-y-1 text-xs text-slate-700">
-                    {(fit.fitGaps || []).slice(0, 4).map((item: string) => (
-                      <li key={item}>• {item}</li>
-                    ))}
-                  </ul>
-                  <div className="mt-1 text-sm text-slate-700">
-                    {fit.fitSummary ||
-                      "Run AI Fit to evaluate this application."}
-                  </div>
-                </div>
-              </div>
-              <div className="hidden grid gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2">
-                <div>
-                  <div className="text-xs font-semibold text-slate-600">
-                    Key strengths
-                  </div>
-                  <ul className="mt-1 space-y-1 text-sm text-slate-700">
-                    {(fit.fitStrengths || [])
-                      .slice(0, 4)
-                      .map((item: string) => (
-                        <li key={item}>✓ {item}</li>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-600">
+                      Potential concerns
+                    </div>
+                    <ul className="mt-1 space-y-1 text-sm text-slate-700">
+                      {(fit.fitGaps || []).slice(0, 4).map((item: string) => (
+                        <li key={item}>• {item}</li>
                       ))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-slate-600">
-                    Potential concerns
+                    </ul>
                   </div>
-                  <ul className="mt-1 space-y-1 text-sm text-slate-700">
-                    {(fit.fitGaps || []).slice(0, 4).map((item: string) => (
-                      <li key={item}>• {item}</li>
-                    ))}
-                  </ul>
                 </div>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-4 w-full text-xs"
-                disabled={fitBusy || !currentJob}
-                onClick={() => void runFit()}
-              >
-                {fitBusy
-                  ? "Scoring application..."
-                  : fitScore != null
-                    ? "Refresh AI Fit"
-                    : "Run AI Fit"}
-              </Button>
-            </section>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-4 w-full text-xs"
+                  disabled={fitBusy || !currentJob}
+                  onClick={() => void runFit()}
+                >
+                  {fitBusy
+                    ? "Scoring application..."
+                    : fitScore != null
+                      ? "Refresh AI Fit"
+                      : "Run AI Fit"}
+                </Button>
+              </section>
+            </div>
           </div>
         </div>
       </div>
