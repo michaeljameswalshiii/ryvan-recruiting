@@ -17,6 +17,16 @@ import type { CandidateEventType, EventDetails } from '@/lib/events/types';
 import { applyStageFromNoteType } from '@/lib/candidates/stage-sync';
 import { stageDisplayLabel } from '@/lib/candidates/note-type-stage';
 import { getSession } from '@/lib/server-auth';
+import {
+  isAdminAuthError,
+  requireAuthSession,
+} from '@/lib/admin-auth';
+import { isCompanyAdmin } from '@/lib/roles';
+import { getLeadById } from '@/lib/db/repositories/lead-repository';
+import {
+  requestAuditMeta,
+  writeSecurityAudit,
+} from '@/lib/security/audit';
 
 export async function GET(
   request: NextRequest,
@@ -224,6 +234,20 @@ export async function DELETE(
       );
     }
 
+    const auth = await requireAuthSession();
+    if (isAdminAuthError(auth)) return auth;
+    if (!isCompanyAdmin(auth.role)) {
+      return NextResponse.json(
+        { error: 'Company Admin role is required to delete activity' },
+        { status: 403 }
+      );
+    }
+
+    const candidate = await getLeadById(auth.tenantId, candidateId);
+    if (!candidate) {
+      return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
+    }
+
     let eventId =
       request.nextUrl.searchParams.get('eventId') ||
       request.nextUrl.searchParams.get('id');
@@ -253,6 +277,19 @@ export async function DELETE(
         { status }
       );
     }
+
+    void writeSecurityAudit({
+      tenantId: auth.tenantId,
+      action: 'admin.candidate_activity.deleted',
+      actorUserId: auth.userId,
+      actorEmail: auth.email,
+      actorRole: auth.role,
+      targetType: 'candidate_activity',
+      targetId: eventId,
+      summary: `Deleted candidate activity ${eventId}`,
+      meta: { candidateId },
+      ...requestAuditMeta(request),
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

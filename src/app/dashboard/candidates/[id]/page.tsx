@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { CandidateDetailClient } from "@/components/candidate/CandidateDetailClient";
 import { getLeadById } from "@/lib/db/repositories/lead-repository";
-import { getSessionTenantId } from "@/lib/server-auth";
+import { getSession, getSessionTenantId } from "@/lib/server-auth";
+import { resolveLayoutRole } from "@/lib/admin-auth";
+import { isCompanyAdmin } from "@/lib/roles";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -23,6 +25,8 @@ export default async function CandidateDetailPage({ params, searchParams }: Prop
   }
 
   const c = candidate as any;
+  const session = await getSession();
+  const role = session ? await resolveLayoutRole(session) : "user";
 
   const candidateData = {
     id: (c.id || "") as string,
@@ -79,6 +83,7 @@ export default async function CandidateDetailPage({ params, searchParams }: Prop
     <CandidateDetailClient
       candidate={candidateData}
       initialJobId={jobId || ""}
+      canDeleteActivity={isCompanyAdmin(role)}
     />
   );
 }

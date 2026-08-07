@@ -15,6 +15,7 @@ import {
   PhoneCall,
   Sparkles,
   Tag,
+  Trash2,
   X,
 } from "lucide-react";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
@@ -162,9 +163,11 @@ function ActivityNoteText({ text }: { text: string }) {
 export function CandidateDetailClient({
   candidate,
   initialJobId = "",
+  canDeleteActivity = false,
 }: {
   candidate: any;
   initialJobId?: string;
+  canDeleteActivity?: boolean;
 }) {
   const jobs = Array.isArray(candidate?.linkedJobs) ? candidate.linkedJobs : [];
   const orderedJobs = [...jobs].sort((a: any, b: any) => {
@@ -197,6 +200,7 @@ export function CandidateDetailClient({
   const [noteText, setNoteText] = useState("");
   const [noteType, setNoteType] = useState("Conversation");
   const [noteBusy, setNoteBusy] = useState(false);
+  const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
   const [fitBusy, setFitBusy] = useState(false);
   const [fitOverlay, setFitOverlay] = useState<any>(null);
   const [tags, setTags] = useState<string[]>(
@@ -340,6 +344,37 @@ export function CandidateDetailClient({
       setNoteText("");
     } finally {
       setNoteBusy(false);
+    }
+  };
+
+  const deleteActivity = async (note: any) => {
+    const eventId = String(note?.id || note?.timestamp || "");
+    if (!canDeleteActivity || !eventId || deletingEventId) return;
+    if (!window.confirm("Delete this activity log item? This cannot be undone.")) {
+      return;
+    }
+
+    setDeletingEventId(eventId);
+    try {
+      const response = await fetch(
+        `/api/candidate/${candidate.id}/events?eventId=${encodeURIComponent(eventId)}`,
+        { method: "DELETE" },
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.error || "Unable to delete activity");
+      }
+      setNotes((current) =>
+        current.filter(
+          (item) => String(item?.id || item?.timestamp || "") !== eventId,
+        ),
+      );
+    } catch (error) {
+      window.alert(
+        error instanceof Error ? error.message : "Unable to delete activity",
+      );
+    } finally {
+      setDeletingEventId(null);
     }
   };
 
@@ -883,9 +918,26 @@ export function CandidateDetailClient({
                           >
                             {noteLabel(note)}
                           </span>
-                          <span className="text-[11px] text-slate-500">
-                            {date(note.createdAt || note.timestamp)}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-slate-500">
+                              {date(note.createdAt || note.timestamp)}
+                            </span>
+                            {canDeleteActivity && (note.id || note.timestamp) && (
+                              <button
+                                type="button"
+                                onClick={() => void deleteActivity(note)}
+                                disabled={
+                                  deletingEventId ===
+                                  String(note.id || note.timestamp)
+                                }
+                                title="Delete activity"
+                                aria-label="Delete activity"
+                                className="rounded-md p-1 text-red-600 hover:bg-red-50 hover:text-red-700 disabled:cursor-wait disabled:opacity-40"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <ActivityNoteText
                           text={String(
