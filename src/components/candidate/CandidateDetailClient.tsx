@@ -24,7 +24,10 @@ import {
   ACTIVITY_BADGE_BASE_CLASS,
   activityBadgeStyle,
 } from "@/lib/ui/activity-badge-colors";
-import { normalizeNoteTypeLabel } from "@/lib/candidates/note-type-stage";
+import {
+  ACTIVITY_NOTE_TYPES,
+  normalizeNoteTypeLabel,
+} from "@/lib/candidates/note-type-stage";
 
 function date(value?: string) {
   if (!value) return "—";
@@ -800,13 +803,11 @@ export function CandidateDetailClient({
                     onChange={(event) => setNoteType(event.target.value)}
                     className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs sm:w-36"
                   >
-                    <option>Conversation</option>
-                    <option>Interview</option>
-                    <option>Call</option>
-                    <option>Email sent</option>
-                    <option>Text sent</option>
-                    <option>Note</option>
-                    <option>Rejected</option>
+                    {ACTIVITY_NOTE_TYPES.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
                   </select>
                   <input
                     value={noteText}
