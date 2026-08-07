@@ -1,11 +1,9 @@
-# Deploy to Vercel from GitHub Actions (production on master/main)
-name: Deploy to Vercel
+# Manual fallback only. Production deploys automatically through the Vercel
+# Git integration; running both paths on every push creates duplicate releases
+# and intermittent failures while publishing prebuilt output.
+name: Manual Vercel Production Deploy
 
 on:
-  push:
-    branches:
-      - master
-      - main
   workflow_dispatch:
 
 permissions:
