@@ -1,17 +1,16 @@
 import { notFound } from "next/navigation";
 import { CandidateDetailClient } from "@/components/candidate/CandidateDetailClient";
-import { CandidateDetailV2 } from "@/components/candidate/CandidateDetailV2";
 import { getLeadById } from "@/lib/db/repositories/lead-repository";
 import { getSessionTenantId } from "@/lib/server-auth";
 
 interface Props {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ jobId?: string; view?: string }>;
+  searchParams: Promise<{ jobId?: string }>;
 }
 
 export default async function CandidateDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const { jobId, view } = await searchParams;
+  const { jobId } = await searchParams;
 
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
@@ -70,7 +69,10 @@ export default async function CandidateDetailPage({ params, searchParams }: Prop
     linkedJobs: Array.isArray(c.linkedJobs) ? c.linkedJobs : [],
   };
 
-  return view === 'v2'
-    ? <CandidateDetailV2 candidate={candidateData} initialJobId={jobId || ''} />
-    : <CandidateDetailClient candidate={candidateData} initialJobId={jobId || ''} />;
+  return (
+    <CandidateDetailClient
+      candidate={candidateData}
+      initialJobId={jobId || ""}
+    />
+  );
 }
