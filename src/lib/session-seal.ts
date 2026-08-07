@@ -16,6 +16,8 @@ export type SealedSessionPayload = {
   userId: string;
   email: string;
   tenantId: string;
+  /** Site Admin acting scope: "all" or a validated tenant id. */
+  tenantScope?: string;
   role?: string;
   /** Cognito access token (optional; may be empty if too large) */
   accessToken?: string;
@@ -64,6 +66,7 @@ export async function sealSession(
     userId: session.userId,
     email: session.email || "",
     tenantId: session.tenantId || "",
+    tenantScope: session.tenantScope || undefined,
     role: session.role,
     accessToken: session.accessToken || "",
     refreshToken: session.refreshToken || "",
@@ -128,6 +131,7 @@ export async function unsealSession(
       userId: String(raw.userId),
       email: String(raw.email || ""),
       tenantId: String(raw.tenantId || ""),
+      tenantScope: raw.tenantScope ? String(raw.tenantScope) : undefined,
       role: raw.role ? String(raw.role) : undefined,
       accessToken: raw.accessToken ? String(raw.accessToken) : "",
       refreshToken: raw.refreshToken ? String(raw.refreshToken) : "",

@@ -89,6 +89,7 @@ function injectSessionHeaders(
 ): Headers {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-tenant-id", session.tenantId || "");
+  requestHeaders.set("x-tenant-scope", session.tenantScope || "");
   requestHeaders.set("x-user-id", session.userId || "");
   if (session.role) {
     requestHeaders.set("x-user-role", session.role);
@@ -98,6 +99,17 @@ function injectSessionHeaders(
 
 function unauthorizedApi(message = "Unauthorized"): NextResponse {
   return NextResponse.json({ error: message }, { status: 401 });
+}
+
+function isAllTenantSiteAdmin(session: SealedSessionPayload): boolean {
+  const role = String(session.role || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  return (
+    role === "site_admin" &&
+    (!session.tenantScope || session.tenantScope === "all")
+  );
 }
 
 function redirectToLogin(request: NextRequest, pathname: string): NextResponse {
@@ -182,6 +194,15 @@ export async function middleware(request: NextRequest) {
     if (!session?.userId) {
       mwLog(`[Middleware] API unauthorized: ${pathname}`);
       return unauthorizedApi();
+    }
+    if (
+      isAllTenantSiteAdmin(session) &&
+      !matchesPrefix(pathname, "/api/site-admin")
+    ) {
+      return NextResponse.json(
+        { error: "Select a tenant before accessing operational data" },
+        { status: 409 },
+      );
     }
     // Optional: require tenant for data-plane APIs (not all routes need it)
     // Keep open for site_admin tooling that may resolve tenant later.

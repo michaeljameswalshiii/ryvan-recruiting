@@ -25,6 +25,7 @@ import {
   unsealSession,
   sessionCookieOptions,
 } from '@/lib/session-seal';
+import { isSiteAdmin } from '@/lib/roles';
 
 // AWS Configuration - server-side
 // Support both server-only vars (local) and NEXT_PUBLIC_ vars (Vercel deployment)
@@ -68,6 +69,8 @@ export interface SessionData {
   userId: string;
   email: string;
   tenantId: string;
+  /** Site Admin acting scope: "all" or a validated tenant id. */
+  tenantScope?: string;
   /** Canonical role: site_admin | company_admin | user */
   role?: string;
   accessToken?: string;
@@ -119,6 +122,8 @@ export async function setSessionCookie(
     userId: session.userId,
     email: session.email,
     tenantId: session.tenantId,
+    tenantScope:
+      session.tenantScope || (isSiteAdmin(session.role) ? 'all' : undefined),
     role: session.role,
     accessToken: session.accessToken || '',
     refreshToken: session.refreshToken || '',
@@ -160,6 +165,7 @@ export async function getSession(): Promise<SessionData | null> {
       userId: sealed.userId,
       email: sealed.email,
       tenantId: sealed.tenantId,
+      tenantScope: sealed.tenantScope,
       role: sealed.role,
       accessToken: sealed.accessToken || '',
       refreshToken: sealed.refreshToken || '',
@@ -233,7 +239,12 @@ export async function refreshSession(refreshToken: string): Promise<{ AccessToke
  */
 export async function getSessionTenantId(): Promise<string | null> {
   const session = await getSession();
-  return session?.tenantId || null;
+  if (!session) return null;
+  if (isSiteAdmin(session.role)) {
+    if (!session.tenantScope || session.tenantScope === 'all') return null;
+    if (session.tenantScope) return session.tenantScope;
+  }
+  return session.tenantId || null;
 }
 
 /**

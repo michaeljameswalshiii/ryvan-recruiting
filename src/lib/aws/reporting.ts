@@ -5,10 +5,12 @@
  * @serverOnly
  */
 
-import { getSessionTenantId } from '../server-auth';
+import { getSession, getSessionTenantId } from '../server-auth';
 import { queryItems, leadsTable, eventsTable } from '../db/dynamodb';
 import { getAllClients } from '../db/repositories/client-repository';
 import { getAllJobs } from '../db/repositories/job-repository';
+import { getAllTenants } from '../db/repositories/tenant-repository';
+import { isSiteAdmin } from '../roles';
 
 // ============================================================================
 // Types
@@ -438,8 +440,18 @@ function calculateAvgDays(
 export async function getReportingStats(
   period: PeriodKey = '30'
 ): Promise<ReportingStats> {
-  const tenantId = await getSessionTenantId();
-  if (!tenantId) return getEmptyStats(period);
+  const session = await getSession();
+  const allTenants =
+    !!session &&
+    isSiteAdmin(session.role) &&
+    (!session.tenantScope || session.tenantScope === 'all');
+  const selectedTenantId = await getSessionTenantId();
+  const tenantIds = allTenants
+    ? (await getAllTenants()).map((tenant) => tenant.id).filter(Boolean)
+    : selectedTenantId
+      ? [selectedTenantId]
+      : [];
+  if (!tenantIds.length) return getEmptyStats(period);
 
   const days = periodDays(period);
   const now = new Date();
@@ -448,17 +460,26 @@ export async function getReportingStats(
   const prevEnd = new Date(periodStart.getTime() - 1);
 
   try {
-    const [leadsRaw, jobs, companies] = await Promise.all([
-      queryItems<any>(leadsTable, 'tenant_id = :tenantId', {
-        ':tenantId': tenantId,
-      }),
-      getAllJobs(tenantId).catch(() => [] as any[]),
-      getAllClients(tenantId).catch(() => [] as any[]),
-    ]);
+    const tenantData = await Promise.all(
+      tenantIds.map(async (tenantId) => {
+        const [leadsRaw, jobs, companies] = await Promise.all([
+          queryItems<any>(leadsTable, 'tenant_id = :tenantId', {
+            ':tenantId': tenantId,
+          }),
+          getAllJobs(tenantId).catch(() => [] as any[]),
+          getAllClients(tenantId).catch(() => [] as any[]),
+        ]);
+        return {
+          leads: unwrapItems<any>(leadsRaw),
+          jobs: Array.isArray(jobs) ? jobs : [],
+          companies: Array.isArray(companies) ? companies : [],
+        };
+      })
+    );
 
-    const leads = unwrapItems<any>(leadsRaw);
-    const safeJobs = Array.isArray(jobs) ? jobs : [];
-    const safeCompanies = Array.isArray(companies) ? companies : [];
+    const leads = tenantData.flatMap((data) => data.leads);
+    const safeJobs = tenantData.flatMap((data) => data.jobs);
+    const safeCompanies = tenantData.flatMap((data) => data.companies);
 
     // Enrich candidates
     const candidates = leads.map((c) => {

@@ -24,6 +24,9 @@ interface DashboardHeaderProps {
     fullName?: string;
     email?: string;
     role?: string;
+    tenantId?: string;
+    tenantScope?: string;
+    availableTenants?: Array<{ id: string; name: string }>;
     tenants?: { name?: string };
   };
 }
@@ -64,6 +67,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [scopeBusy, setScopeBusy] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,21 +101,69 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
     }
   };
 
+  const changeTenantScope = async (tenantScope: string) => {
+    if (scopeBusy || tenantScope === user?.tenantScope) return;
+    setScopeBusy(true);
+    try {
+      const response = await fetch("/api/site-admin/tenant-scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantScope }),
+      });
+      if (!response.ok) throw new Error("Unable to change tenant scope");
+      router.push("/dashboard");
+      router.refresh();
+    } finally {
+      setScopeBusy(false);
+    }
+  };
+
+  const isAllTenants = user?.role === "site_admin" && user?.tenantScope === "all";
+
   return (
     <header className="sticky top-0 z-40 h-16 border-b border-border flex items-center justify-between gap-4 px-6 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="flex items-center gap-4 flex-1 min-w-0">
-        <GlobalSearch />
+        {isAllTenants ? (
+          <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            Platform overview across all tenants
+          </div>
+        ) : (
+          <GlobalSearch />
+        )}
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
+        {user?.role === "site_admin" && (
+          <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+            <span className="hidden xl:inline">Tenant</span>
+            <select
+              value={user.tenantScope || "all"}
+              disabled={scopeBusy}
+              onChange={(event) => void changeTenantScope(event.target.value)}
+              className="h-9 max-w-52 rounded-lg border border-border bg-background px-2 text-sm font-semibold text-foreground shadow-sm disabled:opacity-60"
+              aria-label="Active tenant"
+            >
+              <option value="all">All Tenants</option>
+              {(user.availableTenants || []).map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>
+                  {tenant.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {/* Always-available create shortcuts */}
         <div className="relative" ref={menuRef}>
           <button
             type="button"
-            onClick={() => setMenuOpen((o) => !o)}
+            onClick={() => {
+              if (!isAllTenants) setMenuOpen((o) => !o);
+            }}
+            disabled={isAllTenants}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-blue-600 text-white text-sm font-medium shadow-sm hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            title={isAllTenants ? "Select a tenant to create records" : undefined}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-blue-600 text-white text-sm font-medium shadow-sm hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Zap className="h-4 w-4" />
             <span className="hidden sm:inline">Quick Action</span>

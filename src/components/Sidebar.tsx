@@ -63,9 +63,10 @@ const siteAdminItems: MenuItem[] = [
 
 interface SidebarProps {
   role?: string | null;
+  tenantScope?: string;
 }
 
-export default function Sidebar({ role }: SidebarProps) {
+export default function Sidebar({ role, tenantScope }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const navRef = useRef<HTMLDivElement>(null);
@@ -79,6 +80,7 @@ export default function Sidebar({ role }: SidebarProps) {
     return hasPermission(role, item.permission);
   });
   const visibleSite = siteAdminItems.filter((item) => hasPermission(role, item.permission));
+  const allTenantsSelected = role === 'site_admin' && tenantScope === 'all';
 
   const checkScroll = () => {
     if (navRef.current) {
@@ -214,6 +216,19 @@ export default function Sidebar({ role }: SidebarProps) {
           {visibleMain.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + '/');
+            const requiresTenant = item.href !== '/dashboard';
+            if (allTenantsSelected && requiresTenant) {
+              return (
+                <div
+                  key={item.href}
+                  title="Select a tenant from the top bar to open this area"
+                  className="flex cursor-not-allowed items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-400 dark:text-slate-500"
+                >
+                  <item.icon className="h-5 w-5 shrink-0 opacity-70" />
+                  {item.name}
+                </div>
+              );
+            }
             return (
               <Link
                 key={item.href}

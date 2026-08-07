@@ -5,6 +5,9 @@ import { resolveLayoutRole } from "@/lib/admin-auth";
 import { redirect } from "next/navigation";
 import { DragDropProvider } from "@/components/providers/dnd-provider";
 import { FloatingAiAssistant } from "@/components/ai/FloatingAiAssistant";
+import { isSiteAdmin } from "@/lib/roles";
+import { getAllTenants } from "@/lib/db/repositories/tenant-repository";
+import { SiteAdminScopeGuard } from "@/components/dashboard/SiteAdminScopeGuard";
 
 /**
  * Dashboard Layout — server chrome (sidebar + header).
@@ -33,12 +36,19 @@ export default async function DashboardLayout({
 
   // Cookie role + env allowlists only — no DynamoDB on every menu click
   const role = await resolveLayoutRole(session);
+  const availableTenants = isSiteAdmin(role)
+    ? (await getAllTenants())
+        .map((tenant) => ({ id: tenant.id, name: tenant.name }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
 
   const tenantInfo = {
     userId: session.userId || "",
     email: session.email || "",
     fullName: "User",
     tenantId: session.tenantId || "",
+    tenantScope: isSiteAdmin(role) ? session.tenantScope || "all" : session.tenantId || "",
+    availableTenants,
     role,
   };
 
@@ -48,12 +58,18 @@ export default async function DashboardLayout({
           bg-gray-50 in the class list, which global dark-ink rules treated as a
           light panel and forced black text on the whole canvas. */}
       <div className="min-h-screen bg-background text-foreground">
-        <Sidebar role={role} />
+        <Sidebar role={role} tenantScope={tenantInfo.tenantScope} />
         {/* min-w-0 prevents wide tables from expanding past the viewport (right-edge clip) */}
         <div className="ml-72 min-w-0 max-w-full bg-background">
           <DashboardHeader user={tenantInfo} />
           <main className="min-w-0 max-w-full overflow-x-hidden p-6 bg-background">
-            {children}
+            <SiteAdminScopeGuard
+              allTenantsSelected={
+                isSiteAdmin(role) && tenantInfo.tenantScope === "all"
+              }
+            >
+              {children}
+            </SiteAdminScopeGuard>
           </main>
         </div>
         {/* Global fab + slide-over — same tools as AI Assistant page */}
