@@ -337,8 +337,7 @@ export async function updateCandidateEvent(
         return { success: false, error: 'Note text is required' };
       }
       meta.noteText = text;
-      description =
-        text.substring(0, 100) + (text.length > 100 ? '...' : '');
+      description = text;
     }
 
     if (updates.noteType !== undefined) {
@@ -516,9 +515,7 @@ export async function addNoteToCandidate(
   }
 
   // Prefer free-text when present; otherwise show the action type as the description
-  const description = text
-    ? text.substring(0, 100) + (text.length > 100 ? '...' : '')
-    : noteTypeLabel;
+  const description = text || noteTypeLabel;
 
   const jobSuffix =
     jobId && options?.jobTitle

@@ -841,10 +841,10 @@ export function CandidateDetailClient({
                             {date(note.createdAt || note.timestamp)}
                           </span>
                         </div>
-                        <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-                          {note.description ||
+                        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700">
+                          {note.metadata?.noteText ||
                             note.note ||
-                            note.metadata?.noteText ||
+                            note.description ||
                             "Activity recorded."}
                         </p>
                         {(note.metadata?.jobTitle ||
