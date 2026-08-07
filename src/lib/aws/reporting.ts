@@ -106,12 +106,16 @@ export interface ReportingStats {
   placements: number;
   openJobs: number;
   inMotion: number;
+  /** Candidates currently in an interview stage */
+  interviews: number;
   avgTimeToHire: number;
   avgTimeToFill: number;
 
   placementsKpi: KpiDelta;
+  interviewsKpi: KpiDelta;
   candidatesAddedKpi: KpiDelta;
   openJobsKpi: KpiDelta;
+  companiesAddedKpi: KpiDelta;
 
   // Funnel (5-step application model)
   funnel: FunnelStep[];
@@ -304,7 +308,72 @@ function isPlaced(stage: string): boolean {
 
 function isInterviewingOrBeyond(stage: string): boolean {
   const idx = funnelIndex(stage);
-  return idx >= 2; // interviewing, offer, placed
+  // FUNNEL: interested=2, submitted=3, interviewing=4 — "interview+" from interviewing step
+  return idx >= 4;
+}
+
+/** Currently in an interview-stage (not offer/placed). */
+function isInterviewStage(stage: string): boolean {
+  const s = stage.toLowerCase();
+  return (
+    s === 'interviewing' ||
+    s === 'interview' ||
+    s.includes('interview') ||
+    s === '1st_interview' ||
+    s === '2nd_interview' ||
+    s === '3rd_interview'
+  );
+}
+
+/**
+ * A candidate can have several applications and their stored order is not a
+ * priority order. Count the candidate when any linked application is actively
+ * interviewing; only use the legacy candidate-level stage when no application
+ * stages exist.
+ */
+function getCandidateInterviewState(candidate: any): {
+  interviewing: boolean;
+  updatedAt?: string;
+} {
+  const linkedJobs = Array.isArray(candidate?.linkedJobs)
+    ? candidate.linkedJobs
+    : [];
+  const stagedApplications = linkedJobs.filter((job: any) => job?.stage);
+  const interviewApplications = stagedApplications.filter((job: any) =>
+    isInterviewStage(normalizeCandidateStage(job.stage))
+  );
+
+  if (interviewApplications.length > 0) {
+    const latest = interviewApplications
+      .map(
+        (job: any) =>
+          job.stageUpdatedAt ||
+          job.stage_updated_at ||
+          job.modifiedAt ||
+          job.createdAt
+      )
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+    return { interviewing: true, updatedAt: latest };
+  }
+
+  if (stagedApplications.length > 0) {
+    return { interviewing: false };
+  }
+
+  const legacyStage = normalizeCandidateStage(
+    candidate?.status || candidate?.stage || 'sourced'
+  );
+  return {
+    interviewing: isInterviewStage(legacyStage),
+    updatedAt:
+      candidate?.modified_at ||
+      candidate?.modifiedAt ||
+      candidate?.updated_at ||
+      candidate?.created_at ||
+      candidate?.createdAt,
+  };
 }
 
 function deltaPct(current: number, previous: number): number | null {
@@ -396,6 +465,7 @@ export async function getReportingStats(
       const stage = getPrimaryStage(c);
       const created = c.created_at || c.createdAt;
       const modified = c.modified_at || c.modifiedAt || c.updated_at || created;
+      const interview = getCandidateInterviewState(c);
       return {
         raw: c,
         id: c.id,
@@ -404,6 +474,8 @@ export async function getReportingStats(
         source: (c.source || 'Manual').toString(),
         created,
         modified,
+        interviewing: interview.interviewing,
+        interviewUpdatedAt: interview.updatedAt || modified,
         funnelIdx: funnelIndex(stage),
       };
     });
@@ -427,6 +499,15 @@ export async function getReportingStats(
       if (TERMINAL_STAGES.has(c.stage)) return false;
       return c.funnelIdx >= 0;
     }).length;
+
+    // Interviews: currently in interview stage (stock) + period activity for delta
+    const interviewsNow = candidates.filter((c) => c.interviewing).length;
+    const interviewsThisPeriod = candidates.filter(
+      (c) => c.interviewing && inRange(c.interviewUpdatedAt, periodStart, now)
+    ).length;
+    const interviewsPrevPeriod = candidates.filter(
+      (c) => c.interviewing && inRange(c.interviewUpdatedAt, prevStart, prevEnd)
+    ).length;
 
     // Funnel: cumulative "reached at least this step"
     // Count candidates whose funnel index >= step
@@ -584,6 +665,13 @@ export async function getReportingStats(
       if (st === 'lost') lost++;
     }
 
+    const companiesAddedThisPeriod = safeCompanies.filter((co) =>
+      inRange(co.created_at || co.createdAt, periodStart, now)
+    ).length;
+    const companiesAddedPrevPeriod = safeCompanies.filter((co) =>
+      inRange(co.created_at || co.createdAt, prevStart, prevEnd)
+    ).length;
+
     const companiesWithOpenJobs = new Set(
       openJobsList.map((j) => j.companyId).filter(Boolean)
     );
@@ -690,6 +778,7 @@ export async function getReportingStats(
       placements: placedThisPeriod.length,
       openJobs: openJobsList.length,
       inMotion,
+      interviews: interviewsNow,
       avgTimeToHire,
       avgTimeToFill,
 
@@ -698,6 +787,13 @@ export async function getReportingStats(
         previous: placedPrevPeriod.length,
         deltaPct: deltaPct(placedThisPeriod.length, placedPrevPeriod.length),
         label: 'Placements',
+      },
+      interviewsKpi: {
+        // Stock count of candidates currently interviewing; delta from period activity
+        value: interviewsNow,
+        previous: interviewsPrevPeriod,
+        deltaPct: deltaPct(interviewsThisPeriod, interviewsPrevPeriod),
+        label: 'Interviews',
       },
       candidatesAddedKpi: {
         value: addedThisPeriod.length,
@@ -710,6 +806,12 @@ export async function getReportingStats(
         previous: openPrev,
         deltaPct: deltaPct(openJobsList.length, openPrev),
         label: 'Open jobs',
+      },
+      companiesAddedKpi: {
+        value: companiesAddedThisPeriod,
+        previous: companiesAddedPrevPeriod,
+        deltaPct: deltaPct(companiesAddedThisPeriod, companiesAddedPrevPeriod),
+        label: 'New companies',
       },
 
       funnel,
@@ -884,11 +986,14 @@ function getEmptyStats(period: PeriodKey = '30'): ReportingStats {
     placements: 0,
     openJobs: 0,
     inMotion: 0,
+    interviews: 0,
     avgTimeToHire: 0,
     avgTimeToFill: 0,
     placementsKpi: { value: 0, previous: 0, deltaPct: 0, label: 'Placements' },
+    interviewsKpi: { value: 0, previous: 0, deltaPct: 0, label: 'Interviews' },
     candidatesAddedKpi: { value: 0, previous: 0, deltaPct: 0, label: 'New candidates' },
     openJobsKpi: { value: 0, previous: 0, deltaPct: 0, label: 'Open jobs' },
+    companiesAddedKpi: { value: 0, previous: 0, deltaPct: 0, label: 'New companies' },
     funnel: FUNNEL_STEPS.map((s) => ({
       key: s.key,
       label: s.label,
