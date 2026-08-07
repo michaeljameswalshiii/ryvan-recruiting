@@ -113,9 +113,33 @@ export function DashboardHome({
 
   const funnelMax = Math.max(...stats.funnel.map((f) => f.count), 1);
 
-  // KPI set: Interviews · Open jobs · New candidates · New companies · Placements
+  // KPI set: Open Jobs · Submittals · Interviews · Offers · Placements
   // (same card chrome; metrics + drill links aligned to each page)
+  const submittedCount =
+    stats.funnel.find((step) => step.key === 'submitted')?.count ?? 0;
+  const offersCount =
+    stats.funnel.find((step) => step.key === 'offer_out')?.count ?? 0;
   const kpis = [
+    {
+      title: 'Open Jobs',
+      value: stats.openJobs,
+      delta: stats.openJobsKpi.deltaPct,
+      sub: `${stats.jobs.emptyOpen} empty pipelines`,
+      icon: Briefcase,
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+      href: '/dashboard/jobs',
+    },
+    {
+      title: 'Submittals',
+      value: submittedCount,
+      delta: null,
+      sub: 'submitted or beyond',
+      icon: TrendingUp,
+      color: 'text-sky-600',
+      bg: 'bg-sky-50',
+      href: '/dashboard/candidates',
+    },
     {
       title: 'Interviews',
       value: stats.interviewsKpi?.value ?? stats.interviews ?? 0,
@@ -127,34 +151,14 @@ export function DashboardHome({
       href: '/dashboard/candidates',
     },
     {
-      title: 'Open jobs',
-      value: stats.openJobs,
-      delta: stats.openJobsKpi.deltaPct,
-      sub: `${stats.jobs.emptyOpen} empty pipelines`,
-      icon: Briefcase,
-      color: 'text-blue-600',
-      bg: 'bg-blue-50',
-      href: '/dashboard/jobs',
-    },
-    {
-      title: 'New candidates',
-      value: stats.candidatesAddedKpi.value,
-      delta: stats.candidatesAddedKpi.deltaPct,
-      sub: stats.periodLabel,
-      icon: TrendingUp,
-      color: 'text-sky-600',
-      bg: 'bg-sky-50',
-      href: '/dashboard/candidates',
-    },
-    {
-      title: 'New companies',
-      value: stats.companiesAddedKpi?.value ?? 0,
-      delta: stats.companiesAddedKpi?.deltaPct ?? null,
-      sub: `${stats.companies.closedWon} closed won`,
+      title: 'Offers',
+      value: offersCount,
+      delta: null,
+      sub: 'offer stage or beyond',
       icon: Building2,
       color: 'text-indigo-600',
       bg: 'bg-indigo-50',
-      href: '/dashboard/companies',
+      href: '/dashboard/candidates',
     },
     {
       title: 'Placements',
