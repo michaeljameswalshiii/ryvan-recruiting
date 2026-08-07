@@ -16,7 +16,7 @@ import {
 import type { CandidateEventType, EventDetails } from '@/lib/events/types';
 import { applyStageFromNoteType } from '@/lib/candidates/stage-sync';
 import { stageDisplayLabel } from '@/lib/candidates/note-type-stage';
-import { getSession } from '@/lib/server-auth';
+import { getSession, getSessionTenantId } from '@/lib/server-auth';
 import {
   isAdminAuthError,
   requireAuthSession,
@@ -24,9 +24,63 @@ import {
 import { isCompanyAdmin } from '@/lib/roles';
 import { getLeadById } from '@/lib/db/repositories/lead-repository';
 import {
+  getProfileByEmail,
+  getProfileById,
+} from '@/lib/db/repositories/profile-repository';
+import {
   requestAuditMeta,
   writeSecurityAudit,
 } from '@/lib/security/audit';
+
+async function addActorNames(events: any[]): Promise<any[]> {
+  const lookups = new Map<
+    string,
+    { userId?: string; email?: string }
+  >();
+
+  for (const event of events) {
+    const userId = String(event?.metadata?.actorUserId || '').trim();
+    const email = String(
+      event?.metadata?.actorEmail ||
+        (String(event?.createdBy || '').includes('@') ? event.createdBy : ''),
+    )
+      .trim()
+      .toLowerCase();
+    const key = userId ? `id:${userId}` : email ? `email:${email}` : '';
+    if (key && !lookups.has(key)) lookups.set(key, { userId, email });
+  }
+
+  const names = new Map<string, string>();
+  await Promise.all(
+    Array.from(lookups.entries()).map(async ([key, actor]) => {
+      try {
+        const profile = actor.userId
+          ? await getProfileById(actor.userId)
+          : actor.email
+            ? await getProfileByEmail(actor.email)
+            : null;
+        if (profile?.full_name?.trim()) {
+          names.set(key, profile.full_name.trim());
+        }
+      } catch {
+        // Preserve the stored actor value when a profile lookup is unavailable.
+      }
+    }),
+  );
+
+  return events.map((event) => {
+    const userId = String(event?.metadata?.actorUserId || '').trim();
+    const email = String(
+      event?.metadata?.actorEmail ||
+        (String(event?.createdBy || '').includes('@') ? event.createdBy : ''),
+    )
+      .trim()
+      .toLowerCase();
+    const key = userId ? `id:${userId}` : email ? `email:${email}` : '';
+    const createdByName = key ? names.get(key) : undefined;
+    return createdByName ? { ...event, createdByName } : event;
+  });
+}
 
 export async function GET(
   request: NextRequest,
@@ -42,15 +96,25 @@ export async function GET(
       );
     }
 
+    const tenantId = await getSessionTenantId();
+    if (!tenantId) {
+      return NextResponse.json({ error: 'Select a tenant first' }, { status: 409 });
+    }
+    const candidate = await getLeadById(tenantId, id);
+    if (!candidate) {
+      return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
+    }
+
     // Get optional limit from query params
     const searchParams = request.nextUrl.searchParams;
     const limit = searchParams.get('limit');
     const limitNum = limit ? parseInt(limit, 10) : undefined;
 
 const result = await getCandidateEvents(id, { limit: limitNum });
+const events = await addActorNames(result.events);
 
 return NextResponse.json({
-      events: result.events,
+      events,
       hasMore: result.hasMore,
     });
   } catch (error) {

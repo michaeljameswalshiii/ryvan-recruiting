@@ -950,6 +950,7 @@ export function CandidateDetailClient({
                         {(note.metadata?.jobTitle ||
                           note.jobTitle ||
                           note.metadata?.companyName ||
+                          note.createdByName ||
                           note.createdBy) && (
                           <div className="mt-2 text-[11px] text-slate-500">
                             {activityJobTitle && activityJobId ? (
@@ -964,8 +965,8 @@ export function CandidateDetailClient({
                               note.metadata?.companyName ||
                               ""
                             )}
-                            {note.createdBy
-                              ? ` · Added by ${note.createdBy}`
+                            {note.createdByName || note.createdBy
+                              ? ` · Added by ${note.createdByName || note.createdBy}`
                               : ""}
                           </div>
                         )}
