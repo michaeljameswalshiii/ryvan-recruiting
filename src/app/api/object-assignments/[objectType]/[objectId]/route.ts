@@ -76,9 +76,22 @@ export async function GET(
       listObjectAssignments(ctx.tenantId, ctx.objectType, ctx.objectId),
       getProfilesByTenant(ctx.tenantId),
     ]);
+    const members = profiles
+      .map(toPublicMember)
+      .filter((member) => member.status === "active");
+    const currentMembers = new Map(members.map((member) => [member.id, member]));
     return NextResponse.json({
-      assignments,
-      members: profiles.map(toPublicMember).filter((member) => member.status === "active"),
+      assignments: assignments.map((assignment) => {
+        const member = currentMembers.get(assignment.userId);
+        return member
+          ? {
+              ...assignment,
+              userName: member.full_name || member.email,
+              userEmail: member.email,
+            }
+          : assignment;
+      }),
+      members,
     });
   } catch (error) {
     console.error("[GET object assignments]", error);
