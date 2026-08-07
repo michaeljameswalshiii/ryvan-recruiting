@@ -115,6 +115,47 @@ function applicationRank(job: any) {
   return Math.max(0, PIPELINE.indexOf(normalizedStage(job?.stage)));
 }
 
+function ActivityNoteText({ text }: { text: string }) {
+  const paragraphRef = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+
+  useEffect(() => {
+    const paragraph = paragraphRef.current;
+    if (!paragraph || expanded) return;
+
+    const measure = () => {
+      setOverflows(paragraph.scrollHeight > paragraph.clientHeight + 1);
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(paragraph);
+    return () => observer.disconnect();
+  }, [expanded, text]);
+
+  return (
+    <div className="mt-2">
+      <p
+        ref={paragraphRef}
+        className={`whitespace-pre-wrap break-words text-sm text-slate-700 ${expanded ? "" : "line-clamp-3 sm:line-clamp-4"}`}
+      >
+        {text}
+      </p>
+      {(overflows || expanded) && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+          className="mt-1.5 text-xs font-semibold text-blue-700 hover:text-blue-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+        >
+          {expanded ? "Less" : "More"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function CandidateDetailClient({
   candidate,
   initialJobId = "",
@@ -845,12 +886,14 @@ export function CandidateDetailClient({
                             {date(note.createdAt || note.timestamp)}
                           </span>
                         </div>
-                        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700">
-                          {note.metadata?.noteText ||
-                            note.note ||
-                            note.description ||
-                            "Activity recorded."}
-                        </p>
+                        <ActivityNoteText
+                          text={String(
+                            note.metadata?.noteText ||
+                              note.note ||
+                              note.description ||
+                              "Activity recorded.",
+                          )}
+                        />
                         {(note.metadata?.jobTitle ||
                           note.jobTitle ||
                           note.metadata?.companyName ||
