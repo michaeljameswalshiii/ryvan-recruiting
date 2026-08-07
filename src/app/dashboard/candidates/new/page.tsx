@@ -56,6 +56,7 @@ const emptyForm = {
   resume_url: '',
   summary: '',
   skills: '',
+  tags: '',
   salary_requirements: '',
 };
 
@@ -81,6 +82,7 @@ export default function NewCandidatePage() {
         ...draft.form,
         status: prev.status,
         source: draft.form.source || 'resume',
+        tags: prev.tags,
       }));
       setResumeFileName(draft.fileName || draft.form.resume_file_name || '');
       setParsedFromResume(true);
@@ -236,6 +238,11 @@ export default function NewCandidatePage() {
           .map((s) => s.trim())
           .filter(Boolean);
       }
+
+      payload.tags = formData.tags
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
 
       if (Array.isArray(structured.experience) && structured.experience.length) {
         payload.experience = structured.experience;
@@ -640,6 +647,19 @@ export default function NewCandidatePage() {
                   className={fieldInputClass}
                   placeholder="Comma-separated"
                 />
+              </div>
+              <div>
+                <Label htmlFor="tags">Candidate Tags</Label>
+                <Input
+                  id="tags"
+                  value={formData.tags}
+                  onChange={(e) => handleChange('tags', e.target.value)}
+                  className={fieldInputClass}
+                  placeholder="e.g., Industrial, Local, Top prospect"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Separate tags with commas. Tags appear on the candidate profile.
+                </p>
               </div>
               <div>
                 <Label htmlFor="summary">Summary</Label>

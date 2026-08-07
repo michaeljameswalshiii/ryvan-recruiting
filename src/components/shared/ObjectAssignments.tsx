@@ -17,11 +17,15 @@ export function ObjectAssignments({
   objectId,
   className = "",
   compact = false,
+  label = "Owners",
+  assignmentRole = "owner",
 }: {
   objectType: ObjectType;
   objectId: string;
   className?: string;
   compact?: boolean;
+  label?: string;
+  assignmentRole?: "owner" | "account_manager" | "recruiter" | "collaborator";
 }) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -65,7 +69,7 @@ export function ObjectAssignments({
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: selectedUserId, role: "owner" }),
+        body: JSON.stringify({ userId: selectedUserId, role: assignmentRole }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error || "Unable to assign owner");
@@ -98,14 +102,14 @@ export function ObjectAssignments({
 
   return (
     <div
-      className={`${compact ? "min-w-[260px] lg:max-w-[360px]" : "rounded-xl border border-slate-200 bg-white p-4 shadow-sm"} ${className}`}
+      className={`${compact ? "min-w-[210px] lg:max-w-[300px]" : "rounded-xl border border-slate-200 bg-white p-4 shadow-sm"} ${className}`}
     >
-      <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
-        <Users className="h-4 w-4 text-blue-600" /> Owners
+      <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+        <Users className="h-3.5 w-3.5 text-blue-600" /> {label}
       </div>
       {loading ? (
         <div className="flex items-center gap-2 text-xs text-slate-500">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading owners...
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading {label.toLowerCase()}...
         </div>
       ) : (
         <>
@@ -133,7 +137,7 @@ export function ObjectAssignments({
               </span>
             ))}
             {!assignments.length && (
-              <span className="text-xs text-slate-500">No owners assigned.</span>
+              <span className="text-xs text-slate-500">No {label.toLowerCase()} assigned.</span>
             )}
           </div>
           {availableMembers.length > 0 && (

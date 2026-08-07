@@ -14,6 +14,8 @@ import {
   Phone,
   PhoneCall,
   Sparkles,
+  Tag,
+  X,
 } from "lucide-react";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
@@ -153,6 +155,12 @@ export function CandidateDetailClient({
   const [noteBusy, setNoteBusy] = useState(false);
   const [fitBusy, setFitBusy] = useState(false);
   const [fitOverlay, setFitOverlay] = useState<any>(null);
+  const [tags, setTags] = useState<string[]>(
+    Array.isArray(candidate?.tags) ? candidate.tags : [],
+  );
+  const [tagDraft, setTagDraft] = useState("");
+  const [tagBusy, setTagBusy] = useState(false);
+  const [tagError, setTagError] = useState("");
   const name = candidate?.name || "Unknown candidate";
   const salaryRequirement =
     candidate?.salaryRequirements || candidate?.salary_requirements || "";
@@ -291,25 +299,53 @@ export function CandidateDetailClient({
     }
   };
 
+  const saveTags = async (nextTags: string[]) => {
+    const normalized = Array.from(
+      new Map(
+        nextTags
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+          .slice(0, 25)
+          .map((tag) => [tag.toLowerCase(), tag]),
+      ).values(),
+    );
+    setTagBusy(true);
+    setTagError("");
+    try {
+      const response = await fetch(`/api/candidate/${candidate.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: normalized }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || "Unable to save tags");
+      setTags(normalized);
+      setTagDraft("");
+    } catch (error) {
+      setTagError(error instanceof Error ? error.message : "Unable to save tags");
+    } finally {
+      setTagBusy(false);
+    }
+  };
+
+  const addTags = () => {
+    const additions = tagDraft.split(",");
+    if (additions.some((tag) => tag.trim())) void saveTags([...tags, ...additions]);
+  };
+
   return (
     <div className="min-h-screen bg-[#f7f8fa] px-2 py-3 text-slate-900 sm:px-3 lg:px-4">
       <div className="mx-auto w-full max-w-none space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center">
           <Link
             href="/dashboard/candidates"
             className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-blue-700"
           >
             <ArrowLeft className="h-4 w-4" /> Back to Candidates
           </Link>
-          <Link
-            href={`/dashboard/candidates/${candidate.id}/edit`}
-            className="ml-3 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700"
-          >
-            Edit Candidate
-          </Link>
         </div>
 
-        <div className="grid items-start gap-3 xl:grid-cols-[minmax(230px,0.85fr)_minmax(390px,1.35fr)_minmax(360px,1fr)]">
+        <div className="grid items-start gap-3 xl:grid-cols-[minmax(240px,0.9fr)_minmax(280px,0.9fr)_minmax(440px,1.35fr)]">
           <div className="space-y-3 xl:contents">
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 xl:col-span-2 xl:col-start-1 xl:row-start-1">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -318,7 +354,7 @@ export function CandidateDetailClient({
                   type="button"
                   onClick={() => avatarInputRef.current?.click()}
                   disabled={avatarBusy}
-                  className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-slate-900 text-xl font-semibold text-white"
+                  className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-slate-900 text-sm font-semibold text-white"
                   title="Upload candidate picture"
                 >
                   {avatarUrl ? (
@@ -400,6 +436,53 @@ export function CandidateDetailClient({
                       )}
                     </div>
                   )}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700"
+                      >
+                        <Tag className="h-3 w-3" />
+                        {tag}
+                        <button
+                          type="button"
+                          disabled={tagBusy}
+                          onClick={() => void saveTags(tags.filter((item) => item !== tag))}
+                          className="rounded-sm text-violet-400 hover:text-violet-800 disabled:opacity-50"
+                          aria-label={`Remove ${tag} tag`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <div className="flex items-center gap-1">
+                      <input
+                        value={tagDraft}
+                        onChange={(event) => setTagDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            addTags();
+                          }
+                        }}
+                        disabled={tagBusy}
+                        className="h-7 w-28 rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] outline-none placeholder:text-slate-400 focus:border-violet-400 focus:ring-1 focus:ring-violet-200"
+                        placeholder="+ Add tag"
+                        aria-label="Add candidate tag"
+                      />
+                      {tagDraft.trim() && (
+                        <button
+                          type="button"
+                          onClick={addTags}
+                          disabled={tagBusy}
+                          className="h-7 rounded-md bg-violet-600 px-2 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                        >
+                          Add
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {tagError && <p className="mt-1 text-xs text-red-600">{tagError}</p>}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {candidate?.email && (
                       <a
@@ -427,10 +510,20 @@ export function CandidateDetailClient({
                     )}
                   </div>
                 </div>
+              </div>
+              <div className="flex shrink-0 flex-col items-stretch gap-3 sm:flex-row lg:flex-col lg:items-end">
+                <Link
+                  href={`/dashboard/candidates/${candidate.id}/edit`}
+                  className="self-start rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700 lg:self-end"
+                >
+                  Edit Candidate
+                </Link>
                 <ObjectAssignments
                   objectType="candidate"
                   objectId={String(candidate.id)}
                   compact
+                  label="Account Rep"
+                  assignmentRole="account_manager"
                 />
               </div>
             </div>

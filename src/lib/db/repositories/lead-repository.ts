@@ -326,6 +326,7 @@ export async function createLead(
   }
   if (extra.summary) lead.summary = extra.summary;
   if (extra.skills) lead.skills = extra.skills;
+  if (Array.isArray(extra.tags)) lead.tags = extra.tags;
   if (extra.experience) lead.experience = extra.experience;
   if (extra.education) lead.education = extra.education;
   if (extra.certifications) lead.certifications = extra.certifications;
@@ -438,6 +439,11 @@ export async function updateLead(
     updates.push("#skills = :skills");
     values[":skills"] = data.skills;
     names["#skills"] = "skills";
+  }
+  if (data.tags !== undefined) {
+    updates.push("#tags = :tags");
+    values[":tags"] = data.tags;
+    names["#tags"] = "tags";
   }
   if (data.experience !== undefined) {
     updates.push("#experience = :experience");

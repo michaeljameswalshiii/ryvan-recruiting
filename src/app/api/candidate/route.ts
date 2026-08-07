@@ -40,6 +40,7 @@ export async function POST(
       notes = '',
       linkedin_url = '',
       resume_url = '',
+      tags = [],
     } = body;
 
     // Validate required fields
@@ -62,6 +63,16 @@ export async function POST(
       notes: notes?.trim() || '',
       linkedin_url: linkedin_url?.trim() || '',
       resume_url: resume_url?.trim() || '',
+      tags: Array.isArray(tags)
+        ? Array.from(
+            new Set(
+              tags
+                .map((tag: unknown) => String(tag).trim())
+                .filter(Boolean)
+                .slice(0, 25),
+            ),
+          )
+        : [],
     });
 
     return NextResponse.json({

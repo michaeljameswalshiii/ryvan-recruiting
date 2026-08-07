@@ -172,6 +172,7 @@ export const leadSchema = z.object({
   salary_requirements: z.string().max(100).optional().or(z.literal("")),
   summary: z.string().max(2000).optional().or(z.literal("")),
   skills: z.array(z.string()).optional(),
+  tags: z.array(z.string().min(1).max(50)).max(25).optional(),
   experience: z
     .array(
       z.object({
@@ -240,6 +241,7 @@ export const updateLeadSchema = z
     salary_requirements: z.string().max(100).optional().nullable(),
     summary: z.string().max(2000).optional().nullable(),
     skills: z.array(z.string()).optional().nullable(),
+    tags: z.array(z.string().min(1).max(50)).max(25).optional().nullable(),
     experience: z.array(z.record(z.string())).optional().nullable(),
     education: z.array(z.record(z.string())).optional().nullable(),
     certifications: z.array(z.string()).optional().nullable(),

@@ -43,6 +43,7 @@ interface CandidateEditFormProps {
     notes?: string;
     linkedin_url?: string;
     resume_url?: string;
+    tags?: string[];
   };
 }
 
@@ -61,6 +62,7 @@ export default function CandidateEditForm({ candidate }: CandidateEditFormProps)
     notes: candidate.notes || "",
     linkedin_url: candidate.linkedin_url || "",
     resume_url: candidate.resume_url || "",
+    tags: Array.isArray(candidate.tags) ? candidate.tags.join(", ") : "",
   });
 
   const handleChange = (field: string, value: string) => {
@@ -81,7 +83,13 @@ export default function CandidateEditForm({ candidate }: CandidateEditFormProps)
       const response = await fetch(`/api/candidate/${candidate.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          tags: formData.tags
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
+        }),
       });
 
       const data = await response.json();
@@ -279,6 +287,21 @@ export default function CandidateEditForm({ candidate }: CandidateEditFormProps)
                     onChange={(e) => handleChange("resume_url", e.target.value)}
                     className="mt-1"
                   />
+                </div>
+
+                {/* Notes */}
+                <div className="md:col-span-2">
+                  <Label htmlFor="tags">Candidate Tags</Label>
+                  <Input
+                    id="tags"
+                    placeholder="e.g., Industrial, Local, Top prospect"
+                    value={formData.tags}
+                    onChange={(e) => handleChange("tags", e.target.value)}
+                    className="mt-1"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Separate tags with commas.
+                  </p>
                 </div>
 
                 {/* Notes */}

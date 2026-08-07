@@ -63,6 +63,12 @@ export default async function CandidateDetailPage({ params, searchParams }: Prop
             .map((s: string) => s.trim())
             .filter(Boolean)
         : [],
+    tags: Array.isArray(c.tags)
+      ? c.tags
+          .filter((tag: any) => typeof tag === "string")
+          .map((tag: string) => tag.trim())
+          .filter(Boolean)
+      : [],
     experience: Array.isArray(c.experience) ? c.experience : [],
     education: Array.isArray(c.education) ? c.education : [],
     certifications: Array.isArray(c.certifications) ? c.certifications : [],
