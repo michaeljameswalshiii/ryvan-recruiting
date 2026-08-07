@@ -315,9 +315,9 @@ export function CandidateDetailV2({
           </Link>
         </div>
 
-        <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,2.2fr)_minmax(360px,1fr)]">
-          <div className="space-y-3">
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="grid items-start gap-3 xl:grid-cols-[minmax(230px,0.85fr)_minmax(390px,1.35fr)_minmax(360px,1fr)]">
+          <div className="space-y-3 xl:contents">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 xl:col-span-2 xl:col-start-1 xl:row-start-1">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <button
@@ -527,8 +527,8 @@ export function CandidateDetailV2({
             )}
           </section>
 
-          <div className="grid items-start gap-3 xl:grid-cols-[minmax(230px,0.85fr)_minmax(390px,1.35fr)]">
-            <div className="space-y-4 xl:sticky xl:top-20 xl:self-start">
+          <div className="grid items-start gap-3 xl:contents">
+            <div className="space-y-4 xl:sticky xl:top-20 xl:col-start-1 xl:row-start-2 xl:self-start">
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
@@ -652,7 +652,7 @@ export function CandidateDetailV2({
               </section>
             </div>
 
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2 xl:col-start-1 xl:row-start-3">
               <div className="mb-3">
                 <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
                   Candidate Activity Timeline
@@ -796,8 +796,8 @@ export function CandidateDetailV2({
           </div>
           </div>
 
-            <div className="space-y-3">
-              <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="space-y-3 xl:contents">
+              <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm xl:col-start-3 xl:row-span-3 xl:row-start-1">
                 <div className="border-b border-slate-200 px-4 py-3">
                   <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
                     Resume
@@ -820,7 +820,7 @@ export function CandidateDetailV2({
                   />
                 </div>
               </section>
-              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-start-2 xl:row-start-2">
                 <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
                   <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
                 </h2>
