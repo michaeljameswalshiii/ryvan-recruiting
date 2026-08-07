@@ -345,7 +345,7 @@ export function CandidateDetailClient({
           </Link>
         </div>
 
-        <div className="grid items-start gap-3 xl:grid-cols-[minmax(240px,0.9fr)_minmax(280px,0.9fr)_minmax(440px,1.35fr)]">
+        <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(240px,0.9fr)_minmax(280px,0.9fr)_minmax(440px,1.35fr)]">
           <div className="space-y-3 xl:contents">
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 xl:col-span-2 xl:col-start-1 xl:row-start-1">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -436,53 +436,6 @@ export function CandidateDetailClient({
                       )}
                     </div>
                   )}
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    {tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700"
-                      >
-                        <Tag className="h-3 w-3" />
-                        {tag}
-                        <button
-                          type="button"
-                          disabled={tagBusy}
-                          onClick={() => void saveTags(tags.filter((item) => item !== tag))}
-                          className="rounded-sm text-violet-400 hover:text-violet-800 disabled:opacity-50"
-                          aria-label={`Remove ${tag} tag`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                    <div className="flex items-center gap-1">
-                      <input
-                        value={tagDraft}
-                        onChange={(event) => setTagDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            addTags();
-                          }
-                        }}
-                        disabled={tagBusy}
-                        className="h-7 w-28 rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] outline-none placeholder:text-slate-400 focus:border-violet-400 focus:ring-1 focus:ring-violet-200"
-                        placeholder="+ Add tag"
-                        aria-label="Add candidate tag"
-                      />
-                      {tagDraft.trim() && (
-                        <button
-                          type="button"
-                          onClick={addTags}
-                          disabled={tagBusy}
-                          className="h-7 rounded-md bg-violet-600 px-2 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-                        >
-                          Add
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {tagError && <p className="mt-1 text-xs text-red-600">{tagError}</p>}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {candidate?.email && (
                       <a
@@ -614,9 +567,9 @@ export function CandidateDetailClient({
             )}
           </section>
 
-          <div className="grid items-start gap-3 xl:contents">
-            <div className="space-y-4 xl:sticky xl:top-20 xl:col-start-1 xl:row-start-2 xl:self-start">
-              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="grid items-stretch gap-3 xl:contents">
+            <div className="h-full xl:col-start-1 xl:row-start-2 xl:self-stretch">
+              <section className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
                     Applications ({jobs.length})
@@ -735,6 +688,57 @@ export function CandidateDetailClient({
                         : "View All Applications"}
                     </button>
                   )}
+                </div>
+                <div className="mt-auto border-t border-slate-100 pt-4">
+                  <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                    <Tag className="h-3.5 w-3.5 text-violet-600" /> Tags
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700"
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          disabled={tagBusy}
+                          onClick={() => void saveTags(tags.filter((item) => item !== tag))}
+                          className="rounded-sm text-violet-400 hover:text-violet-800 disabled:opacity-50"
+                          aria-label={`Remove ${tag} tag`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <div className="flex items-center gap-1">
+                      <input
+                        value={tagDraft}
+                        onChange={(event) => setTagDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            addTags();
+                          }
+                        }}
+                        disabled={tagBusy}
+                        className="h-7 w-28 rounded-md border border-dashed border-slate-300 bg-white px-2 text-[11px] outline-none placeholder:text-slate-400 focus:border-violet-400 focus:ring-1 focus:ring-violet-200"
+                        placeholder="+ Add tag"
+                        aria-label="Add candidate tag"
+                      />
+                      {tagDraft.trim() && (
+                        <button
+                          type="button"
+                          onClick={addTags}
+                          disabled={tagBusy}
+                          className="h-7 rounded-md bg-violet-600 px-2 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                        >
+                          Add
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {tagError && <p className="mt-1 text-xs text-red-600">{tagError}</p>}
                 </div>
               </section>
             </div>
@@ -907,7 +911,7 @@ export function CandidateDetailClient({
                   />
                 </div>
               </section>
-              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-start-2 xl:row-start-2">
+              <section className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-start-2 xl:row-start-2">
                 <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
                   <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
                 </h2>
