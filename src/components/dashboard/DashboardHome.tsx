@@ -127,7 +127,8 @@ export function DashboardHome({
       sub: `${stats.jobs.emptyOpen} empty pipelines`,
       icon: Briefcase,
       color: 'text-blue-600',
-      bg: 'bg-blue-50',
+      bg: 'bg-blue-100',
+      cardClass: '!border-blue-200 !bg-blue-50',
       href: '/dashboard/jobs',
     },
     {
@@ -136,8 +137,9 @@ export function DashboardHome({
       delta: null,
       sub: 'submitted or beyond',
       icon: TrendingUp,
-      color: 'text-sky-600',
-      bg: 'bg-sky-50',
+      color: 'text-violet-700',
+      bg: 'bg-violet-100',
+      cardClass: '!border-violet-200 !bg-violet-50',
       href: '/dashboard/candidates',
     },
     {
@@ -146,8 +148,9 @@ export function DashboardHome({
       delta: stats.interviewsKpi?.deltaPct ?? null,
       sub: `${stats.inMotion} in motion`,
       icon: Users,
-      color: 'text-violet-600',
-      bg: 'bg-violet-50',
+      color: 'text-amber-700',
+      bg: 'bg-amber-100',
+      cardClass: '!border-amber-200 !bg-amber-50',
       href: '/dashboard/candidates',
     },
     {
@@ -156,8 +159,9 @@ export function DashboardHome({
       delta: null,
       sub: 'offer stage or beyond',
       icon: Building2,
-      color: 'text-indigo-600',
-      bg: 'bg-indigo-50',
+      color: 'text-emerald-700',
+      bg: 'bg-emerald-100',
+      cardClass: '!border-emerald-200 !bg-emerald-50',
       href: '/dashboard/candidates',
     },
     {
@@ -166,8 +170,9 @@ export function DashboardHome({
       delta: stats.placementsKpi.deltaPct,
       sub: `vs prior (${stats.placementsKpi.previous})`,
       icon: Target,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50',
+      color: 'text-green-700',
+      bg: 'bg-green-100',
+      cardClass: '!border-green-200 !bg-green-50',
       href: '/dashboard/candidates',
     },
   ];
@@ -211,7 +216,7 @@ export function DashboardHome({
           <DashboardCard
             key={c.title}
             title={c.title}
-            className="overflow-hidden"
+            className={`overflow-hidden ${c.cardClass}`}
             expandedChildren={
               <div className="flex min-h-[320px] flex-col items-center justify-center text-center">
                 <div className={`mb-5 rounded-2xl p-4 ${c.bg}`}>
