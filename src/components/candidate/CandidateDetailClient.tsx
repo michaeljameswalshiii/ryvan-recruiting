@@ -13,12 +13,14 @@ import {
   MapPin,
   Phone,
   PhoneCall,
+  Plus,
   Sparkles,
   Tag,
   Trash2,
   X,
 } from "lucide-react";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
+import { LinkJobModal } from "@/components/candidate/LinkJobModal";
 import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +32,7 @@ import {
   normalizeNoteTypeLabel,
 } from "@/lib/candidates/note-type-stage";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 function date(value?: string) {
   if (!value) return "—";
@@ -170,7 +173,20 @@ export function CandidateDetailClient({
   initialJobId?: string;
   canDeleteActivity?: boolean;
 }) {
-  const jobs = Array.isArray(candidate?.linkedJobs) ? candidate.linkedJobs : [];
+  const router = useRouter();
+  const [linkedJobs, setLinkedJobs] = useState<any[]>(
+    Array.isArray(candidate?.linkedJobs) ? candidate.linkedJobs : [],
+  );
+  const [linkJobOpen, setLinkJobOpen] = useState(false);
+
+  // Keep local list in sync if server props refresh
+  useEffect(() => {
+    setLinkedJobs(
+      Array.isArray(candidate?.linkedJobs) ? candidate.linkedJobs : [],
+    );
+  }, [candidate?.linkedJobs, candidate?.id]);
+
+  const jobs = linkedJobs;
   const orderedJobs = [...jobs].sort((a: any, b: any) => {
     const rankDifference = applicationRank(b) - applicationRank(a);
     if (rankDifference) return rankDifference;
@@ -739,11 +755,20 @@ export function CandidateDetailClient({
           {/* Apps + AI Evaluation: one shared row, equal stretch */}
           <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2 xl:col-span-2 xl:col-start-1 xl:row-start-2">
               <section className="flex h-full min-h-[280px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-center justify-between">
+                <div className="mb-3 flex items-center justify-between gap-2">
                   <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
                     Applications ({jobs.length})
                   </h2>
-                  <Briefcase className="h-4 w-4 text-slate-400" />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 shrink-0 gap-1 px-2 text-[11px] font-semibold"
+                    onClick={() => setLinkJobOpen(true)}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Attach to Job
+                  </Button>
                 </div>
                 <div className="min-h-0 flex-1 space-y-3">
                   {visibleApplications.map((job: any, index: number) => {
@@ -842,9 +867,20 @@ export function CandidateDetailClient({
                     );
                   })}
                   {!visibleApplications.length && (
-                    <p className="py-5 text-center text-sm text-slate-500">
-                      No active applications.
-                    </p>
+                    <div className="flex flex-col items-center gap-2 py-6 text-center">
+                      <p className="text-sm text-slate-500">
+                        No active applications.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 gap-1 bg-blue-600 text-xs hover:bg-blue-700"
+                        onClick={() => setLinkJobOpen(true)}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Attach to Job
+                      </Button>
+                    </div>
                   )}
                   {jobs.some((job: any) => isRejectedApplication(job)) && (
                     <button
@@ -1217,6 +1253,47 @@ export function CandidateDetailClient({
           </section>
         </div>
       </div>
+
+      <LinkJobModal
+        open={linkJobOpen}
+        onOpenChange={setLinkJobOpen}
+        candidateId={String(candidate?.id || "")}
+        candidateName={name}
+        currentLinkedJobs={linkedJobs.map((j: any) => ({
+          jobId: String(j.jobId || j.id || ""),
+          jobTitle: j.jobTitle || j.title,
+          companyId: j.companyId || j.company_id,
+          companyName: j.companyName || j.company_name || j.company,
+          stage: j.stage,
+        }))}
+        onLinked={(next) => {
+          // Merge modal summary with any existing stage metadata we already had
+          const byId = new Map(
+            linkedJobs.map((j: any) => [String(j.jobId || j.id || ""), j]),
+          );
+          const merged = next.map((n) => {
+            const prev = byId.get(String(n.jobId));
+            return {
+              ...(prev || {}),
+              jobId: n.jobId,
+              jobTitle: n.jobTitle || prev?.jobTitle || prev?.title,
+              companyId: n.companyId || prev?.companyId,
+              companyName:
+                n.companyName ||
+                prev?.companyName ||
+                prev?.company_name ||
+                prev?.company,
+              stage: n.stage || prev?.stage || "sourced",
+            };
+          });
+          setLinkedJobs(merged);
+          if (merged.length && !selectedJobId) {
+            setSelectedJobId(String(merged[0].jobId || ""));
+          }
+          // Refresh server props so other panels stay consistent
+          router.refresh();
+        }}
+      />
     </div>
   );
 }
