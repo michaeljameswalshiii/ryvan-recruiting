@@ -14,7 +14,7 @@ import {
   updateItem,
   clientsTable,
 } from '../dynamodb';
-import { getCached, setCached, invalidateTenantCache, makeCacheKey } from '../../cache';
+import { invalidateTenantCache } from '../../cache';
 import { type Contact, type CreateContactInput, type UpdateContactInput } from '../../schemas/client';
 
 // Extended contact type with company association
@@ -23,7 +23,6 @@ export interface CompanyContact extends Contact {
 }
 
 // Cache TTL: 5 minutes
-const CACHE_TTL = 300;
 
 /**
  * Generate a UUID
@@ -61,27 +60,14 @@ export async function getContactsForCompany(
   tenantId: string,
   companyId: string
 ): Promise<Contact[]> {
-  const cacheKey = makeCacheKey(tenantId, 'contacts', companyId);
-
-  // Try cache first
-  const cached = await getCached<Contact[]>(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
   const contacts = await queryAllContactChildRows(tenantId);
 
   // Filter by companyId (since we're storing companyId on each contact)
-  const filteredContacts = contacts.filter(
+  return contacts.filter(
     (c) =>
       String(c.companyId || (c as { clientId?: string }).clientId || '') ===
       String(companyId)
   );
-
-  // Cache the result
-  await setCached(cacheKey, filteredContacts, CACHE_TTL);
-
-  return filteredContacts;
 }
 
 export type TenantContactRow = Contact & {
@@ -97,10 +83,7 @@ export type TenantContactRow = Contact & {
 export async function getAllContactsForTenant(
   tenantId: string
 ): Promise<TenantContactRow[]> {
-  const cacheKey = makeCacheKey(tenantId, 'contacts', 'all');
-  const cached = await getCached<TenantContactRow[]>(cacheKey);
-  if (cached) return cached;
-
+  // Always live read — contact add/edit/remove must appear immediately
   const byId = new Map<string, TenantContactRow>();
 
   // Child-entity model
@@ -153,11 +136,9 @@ export async function getAllContactsForTenant(
     console.warn('[getAllContactsForTenant] company enrich failed', err);
   }
 
-  const list = Array.from(byId.values()).sort((a, b) =>
+  return Array.from(byId.values()).sort((a, b) =>
     String(a.name || '').localeCompare(String(b.name || ''))
   );
-  await setCached(cacheKey, list, CACHE_TTL);
-  return list;
 }
 
 /**

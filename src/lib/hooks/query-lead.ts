@@ -78,16 +78,25 @@ return useMutation({
       }
       return result;
     },
-onSuccess: () => {
+onSuccess: async (result) => {
       toast.success('Lead created successfully');
-      // Invalidate lead queries
-      queryClient.invalidateQueries({ queryKey: leadKeys.lists(), refetchType: 'all' });
-      // Also invalidate dashboard queries so stats update
-      queryClient.invalidateQueries({ queryKey: ['dashboard'], refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'], refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: ['stats'], refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: ['clients'], refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: ['pipeline'], refetchType: 'all' });
+      // Optimistic insert when server returns the lead
+      const lead = (result as any)?.lead;
+      if (lead?.id) {
+        queryClient.setQueryData(leadKeys.lists(), (prev: any) => {
+          const list = Array.isArray(prev) ? prev : [];
+          if (list.some((l: any) => String(l.id) === String(lead.id))) return list;
+          return [lead, ...list];
+        });
+      }
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [
+        leadKeys.all,
+        ['dashboard'],
+        ['dashboard-stats'],
+        ['stats'],
+        ['pipeline'],
+      ]);
     },
     onError: (error) => {
       toast.error('Failed to create lead', {
@@ -115,10 +124,20 @@ return useMutation({
       }
       return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (result, variables) => {
       toast.success('Lead updated successfully');
-      queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: leadKeys.detail(variables.leadId) });
+      const lead = (result as any)?.lead;
+      if (lead?.id) {
+        queryClient.setQueryData(leadKeys.detail(variables.leadId), lead);
+        queryClient.setQueryData(leadKeys.lists(), (prev: any) => {
+          if (!Array.isArray(prev)) return prev;
+          return prev.map((l: any) =>
+            String(l.id) === String(variables.leadId) ? { ...l, ...lead } : l
+          );
+        });
+      }
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [leadKeys.all]);
     },
     onError: (error) => {
       toast.error('Failed to update lead', {
@@ -146,11 +165,25 @@ return useMutation({
       }
       return result;
     },
-    onSuccess: () => {
-      toast.success('Lead deleted successfully');
-      queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
+    onMutate: async (leadId) => {
+      await queryClient.cancelQueries({ queryKey: leadKeys.lists() });
+      const previous = queryClient.getQueryData(leadKeys.lists());
+      queryClient.setQueryData(leadKeys.lists(), (prev: any) =>
+        Array.isArray(prev)
+          ? prev.filter((l: any) => String(l.id) !== String(leadId))
+          : prev
+      );
+      return { previous };
     },
-    onError: (error) => {
+    onSuccess: async () => {
+      toast.success('Lead deleted successfully');
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [leadKeys.all, ['dashboard'], ['stats']]);
+    },
+    onError: (error, _leadId, ctx) => {
+      if (ctx?.previous !== undefined) {
+        queryClient.setQueryData(leadKeys.lists(), ctx.previous);
+      }
       toast.error('Failed to delete lead', {
         description: error instanceof Error ? error.message : 'Please try again',
       });
@@ -176,13 +209,32 @@ export function useUpdateLeadStatus() {
       }
       return result;
     },
-    onSuccess: (_, variables) => {
-      toast.success(`Moved to ${variables.newStatus}`);
-      queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['stats'] });
+    onMutate: async ({ leadId, newStatus }) => {
+      await queryClient.cancelQueries({ queryKey: leadKeys.lists() });
+      const previous = queryClient.getQueryData(leadKeys.lists());
+      queryClient.setQueryData(leadKeys.lists(), (prev: any) =>
+        Array.isArray(prev)
+          ? prev.map((l: any) =>
+              String(l.id) === String(leadId) ? { ...l, status: newStatus } : l
+            )
+          : prev
+      );
+      return { previous };
     },
-    onError: (error) => {
+    onSuccess: async (_, variables) => {
+      toast.success(`Moved to ${variables.newStatus}`);
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [
+        leadKeys.all,
+        ['pipeline'],
+        ['dashboard'],
+        ['stats'],
+      ]);
+    },
+    onError: (error, _vars, ctx) => {
+      if (ctx?.previous !== undefined) {
+        queryClient.setQueryData(leadKeys.lists(), ctx.previous);
+      }
       toast.error('Failed to move candidate', {
         description: error instanceof Error ? error.message : 'Please try again',
       });

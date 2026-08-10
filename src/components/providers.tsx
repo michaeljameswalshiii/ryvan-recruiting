@@ -11,13 +11,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Cache briefly so sidebar navigation can paint instantly from memory.
-            // AI/server mutations still call invalidateCrmCaches (marks stale +
-            // refetches only *active* queries) so lists stay correct without a
-            // full refetch storm after every AI write.
-            staleTime: 30_000,
-            // Avoid surprise refetch mid-click when tab regains focus
+            // Immediate-UI convention: treat CRM data as fresh-on-read.
+            // Mutations call refreshCrmUi / invalidate with refetchType active so
+            // mounted screens update right away (no multi-second stale lag).
+            staleTime: 0,
+            // Re-read when navigating back to a screen after a write
+            refetchOnMount: "always",
+            // Still avoid noisy focus storms during rapid multi-tab work
             refetchOnWindowFocus: false,
+          },
+          mutations: {
+            // Failures surface via each mutation's onError toast
+            retry: 0,
           },
         },
       })

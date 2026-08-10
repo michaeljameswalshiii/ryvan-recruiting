@@ -1,4 +1,4 @@
-ï»¿/**
+/**
  * TanStack Query Hooks for Candidate Detail
  * Provides reactive data fetching for individual candidates
  * 
@@ -71,7 +71,7 @@ export function useCandidate(id: string) {
     queryKey: candidateKeys.detail(id),
     queryFn: () => getCandidate(id),
     enabled: !!id,
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 0, // immediate UI — mutations refresh active queries
   });
 }
 
@@ -83,7 +83,7 @@ export function useCandidateEvents(id: string) {
     queryKey: candidateKeys.events(id),
     queryFn: () => getCandidateEvents(id),
     enabled: !!id,
-    staleTime: 1000 * 60, // 1 minute
+    staleTime: 0, // immediate UI
   });
 }
 

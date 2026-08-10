@@ -13,11 +13,10 @@ import {
   updateItem,
   pipelineTable,
 } from '../dynamodb';
-import { getCached, setCached, invalidateTenantCache, makeCacheKey } from '../../cache';
+import { invalidateTenantCache } from '../../cache';
 import { type Pipeline, type CreatePipelineInput, type UpdatePipelineInput } from '../../schemas/pipeline';
 
 // Cache TTL: 5 minutes
-const CACHE_TTL = 300;
 
 /**
  * Generate a UUID
@@ -42,21 +41,7 @@ export async function getAllPipeline(tenantId: string): Promise<Pipeline[]> {
     return [];
   }
   
-  const cacheKey = makeCacheKey(tenantId, 'pipeline', 'all');
-  console.log('[PIPELINE-REPO] cacheKey:', cacheKey);
-  
-  // Try cache first
-  try {
-    const cached = await getCached<Pipeline[]>(cacheKey);
-    console.log('[PIPELINE-REPO] cache check result:', cached ? 'hit' : 'miss');
-    if (cached) {
-      return cached;
-    }
-  } catch (cacheError: any) {
-    console.error('[PIPELINE-REPO] Cache error:', cacheError?.message);
-  }
-  
-  // Query from DynamoDB
+  // Always DynamoDB — stage moves must reflect immediately (no warm-cache lag)
   console.log('[PIPELINE-REPO] Querying DynamoDB with table:', pipelineTable);
   try {
     const pipeline = await queryItems<Pipeline>(
@@ -65,15 +50,6 @@ export async function getAllPipeline(tenantId: string): Promise<Pipeline[]> {
       { ':tenantId': tenantId }
     );
     console.log('[PIPELINE-REPO] DynamoDB returned:', pipeline?.length || 0, 'items');
-    
-    // Cache the result
-    try {
-      await setCached(cacheKey, pipeline, CACHE_TTL);
-      console.log('[PIPELINE-REPO] Cached result');
-    } catch (cacheSetError: any) {
-      console.error('[PIPELINE-REPO] Cache set error:', cacheSetError?.message);
-    }
-    
     return pipeline;
   } catch (dbError: any) {
     const errorMessage = dbError?.message || '';
@@ -92,28 +68,13 @@ export async function getAllPipeline(tenantId: string): Promise<Pipeline[]> {
 }
 
 /**
- * Get a single pipeline item by ID
+ * Get a single pipeline item by ID (always DynamoDB).
  */
 export async function getPipelineById(tenantId: string, pipelineId: string): Promise<Pipeline | null> {
-  const cacheKey = makeCacheKey(tenantId, 'pipeline', pipelineId);
-  
-  // Try cache first
-  const cached = await getCached<Pipeline>(cacheKey);
-  if (cached) {
-    return cached;
-  }
-  
-  // Get from DynamoDB
-  const pipeline = await getItem<Pipeline>(pipelineTable, {
+  return getItem<Pipeline>(pipelineTable, {
     tenant_id: tenantId,
     id: pipelineId,
   });
-  
-  if (pipeline) {
-    await setCached(cacheKey, pipeline, CACHE_TTL);
-  }
-  
-  return pipeline;
 }
 
 /**

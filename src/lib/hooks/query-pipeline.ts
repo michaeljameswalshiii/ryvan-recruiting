@@ -1,4 +1,4 @@
-ï»¿/**
+/**
  * TanStack Query Hooks for Pipeline Data
  * Provides reactive data fetching with caching, loading states, and error handling
  * Includes toast notifications for user feedback
@@ -49,7 +49,7 @@ export function usePipeline() {
         throw err;
       }
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 0, // immediate UI — mutations refresh active queries
     retry: 2,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
@@ -69,7 +69,7 @@ export function usePipelineItem(pipelineId: string) {
       return result.pipeline;
     },
     enabled: !!pipelineId,
-    staleTime: 1000 * 60 * 5,
+    staleTime: 0,
   });
 }
 
@@ -88,17 +88,17 @@ export function useCreatePipeline() {
       }
       return result;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Added to pipeline successfully');
-      // Invalidate pipeline queries
-      queryClient.invalidateQueries({ queryKey: pipelineKeys.lists(), refetchType: 'all' });
-      // Invalidate dashboard queries so stats update
-      queryClient.invalidateQueries({ queryKey: ['dashboard'], refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'], refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: ['stats'], refetchType: 'all' });
-      // Invalidate other data sources that may be affected
-      queryClient.invalidateQueries({ queryKey: ['clients'], refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: ['leads'], refetchType: 'all' });
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [
+        pipelineKeys.all,
+        ['dashboard'],
+        ['dashboard-stats'],
+        ['stats'],
+        ['leads'],
+        ['clients'],
+      ]);
     },
     onError: (error) => {
       toast.error('Failed to add to pipeline', {
@@ -123,10 +123,13 @@ export function useUpdatePipeline() {
       }
       return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       toast.success('Pipeline updated successfully');
-      queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(variables.pipelineId) });
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [
+        pipelineKeys.all,
+        pipelineKeys.detail(variables.pipelineId),
+      ]);
     },
     onError: (error) => {
       toast.error('Failed to update pipeline', {
@@ -151,11 +154,25 @@ export function useDeletePipeline() {
       }
       return result;
     },
-    onSuccess: () => {
-      toast.success('Removed from pipeline successfully');
-      queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
+    onMutate: async (pipelineId) => {
+      await queryClient.cancelQueries({ queryKey: pipelineKeys.lists() });
+      const previous = queryClient.getQueryData(pipelineKeys.lists());
+      queryClient.setQueryData(pipelineKeys.lists(), (prev: any) =>
+        Array.isArray(prev)
+          ? prev.filter((p: any) => String(p.id) !== String(pipelineId))
+          : prev
+      );
+      return { previous };
     },
-    onError: (error) => {
+    onSuccess: async () => {
+      toast.success('Removed from pipeline successfully');
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [pipelineKeys.all]);
+    },
+    onError: (error, _id, ctx) => {
+      if (ctx?.previous !== undefined) {
+        queryClient.setQueryData(pipelineKeys.lists(), ctx.previous);
+      }
       toast.error('Failed to remove from pipeline', {
         description: error instanceof Error ? error.message : 'Please try again',
       });

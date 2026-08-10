@@ -14,7 +14,7 @@ import {
   updateItem,
   jobsTable,
 } from '../dynamodb';
-import { getCached, setCached, invalidateTenantCache, makeCacheKey } from '../../cache';
+import { invalidateTenantCache } from '../../cache';
 import { 
   type Job, 
   type CreateJobInput, 
@@ -29,7 +29,6 @@ import {
 import { assignDefaultOwnerOnCreate } from '@/lib/ownership/default-owner';
 
 // Cache TTL: 5 minutes
-const CACHE_TTL = 300;
 
 /**
  * Generate a UUID
@@ -43,19 +42,11 @@ function generateId(): string {
 }
 
 /**
- * Get all jobs for a tenant
- * Always returns an array, guarding against corrupted DynamoDB data
+ * Get all jobs for a tenant.
+ * Always hits DynamoDB so creates/updates/unlinks show immediately (no warm-instance lag).
  */
 export async function getAllJobs(tenantId: string): Promise<Job[]> {
-  const cacheKey = makeCacheKey(tenantId, 'jobs', 'all');
   console.log('[getAllJobs] Fetching jobs for tenant:', tenantId);
-
-  // Try cache first - validate it's an array
-  const cached = await getCached<Job[]>(cacheKey);
-  if (cached && Array.isArray(cached)) {
-    console.log('[getAllJobs] Returning cached jobs:', cached.length);
-    return cached;
-  }
 
   try {
     // Query from DynamoDB
@@ -68,9 +59,6 @@ export async function getAllJobs(tenantId: string): Promise<Job[]> {
     // GUARD: Ensure we always have an array - even if DynamoDB returns corrupted data
     const jobs = Array.isArray(result?.items) ? result.items : [];
     console.log('[getAllJobs] Got jobs from DynamoDB:', jobs.length);
-    
-    // Cache the result
-    await setCached(cacheKey, jobs, CACHE_TTL);
 
     return jobs;
   } catch (error: any) {
@@ -99,28 +87,13 @@ export async function getOpenJobs(tenantId: string): Promise<Job[]> {
 }
 
 /**
- * Get a single job by ID
+ * Get a single job by ID (always DynamoDB — no stale memory cache).
  */
 export async function getJobById(tenantId: string, jobId: string): Promise<Job | null> {
-  const cacheKey = makeCacheKey(tenantId, 'jobs', jobId);
-
-  // Try cache first
-  const cached = await getCached<Job>(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  // Get from DynamoDB
-  const job = await getItem<Job>(jobsTable, {
+  return getItem<Job>(jobsTable, {
     tenant_id: tenantId,
     id: jobId,
   });
-
-  if (job) {
-    await setCached(cacheKey, job, CACHE_TTL);
-  }
-
-  return job;
 }
 
 /**

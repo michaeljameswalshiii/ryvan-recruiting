@@ -13,12 +13,7 @@ import {
   updateItem,
   leadsTable,
 } from "../dynamodb";
-import {
-  getCached,
-  setCached,
-  invalidateTenantCache,
-  makeCacheKey,
-} from "../../cache";
+import { invalidateTenantCache } from "../../cache";
 import {
   type Lead,
   type CreateLeadInput,
@@ -30,9 +25,6 @@ import {
 } from "../../schemas/lead";
 import { assignDefaultOwnerOnCreate } from "@/lib/ownership/default-owner";
 import { getJobById, getAllJobs } from "./job-repository";
-
-// Cache TTL: 5 minutes
-const CACHE_TTL = 300;
 
 // Pipeline stages that show in the UI pipeline
 // Also include legacy statuses for backward compatibility with migrated data
@@ -118,10 +110,8 @@ function generateId(): string {
  * Always returns an array, guarding against corrupted DynamoDB data
  */
 export async function getAllLeads(tenantId: string): Promise<Lead[]> {
-  const cacheKey = makeCacheKey(tenantId, "leads", "all");
-
   try {
-    // Always query DynamoDB for list accuracy (avoid empty-cache after create on other instances)
+    // Always query DynamoDB so creates/unlinks/stage changes show immediately
     const result = await queryItems<Lead>(leadsTable, "tenant_id = :tenantId", {
       ":tenantId": tenantId,
     });
@@ -131,16 +121,10 @@ export async function getAllLeads(tenantId: string): Promise<Lead[]> {
 
     console.log("[getAllLeads] tenant=", tenantId, "count=", leads.length);
 
-    // Cache briefly for detail enrichment paths
-    await setCached(cacheKey, leads, 30);
-
     return leads;
   } catch (error: any) {
     // Table doesn't exist or other error - return empty array gracefully
     console.error("[getAllLeads] Error fetching leads:", error?.message);
-    // Fall back to cache if present
-    const cached = await getCached<Lead[]>(cacheKey);
-    if (cached && Array.isArray(cached)) return cached;
     return [];
   }
 }

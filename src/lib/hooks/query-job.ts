@@ -1,4 +1,4 @@
-ï»¿/**
+/**
  * TanStack Query Hooks for Job Data
  * Provides reactive data fetching with caching, loading states, and error handling
  * Includes toast notifications for user feedback
@@ -55,7 +55,7 @@ export function useJobs(includeStats = false) {
       
       return includeStats ? { jobs, stats: result.stats } : jobs;
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 0, // immediate UI — mutations refresh active queries
     retry: 2,
   });
 }
@@ -73,7 +73,7 @@ export function useJob(jobId: string) {
       }
       return result.job;
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 0, // immediate UI — mutations refresh active queries
     retry: 2,
     enabled: !!jobId,
   });
@@ -170,11 +170,18 @@ return useMutation({
       }
       return result;
     },
-    onSuccess: () => {
+    onSuccess: async (result) => {
       toast.success('Job created successfully!');
-      queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: jobKeys.stats() });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      const job = (result as any)?.job;
+      if (job?.id) {
+        queryClient.setQueryData(jobKeys.lists(), (prev: any) => {
+          const list = Array.isArray(prev) ? prev : [];
+          if (list.some((j: any) => String(j.id) === String(job.id))) return list;
+          return [job, ...list];
+        });
+      }
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [jobKeys.all, ['dashboard']]);
     },
     onError: (error: any) => {
       console.error('[useCreateJob] Error:', error);
@@ -261,11 +268,13 @@ export function useUpdateJob() {
       }
       return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       toast.success('Job updated successfully');
-      queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: jobKeys.detail(variables.jobId) });
-      queryClient.invalidateQueries({ queryKey: jobKeys.stats() });
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [
+        jobKeys.all,
+        jobKeys.detail(variables.jobId),
+      ]);
     },
     onError: (error) => {
       toast.error('Failed to update job', {
@@ -290,12 +299,25 @@ export function useDeleteJob() {
       }
       return result;
     },
-    onSuccess: () => {
-      toast.success('Job deleted successfully');
-      queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: jobKeys.stats() });
+    onMutate: async (jobId) => {
+      await queryClient.cancelQueries({ queryKey: jobKeys.lists() });
+      const previous = queryClient.getQueryData(jobKeys.lists());
+      queryClient.setQueryData(jobKeys.lists(), (prev: any) =>
+        Array.isArray(prev)
+          ? prev.filter((j: any) => String(j.id) !== String(jobId))
+          : prev
+      );
+      return { previous };
     },
-    onError: (error) => {
+    onSuccess: async () => {
+      toast.success('Job deleted successfully');
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [jobKeys.all, ['dashboard']]);
+    },
+    onError: (error, _id, ctx) => {
+      if (ctx?.previous !== undefined) {
+        queryClient.setQueryData(jobKeys.lists(), ctx.previous);
+      }
       toast.error('Failed to delete job', {
         description: error instanceof Error ? error.message : 'Please try again',
       });
@@ -330,11 +352,14 @@ export function useLinkCandidateToJob() {
       }
       return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       toast.success('Candidate linked to job');
-      queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: jobKeys.detail(variables.jobId) });
-      queryClient.invalidateQueries({ queryKey: jobKeys.stats() });
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [
+        jobKeys.all,
+        jobKeys.detail(variables.jobId),
+        leadKeysSafe(),
+      ]);
     },
     onError: (error) => {
       toast.error('Failed to link candidate', {
@@ -359,11 +384,14 @@ export function useUnlinkCandidateFromJob() {
       }
       return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       toast.success('Candidate unlinked from job');
-      queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: jobKeys.detail(variables.jobId) });
-      queryClient.invalidateQueries({ queryKey: jobKeys.stats() });
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [
+        jobKeys.all,
+        jobKeys.detail(variables.jobId),
+        leadKeysSafe(),
+      ]);
     },
     onError: (error) => {
       toast.error('Failed to unlink candidate', {
@@ -398,11 +426,14 @@ export function useUpdateCandidateStageInJob() {
       }
       return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       toast.success(`Candidate moved to ${variables.stage}`);
-      queryClient.invalidateQueries({ queryKey: jobKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: jobKeys.detail(variables.jobId) });
-      queryClient.invalidateQueries({ queryKey: jobKeys.stats() });
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [
+        jobKeys.all,
+        jobKeys.detail(variables.jobId),
+        leadKeysSafe(),
+      ]);
     },
     onError: (error) => {
       toast.error('Failed to update stage', {
@@ -410,6 +441,10 @@ export function useUpdateCandidateStageInJob() {
       });
     },
   });
+}
+
+function leadKeysSafe() {
+  return ['leads'] as const;
 }
 
 /**
@@ -430,7 +465,7 @@ export function useJobsForCandidate(candidateId: string) {
       );
       return jobs;
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 0,
     retry: 2,
     enabled: !!candidateId,
   });
@@ -454,7 +489,7 @@ export function useJobsForCompany(companyId: string) {
       );
       return jobs;
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 0,
     retry: 2,
     enabled: !!companyId,
   });
@@ -673,7 +708,7 @@ export function useLinkedJobsForCandidate(candidateId: string) {
       // Return the linkedJobs array from the candidate record
       return data.lead?.linkedJobs || [];
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 0, // immediate UI — mutations refresh active queries
     retry: 2,
     enabled: !!candidateId,
   });

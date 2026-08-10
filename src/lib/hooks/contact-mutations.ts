@@ -27,10 +27,14 @@ export function useAddContact() {
       
       return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       toast.success('Contact added successfully');
-      queryClient.invalidateQueries({ queryKey: clientKeys.detail(variables.clientId) });
-      queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [
+        clientKeys.detail(variables.clientId),
+        clientKeys.lists(),
+        ['contacts'],
+      ]);
     },
     onError: (error: any) => {
       console.error('[useAddContact] Error:', error);
@@ -62,10 +66,14 @@ export function useUpdateContact() {
       if (result.error) throw new Error(result.error);
       return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       toast.success('Contact updated successfully');
-      queryClient.invalidateQueries({ queryKey: clientKeys.detail(variables.clientId) });
-      queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [
+        clientKeys.detail(variables.clientId),
+        clientKeys.lists(),
+        ['contacts'],
+      ]);
     },
     onError: (error: any) => {
       const message = error instanceof Error ? error.message : 'Failed to update contact';
@@ -92,10 +100,14 @@ export function useRemoveContact() {
       if (result.error) throw new Error(result.error);
       return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       toast.success('Contact removed successfully');
-      queryClient.invalidateQueries({ queryKey: clientKeys.detail(variables.clientId) });
-      queryClient.invalidateQueries({ queryKey: clientKeys.lists() });
+      const { refreshCrmUi } = await import('./immediate-ui');
+      await refreshCrmUi(queryClient, [
+        clientKeys.detail(variables.clientId),
+        clientKeys.lists(),
+        ['contacts'],
+      ]);
     },
     onError: (error: any) => {
       const message = error instanceof Error ? error.message : 'Failed to remove contact';

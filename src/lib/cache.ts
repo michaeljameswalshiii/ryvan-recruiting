@@ -15,8 +15,16 @@ interface CacheEntry<T> {
 // In-memory cache (resets on each serverless function invocation)
 const memoryCache = new Map<string, CacheEntry<any>>();
 
-// Default TTL: 5 minutes
-const DEFAULT_TTL = 300;
+// Default TTL for non-CRM ephemeral caches only.
+// CRM entities (leads/jobs/contacts/pipeline) must NOT use multi-minute
+// in-memory cache — warm serverless instances would show stale UI after writes.
+const DEFAULT_TTL = 60;
+
+/**
+ * CRM list/detail: do not cache across requests.
+ * Always read DynamoDB so mutations are visible immediately.
+ */
+export const CRM_NO_CACHE = 0;
 
 /**
  * Get a value from cache
