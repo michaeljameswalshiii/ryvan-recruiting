@@ -21,6 +21,10 @@ import {
 } from "lucide-react";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { LinkJobModal } from "@/components/candidate/LinkJobModal";
+import {
+  SendEmailModal,
+  openGmailCompose,
+} from "@/components/email/send-email-modal";
 import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
 import { Button } from "@/components/ui/button";
 import {
@@ -226,7 +230,68 @@ export function CandidateDetailClient({
   const [tagDraft, setTagDraft] = useState("");
   const [tagBusy, setTagBusy] = useState(false);
   const [tagError, setTagError] = useState("");
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailConfigured, setEmailConfigured] = useState<boolean | null>(null);
+  const [emailFromLabel, setEmailFromLabel] = useState("");
   const name = candidate?.name || "Unknown candidate";
+
+  // Detect connected Gmail/Outlook for full in-app send
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/email/connections", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          if (!cancelled) setEmailConfigured(false);
+          return;
+        }
+        const data = await res.json();
+        const active = Array.isArray(data.activeConnections)
+          ? data.activeConnections
+          : [];
+        if (!cancelled) {
+          setEmailConfigured(active.length > 0);
+          if (active[0]) {
+            const p = String(active[0].provider || "email");
+            const addr = String(active[0].emailAddress || "");
+            setEmailFromLabel(
+              addr
+                ? `Sending as ${addr} via ${p === "gmail" ? "Gmail" : p === "outlook" ? "Outlook" : p}`
+                : ""
+            );
+          } else {
+            setEmailFromLabel("");
+          }
+        }
+      } catch {
+        if (!cancelled) setEmailConfigured(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleEmailClick = () => {
+    const to = String(candidate?.email || "").trim();
+    if (!to) {
+      toast.error("This candidate has no email address");
+      return;
+    }
+    if (emailConfigured) {
+      setEmailOpen(true);
+      return;
+    }
+    // Fallback: Gmail web compose (always works in browser when signed into Gmail)
+    openGmailCompose(to);
+    toast.message("Opened Gmail compose", {
+      description:
+        "Connect Gmail or Outlook in Settings for in-app send + activity logging.",
+    });
+  };
   const salaryRequirement =
     candidate?.salaryRequirements || candidate?.salary_requirements || "";
   const linkedinUrl = candidate?.linkedin || candidate?.linkedin_url || "";
@@ -623,12 +688,18 @@ export function CandidateDetailClient({
                   )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {candidate?.email && (
-                      <a
-                        href={`mailto:${candidate.email}`}
+                      <button
+                        type="button"
+                        onClick={handleEmailClick}
                         className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+                        title={
+                          emailConfigured
+                            ? "Send via your connected email"
+                            : "Open Gmail compose (connect email in Settings for in-app send)"
+                        }
                       >
                         Email
-                      </a>
+                      </button>
                     )}
                     {candidate?.phone && (
                       <a
@@ -1292,6 +1363,66 @@ export function CandidateDetailClient({
           }
           // Refresh server props so other panels stay consistent
           router.refresh();
+        }}
+      />
+
+      <SendEmailModal
+        open={emailOpen}
+        onOpenChange={setEmailOpen}
+        candidate={
+          candidate?.email
+            ? { email: String(candidate.email), name }
+            : null
+        }
+        fromLabel={emailFromLabel}
+        onSend={async (subject, body) => {
+          const res = await fetch("/api/email/send", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: candidate.email,
+              subject,
+              text: body,
+              html: body.replace(/\n/g, "<br/>"),
+              candidateId: candidate.id,
+              candidateEmail: candidate.email,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.success === false) {
+            throw new Error(data.error || "Failed to send email");
+          }
+          // Log activity on candidate timeline
+          try {
+            await fetch(`/api/candidate/${candidate.id}/notes`, {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                noteText: `Email sent: ${subject}`,
+                noteType: "EM Sent",
+              }),
+            });
+            // Refresh notes list
+            const notesRes = await fetch(
+              `/api/candidate/${candidate.id}/events?limit=100`,
+              { credentials: "include" }
+            );
+            if (notesRes.ok) {
+              const notesBody = await notesRes.json();
+              setNotes(
+                Array.isArray(notesBody?.events)
+                  ? notesBody.events
+                  : Array.isArray(notesBody)
+                    ? notesBody
+                    : []
+              );
+            }
+          } catch {
+            /* non-blocking */
+          }
+          toast.success(`Email sent to ${candidate.email}`);
         }}
       />
     </div>

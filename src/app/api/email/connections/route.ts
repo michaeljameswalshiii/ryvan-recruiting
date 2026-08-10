@@ -1,45 +1,54 @@
-﻿/**
+/**
  * Email Connections API
- * Get user's email connections
- * 
- * GET /api/email/connections?userId=xxx
+ * GET /api/email/connections
+ *   ?userId= optional (defaults to session user)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getUserEmailConnections, getActiveEmailConnections } from '@/lib/db/repositories/email-connection-repository';
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/server-auth";
+import {
+  getUserEmailConnections,
+  getActiveEmailConnections,
+} from "@/lib/db/repositories/email-connection-repository";
 
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.nextUrl.searchParams.get('userId');
-    
+    const session = await getSession();
+    const qUserId = request.nextUrl.searchParams.get("userId");
+    const userId = session?.userId || qUserId;
+
     if (!userId) {
-      return NextResponse.json(
-        { error: 'userId is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    
-    // Get all connections
+
+    // Only allow looking up your own connections (unless same as session)
+    if (session?.userId && qUserId && qUserId !== session.userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const connections = await getUserEmailConnections(userId);
     const activeConnections = await getActiveEmailConnections(userId);
-    
-    // Return safe data (without tokens)
-    const safeConnections = connections.map(c => ({
+
+    const safeConnections = connections.map((c) => ({
       provider: c.provider,
       emailAddress: c.emailAddress,
       status: c.status,
       lastSyncedAt: c.lastSyncedAt,
       createdAt: c.createdAt,
     }));
-    
+
     return NextResponse.json({
       connections: safeConnections,
-      activeConnections,
+      activeConnections: activeConnections.map((c) => ({
+        provider: c.provider,
+        emailAddress: c.emailAddress,
+      })),
+      hasActive: activeConnections.length > 0,
     });
   } catch (error) {
-    console.error('[Email Connections] Error:', error);
+    console.error("[Email Connections] Error:", error);
     return NextResponse.json(
-      { error: 'Failed to get connections' },
+      { error: "Failed to get connections" },
       { status: 500 }
     );
   }
