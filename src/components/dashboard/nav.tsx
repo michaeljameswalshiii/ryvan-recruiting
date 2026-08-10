@@ -47,7 +47,7 @@ const allNavItems = [
   { href: "/dashboard/scheduling", label: "Scheduling", icon: CalendarClock },
   { href: "/dashboard/general-ai-usage", label: "AI", icon: MessageSquare },
   { href: "/dashboard/ai-reliability", label: "AI Reliability", icon: Activity },
-  { href: "/dashboard/issues", label: "Issues", icon: AlertCircle },
+  // Work items (issues) live under Admin sidebar only — not main nav
   // AI Apollo: only when NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true
   { href: "/dashboard/ai-apollo", label: "AI Apollo", icon: Sparkles },
   { href: "/dashboard/usage", label: "AI Usage", icon: Activity },

@@ -50,13 +50,13 @@ export type Permission =
 const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
   user: ["core_ats", "settings"],
   // Company admin: core ATS + team/settings only — no lower-menu Admin screens
-  // (AI Apollo, AI Reliability, Issues, Usage stay site_admin-only).
+  // (AI Apollo, AI Reliability, Work items, Usage stay site_admin-only under Admin).
   company_admin: ["core_ats", "settings", "team_admin"],
   site_admin: [
     "core_ats",
     "settings",
     "ai_apollo",
-    "issues",
+    "issues", // Work items tracker (Admin → Work items)
     "usage",
     "team_admin",
     "dynamo_search",
