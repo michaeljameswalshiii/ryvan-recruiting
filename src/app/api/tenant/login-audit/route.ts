@@ -74,11 +74,16 @@ export async function GET(request: NextRequest) {
         result = "mfa";
       }
 
+      const meta =
+        e.meta && typeof e.meta === "object"
+          ? (e.meta as Record<string, unknown>)
+          : {};
       const authMethod =
-        (e.meta && typeof e.meta === "object" && (e.meta as any).authMethod) ||
+        meta.authMethod ||
         (action.startsWith("auth.login") || action.startsWith("auth.mfa")
           ? "password"
           : "—");
+      const approximate = meta.approximate === true || meta.historical === true;
 
       return {
         id: e.id,
@@ -93,6 +98,7 @@ export async function GET(request: NextRequest) {
         summary: e.summary || "",
         ip: e.ip || "—",
         userAgent: e.userAgent || "—",
+        approximate: Boolean(approximate),
       };
     });
 

@@ -32,6 +32,7 @@ type LoginRow = {
   summary: string;
   ip: string;
   userAgent: string;
+  approximate?: boolean;
 };
 
 function formatWhen(iso: string) {
@@ -242,6 +243,14 @@ export default function LoginAuditPage() {
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-900">
                           {row.email}
+                          {row.approximate ? (
+                            <span
+                              className="ml-2 inline-flex rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-200"
+                              title="Approx. date from profile history — not a captured live login"
+                            >
+                              Historical est.
+                            </span>
+                          ) : null}
                         </div>
                         {row.summary ? (
                           <div className="mt-0.5 text-[11px] text-slate-500">
