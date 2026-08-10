@@ -38,7 +38,7 @@ const awsCredentialsConfigured = !!(
   process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
 );
 
-async function authenticateSimple(email: string, password: string) {
+async function findProfileByEmail(emailNorm: string) {
   const client = new DynamoDBClient({
     region,
     credentials:
@@ -50,7 +50,6 @@ async function authenticateSimple(email: string, password: string) {
         : undefined,
   });
 
-  const emailNorm = email.trim().toLowerCase();
   const scanResult = await client.send(
     new ScanCommand({
       TableName: profilesTable,
@@ -62,9 +61,26 @@ async function authenticateSimple(email: string, password: string) {
     })
   );
 
-  const profile = (scanResult.Items || []).find(
+  return (scanResult.Items || []).find(
     (item) => item.email?.S?.trim().toLowerCase() === emailNorm
   );
+}
+
+/** Resolve tenant for audit when login fails (never log passwords). */
+async function resolveTenantIdForEmail(email: string): Promise<string> {
+  try {
+    const emailNorm = email.trim().toLowerCase();
+    if (!emailNorm) return "unknown";
+    const profile = await findProfileByEmail(emailNorm);
+    return profile?.tenant_id?.S || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+async function authenticateSimple(email: string, password: string) {
+  const emailNorm = email.trim().toLowerCase();
+  const profile = await findProfileByEmail(emailNorm);
   if (!profile) {
     throw new Error("Invalid credentials");
   }
@@ -155,7 +171,9 @@ export async function POST(request: NextRequest) {
           actorUserId: result.userId,
           actorEmail: result.email,
           actorRole: role,
-          summary: "Login success (Cognito)",
+          summary: "Signed in successfully",
+          // Never store passwords — only that password auth was used
+          meta: { authMethod: "password", provider: "cognito" },
           ...meta,
         });
 
@@ -208,7 +226,8 @@ export async function POST(request: NextRequest) {
       actorUserId: session.userId,
       actorEmail: session.email,
       actorRole: role,
-      summary: "Login success (profile password)",
+      summary: "Signed in successfully",
+      meta: { authMethod: "password", provider: "profile" },
       ...meta,
     });
 
@@ -236,12 +255,18 @@ export async function POST(request: NextRequest) {
       "[LOGIN] Error:",
       error instanceof Error ? error.message : error
     );
+    const failTenant = emailForAudit
+      ? await resolveTenantIdForEmail(emailForAudit)
+      : "unknown";
     void writeSecurityAudit({
-      tenantId: "unknown",
+      tenantId: failTenant,
       action: "auth.login.failure",
       severity: "warning",
-      actorEmail: emailForAudit || undefined,
-      summary: "Login failure",
+      actorEmail: emailForAudit
+        ? emailForAudit.trim().toLowerCase()
+        : undefined,
+      summary: "Sign-in failed (invalid credentials or disabled account)",
+      meta: { authMethod: "password", result: "failure" },
       ...meta,
     });
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });

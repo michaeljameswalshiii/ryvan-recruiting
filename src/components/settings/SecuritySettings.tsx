@@ -277,8 +277,15 @@ export function SecuritySettings() {
             Security audit log
           </CardTitle>
           <CardDescription className="text-slate-600">
-            Recent auth and admin security events for this organization (silent
-            logging — no impact on recruiters).
+            Recent auth and admin security events for this organization. For a
+            focused login history (day, time, email, success/fail), open{" "}
+            <a
+              href="/dashboard/login-audit"
+              className="font-semibold text-blue-700 hover:underline"
+            >
+              Admin → Login audit
+            </a>
+            . Passwords are never stored.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -327,15 +334,28 @@ export function SecuritySettings() {
               </table>
             </div>
           )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-3 border-slate-300 bg-white text-slate-900"
-            onClick={() => void loadAudit()}
-          >
-            Refresh log
-          </Button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-slate-300 bg-white text-slate-900"
+              onClick={() => void loadAudit()}
+            >
+              Refresh log
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-blue-200 bg-blue-50 text-blue-800"
+              onClick={() => {
+                window.location.href = "/dashboard/login-audit";
+              }}
+            >
+              Open Login audit
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

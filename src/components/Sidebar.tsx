@@ -22,6 +22,7 @@ import {
   Moon,
   Sun,
   UserRound,
+  ScrollText,
 } from 'lucide-react';
 import {
   hasPermission,
@@ -58,6 +59,13 @@ const menuItems: MenuItem[] = [
 ];
 
 const adminItems: MenuItem[] = [
+  // Login history for company/site admins (passwords never stored)
+  {
+    name: 'Login audit',
+    href: '/dashboard/login-audit',
+    icon: ScrollText,
+    permission: 'team_admin',
+  },
   // AI Apollo: only when NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true (code kept for re-enable)
   { name: 'AI Apollo', href: '/dashboard/ai-apollo', icon: Bug, permission: 'ai_apollo' },
   { name: 'AI Reliability', href: '/dashboard/ai-reliability', icon: Activity, permission: 'usage' },

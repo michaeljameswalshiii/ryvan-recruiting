@@ -123,22 +123,43 @@ export async function writeSecurityAudit(
 
 export async function listSecurityAudit(
   tenantId: string,
-  opts?: { limit?: number }
+  opts?: {
+    limit?: number;
+    /** e.g. "auth.login" to keep only login-related rows */
+    actionPrefix?: string;
+    actions?: string[];
+  }
 ): Promise<SecurityAuditEvent[]> {
-  const limit = Math.min(opts?.limit ?? 50, 200);
+  const limit = Math.min(opts?.limit ?? 50, 300);
   try {
+    // Over-fetch when filtering so the page still fills after client-side filter
+    const queryLimit =
+      opts?.actionPrefix || opts?.actions?.length
+        ? Math.min(limit * 4, 500)
+        : limit;
+
     const res = await getClient().send(
       new QueryCommand({
         TableName: TABLE,
         KeyConditionExpression: "tenant_id = :t",
         ExpressionAttributeValues: marshall({ ":t": tenantId }),
         ScanIndexForward: false,
-        Limit: limit,
+        Limit: queryLimit,
       })
     );
-    return (res.Items || []).map(
+    let events = (res.Items || []).map(
       (i) => unmarshall(i) as SecurityAuditEvent
     );
+
+    if (opts?.actions?.length) {
+      const set = new Set(opts.actions);
+      events = events.filter((e) => set.has(String(e.action)));
+    } else if (opts?.actionPrefix) {
+      const p = opts.actionPrefix;
+      events = events.filter((e) => String(e.action || "").startsWith(p));
+    }
+
+    return events.slice(0, limit);
   } catch (err) {
     console.error("[security-audit] list failed:", err);
     return [];

@@ -166,6 +166,9 @@ export function canAccessPath(
   ) {
     return hasPermission(role, "usage");
   }
+  if (path.startsWith("/dashboard/login-audit")) {
+    return hasPermission(role, "team_admin");
+  }
   if (path.startsWith("/dashboard/settings/company")) {
     // Company-wide settings: team, org, billing, integrations
     return hasPermission(role, "team_admin");
