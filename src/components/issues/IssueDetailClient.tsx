@@ -39,7 +39,7 @@ import type {
   IssueComment,
 } from '@/lib/schemas/issue';
 
-const STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed'] as const;
+const STATUSES = ['Open', 'In Progress', 'Blocked', 'Resolved', 'Closed'] as const;
 
 function priorityBadge(priority: number) {
   if (priority === 1) return 'bg-red-500 text-white ring-red-200';
@@ -61,11 +61,19 @@ function statusStyles(status: string) {
     return 'bg-sky-50 text-sky-800 border-sky-200 ring-sky-100';
   if (s.includes('progress'))
     return 'bg-amber-50 text-amber-900 border-amber-200 ring-amber-100';
+  if (s === 'blocked')
+    return 'bg-red-50 text-red-800 border-red-200 ring-red-100';
   if (s === 'resolved')
     return 'bg-emerald-50 text-emerald-800 border-emerald-200 ring-emerald-100';
   if (s === 'closed')
     return 'bg-slate-100 text-slate-700 border-slate-200 ring-slate-100';
   return 'bg-gray-100 text-gray-700 border-gray-200';
+}
+
+function displayType(type?: string) {
+  if (type === 'Defect') return 'Bug';
+  if (type === 'Enhancement') return 'Improvement';
+  return type || 'Task';
 }
 
 function formatDate(value?: string) {
@@ -248,14 +256,14 @@ export default function IssueDetailClient({ issueId }: { issueId: string }) {
           href="/dashboard/issues"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to Issues
+          <ArrowLeft className="h-4 w-4" /> Back to work items
         </Link>
 
         {/* Hero header */}
         <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-sm">
           <div
             className={`absolute inset-x-0 top-0 h-1.5 ${
-              i.issueType === 'Defect'
+              displayType(i.issueType) === 'Bug'
                 ? 'bg-gradient-to-r from-red-500 via-rose-500 to-orange-400'
                 : 'bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-400'
             }`}
@@ -269,17 +277,17 @@ export default function IssueDetailClient({ issueId }: { issueId: string }) {
                   </span>
                   <span
                     className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                      i.issueType === 'Defect'
+                      displayType(i.issueType) === 'Bug'
                         ? 'bg-red-50 text-red-700 ring-1 ring-red-100'
                         : 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
                     }`}
                   >
-                    {i.issueType === 'Defect' ? (
+                    {displayType(i.issueType) === 'Bug' ? (
                       <Bug className="h-3 w-3" />
                     ) : (
                       <Sparkles className="h-3 w-3" />
                     )}
-                    {i.issueType}
+                    {displayType(i.issueType)}
                   </span>
                   <span
                     className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${statusStyles(i.status)}`}
@@ -733,6 +741,43 @@ export default function IssueDetailClient({ issueId }: { issueId: string }) {
               </div>
             </section>
 
+            <section className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+              <h2 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                <Clock className="h-4 w-4 text-slate-500" />
+                History
+              </h2>
+              {Array.isArray(i.history) && i.history.length > 0 ? (
+                <ul className="space-y-2 max-h-64 overflow-y-auto">
+                  {[...i.history]
+                    .reverse()
+                    .slice(0, 30)
+                    .map((h) => (
+                      <li
+                        key={h.id}
+                        className="rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2 text-xs text-slate-700"
+                      >
+                        <div className="font-semibold text-slate-900">
+                          {h.summary || h.action.replace(/_/g, ' ')}
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-slate-500">
+                          {h.byName || 'System'} · {formatRelative(h.at)}
+                          {h.from && h.to ? (
+                            <span className="text-slate-400">
+                              {' '}
+                              ({h.from} → {h.to})
+                            </span>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Status and assignment changes will appear here.
+                </p>
+              )}
+            </section>
+
             <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-sm p-5">
               <h2 className="text-sm font-semibold mb-2">Activity summary</h2>
               <dl className="space-y-2 text-sm">
@@ -771,6 +816,7 @@ export default function IssueDetailClient({ issueId }: { issueId: string }) {
           status: i.status,
           reportedBy: i.reportedBy,
           assignedTo: i.assignedTo,
+          assigneeName: i.assigneeName || i.assignedTo?.[0],
           environment: i.environment,
           tags: i.tags,
           attachments: i.attachments,

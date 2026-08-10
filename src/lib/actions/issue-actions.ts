@@ -1,64 +1,97 @@
-'use server';
+"use server";
 
-import { revalidatePath } from 'next/cache';
-import { v4 as uuidv4 } from 'uuid';
+import { revalidatePath } from "next/cache";
+import { v4 as uuidv4 } from "uuid";
 import {
   getSessionTenantId,
   getSessionUserId,
   getSessionUserEmail,
-} from '../server-auth';
-import { issueRepository } from '../db/repositories/issue-repository';
-import { CreateIssueInput, IssueAttachment } from '../schemas/issue';
+} from "../server-auth";
+import { issueRepository } from "../db/repositories/issue-repository";
+import {
+  CreateIssueInput,
+  IssueAttachment,
+  IssueListFilters,
+} from "../schemas/issue";
 import {
   getIssueAttachmentUrl,
   storeIssueAttachment,
-} from '../aws/issue-attachments';
+} from "../aws/issue-attachments";
 
 function revalidateIssue(id: string) {
-  revalidatePath('/dashboard/issues');
+  revalidatePath("/dashboard/issues");
   revalidatePath(`/dashboard/issues/${id}`);
+}
+
+async function actorFromSession() {
+  const [userId, email] = await Promise.all([
+    getSessionUserId(),
+    getSessionUserEmail(),
+  ]);
+  const raw =
+    email?.split("@")[0]?.replace(/[._]/g, " ") || userId || "User";
+  const byName = raw
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+  return { byId: userId || undefined, byName, email: email || undefined };
 }
 
 export async function createIssueAction(data: CreateIssueInput) {
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
-    return { error: 'Unauthorized' };
+    return { error: "Unauthorized — select a tenant first" };
   }
 
   try {
-    const issue = await issueRepository.create(data, tenantId);
-    revalidatePath('/dashboard/issues');
+    const actor = await actorFromSession();
+    const issue = await issueRepository.create(
+      {
+        ...data,
+        reportedBy: data.reportedBy || actor.byName,
+        reporterName: data.reporterName || actor.byName,
+        reporterId: data.reporterId || actor.byId,
+      },
+      tenantId,
+      actor
+    );
+    revalidatePath("/dashboard/issues");
     return { issue };
   } catch (error: any) {
-    return { error: error?.message || 'Failed to create issue' };
+    return { error: error?.message || "Failed to create issue" };
   }
 }
 
-export async function listIssuesAction(status?: string) {
+export async function listIssuesAction(
+  statusOrFilters?: string | IssueListFilters
+) {
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
     return { issues: [] };
   }
 
   try {
-    const issues = await issueRepository.listByTenant(tenantId, status);
+    const filters: IssueListFilters =
+      typeof statusOrFilters === "string"
+        ? { status: statusOrFilters }
+        : statusOrFilters || {};
+    const issues = await issueRepository.listByTenant(tenantId, filters);
     return { issues };
   } catch (error: any) {
-    return { error: error?.message || 'Failed to list issues' };
+    return { error: error?.message || "Failed to list issues" };
   }
 }
 
 export async function getIssueAction(id: string) {
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
-    return { error: 'Unauthorized' };
+    return { error: "Unauthorized" };
   }
 
   try {
     const issue = await issueRepository.getById(id, tenantId);
     if (!issue) return { issue: null };
 
-    // Refresh presigned URLs for S3 attachments
     const attachments = await Promise.all(
       (issue.attachments || []).map(async (a) => {
         if (a.s3Key) {
@@ -75,7 +108,7 @@ export async function getIssueAction(id: string) {
 
     return { issue: { ...issue, attachments } };
   } catch (error: any) {
-    return { error: error?.message || 'Failed to get issue' };
+    return { error: error?.message || "Failed to get issue" };
   }
 }
 
@@ -85,14 +118,15 @@ export async function updateIssueAction(
 ) {
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
-    return { error: 'Unauthorized' };
+    return { error: "Unauthorized" };
   }
 
   if (!id) {
-    return { error: 'Issue id is required' };
+    return { error: "Issue id is required" };
   }
 
   try {
+    const actor = await actorFromSession();
     const payload: Partial<CreateIssueInput> = {
       title: data.title,
       description: data.description,
@@ -103,105 +137,118 @@ export async function updateIssueAction(
       featureArea: data.featureArea,
       status: data.status,
       reportedBy: data.reportedBy,
+      reporterId: data.reporterId,
+      reporterName: data.reporterName,
       assignedTo: data.assignedTo,
+      assigneeId: data.assigneeId,
+      assigneeName: data.assigneeName,
       environment: data.environment,
       tags: data.tags,
+      dueDate: data.dueDate,
+      storyPoints: data.storyPoints,
+      linkedEntity: data.linkedEntity,
       attachments: data.attachments,
       comments: data.comments,
     };
 
-    const issue = await issueRepository.update(id, payload, tenantId);
+    const issue = await issueRepository.update(id, payload, tenantId, actor);
     if (!issue) {
-      return { error: 'Issue not found' };
+      return { error: "Issue not found" };
     }
     revalidateIssue(id);
     return { issue };
   } catch (error: any) {
-    console.error('[updateIssueAction]', id, error);
-    return { error: error?.message || 'Failed to update issue' };
+    console.error("[updateIssueAction]", id, error);
+    return { error: error?.message || "Failed to update issue" };
+  }
+}
+
+export async function updateIssueStatusAction(id: string, status: string) {
+  const tenantId = await getSessionTenantId();
+  if (!tenantId) {
+    return { error: "Unauthorized" };
+  }
+  try {
+    const actor = await actorFromSession();
+    const issue = await issueRepository.updateStatus(
+      id,
+      status,
+      tenantId,
+      actor
+    );
+    if (!issue) return { error: "Issue not found" };
+    revalidateIssue(id);
+    return { issue };
+  } catch (error: any) {
+    return { error: error?.message || "Failed to update status" };
   }
 }
 
 export async function deleteIssueAction(id: string) {
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
-    return { error: 'Unauthorized' };
+    return { error: "Unauthorized" };
   }
 
   try {
     await issueRepository.delete(id, tenantId);
-    revalidatePath('/dashboard/issues');
+    revalidatePath("/dashboard/issues");
     return { success: true };
   } catch (error: any) {
-    return { error: error?.message || 'Failed to delete issue' };
+    return { error: error?.message || "Failed to delete issue" };
   }
 }
 
 export async function addIssueCommentAction(id: string, body: string) {
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
-    return { error: 'Unauthorized' };
+    return { error: "Unauthorized" };
   }
 
-  const text = (body || '').trim();
+  const text = (body || "").trim();
   if (!text) {
-    return { error: 'Comment cannot be empty' };
+    return { error: "Comment cannot be empty" };
   }
   if (text.length > 5000) {
-    return { error: 'Comment is too long (max 5000 characters)' };
+    return { error: "Comment is too long (max 5000 characters)" };
   }
 
   try {
-    const [userId, email] = await Promise.all([
-      getSessionUserId(),
-      getSessionUserEmail(),
-    ]);
-    const authorName =
-      email?.split('@')[0]?.replace(/[._]/g, ' ') ||
-      userId ||
-      'User';
-
+    const actor = await actorFromSession();
     const issue = await issueRepository.addComment(id, tenantId, {
       body: text,
-      authorId: userId || undefined,
-      authorName: authorName
-        .split(' ')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' '),
-      authorEmail: email || undefined,
+      authorId: actor.byId,
+      authorName: actor.byName,
+      authorEmail: actor.email,
     });
 
-    if (!issue) return { error: 'Issue not found' };
+    if (!issue) return { error: "Issue not found" };
     revalidateIssue(id);
     return { issue };
   } catch (error: any) {
-    console.error('[addIssueCommentAction]', id, error);
-    return { error: error?.message || 'Failed to add comment' };
+    console.error("[addIssueCommentAction]", id, error);
+    return { error: error?.message || "Failed to add comment" };
   }
 }
 
 export async function addIssueAttachmentAction(id: string, formData: FormData) {
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
-    return { error: 'Unauthorized' };
+    return { error: "Unauthorized" };
   }
 
   try {
-    const file = formData.get('file') as File | null;
+    const file = formData.get("file") as File | null;
     if (!file) {
-      return { error: 'No file provided' };
+      return { error: "No file provided" };
     }
 
-    const [userId, email] = await Promise.all([
-      getSessionUserId(),
-      getSessionUserEmail(),
-    ]);
-
+    const actor = await actorFromSession();
     const buffer = Buffer.from(await file.arrayBuffer());
     const stored = await storeIssueAttachment({
       buffer,
       fileName: file.name,
-      contentType: file.type || 'application/octet-stream',
+      contentType: file.type || "application/octet-stream",
       tenantId,
       issueId: id,
     });
@@ -213,18 +260,23 @@ export async function addIssueAttachmentAction(id: string, formData: FormData) {
       name: stored.name,
       type: stored.type,
       size: stored.size,
-      uploadedBy: userId || undefined,
-      uploadedByEmail: email || undefined,
+      uploadedBy: actor.byId,
+      uploadedByEmail: actor.email,
       uploadedAt: new Date().toISOString(),
     };
 
-    const issue = await issueRepository.addAttachment(id, tenantId, attachment);
-    if (!issue) return { error: 'Issue not found' };
+    const issue = await issueRepository.addAttachment(
+      id,
+      tenantId,
+      attachment,
+      actor
+    );
+    if (!issue) return { error: "Issue not found" };
     revalidateIssue(id);
     return { issue, attachment };
   } catch (error: any) {
-    console.error('[addIssueAttachmentAction]', id, error);
-    return { error: error?.message || 'Failed to upload attachment' };
+    console.error("[addIssueAttachmentAction]", id, error);
+    return { error: error?.message || "Failed to upload attachment" };
   }
 }
 
@@ -234,7 +286,7 @@ export async function removeIssueAttachmentAction(
 ) {
   const tenantId = await getSessionTenantId();
   if (!tenantId) {
-    return { error: 'Unauthorized' };
+    return { error: "Unauthorized" };
   }
 
   try {
@@ -243,10 +295,10 @@ export async function removeIssueAttachmentAction(
       tenantId,
       attachmentId
     );
-    if (!issue) return { error: 'Issue not found' };
+    if (!issue) return { error: "Issue not found" };
     revalidateIssue(id);
     return { issue };
   } catch (error: any) {
-    return { error: error?.message || 'Failed to remove attachment' };
+    return { error: error?.message || "Failed to remove attachment" };
   }
 }

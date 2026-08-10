@@ -69,7 +69,7 @@ const adminItems: MenuItem[] = [
   // AI Apollo: only when NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true (code kept for re-enable)
   { name: 'AI Apollo', href: '/dashboard/ai-apollo', icon: Bug, permission: 'ai_apollo' },
   { name: 'AI Reliability', href: '/dashboard/ai-reliability', icon: Activity, permission: 'usage' },
-  { name: 'Issues', href: '/dashboard/issues', icon: Bug, permission: 'issues' },
+  { name: 'Work items', href: '/dashboard/issues', icon: Bug, permission: 'issues' },
   { name: 'Usage', href: '/dashboard/usage', icon: BarChart3, permission: 'usage' },
 ];
 

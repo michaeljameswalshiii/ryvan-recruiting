@@ -16,10 +16,14 @@ interface IssueDialogProps {
 }
 
 function buildForm(initialData: Partial<CreateIssueInput> = {}) {
+  const type = initialData.issueType || 'Bug';
+  // Map legacy on load
+  const issueType =
+    type === 'Defect' ? 'Bug' : type === 'Enhancement' ? 'Improvement' : type;
   return {
     title: initialData.title || '',
     description: initialData.description || '',
-    issueType: initialData.issueType || ('Defect' as const),
+    issueType: issueType as CreateIssueInput['issueType'],
     priority: (initialData.priority || 3) as 1 | 2 | 3 | 4,
     severity: initialData.severity || '',
     mvp: initialData.mvp || false,
@@ -27,6 +31,10 @@ function buildForm(initialData: Partial<CreateIssueInput> = {}) {
     status: initialData.status || ('Open' as const),
     reportedBy: initialData.reportedBy || '',
     assignedTo: initialData.assignedTo || [],
+    assigneeName:
+      initialData.assigneeName ||
+      (initialData.assignedTo && initialData.assignedTo[0]) ||
+      '',
     environment: initialData.environment || ('Dev' as const),
     tags: initialData.tags || [],
     attachments: (initialData.attachments || []) as Array<{
@@ -108,6 +116,7 @@ export default function IssueDialog({
 
     try {
       // Omit empty optional strings so DynamoDB update stays valid
+      const assigneeName = (form as any).assigneeName?.trim() || undefined;
       const payload = {
         ...form,
         title: form.title.trim(),
@@ -115,6 +124,8 @@ export default function IssueDialog({
         severity: form.severity?.trim() || undefined,
         featureArea: form.featureArea?.trim() || undefined,
         reportedBy: form.reportedBy?.trim() || undefined,
+        assigneeName,
+        assignedTo: assigneeName ? [assigneeName] : form.assignedTo,
       } as CreateIssueInput;
 
       await onSubmit(payload);
@@ -140,8 +151,8 @@ export default function IssueDialog({
     <SimpleDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={mode === 'create' ? "New Issue" : "Edit Issue"}
-      description="Track defects and enhancements"
+      title={mode === 'create' ? "New work item" : "Edit work item"}
+      description="Bugs, stories, tasks — tracked like ADO / Jira"
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -169,11 +180,18 @@ export default function IssueDialog({
             <label className="text-sm font-medium">Issue Type</label>
             <select
               value={form.issueType}
-              onChange={(e) => setForm({ ...form, issueType: e.target.value as 'Defect' | 'Enhancement' })}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  issueType: e.target.value as CreateIssueInput['issueType'],
+                })
+              }
               className="w-full border rounded-md px-3 py-2"
             >
-              <option value="Defect">Defect</option>
-              <option value="Enhancement">Enhancement</option>
+              <option value="Bug">Bug</option>
+              <option value="Story">Story</option>
+              <option value="Task">Task</option>
+              <option value="Improvement">Improvement</option>
             </select>
           </div>
 
@@ -192,6 +210,18 @@ export default function IssueDialog({
           </div>
         </div>
 
+        <div>
+          <label className="text-sm font-medium">Assignee</label>
+          <input
+            value={(form as any).assigneeName || ''}
+            onChange={(e) =>
+              setForm({ ...form, assigneeName: e.target.value } as any)
+            }
+            className="w-full border rounded-md px-3 py-2"
+            placeholder="Name or email"
+          />
+        </div>
+
         {mode === 'edit' && (
           <div>
             <label className="text-sm font-medium">Status</label>
@@ -202,6 +232,7 @@ export default function IssueDialog({
             >
               <option value="Open">Open</option>
               <option value="In Progress">In Progress</option>
+              <option value="Blocked">Blocked</option>
               <option value="Resolved">Resolved</option>
               <option value="Closed">Closed</option>
             </select>
