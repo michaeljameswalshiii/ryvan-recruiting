@@ -21,6 +21,7 @@ import {
   Briefcase,
   Users,
   Paperclip,
+  Copy,
 } from "lucide-react";
 import {
   useJob,
@@ -613,6 +614,7 @@ export default function JobDetailPage() {
             <Pencil className="h-4 w-4 mr-2" />
             Edit Job
           </Button>
+          <JobCopyButton jobId={String(job.id || jobId)} jobTitle={job.title || "Job"} />
           <Button size="sm" onClick={openAddCandidate} className="bg-blue-600 hover:bg-blue-700">
             <UserPlus className="h-4 w-4 mr-2" />
             Add Candidate
@@ -1206,6 +1208,52 @@ function MetaField({
         <span className="truncate">{value}</span>
       </div>
     </div>
+  );
+}
+
+function JobCopyButton({ jobId, jobTitle }: { jobId: string; jobTitle: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  const handleCopy = async () => {
+    if (!jobId || busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/copy`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body?.error || "Failed to copy job");
+      }
+      const newId = body?.job?.id;
+      if (!newId) throw new Error("Copy created but no job id returned");
+      toast.success(`Copied job — edit location, pay, or other details as needed`);
+      router.push(`/dashboard/jobs/${encodeURIComponent(String(newId))}`);
+    } catch (err: any) {
+      console.error("[copy job]", err);
+      toast.error(err?.message || "Failed to copy job");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => void handleCopy()}
+      disabled={busy || !jobId}
+      title={`Duplicate "${jobTitle}" as a new req (empty pipeline)`}
+    >
+      {busy ? (
+        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+      ) : (
+        <Copy className="h-4 w-4 mr-2" />
+      )}
+      {busy ? "Copying…" : "Copy Job"}
+    </Button>
   );
 }
 

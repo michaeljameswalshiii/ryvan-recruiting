@@ -209,6 +209,59 @@ export async function createJob(
 }
 
 /**
+ * Duplicate a job (copy req details, empty pipeline).
+ * Useful for same role in a new location / pay band without retyping the JD.
+ */
+export async function duplicateJob(
+  tenantId: string,
+  sourceJobId: string,
+  actor?: { userId: string; email?: string | null },
+  opts?: { titleSuffix?: string },
+): Promise<Job | null> {
+  const source = await getJobById(tenantId, sourceJobId);
+  if (!source) return null;
+
+  const baseTitle = String(source.title || "Untitled job").trim() || "Untitled job";
+  // Avoid stacking " (Copy)" if user copies a copy
+  const cleanTitle = baseTitle.replace(/\s*\(Copy(?:\s+\d+)?\)\s*$/i, "").trim();
+  const title =
+    opts?.titleSuffix != null
+      ? `${cleanTitle}${opts.titleSuffix}`
+      : `${cleanTitle} (Copy)`;
+
+  const companyId = String(source.companyId || "").trim();
+  const companyName = String(source.companyName || "").trim();
+  if (!companyId || !companyName) {
+    throw new Error("Source job is missing company — set company before copying");
+  }
+
+  const src = source as Job & Record<string, unknown>;
+  const data: CreateJobInput = {
+    title: title.slice(0, 200),
+    description: source.description || "",
+    location: source.location || "",
+    salaryRange: source.salaryRange || "",
+    employmentType: (source.employmentType as CreateJobInput["employmentType"]) || "Full-time",
+    companyId,
+    companyName,
+    status: "Open",
+    // Internal until recruiter opts back in
+    showOnWebsite: false,
+    hiringManagerContactId: String(src.hiringManagerContactId || "") || undefined,
+    hiringManagerName: String(src.hiringManagerName || "") || undefined,
+    hiringManagerTitle: String(src.hiringManagerTitle || "") || undefined,
+    hiringManagerEmail: String(src.hiringManagerEmail || "") || undefined,
+    hiringManagerPhone: String(src.hiringManagerPhone || "") || undefined,
+  };
+
+  if (Array.isArray(source.preScreenQuestions) && source.preScreenQuestions.length) {
+    data.preScreenQuestions = source.preScreenQuestions as CreateJobInput["preScreenQuestions"];
+  }
+
+  return createJob(tenantId, data, actor);
+}
+
+/**
  * Update a job
  */
 export async function updateJob(
