@@ -121,6 +121,24 @@ export async function writeSecurityAudit(
   }
 }
 
+function filterAuditEvents(
+  events: SecurityAuditEvent[],
+  opts?: {
+    actionPrefix?: string;
+    actions?: string[];
+  }
+): SecurityAuditEvent[] {
+  let out = events;
+  if (opts?.actions?.length) {
+    const set = new Set(opts.actions);
+    out = out.filter((e) => set.has(String(e.action)));
+  } else if (opts?.actionPrefix) {
+    const p = opts.actionPrefix;
+    out = out.filter((e) => String(e.action || "").startsWith(p));
+  }
+  return out;
+}
+
 export async function listSecurityAudit(
   tenantId: string,
   opts?: {
@@ -151,17 +169,55 @@ export async function listSecurityAudit(
       (i) => unmarshall(i) as SecurityAuditEvent
     );
 
-    if (opts?.actions?.length) {
-      const set = new Set(opts.actions);
-      events = events.filter((e) => set.has(String(e.action)));
-    } else if (opts?.actionPrefix) {
-      const p = opts.actionPrefix;
-      events = events.filter((e) => String(e.action || "").startsWith(p));
-    }
-
+    events = filterAuditEvents(events, opts);
+    // Newest first
+    events.sort((a, b) =>
+      String(b.createdAt || "").localeCompare(String(a.createdAt || ""))
+    );
     return events.slice(0, limit);
   } catch (err) {
     console.error("[security-audit] list failed:", err);
+    return [];
+  }
+}
+
+/**
+ * Site-admin: scan all tenants for audit events (login history platform-wide).
+ * Volume is small; prefer tenant Query for company admins.
+ */
+export async function listSecurityAuditAll(opts?: {
+  limit?: number;
+  actionPrefix?: string;
+  actions?: string[];
+}): Promise<SecurityAuditEvent[]> {
+  const limit = Math.min(opts?.limit ?? 150, 500);
+  try {
+    const { ScanCommand } = await import("@aws-sdk/client-dynamodb");
+    const items: SecurityAuditEvent[] = [];
+    let ExclusiveStartKey: Record<string, unknown> | undefined;
+    do {
+      const res = await getClient().send(
+        new ScanCommand({
+          TableName: TABLE,
+          ExclusiveStartKey: ExclusiveStartKey as any,
+        })
+      );
+      for (const raw of res.Items || []) {
+        items.push(unmarshall(raw) as SecurityAuditEvent);
+      }
+      ExclusiveStartKey = res.LastEvaluatedKey as
+        | Record<string, unknown>
+        | undefined;
+      if (items.length >= 2000) break;
+    } while (ExclusiveStartKey);
+
+    let events = filterAuditEvents(items, opts);
+    events.sort((a, b) =>
+      String(b.createdAt || "").localeCompare(String(a.createdAt || ""))
+    );
+    return events.slice(0, limit);
+  } catch (err) {
+    console.error("[security-audit] listAll failed:", err);
     return [];
   }
 }
