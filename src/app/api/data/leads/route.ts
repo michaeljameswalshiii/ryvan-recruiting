@@ -6,7 +6,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionTenantId, getSessionUserId } from '@/lib/server-auth';
+import {
+  getSessionTenantId,
+  getSessionUserId,
+  getSessionUserEmail,
+} from '@/lib/server-auth';
 import { getAllLeadsWithLinkedJobs, createLead } from '@/lib/db/repositories/lead-repository';
 import { createLeadSchema } from '@/lib/schemas/lead';
 
@@ -48,6 +52,7 @@ export async function POST(request: NextRequest) {
     // Get tenant from verified session
     const tenantId = await getSessionTenantId();
     const userId = await getSessionUserId();
+    const email = await getSessionUserEmail();
     
     if (!tenantId || !userId) {
       return NextResponse.json(
@@ -68,7 +73,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create lead with verified tenant ID (never trust client-provided tenant_id)
-    const lead = await createLead(tenantId, validated.data);
+    const lead = await createLead(tenantId, validated.data, { userId, email });
 
     return NextResponse.json({ lead }, { status: 201 });
   } catch (error: any) {

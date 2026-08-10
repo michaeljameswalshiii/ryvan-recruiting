@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Loader2, Building2, Upload, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
+import { OwnershipSettings } from "@/components/settings/OwnershipSettings";
 
 export function OrgSettings() {
   const [loading, setLoading] = useState(true);
@@ -115,6 +116,7 @@ export function OrgSettings() {
   }
 
   return (
+    <div className="space-y-6">
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -250,5 +252,8 @@ export function OrgSettings() {
         </form>
       </CardContent>
     </Card>
+
+    <OwnershipSettings />
+    </div>
   );
 }

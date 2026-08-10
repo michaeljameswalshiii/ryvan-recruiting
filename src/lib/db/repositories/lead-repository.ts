@@ -28,6 +28,7 @@ import {
   APPLICATION_STAGE_VALUES,
   type JobNote,
 } from "../../schemas/lead";
+import { assignDefaultOwnerOnCreate } from "@/lib/ownership/default-owner";
 import { getJobById, getAllJobs } from "./job-repository";
 
 // Cache TTL: 5 minutes
@@ -281,6 +282,7 @@ export async function getLeadById(
 export async function createLead(
   tenantId: string,
   data: CreateLeadInput,
+  actor?: { userId: string; email?: string | null },
 ): Promise<Lead> {
   const validated = data;
 
@@ -343,6 +345,16 @@ export async function createLead(
 
   // Invalidate cache
   await invalidateTenantCache(tenantId);
+
+  if (actor?.userId && lead.id) {
+    await assignDefaultOwnerOnCreate({
+      tenantId,
+      objectType: "candidate",
+      objectId: String(lead.id),
+      actorUserId: actor.userId,
+      actorEmail: actor.email,
+    });
+  }
 
   return lead;
 }

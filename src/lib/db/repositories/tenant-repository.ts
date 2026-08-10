@@ -45,6 +45,8 @@ export interface UpdateTenantInput {
   stripe_subscription_id?: string;
   /** Enterprise security block (MFA policy, SSO flags) */
   security?: Record<string, unknown>;
+  /** Default ownership for new records (creator vs fixed user) */
+  ownership?: Record<string, unknown>;
 }
 
 export const createTenantSchema = z.object({
@@ -259,6 +261,10 @@ export async function updateTenant(
   if (input.security !== undefined) {
     updates.push("security = :security");
     values[":security"] = input.security;
+  }
+  if (input.ownership !== undefined) {
+    updates.push("ownership = :ownership");
+    values[":ownership"] = input.ownership;
   }
 
   if (updates.length === 0) {

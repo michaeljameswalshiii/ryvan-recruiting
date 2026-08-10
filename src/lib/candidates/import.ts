@@ -298,11 +298,15 @@ message: JSON.stringify(validated.error.flatten().fieldErrors),
     }
 
     // Step 3: Create the lead
-    const lead = await createLead(tenantId, {
-      ...validated.data,
-      name: validated.data.name,
-      source: `${source}_import`,
-    });
+    const lead = await createLead(
+      tenantId,
+      {
+        ...validated.data,
+        name: validated.data.name,
+        source: `${source}_import`,
+      },
+      { userId, email: userEmail },
+    );
 
     // Step 4: Record the import event
     if (lead?.id) {

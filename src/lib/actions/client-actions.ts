@@ -1,7 +1,11 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { getSessionTenantId, getSessionUserId } from '@/lib/server-auth';
+import {
+  getSessionTenantId,
+  getSessionUserId,
+  getSessionUserEmail,
+} from '@/lib/server-auth';
 import {
   getAllClients,
   addContactToClient,
@@ -74,7 +78,14 @@ export async function addContactAction(clientId: string, contactData: any) {
       return { error: 'Contact name is required' };
     }
 
-    const result = await addContactToClient(tenantId, clientId, payload);
+    const userId = await getSessionUserId();
+    const email = await getSessionUserEmail();
+    const result = await addContactToClient(
+      tenantId,
+      clientId,
+      payload,
+      userId ? { userId, email } : undefined,
+    );
     revalidatePath('/dashboard/contact-info');
     revalidatePath('/dashboard/companies');
     revalidatePath(`/dashboard/companies/${clientId}`);

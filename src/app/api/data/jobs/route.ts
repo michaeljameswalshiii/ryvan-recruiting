@@ -134,16 +134,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const job = await createJob(session.tenantId, {
-      title: body.title,
-      description: body.description || '',
-      location: body.location || '',
-      salaryRange: body.salaryRange || '',
-      employmentType: body.employmentType || 'Full-time',
-      companyId: body.companyId,
-      companyName: body.companyName,
-      status: body.status || 'Open',
-    });
+    const job = await createJob(
+      session.tenantId,
+      {
+        title: body.title,
+        description: body.description || '',
+        location: body.location || '',
+        salaryRange: body.salaryRange || '',
+        employmentType: body.employmentType || 'Full-time',
+        companyId: body.companyId,
+        companyName: body.companyName,
+        status: body.status || 'Open',
+      },
+      session.userId
+        ? { userId: session.userId, email: session.email }
+        : undefined,
+    );
 
     return NextResponse.json({ job }, { status: 201 });
   } catch (error: any) {

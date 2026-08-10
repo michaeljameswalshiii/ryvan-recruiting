@@ -122,21 +122,25 @@ export async function importListBuilderRows(
       }
 
       if (!company) {
-        const created = await createClient(tenantId, {
-          name: row.companyName,
-          domain: row.website
-            ? row.website.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
-            : undefined,
-          city: row.city || '',
-          state: row.state || '',
-          industry: row.industry || job.industry || '',
-          employee_count: row.employeeCount || undefined,
-          company_size: row.companySize || undefined,
-          open_jobs_posted:
-            row.openJobsPosted != null ? row.openJobsPosted : undefined,
-          status: 'identification',
-          notes: `Imported from BD list builder. Source: ${row.sourceUrl || row.website || 'web'}`,
-        } as any);
+        const created = await createClient(
+          tenantId,
+          {
+            name: row.companyName,
+            domain: row.website
+              ? row.website.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+              : undefined,
+            city: row.city || '',
+            state: row.state || '',
+            industry: row.industry || job.industry || '',
+            employee_count: row.employeeCount || undefined,
+            company_size: row.companySize || undefined,
+            open_jobs_posted:
+              row.openJobsPosted != null ? row.openJobsPosted : undefined,
+            status: 'identification',
+            notes: `Imported from BD list builder. Source: ${row.sourceUrl || row.website || 'web'}`,
+          } as any,
+          job.userId ? { userId: job.userId } : undefined,
+        );
         company = created;
         companyId = created?.id;
         importedCompanies++;
@@ -182,14 +186,19 @@ export async function importListBuilderRows(
               (c.name || '').toLowerCase() === row.contactName.toLowerCase())
         );
         if (!exists) {
-          const updated = await addContactToClient(tenantId, companyId, {
-            name: row.contactName || row.email || 'Contact',
-            title: row.contactTitle || '',
-            email: row.email || '',
-            phone: row.phone || '',
-            isPrimary: contacts.length === 0,
-            notes: row.notes || 'From BD list builder',
-          });
+          const updated = await addContactToClient(
+            tenantId,
+            companyId,
+            {
+              name: row.contactName || row.email || 'Contact',
+              title: row.contactTitle || '',
+              email: row.email || '',
+              phone: row.phone || '',
+              isPrimary: contacts.length === 0,
+              notes: row.notes || 'From BD list builder',
+            },
+            job.userId ? { userId: job.userId } : undefined,
+          );
           const createdContact = (updated?.contacts || []).find(
             (c: any) =>
               (em && (c.email || '').toLowerCase() === em) ||

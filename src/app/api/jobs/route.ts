@@ -7,7 +7,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionTenantId, getSessionUserId } from '@/lib/server-auth';
+import {
+  getSessionTenantId,
+  getSessionUserId,
+  getSessionUserEmail,
+} from '@/lib/server-auth';
 import { 
   getAllJobs, 
   getOpenJobs, 
@@ -79,20 +83,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user for createdBy
+    // Get user for createdBy / default ownership
     const userId = await getSessionUserId();
-    const userEmail = userId || 'system';
+    const userEmail = (await getSessionUserEmail()) || userId || 'system';
 
     // Parse and validate request body
     const body = await request.json();
     const validated = createJobSchema.parse(body);
 
     // Create the job
-    const job = await createJobRepo(tenantId, {
-      ...validated,
-      companyId: validated.companyId!,
-      companyName: validated.companyName!,
-    });
+    const job = await createJobRepo(
+      tenantId,
+      {
+        ...validated,
+        companyId: validated.companyId!,
+        companyName: validated.companyName!,
+      },
+      userId ? { userId, email: userEmail } : undefined,
+    );
 
     // Record event
     await recordJobCreated(

@@ -26,6 +26,7 @@ import {
   jobStatuses,
   normalizeJobStatus,
 } from '../../schemas/job';
+import { assignDefaultOwnerOnCreate } from '@/lib/ownership/default-owner';
 
 // Cache TTL: 5 minutes
 const CACHE_TTL = 300;
@@ -143,7 +144,11 @@ export async function getJobsForCandidate(tenantId: string, candidateId: string)
 /**
  * Create a new job
  */
-export async function createJob(tenantId: string, data: CreateJobInput): Promise<Job> {
+export async function createJob(
+  tenantId: string,
+  data: CreateJobInput,
+  actor?: { userId: string; email?: string | null },
+): Promise<Job> {
   const now = new Date().toISOString();
 
   const job: Job = {
@@ -189,6 +194,16 @@ export async function createJob(tenantId: string, data: CreateJobInput): Promise
 
   // Invalidate cache
   await invalidateTenantCache(tenantId);
+
+  if (actor?.userId && job.id) {
+    await assignDefaultOwnerOnCreate({
+      tenantId,
+      objectType: 'job',
+      objectId: String(job.id),
+      actorUserId: actor.userId,
+      actorEmail: actor.email,
+    });
+  }
 
   return job;
 }

@@ -34,6 +34,17 @@ export interface Tenant {
     updatedAt?: string;
     updatedBy?: string;
   };
+  /**
+   * Default ownership for new CRM records.
+   * Missing / useFixedDefaultOwner=false → creator is owner.
+   * See lib/ownership/default-owner.ts
+   */
+  ownership?: {
+    useFixedDefaultOwner?: boolean;
+    defaultOwnerUserId?: string;
+    updatedAt?: string;
+    updatedBy?: string;
+  };
 }
 
 export const createTenantSchema = z.object({

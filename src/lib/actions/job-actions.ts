@@ -7,7 +7,11 @@
 
 'use server';
 
-import { getSessionTenantId, getSessionUserId } from '../server-auth';
+import {
+  getSessionTenantId,
+  getSessionUserId,
+  getSessionUserEmail,
+} from '../server-auth';
 import { 
   getAllJobs, 
   getJobsByStatus, 
@@ -328,7 +332,12 @@ export async function createJobAction(formData: FormData) {
       });
     }
 
-    const job = await createJobRepo(tenantId, validated.data);
+    const email = userId ? await getSessionUserEmail() : null;
+    const job = await createJobRepo(
+      tenantId,
+      validated.data,
+      userId ? { userId, email } : undefined,
+    );
     const sanitized = job ? sanitizeJob(job) : null;
     return plainResult({ success: true, job: sanitized });
   } catch (error: any) {

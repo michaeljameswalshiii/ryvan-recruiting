@@ -127,22 +127,26 @@ export async function importCandidateListBuilderRows(
         row.pdlId ? `PDL id: ${row.pdlId}` : null,
       ].filter(Boolean);
 
-      const lead = await createLead(tenantId, {
-        name: row.name,
-        email: row.email || '',
-        phone: row.phone || '',
-        location:
-          row.location ||
-          [row.city, row.state].filter(Boolean).join(', ') ||
-          '',
-        title: row.title || '',
-        company: row.company || '',
-        status: 'identification',
-        source: 'pdl_candidate_agent',
-        notes: notesParts.join('\n'),
-        linkedin_url: row.linkedinUrl || '',
-        skills: row.skills || [],
-      } as any);
+      const lead = await createLead(
+        tenantId,
+        {
+          name: row.name,
+          email: row.email || '',
+          phone: row.phone || '',
+          location:
+            row.location ||
+            [row.city, row.state].filter(Boolean).join(', ') ||
+            '',
+          title: row.title || '',
+          company: row.company || '',
+          status: 'identification',
+          source: 'pdl_candidate_agent',
+          notes: notesParts.join('\n'),
+          linkedin_url: row.linkedinUrl || '',
+          skills: row.skills || [],
+        } as any,
+        job.userId ? { userId: job.userId } : undefined,
+      );
 
       const cur = resultMap.get(row.id);
       if (cur) {

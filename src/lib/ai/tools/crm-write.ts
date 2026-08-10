@@ -177,17 +177,23 @@ export async function executeCreateCandidate(
   try {
     const notesParts = [preview.notes];
     if (preview.company) notesParts.unshift(`Company: ${preview.company}`);
-    const lead = await createLead(context.tenantId!, {
-      name: preview.name,
-      email: preview.email,
-      phone: preview.phone,
-      title: preview.title,
-      location: preview.location,
-      status: stage as any,
-      source: preview.source,
-      notes: notesParts.filter(Boolean).join("\n"),
-      linkedin_url: preview.linkedin_url,
-    });
+    const lead = await createLead(
+      context.tenantId!,
+      {
+        name: preview.name,
+        email: preview.email,
+        phone: preview.phone,
+        title: preview.title,
+        location: preview.location,
+        status: stage as any,
+        source: preview.source,
+        notes: notesParts.filter(Boolean).join("\n"),
+        linkedin_url: preview.linkedin_url,
+      },
+      context.userId
+        ? { userId: context.userId, email: context.email }
+        : undefined,
+    );
 
     await revalidateCrmPaths([
       "/dashboard/candidates",
@@ -487,16 +493,22 @@ export async function executeCreateCompany(
   if (gate) return gate;
 
   try {
-    const client = await createClient(context.tenantId!, {
-      name: preview.name,
-      industry: preview.industry,
-      city: preview.city,
-      state: preview.state,
-      domain: preview.domain,
-      phone: preview.phone,
-      description: preview.description,
-      status: preview.status,
-    });
+    const client = await createClient(
+      context.tenantId!,
+      {
+        name: preview.name,
+        industry: preview.industry,
+        city: preview.city,
+        state: preview.state,
+        domain: preview.domain,
+        phone: preview.phone,
+        description: preview.description,
+        status: preview.status,
+      },
+      context.userId
+        ? { userId: context.userId, email: context.email }
+        : undefined,
+    );
     await revalidateCrmPaths([
       "/dashboard/companies",
       client.id ? `/dashboard/companies/${client.id}` : "",
@@ -691,15 +703,22 @@ export async function executeCreateContact(
   if (gate) return gate;
 
   try {
-    const updated = await addContactToClient(context.tenantId!, resolved.id, {
-      name: preview.name,
-      title: preview.title,
-      email: preview.email,
-      phones,
-      phone: preview.phone,
-      isPrimary: preview.isPrimary,
-      notes: preview.notes,
-    });
+    const updated = await addContactToClient(
+      context.tenantId!,
+      resolved.id,
+      {
+        name: preview.name,
+        title: preview.title,
+        email: preview.email,
+        phones,
+        phone: preview.phone,
+        isPrimary: preview.isPrimary,
+        notes: preview.notes,
+      },
+      context.userId
+        ? { userId: context.userId, email: context.email }
+        : undefined,
+    );
     const created = (updated.contacts || []).find(
       (c: any) =>
         c.name?.toLowerCase() === preview.name.toLowerCase() &&
@@ -1004,16 +1023,22 @@ export async function executeCreateJob(
   if (gate) return gate;
 
   try {
-    const job = await createJob(context.tenantId!, {
-      title: preview.title,
-      companyId: preview.company_id,
-      companyName: preview.company_name,
-      location: preview.location,
-      description: preview.description,
-      salaryRange: preview.salary_range,
-      employmentType: preview.employment_type as any,
-      status: (preview.status as any) || "Open",
-    });
+    const job = await createJob(
+      context.tenantId!,
+      {
+        title: preview.title,
+        companyId: preview.company_id,
+        companyName: preview.company_name,
+        location: preview.location,
+        description: preview.description,
+        salaryRange: preview.salary_range,
+        employmentType: preview.employment_type as any,
+        status: (preview.status as any) || "Open",
+      },
+      context.userId
+        ? { userId: context.userId, email: context.email }
+        : undefined,
+    );
     await revalidateCrmPaths([
       "/dashboard/jobs",
       job.id ? `/dashboard/jobs/${job.id}` : "",

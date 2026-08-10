@@ -6,7 +6,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionTenantId, getSessionUserId } from '@/lib/server-auth';
+import {
+  getSessionTenantId,
+  getSessionUserId,
+  getSessionUserEmail,
+} from '@/lib/server-auth';
 import { getAllClients, createClient } from '@/lib/db/repositories/client-repository';
 import { createClientSchema } from '@/lib/schemas/client';
 
@@ -48,6 +52,7 @@ export async function POST(request: NextRequest) {
     // Get tenant from verified session
     const tenantId = await getSessionTenantId();
     const userId = await getSessionUserId();
+    const email = await getSessionUserEmail();
     
     if (!tenantId || !userId) {
       return NextResponse.json(
@@ -83,7 +88,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Create client with verified tenant ID (never trust client-provided tenant_id)
-    const client = await createClient(tenantId, validated.data);
+    const client = await createClient(tenantId, validated.data, {
+      userId,
+      email,
+    });
 
     return NextResponse.json({ client }, { status: 201 });
   } catch (error: any) {

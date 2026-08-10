@@ -7,7 +7,11 @@
 
 'use server';
 
-import { getSessionTenantId, getSessionUserId } from '../server-auth';
+import {
+  getSessionTenantId,
+  getSessionUserId,
+  getSessionUserEmail,
+} from '../server-auth';
 import { getAllLeads, getAllLeadsWithLinkedJobs, createLead as createLeadRepo, updateLead, deleteLead } from '../db/repositories/lead-repository';
 import { createLeadSchema, updateLeadSchema } from '../schemas/lead';
 import { recordStatusChange } from '../events/candidate-events';
@@ -81,7 +85,11 @@ const rawData = {
   }
 
   try {
-    const lead = await createLeadRepo(tenantId, validated.data);
+    const email = await getSessionUserEmail();
+    const lead = await createLeadRepo(tenantId, validated.data, {
+      userId,
+      email,
+    });
     return { success: true, lead };
   } catch (error: any) {
     return { error: error.message || 'Failed to create lead' };

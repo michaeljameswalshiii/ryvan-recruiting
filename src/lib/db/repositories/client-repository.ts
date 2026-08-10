@@ -15,6 +15,7 @@ import {
   DeleteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type { Contact, ContactPhone, CreateClientInput, UpdateClientInput } from '../../schemas/client';
+import { assignDefaultOwnerOnCreate } from '@/lib/ownership/default-owner';
 
 export type ClientRecord = {
   id?: string;
@@ -159,7 +160,8 @@ export async function getClientById(
  */
 export async function createClient(
   tenantId: string,
-  data: CreateClientInput | Record<string, any>
+  data: CreateClientInput | Record<string, any>,
+  actor?: { userId: string; email?: string | null },
 ): Promise<ClientRecord> {
   const doc = getDocClient();
   const now = new Date().toISOString();
@@ -192,6 +194,16 @@ export async function createClient(
       Item: item,
     })
   );
+
+  if (actor?.userId && item.id) {
+    await assignDefaultOwnerOnCreate({
+      tenantId,
+      objectType: 'company',
+      objectId: String(item.id),
+      actorUserId: actor.userId,
+      actorEmail: actor.email,
+    });
+  }
 
   return item;
 }
@@ -434,7 +446,8 @@ function normalizeIncomingPhones(contact: any): {
 export async function addContactToClient(
   tenantId: string,
   clientId: string,
-  contact: any
+  contact: any,
+  actor?: { userId: string; email?: string | null },
 ): Promise<ClientRecord> {
   console.log('[addContactToClient] Input:', { tenantId, clientId, contact });
 
@@ -482,6 +495,17 @@ export async function addContactToClient(
     primaryContactId
   );
   console.log('[addContactToClient] Success');
+
+  if (actor?.userId && newContact.id) {
+    await assignDefaultOwnerOnCreate({
+      tenantId,
+      objectType: 'contact',
+      objectId: String(newContact.id),
+      actorUserId: actor.userId,
+      actorEmail: actor.email,
+    });
+  }
+
   return updated;
 }
 
