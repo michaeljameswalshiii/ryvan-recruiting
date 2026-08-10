@@ -631,14 +631,16 @@ export function CandidateDetailClient({
                       : ""}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
-                    {candidate?.email && (
-                      <a
+                    {candidateEmail && (
+                      <button
+                        type="button"
+                        onClick={handleEmailClick}
                         className="inline-flex items-center gap-1 hover:text-blue-700"
-                        href={`mailto:${candidate.email}`}
+                        title="Compose email"
                       >
                         <Mail className="h-3.5 w-3.5" />
-                        {candidate.email}
-                      </a>
+                        {candidateEmail}
+                      </button>
                     )}
                     {candidate?.phone && (
                       <a
