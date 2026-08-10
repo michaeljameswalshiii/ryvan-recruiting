@@ -298,27 +298,29 @@ export default function NewCandidatePage() {
     "border-border bg-card text-card-foreground " +
     "dark:border-slate-600 dark:bg-slate-900";
 
-  const fieldInputClass = "mt-1";
+  // Compact fields so Basic + Additional + Create fit without scrolling
+  const fieldInputClass = "mt-0.5 h-9";
   const fieldSelectClass =
-    "mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
+    "mt-0.5 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm";
+  const fieldLabelClass = "text-xs font-medium";
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center gap-4 mb-6">
+    <div className="mx-auto max-w-6xl p-3 sm:p-4">
+      <div className="mb-3 flex items-center gap-3">
         <Link href="/dashboard/candidates">
           <Button
             variant="ghost"
             size="icon"
-            className="text-foreground"
+            className="h-8 w-8 text-foreground"
           >
-            <ArrowLeft className="h-5 w-5" />
+            <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold leading-tight text-foreground">
             Add New Candidate
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Upload a resume to auto-fill fields, then create the candidate
           </p>
         </div>
@@ -326,11 +328,11 @@ export default function NewCandidatePage() {
 
       <form onSubmit={handleSubmit}>
         {/*
-          2×2 layout (desktop):
+          2×2 layout (desktop), compact cards:
           [ Upload Resume ] [ Basic Information ]
           [ Pipeline      ] [ Additional         ]
         */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
           {/* Top-left: Resume upload first — always light surface + dark ink */}
           <Card
             data-ink-on-light
@@ -341,23 +343,21 @@ export default function NewCandidatePage() {
               WebkitTextFillColor: '#0f172a',
             }}
           >
-            <CardHeader>
+            <CardHeader className="space-y-0 p-3 pb-1.5">
               <CardTitle
-                className="flex items-center gap-2 !text-slate-900"
+                className="flex items-center gap-1.5 text-sm !text-slate-900"
                 style={{ color: '#0f172a', WebkitTextFillColor: '#0f172a' }}
               >
-                <Upload className="h-5 w-5 text-blue-700" style={{ color: '#1d4ed8' }} />
+                <Upload className="h-4 w-4 text-blue-700" style={{ color: '#1d4ed8' }} />
                 Upload Resume (auto-fills form)
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-2 p-3 pt-1.5">
               <p
-                className="text-sm !text-slate-700"
+                className="text-xs !text-slate-700"
                 style={{ color: '#334155', WebkitTextFillColor: '#334155' }}
               >
-                Drag and drop a PDF or Word document, or choose a file. Parsing
-                fills name, email, phone, title, location, LinkedIn, skills, and
-                summary.
+                PDF or Word — fills name, email, phone, title, location, LinkedIn, skills &amp; summary.
               </p>
 
               <input
@@ -410,7 +410,7 @@ export default function NewCandidatePage() {
                   const file = e.dataTransfer.files?.[0];
                   if (file) void handleResumeFile(file);
                 }}
-                className={`rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors cursor-pointer ${
+                className={`rounded-lg border-2 border-dashed px-3 py-4 text-center transition-colors cursor-pointer ${
                   dragActive
                     ? 'border-blue-500 bg-blue-100 ring-2 ring-blue-200'
                     : 'border-blue-300 bg-white hover:border-blue-400 hover:bg-blue-50'
@@ -422,31 +422,31 @@ export default function NewCandidatePage() {
               >
                 {parsing ? (
                   <div
-                    className="flex flex-col items-center gap-2"
+                    className="flex flex-col items-center gap-1.5"
                     style={{ color: '#0f172a' }}
                   >
-                    <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                    <p className="font-medium" style={{ color: '#0f172a' }}>
+                    <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                    <p className="text-sm font-medium" style={{ color: '#0f172a' }}>
                       Parsing resume…
                     </p>
                     {resumeFileName && (
-                      <p className="text-sm" style={{ color: '#475569' }}>
+                      <p className="text-xs" style={{ color: '#475569' }}>
                         {resumeFileName}
                       </p>
                     )}
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center gap-3">
+                  <div className="flex flex-col items-center gap-2">
                     <div
-                      className={`rounded-full p-3 ${
+                      className={`rounded-full p-2 ${
                         dragActive ? 'bg-blue-200' : 'bg-blue-100'
                       }`}
                     >
-                      <Upload className="h-7 w-7 text-blue-700" />
+                      <Upload className="h-5 w-5 text-blue-700" />
                     </div>
                     <div>
                       <p
-                        className="font-medium"
+                        className="text-sm font-medium"
                         style={{ color: '#0f172a', WebkitTextFillColor: '#0f172a' }}
                       >
                         {dragActive
@@ -454,7 +454,7 @@ export default function NewCandidatePage() {
                           : 'Drag & drop resume here'}
                       </p>
                       <p
-                        className="mt-1 text-sm"
+                        className="mt-0.5 text-xs"
                         style={{ color: '#475569', WebkitTextFillColor: '#475569' }}
                       >
                         PDF, DOC, or DOCX — or click to browse
@@ -462,19 +462,20 @@ export default function NewCandidatePage() {
                     </div>
                     <Button
                       type="button"
+                      size="sm"
                       disabled={parsing}
                       data-ink-keep
                       onClick={(e) => {
                         e.stopPropagation();
                         fileInputRef.current?.click();
                       }}
-                      className="mt-1 bg-blue-600 hover:bg-blue-700 text-white"
+                      className="h-8 bg-blue-600 text-xs hover:bg-blue-700 text-white"
                     >
-                      <Upload className="mr-2 h-4 w-4" />
+                      <Upload className="mr-1.5 h-3.5 w-3.5" />
                       Choose Resume File
                     </Button>
                     {resumeFileName && (
-                      <p className="text-sm" style={{ color: '#475569' }}>
+                      <p className="text-xs" style={{ color: '#475569' }}>
                         File: {resumeFileName}
                       </p>
                     )}
@@ -483,28 +484,28 @@ export default function NewCandidatePage() {
               </div>
 
               {parsedFromResume && (
-                <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+                <div className="flex items-start gap-1.5 rounded-md border border-green-200 bg-green-50 px-2.5 py-1.5 text-xs text-green-800">
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <p className="font-medium">
-                    Resume data applied — review the form and click Create.
+                    Resume data applied — review fields and click Create.
                   </p>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Top-right: Basic Information */}
+          {/* Top-right: Basic Information — tight, no dead space */}
           <Card data-dark-form-panel data-dark-panel className={darkFormCard}>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-inherit">
-                <User className="h-5 w-5" />
+            <CardHeader className="space-y-0 p-3 pb-1.5">
+              <CardTitle className="flex items-center gap-1.5 text-sm text-inherit">
+                <User className="h-4 w-4" />
                 Basic Information
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+            <CardContent className="p-3 pt-1.5">
+              <div className="grid gap-2 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <Label htmlFor="name">
+                  <Label htmlFor="name" className={fieldLabelClass}>
                     Name <span className="text-red-400">*</span>
                   </Label>
                   <Input
@@ -517,7 +518,7 @@ export default function NewCandidatePage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="title">Title</Label>
+                  <Label htmlFor="title" className={fieldLabelClass}>Title</Label>
                   <Input
                     id="title"
                     value={formData.title}
@@ -527,7 +528,7 @@ export default function NewCandidatePage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="location">Location</Label>
+                  <Label htmlFor="location" className={fieldLabelClass}>Location</Label>
                   <Input
                     id="location"
                     value={formData.location}
@@ -537,7 +538,7 @@ export default function NewCandidatePage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email" className={fieldLabelClass}>Email</Label>
                   <Input
                     id="email"
                     type="email"
@@ -547,7 +548,7 @@ export default function NewCandidatePage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="phone" className={fieldLabelClass}>Phone</Label>
                   <Input
                     id="phone"
                     type="tel"
@@ -562,16 +563,16 @@ export default function NewCandidatePage() {
 
           {/* Bottom-left: Pipeline */}
           <Card data-dark-form-panel data-dark-panel className={darkFormCard}>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-inherit">
-                <Briefcase className="h-5 w-5" />
+            <CardHeader className="space-y-0 p-3 pb-1.5">
+              <CardTitle className="flex items-center gap-1.5 text-sm text-inherit">
+                <Briefcase className="h-4 w-4" />
                 Pipeline Information
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+            <CardContent className="p-3 pt-1.5">
+              <div className="grid gap-2 sm:grid-cols-2">
                 <div>
-                  <Label htmlFor="status">Status</Label>
+                  <Label htmlFor="status" className={fieldLabelClass}>Status</Label>
                   <select
                     id="status"
                     value={formData.status}
@@ -586,7 +587,7 @@ export default function NewCandidatePage() {
                   </select>
                 </div>
                 <div>
-                  <Label htmlFor="source">Source</Label>
+                  <Label htmlFor="source" className={fieldLabelClass}>Source</Label>
                   <select
                     id="source"
                     value={formData.source}
@@ -606,15 +607,15 @@ export default function NewCandidatePage() {
 
           {/* Bottom-right: Additional */}
           <Card data-dark-form-panel data-dark-panel className={darkFormCard}>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-inherit">
-                <FileText className="h-5 w-5" />
+            <CardHeader className="space-y-0 p-3 pb-1.5">
+              <CardTitle className="flex items-center gap-1.5 text-sm text-inherit">
+                <FileText className="h-4 w-4" />
                 Additional Information
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-2 p-3 pt-1.5">
               <div>
-                <Label htmlFor="linkedin_url">LinkedIn URL</Label>
+                <Label htmlFor="linkedin_url" className={fieldLabelClass}>LinkedIn URL</Label>
                 <Input
                   id="linkedin_url"
                   value={formData.linkedin_url}
@@ -623,7 +624,7 @@ export default function NewCandidatePage() {
                 />
               </div>
               <div>
-                <Label htmlFor="skills">Skills</Label>
+                <Label htmlFor="skills" className={fieldLabelClass}>Skills</Label>
                 <Input
                   id="skills"
                   value={formData.skills}
@@ -633,7 +634,7 @@ export default function NewCandidatePage() {
                 />
               </div>
               <div>
-                <Label htmlFor="tags">Candidate Tags</Label>
+                <Label htmlFor="tags" className={fieldLabelClass}>Candidate Tags</Label>
                 <Input
                   id="tags"
                   value={formData.tags}
@@ -641,43 +642,37 @@ export default function NewCandidatePage() {
                   className={fieldInputClass}
                   placeholder="e.g., Industrial, Local, Top prospect"
                 />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Separate tags with commas. Tags appear on the candidate profile.
-                </p>
               </div>
               <div>
-                <Label htmlFor="summary">Summary</Label>
+                <Label htmlFor="summary" className={fieldLabelClass}>Summary</Label>
                 <textarea
                   id="summary"
                   value={formData.summary}
                   onChange={(e) => handleChange('summary', e.target.value)}
-                  className="mt-1 min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  placeholder="Short ATS-friendly blurb (~20 words). Filled from resume when uploaded."
-                  rows={3}
+                  className="mt-0.5 min-h-[48px] w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                  placeholder="Short ATS blurb (~20 words)"
+                  rows={2}
                 />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Keep it under ~20 words for ATS (role + strengths + keywords).
-                </p>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <div className="mt-6 flex justify-end gap-3">
+        <div className="mt-3 flex justify-end gap-2 border-t border-border/60 pt-3">
           <Link href="/dashboard/candidates">
-            <Button variant="outline" type="button">
+            <Button variant="outline" type="button" size="sm">
               Cancel
             </Button>
           </Link>
-          <Button type="submit" disabled={loading || parsing}>
+          <Button type="submit" size="sm" disabled={loading || parsing}>
             {loading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                 Creating...
               </>
             ) : (
               <>
-                <Plus className="mr-2 h-4 w-4" />
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
                 Create Candidate
               </>
             )}
