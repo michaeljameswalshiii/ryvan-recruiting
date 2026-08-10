@@ -151,6 +151,7 @@ export default function NewCandidatePage() {
         mapped.email && 'email',
         mapped.phone && 'phone',
         mapped.title && 'title',
+        mapped.location && 'location',
         mapped.skills && 'skills',
         mapped.summary && 'summary',
         (mapped.experience?.length ?? 0) > 0 && 'experience',
@@ -524,7 +525,7 @@ export default function NewCandidatePage() {
                     value={formData.title}
                     onChange={(e) => handleChange('title', e.target.value)}
                     className={fieldInputClass}
-                    placeholder="e.g., Software Engineer"
+                    placeholder="From resume or type title"
                   />
                 </div>
                 <div>
@@ -534,7 +535,7 @@ export default function NewCandidatePage() {
                     value={formData.location}
                     onChange={(e) => handleChange('location', e.target.value)}
                     className={fieldInputClass}
-                    placeholder="Boca Raton, FL"
+                    placeholder="City, ST"
                   />
                 </div>
                 <div>

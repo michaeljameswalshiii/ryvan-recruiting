@@ -121,7 +121,11 @@ const COMMON_SKILLS = [
 ];
 
 const TITLE_WORDS =
-  /(?:engineer|developer|manager|director|consultant|analyst|designer|specialist|architect|lead|principal|staff|intern|coordinator|administrator|officer|executive|scientist|researcher|product owner|scrum master|recruiter|accountant|teacher|nurse|physician|attorney|counsel|partner|founder|ceo|cto|cfo|coo|vp|vice president|head of|supervisor)/i;
+  /(?:engineer|developer|manager|director|consultant|analyst|designer|specialist|architect|lead|principal|staff|intern|coordinator|administrator|officer|executive|scientist|researcher|product owner|scrum master|recruiter|accountant|bookkeeper|controller|treasurer|teacher|nurse|physician|attorney|counsel|partner|founder|ceo|cto|cfo|coo|vp|vice president|head of|supervisor|owner|president|superintendent|foreman|technician|mechanic|operator|clerk|assistant|associate|representative|rep\b|salesperson|account executive|business development|bdm|sourcing|talent acquisition|hrbp|chef|server|bartender|host(?:ess)?|cashier|stylist|therapist|counselor|paralegal|underwriter|estimator|scheduler|dispatcher)/i;
+
+/** Expanded headline / current-role patterns (not only engineer/manager). */
+const HEADLINE_TITLE_RE =
+  /(?:(?:Senior|Jr\.?|Junior|Staff|Principal|Lead|Associate|Assistant|Entry[- ]Level|Mid[- ]Level|Executive)\s+)?(?:(?:Software|Full[- ]?Stack|Front[- ]?End|Back[- ]?End|DevOps|Data|Product|Project|Program|Engineering|Sales|Marketing|Operations|Restaurant|Retail|HR|Human Resources|Finance|Accounting|IT|Cloud|Security|Machine Learning|AI|Business|Talent|Customer|Administrative|Office|General|Construction|Project|Site|Plant)\s+)?(?:Engineer|Developer|Manager|Director|Consultant|Analyst|Designer|Specialist|Architect|Scientist|Coordinator|Administrator|Recruiter|Accountant|Bookkeeper|Controller|Executive|Officer|Owner|President|Supervisor|Superintendent|Technician|Assistant|Associate|Representative|Estimator)/i;
 
 const MONTH =
   '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
@@ -356,8 +360,15 @@ function looksLikeUrl(s: string): boolean {
 }
 
 function looksLikeLocation(s: string): boolean {
+  if (!s || s.length > 80) return false;
   if (new RegExp(`\\b(?:${US_STATES})\\b`, 'i').test(s) && /,/.test(s)) return true;
   if (/,\s*[A-Z]{2}\b/.test(s)) return true;
+  // "Miami FL" / "Boca Raton FL" without comma
+  if (new RegExp(`\\b[A-Z][a-zA-Z .'-]{1,28}\\s+(?:${US_STATES})\\b`).test(s)) {
+    return true;
+  }
+  // "City, Florida" / "City, Texas"
+  if (/^[A-Z][a-zA-Z .'-]+,\s*[A-Z][a-zA-Z .'-]+$/.test(s.trim())) return true;
   return false;
 }
 
@@ -559,30 +570,79 @@ function extractLinkedIn(text: string): string {
   return url;
 }
 
+function normalizeLocationString(loc: string): string {
+  let s = loc.replace(/\s+/g, ' ').replace(/^[,|•·\-\s]+|[,|•·\-\s]+$/g, '').trim();
+  // "Miami FL" → "Miami, FL"
+  const noComma = s.match(
+    new RegExp(`^([A-Z][a-zA-Z .'-]{1,30})\\s+(${US_STATES})$`, 'i')
+  );
+  if (noComma) {
+    s = `${noComma[1].trim()}, ${noComma[2].toUpperCase()}`;
+  }
+  return s.slice(0, 80);
+}
+
 function extractLocation(text: string, headerText: string): string {
-  // Prefer header only — full-text scans pick up skill pairs like "Python, AWS"
-  const areas = [headerText, linesOf(text).slice(0, 12).join('\n')];
-  for (const area of areas) {
-    // City, ST (required 2-letter state)
+  // Prefer header / top lines — full-text scans pick up skill pairs like "Python, AWS"
+  const topLines = linesOf(text).slice(0, 15);
+  const areas = [
+    headerText,
+    topLines.join('\n'),
+    // Also scan pipe-separated header blobs: "Name | City, ST | email"
+    topLines.join(' | '),
+  ];
+
+  const tryMatch = (area: string): string => {
+    if (!area) return '';
+    // City, ST (+ optional ZIP)
     const cityState = area.match(
       new RegExp(
         `\\b([A-Z][a-zA-Z .'-]{1,30},\\s*(?:${US_STATES})(?:\\s+\\d{5}(?:-\\d{4})?)?)\\b`
       )
     );
     if (cityState) {
-      const loc = cityState[1].trim();
+      const loc = normalizeLocationString(cityState[1]);
       if (loc.length < 60 && !looksLikeEmail(loc) && !TITLE_WORDS.test(loc)) {
         return loc;
       }
     }
-    // City, Country / City, StateName (longer state names only)
+    // City ST (no comma) — common on one-line PDF headers
+    const cityStNoComma = area.match(
+      new RegExp(
+        `\\b([A-Z][a-zA-Z .'-]{1,28}\\s+(?:${US_STATES}))(?:\\b|\\s|[,|•])`
+      )
+    );
+    if (cityStNoComma) {
+      const loc = normalizeLocationString(cityStNoComma[1]);
+      if (loc.length < 60 && !looksLikeEmail(loc) && !TITLE_WORDS.test(loc)) {
+        return loc;
+      }
+    }
+    // City, full state / country name
     const cityRegion = area.match(
-      /\b([A-Z][a-zA-Z .'-]{1,30},\s*(?:United States|USA|US|Canada|UK|United Kingdom|California|Texas|Florida|New York|Washington|Massachusetts|Illinois|Georgia|Colorado|Arizona|Oregon|Nevada))\b/
+      /\b([A-Z][a-zA-Z .'-]{1,30},\s*(?:United States|USA|US|Canada|UK|United Kingdom|California|Texas|Florida|New York|Washington|Massachusetts|Illinois|Georgia|Colorado|Arizona|Oregon|Nevada|New Jersey|North Carolina|South Carolina|Pennsylvania|Virginia|Maryland|Michigan|Ohio|Indiana|Tennessee|Missouri|Wisconsin|Minnesota|Louisiana|Alabama|Kentucky|Oklahoma|Connecticut|Iowa|Arkansas|Kansas|Utah|Nevada|New Mexico|Nebraska|Idaho|Hawaii|Maine|New Hampshire|Rhode Island|Montana|Delaware|South Dakota|North Dakota|Alaska|Vermont|Wyoming|West Virginia))\b/
     );
     if (cityRegion) {
-      const loc = cityRegion[1].trim();
-      if (loc.length < 60) return loc;
+      const loc = normalizeLocationString(cityRegion[1]);
+      if (loc.length < 70) return loc;
     }
+    // "based in Miami, FL" / "located in Tampa FL"
+    const based = area.match(
+      new RegExp(
+        `\\b(?:based|located|residing|living)\\s+in\\s+([A-Z][a-zA-Z .'-]{1,30}(?:,\\s*)?(?:${US_STATES}|[A-Z][a-zA-Z .'-]{2,20}))\\b`,
+        'i'
+      )
+    );
+    if (based) {
+      const loc = normalizeLocationString(based[1]);
+      if (loc.length >= 4 && loc.length < 60) return loc;
+    }
+    return '';
+  };
+
+  for (const area of areas) {
+    const hit = tryMatch(area);
+    if (hit) return hit;
   }
   return '';
 }
@@ -597,51 +657,84 @@ function extractSalary(text: string): string {
 function extractTitle(text: string, sections: Record<string, string>, name: string): string {
   // Explicit labels
   const labeled = text.match(
-    /(?:(?:current\s+)?(?:title|position|role|seeking|target\s+role))\s*[:\-]\s*([^\n|•]{3,80})/i
+    /(?:(?:current\s+)?(?:title|position|role|seeking|target\s+role|professional\s+title|job\s+title))\s*[:\-]\s*([^\n|•]{3,80})/i
   );
   if (labeled) {
     const t = labeled[1].trim();
     if (t.length > 2 && t.length < 80 && !looksLikeEmail(t)) return cleanTitle(t);
   }
 
-  // Line right after name in header
-  const headerLines = linesOf(sections.header || text.slice(0, 600)).slice(0, 10);
+  // Line right after name in header (scan several candidates — PDF order is noisy)
+  const headerLines = linesOf(sections.header || text.slice(0, 900)).slice(0, 14);
   let sawName = !name;
+  let skipped = 0;
   for (const line of headerLines) {
     if (!sawName) {
-      if (name && line.toLowerCase().includes(name.split(' ')[0].toLowerCase())) {
+      if (name && line.toLowerCase().includes(name.split(/\s+/)[0].toLowerCase())) {
         sawName = true;
+        // Same line: "Jane Doe Software Engineer" after the name
+        if (name) {
+          const afterName = line
+            .replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '')
+            .trim();
+          if (afterName && TITLE_WORDS.test(afterName) && afterName.length < 80) {
+            return cleanTitle(afterName.split(/\s*[|•·]\s*/)[0]);
+          }
+        }
+        continue;
       }
-      // Also treat all-caps first line as name already handled
       if (isPlausibleName(line)) {
         sawName = true;
         continue;
       }
       continue;
     }
-    if (looksLikeEmail(line) || looksLikePhone(line) || looksLikeUrl(line) || looksLikeLocation(line)) {
+    if (
+      looksLikeEmail(line) ||
+      looksLikePhone(line) ||
+      looksLikeUrl(line) ||
+      looksLikeLocation(line)
+    ) {
       continue;
     }
     if (isSectionHeaderLine(line)) break;
-    // Pipe-separated: Title | Location
-    const first = line.split(/\s*[|•·]\s*/)[0].trim();
-    if (TITLE_WORDS.test(first) && first.length < 80) {
-      return cleanTitle(first);
+    // Pipe-separated: Title | Location | email
+    const parts = line.split(/\s*[|•·]\s*/).map((p) => p.trim()).filter(Boolean);
+    for (const part of parts) {
+      if (looksLikeEmail(part) || looksLikePhone(part) || looksLikeLocation(part)) continue;
+      if (TITLE_WORDS.test(part) && part.length >= 3 && part.length < 80) {
+        return cleanTitle(part);
+      }
     }
     if (TITLE_WORDS.test(line) && line.length < 80) {
       return cleanTitle(line);
     }
-    // Stop after a couple non-title lines
-    break;
+    // "Experienced Software Engineer with…" in a short header line
+    const expLead = line.match(
+      /^(?:an?\s+)?(?:experienced|seasoned|results[- ]driven|dedicated|proven)\s+([A-Za-z][A-Za-z0-9/& .'-]{2,60}?)(?:\s+with\b|\s+who\b|,|\.|$)/i
+    );
+    if (expLead && TITLE_WORDS.test(expLead[1])) {
+      return cleanTitle(expLead[1]);
+    }
+    skipped += 1;
+    // Allow a few non-title lines (address, empty noise) before giving up on header
+    if (skipped >= 4) break;
   }
 
   // Common compound title pattern anywhere near top
-  const top = text.slice(0, 1200);
-  const jobTitleMatch = top.match(
-    /(?:Senior|Junior|Staff|Principal|Lead|Associate|Entry[- ]Level|Mid[- ]Level)?\s*(?:Software|Full[- ]Stack|Front[- ]End|Back[- ]End|DevOps|Data|Product|Project|Program|Engineering|Sales|Marketing|Operations|HR|Human Resources|Finance|IT|Cloud|Security|Machine Learning|AI)?\s*(?:Engineer|Developer|Manager|Director|Consultant|Analyst|Designer|Specialist|Architect|Scientist|Coordinator|Administrator|Recruiter)/i
-  );
+  const top = text.slice(0, 1500);
+  const jobTitleMatch = top.match(HEADLINE_TITLE_RE);
   if (jobTitleMatch) {
     return cleanTitle(jobTitleMatch[0]);
+  }
+
+  // Summary openers: "Software Engineer with 8 years…"
+  const summaryBlob = (sections.summary || '').slice(0, 400) || top.slice(0, 500);
+  const summaryTitle = summaryBlob.match(
+    /^(?:I am (?:an?\s+)?)?([A-Z][A-Za-z0-9/& .'-]{2,55}?(?:Engineer|Developer|Manager|Director|Analyst|Consultant|Specialist|Coordinator|Accountant|Recruiter|Designer|Architect))\b/i
+  );
+  if (summaryTitle && TITLE_WORDS.test(summaryTitle[1])) {
+    return cleanTitle(summaryTitle[1]);
   }
 
   return '';
@@ -1130,9 +1223,30 @@ export function parseResumeText(
   const summary = extractSummary(sections.summary || '', text);
 
   let title = extractTitle(text, sections, name);
-  // Fall back to most recent experience title
-  if (!title && experience[0]?.title) {
-    title = experience[0].title;
+  // Fall back to most recent / current experience title
+  if (!title && experience.length) {
+    const current = experience.find((e) =>
+      /present|current|now/i.test(e.dates || '')
+    );
+    title = (current?.title || experience[0]?.title || '').trim();
+  }
+  // Last resort: any TITLE_WORDS line in first experience block of raw text
+  if (!title && sections.experience) {
+    for (const line of linesOf(sections.experience).slice(0, 12)) {
+      if (TITLE_WORDS.test(line) && line.length >= 3 && line.length < 80) {
+        title = cleanTitle(line.split(/\s*[|•·]\s*/)[0]);
+        break;
+      }
+    }
+  }
+
+  // Location: experience location is a strong secondary signal
+  let finalLocation = location;
+  if (!finalLocation) {
+    const expLoc = experience.find((e) => e.location)?.location;
+    if (expLoc && looksLikeLocation(expLoc)) {
+      finalLocation = normalizeLocationString(expLoc);
+    }
   }
 
   // Prefer filename name only if text name empty
@@ -1147,8 +1261,8 @@ export function parseResumeText(
     email,
     phone,
     linkedin,
-    location,
-    fullAddress: location,
+    location: finalLocation,
+    fullAddress: finalLocation,
     summary,
     salaryRequirements,
     skills,

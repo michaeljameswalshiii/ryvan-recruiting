@@ -186,12 +186,30 @@ export function mapParsedResumeToForm(
   const linkedin =
     parsed?.linkedin || parsed?.linkedin_url || parsed?.linkedinUrl || '';
 
+  // Robust title: headline field, then most recent / current experience role
+  let title = String(parsed?.title || parsed?.currentTitle || '').trim();
+  if (!title && experience.length) {
+    const current = experience.find(
+      (e: any) => /present|current|now/i.test(String(e?.dates || ''))
+    );
+    title = String(current?.title || experience[0]?.title || '').trim();
+  }
+
+  // Robust location: profile location, full address, then experience location
+  let location = String(
+    parsed?.location || parsed?.fullAddress || parsed?.full_address || ''
+  ).trim();
+  if (!location && experience.length) {
+    const withLoc = experience.find((e: any) => e?.location);
+    location = String(withLoc?.location || '').trim();
+  }
+
   return {
     name,
-    title: parsed?.title || '',
+    title,
     email: parsed?.email || '',
     phone: parsed?.phone || '',
-    location: parsed?.location || parsed?.fullAddress || '',
+    location,
     linkedin_url: linkedin,
     summary,
     skills,
