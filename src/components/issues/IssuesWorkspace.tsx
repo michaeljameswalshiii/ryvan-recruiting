@@ -13,10 +13,18 @@ import {
   CheckSquare,
   Sparkles,
   GripVertical,
+  User,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useIssues, useCreateIssue, useUpdateIssueStatus } from "@/lib/hooks/query-issue";
+import {
+  useIssues,
+  useCreateIssue,
+  useUpdateIssueStatus,
+  useReorderIssues,
+  useBulkUpdateIssueStatus,
+} from "@/lib/hooks/query-issue";
 import IssueDialog from "./IssueDialog";
 import {
   BOARD_COLUMNS,
@@ -34,17 +42,25 @@ import type { CreateIssueInput, IssueListFilters } from "@/lib/schemas/issue";
 
 type ViewMode = "board" | "backlog";
 
+type ChipId = "mine" | "bugs" | "open" | "blocked" | "critical";
+
 export default function IssuesWorkspace() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const view = (searchParams.get("view") === "backlog" ? "backlog" : "board") as ViewMode;
+  const view = (searchParams.get("view") === "backlog"
+    ? "backlog"
+    : "board") as ViewMode;
 
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
+  const [mineOnly, setMineOnly] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState("In Progress");
+  const [backlogDragId, setBacklogDragId] = useState<string | null>(null);
 
   const filters: IssueListFilters = useMemo(() => {
     const f: IssueListFilters = {};
@@ -52,12 +68,15 @@ export default function IssuesWorkspace() {
     if (typeFilter) f.type = typeFilter;
     if (statusFilter) f.status = statusFilter;
     if (priorityFilter) f.priority = Number(priorityFilter);
+    if (mineOnly) f.mine = true;
     return f;
-  }, [q, typeFilter, statusFilter, priorityFilter]);
+  }, [q, typeFilter, statusFilter, priorityFilter, mineOnly]);
 
   const { data: issues = [], isLoading } = useIssues(filters);
   const createIssue = useCreateIssue();
   const updateStatus = useUpdateIssueStatus();
+  const reorder = useReorderIssues();
+  const bulkStatusMut = useBulkUpdateIssueStatus();
 
   const setView = (v: ViewMode) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -67,6 +86,36 @@ export default function IssuesWorkspace() {
   };
 
   const byStatus = useMemo(() => groupByStatus(issues), [issues]);
+
+  const toggleChip = (chip: ChipId) => {
+    if (chip === "mine") {
+      setMineOnly((v) => !v);
+      return;
+    }
+    if (chip === "bugs") {
+      setTypeFilter((t) => (t === "Bug" ? "" : "Bug"));
+      return;
+    }
+    if (chip === "open") {
+      setStatusFilter((s) => (s === "Open" ? "" : "Open"));
+      return;
+    }
+    if (chip === "blocked") {
+      setStatusFilter((s) => (s === "Blocked" ? "" : "Blocked"));
+      return;
+    }
+    if (chip === "critical") {
+      setPriorityFilter((p) => (p === "1" ? "" : "1"));
+    }
+  };
+
+  const clearFilters = () => {
+    setQ("");
+    setTypeFilter("");
+    setStatusFilter("");
+    setPriorityFilter("");
+    setMineOnly(false);
+  };
 
   const handleCreate = async (data: CreateIssueInput) => {
     await createIssue.mutateAsync(data);
@@ -84,6 +133,45 @@ export default function IssuesWorkspace() {
     [dragId, issues, updateStatus]
   );
 
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selected.size === issues.length) setSelected(new Set());
+    else setSelected(new Set(issues.map((i) => i.id)));
+  };
+
+  const runBulkStatus = async () => {
+    if (!selected.size) return;
+    await bulkStatusMut.mutateAsync({
+      ids: Array.from(selected),
+      status: bulkStatus,
+    });
+    setSelected(new Set());
+  };
+
+  const onBacklogDrop = async (targetId: string) => {
+    if (!backlogDragId || backlogDragId === targetId) {
+      setBacklogDragId(null);
+      return;
+    }
+    const ids = issues.map((i) => i.id);
+    const from = ids.indexOf(backlogDragId);
+    const to = ids.indexOf(targetId);
+    setBacklogDragId(null);
+    if (from < 0 || to < 0) return;
+    const next = [...ids];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    await reorder.mutateAsync(next);
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 p-8 text-slate-500">
@@ -96,15 +184,13 @@ export default function IssuesWorkspace() {
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-gradient-to-b from-slate-50 via-white to-slate-50">
       <div className="mx-auto max-w-[1600px] space-y-5 p-6">
-        {/* Header */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">
               Work items
             </h1>
             <p className="mt-1 text-slate-500">
-              Board and backlog for bugs, stories, and tasks — ADO / Jira–style
-              tracking inside Trio
+              Board, backlog, bulk actions, and CRM links — Phase 2 tracker
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -144,7 +230,46 @@ export default function IssuesWorkspace() {
           </div>
         </div>
 
-        {/* Filters */}
+        {/* Saved filter chips */}
+        <div className="flex flex-wrap items-center gap-2">
+          {(
+            [
+              ["mine", "My issues", mineOnly],
+              ["bugs", "Bugs", typeFilter === "Bug"],
+              ["open", "Open", statusFilter === "Open"],
+              ["blocked", "Blocked", statusFilter === "Blocked"],
+              ["critical", "Critical", priorityFilter === "1"],
+            ] as [ChipId, string, boolean][]
+          ).map(([id, label, active]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => toggleChip(id)}
+              className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                active
+                  ? "border-blue-300 bg-blue-50 text-blue-800"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {id === "mine" ? <User className="h-3 w-3" /> : null}
+              {label}
+            </button>
+          ))}
+          {(mineOnly ||
+            typeFilter ||
+            statusFilter ||
+            priorityFilter ||
+            q) && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-800"
+            >
+              <X className="h-3 w-3" /> Clear filters
+            </button>
+          )}
+        </div>
+
         <div
           data-ink-on-light
           className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
@@ -197,15 +322,64 @@ export default function IssuesWorkspace() {
           </span>
         </div>
 
+        {/* Bulk actions bar */}
+        {selected.size > 0 && (
+          <div
+            data-ink-on-light
+            className="flex flex-wrap items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-slate-800"
+          >
+            <span className="font-semibold">
+              {selected.size} selected
+            </span>
+            <select
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm"
+            >
+              {BOARD_COLUMNS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <Button
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={bulkStatusMut.isPending}
+              onClick={() => void runBulkStatus()}
+            >
+              Set status
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSelected(new Set())}
+            >
+              Clear selection
+            </Button>
+          </div>
+        )}
+
         {view === "board" ? (
           <BoardView
             byStatus={byStatus}
             dragId={dragId}
             setDragId={setDragId}
             onDropStatus={onDropStatus}
+            selected={selected}
+            toggleSelect={toggleSelect}
           />
         ) : (
-          <BacklogView issues={issues} onCreate={() => setDialogOpen(true)} />
+          <BacklogView
+            issues={issues}
+            onCreate={() => setDialogOpen(true)}
+            selected={selected}
+            toggleSelect={toggleSelect}
+            selectAll={selectAll}
+            backlogDragId={backlogDragId}
+            setBacklogDragId={setBacklogDragId}
+            onBacklogDrop={onBacklogDrop}
+          />
         )}
       </div>
 
@@ -224,11 +398,15 @@ function BoardView({
   dragId,
   setDragId,
   onDropStatus,
+  selected,
+  toggleSelect,
 }: {
   byStatus: Record<string, Issue[]>;
   dragId: string | null;
   setDragId: (id: string | null) => void;
   onDropStatus: (status: string) => void;
+  selected: Set<string>;
+  toggleSelect: (id: string) => void;
 }) {
   return (
     <div className="flex gap-3 overflow-x-auto pb-4">
@@ -260,6 +438,8 @@ function BoardView({
                     key={issue.id}
                     issue={issue}
                     dragging={dragId === issue.id}
+                    selected={selected.has(issue.id)}
+                    onToggleSelect={() => toggleSelect(issue.id)}
                     onDragStart={() => setDragId(issue.id)}
                     onDragEnd={() => setDragId(null)}
                   />
@@ -276,28 +456,45 @@ function BoardView({
 function IssueCard({
   issue,
   dragging,
+  selected,
+  onToggleSelect,
   onDragStart,
   onDragEnd,
 }: {
   issue: Issue;
   dragging: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
   const type = displayIssueType(issue.issueType);
   const TypeIcon =
-    type === "Bug" ? Bug : type === "Story" ? BookOpen : type === "Task" ? CheckSquare : Sparkles;
+    type === "Bug"
+      ? Bug
+      : type === "Story"
+        ? BookOpen
+        : type === "Task"
+          ? CheckSquare
+          : Sparkles;
 
   return (
     <div
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`group rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-300 hover:shadow ${
+      className={`group rounded-xl border bg-white p-3 shadow-sm transition hover:border-blue-300 hover:shadow ${
         dragging ? "opacity-50 ring-2 ring-blue-400" : ""
-      }`}
+      } ${selected ? "border-blue-400 ring-1 ring-blue-200" : "border-slate-200"}`}
     >
       <div className="mb-2 flex items-start gap-1">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          className="mt-1"
+          onClick={(e) => e.stopPropagation()}
+        />
         <GripVertical className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-grab text-slate-300" />
         <Link
           href={`/dashboard/issues/${issue.id}`}
@@ -317,10 +514,17 @@ function IssueCard({
           {type}
         </span>
         <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600">
-          <span className={`h-1.5 w-1.5 rounded-full ${priorityDot(issue.priority)}`} />
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${priorityDot(issue.priority)}`}
+          />
           {priorityLabel(issue.priority)}
         </span>
       </div>
+      {issue.linkedEntity?.label ? (
+        <div className="mb-1 truncate text-[10px] text-blue-700">
+          ↗ {issue.linkedEntity.type}: {issue.linkedEntity.label}
+        </div>
+      ) : null}
       <div className="flex items-center justify-between text-[10px] text-slate-500">
         <span className="truncate">{assigneeLabel(issue)}</span>
         <span>{formatIssueDate(issue.updatedAt).split(",")[0]}</span>
@@ -332,9 +536,21 @@ function IssueCard({
 function BacklogView({
   issues,
   onCreate,
+  selected,
+  toggleSelect,
+  selectAll,
+  backlogDragId,
+  setBacklogDragId,
+  onBacklogDrop,
 }: {
   issues: Issue[];
   onCreate: () => void;
+  selected: Set<string>;
+  toggleSelect: (id: string) => void;
+  selectAll: () => void;
+  backlogDragId: string | null;
+  setBacklogDragId: (id: string | null) => void;
+  onBacklogDrop: (targetId: string) => void;
 }) {
   if (issues.length === 0) {
     return (
@@ -360,21 +576,52 @@ function BacklogView({
       data-ink-on-light
       className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
     >
-      <table className="w-full min-w-[900px] text-left text-sm">
+      <table className="w-full min-w-[960px] text-left text-sm">
         <thead className="border-b border-slate-100 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
           <tr>
-            <th className="px-4 py-3 w-24">Key</th>
+            <th className="px-3 py-3 w-10">
+              <input
+                type="checkbox"
+                checked={
+                  issues.length > 0 && selected.size === issues.length
+                }
+                onChange={selectAll}
+              />
+            </th>
+            <th className="px-2 py-3 w-8" />
+            <th className="px-4 py-3 w-28">Key</th>
             <th className="px-4 py-3">Title</th>
             <th className="px-4 py-3 w-28">Type</th>
             <th className="px-4 py-3 w-24">Priority</th>
             <th className="px-4 py-3 w-28">Status</th>
             <th className="px-4 py-3 w-32">Assignee</th>
+            <th className="px-4 py-3 w-36">Linked</th>
             <th className="px-4 py-3 w-36">Updated</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {issues.map((issue) => (
-            <tr key={issue.id} className="hover:bg-slate-50/80">
+            <tr
+              key={issue.id}
+              draggable
+              onDragStart={() => setBacklogDragId(issue.id)}
+              onDragEnd={() => setBacklogDragId(null)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => onBacklogDrop(issue.id)}
+              className={`hover:bg-slate-50/80 ${
+                backlogDragId === issue.id ? "opacity-50" : ""
+              } ${selected.has(issue.id) ? "bg-blue-50/40" : ""}`}
+            >
+              <td className="px-3 py-3">
+                <input
+                  type="checkbox"
+                  checked={selected.has(issue.id)}
+                  onChange={() => toggleSelect(issue.id)}
+                />
+              </td>
+              <td className="px-1 py-3 text-slate-300">
+                <GripVertical className="h-4 w-4 cursor-grab" />
+              </td>
               <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-600">
                 {issue.issueId}
               </td>
@@ -423,6 +670,19 @@ function BacklogView({
               <td className="px-4 py-3 text-xs text-slate-600">
                 {assigneeLabel(issue)}
               </td>
+              <td className="px-4 py-3 text-xs">
+                {issue.linkedEntity?.id ? (
+                  <Link
+                    href={crmHref(issue.linkedEntity)}
+                    className="font-medium text-blue-700 hover:underline"
+                  >
+                    {issue.linkedEntity.label ||
+                      `${issue.linkedEntity.type} ${issue.linkedEntity.id.slice(0, 8)}`}
+                  </Link>
+                ) : (
+                  <span className="text-slate-400">—</span>
+                )}
+              </td>
               <td className="px-4 py-3 text-xs text-slate-500">
                 {formatIssueDate(issue.updatedAt)}
               </td>
@@ -430,6 +690,20 @@ function BacklogView({
           ))}
         </tbody>
       </table>
+      <div className="border-t border-slate-100 bg-slate-50 px-4 py-2 text-[11px] text-slate-500">
+        Drag rows to reorder backlog · multi-select for bulk status
+      </div>
     </div>
   );
+}
+
+function crmHref(entity: { type: string; id: string }) {
+  if (entity.type === "candidate")
+    return `/dashboard/candidates/${entity.id}`;
+  if (entity.type === "job") return `/dashboard/jobs/${entity.id}`;
+  if (entity.type === "company")
+    return `/dashboard/companies/${entity.id}`;
+  if (entity.type === "contact")
+    return `/dashboard/contact-info/${entity.id}`;
+  return "#";
 }

@@ -23,8 +23,31 @@ import {
 
 const MAX_HISTORY = 50;
 
-function generateIssueId(existingCount: number): string {
-  return `ISS-${String(existingCount + 1).padStart(3, "0")}`;
+function generateIssueId(existingCount: number, prefix = "ISS"): string {
+  const p = String(prefix || "ISS")
+    .replace(/[^A-Za-z0-9]/g, "")
+    .toUpperCase()
+    .slice(0, 8) || "ISS";
+  return `${p}-${String(existingCount + 1).padStart(3, "0")}`;
+}
+
+/** Lexicographic rank between neighbors (simple fractional indexing). */
+export function rankBetween(before?: string | null, after?: string | null): string {
+  const a = before || "";
+  const b = after || "";
+  if (!a && !b) return "m";
+  if (!a) return "a" + b;
+  if (!b) return a + "m";
+  // Find first differing char and pick mid letter when possible
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  const ca = a.charCodeAt(i) || 97;
+  const cb = b.charCodeAt(i) || 122;
+  if (cb - ca > 1) {
+    const mid = String.fromCharCode(Math.floor((ca + cb) / 2));
+    return a.slice(0, i) + mid;
+  }
+  return a + "m";
 }
 
 async function countIssuesForTenant(tenantId: string): Promise<number> {
@@ -34,6 +57,19 @@ async function countIssuesForTenant(tenantId: string): Promise<number> {
     { ":tenantId": tenantId }
   );
   return result.items.length || 0;
+}
+
+/** Highest numeric suffix among keys with this prefix (for stable next number). */
+function nextIssueNumber(items: any[], prefix: string): number {
+  const p = prefix.toUpperCase() + "-";
+  let max = 0;
+  for (const it of items) {
+    const key = String(it.issueId || "");
+    if (!key.toUpperCase().startsWith(p)) continue;
+    const n = parseInt(key.slice(p.length), 10);
+    if (!Number.isNaN(n) && n > max) max = n;
+  }
+  return max + 1;
 }
 
 function normalizeAttachment(raw: any): IssueAttachment {
@@ -178,13 +214,23 @@ export const issueRepository = {
   async create(
     data: CreateIssueInput,
     tenantId: string,
-    actor?: HistoryActor
+    actor?: HistoryActor,
+    opts?: { keyPrefix?: string }
   ): Promise<Issue> {
     const id = uuidv4();
     const now = new Date().toISOString();
 
-    const count = await countIssuesForTenant(tenantId);
-    const issueId = data.issueId || generateIssueId(count);
+    const prefix = opts?.keyPrefix || "ISS";
+    let issueId = data.issueId;
+    if (!issueId) {
+      const existing = await queryItems<any>(
+        tableNames.issues,
+        "tenant_id = :tenantId",
+        { ":tenantId": tenantId }
+      );
+      const num = nextIssueNumber(existing.items || [], prefix);
+      issueId = generateIssueId(num - 1, prefix);
+    }
 
     const assigneeName =
       data.assigneeName ||
@@ -298,13 +344,71 @@ export const issueRepository = {
           (i.tags || []).some((t) => t.toLowerCase().includes(q))
       );
     }
+    if (f.mine) {
+      const uid = (f.mineUserId || "").toLowerCase();
+      const email = (f.mineEmail || "").toLowerCase();
+      const name = (f.mineName || "").toLowerCase();
+      items = items.filter((i) => {
+        const an = String(i.assigneeName || "").toLowerCase();
+        const aid = String(i.assigneeId || "").toLowerCase();
+        const assigned = (i.assignedTo || []).map((x) => String(x).toLowerCase());
+        if (uid && (aid === uid || assigned.includes(uid))) return true;
+        if (email && (an.includes(email) || assigned.some((x) => x.includes(email))))
+          return true;
+        if (name && (an.includes(name) || assigned.some((x) => x.includes(name))))
+          return true;
+        return false;
+      });
+    }
 
-    items.sort(
-      (a, b) =>
+    // Rank first when present, else updatedAt
+    items.sort((a, b) => {
+      const ra = a.rank || "";
+      const rb = b.rank || "";
+      if (ra && rb && ra !== rb) return ra < rb ? -1 : 1;
+      if (ra && !rb) return -1;
+      if (!ra && rb) return 1;
+      return (
         new Date(b.updatedAt || b.createdAt).getTime() -
         new Date(a.updatedAt || a.createdAt).getTime()
-    );
+      );
+    });
     return items;
+  },
+
+  /**
+   * Reorder issues by explicit id list (backlog drag). Assigns sequential ranks.
+   */
+  async reorder(
+    tenantId: string,
+    orderedIds: string[]
+  ): Promise<Issue[]> {
+    const updates: Issue[] = [];
+    for (let i = 0; i < orderedIds.length; i++) {
+      const id = orderedIds[i];
+      const rank = String(i).padStart(8, "0");
+      const issue = await this.update(id, { rank } as Partial<CreateIssueInput>, tenantId);
+      if (issue) updates.push(issue);
+    }
+    return updates;
+  },
+
+  /**
+   * Bulk status change for selected ids.
+   */
+  async bulkUpdateStatus(
+    tenantId: string,
+    ids: string[],
+    status: string,
+    actor?: HistoryActor
+  ): Promise<{ updated: number; issues: Issue[] }> {
+    const st = normalizeIssueStatus(status);
+    const issues: Issue[] = [];
+    for (const id of ids) {
+      const issue = await this.updateStatus(id, st, tenantId, actor);
+      if (issue) issues.push(issue);
+    }
+    return { updated: issues.length, issues };
   },
 
   async update(

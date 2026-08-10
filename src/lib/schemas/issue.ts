@@ -142,6 +142,19 @@ export interface IssueListFilters {
   q?: string;
   /** my = assigned to current user */
   mine?: boolean;
+  /** Set by server when mine=true */
+  mineUserId?: string;
+  mineEmail?: string;
+  mineName?: string;
+}
+
+/** Build display key prefix from tenant subdomain (e.g. ryvan → RYVAN) */
+export function issueKeyPrefix(subdomainOrName?: string | null): string {
+  const raw = String(subdomainOrName || "ISS")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase()
+    .slice(0, 8);
+  return raw || "ISS";
 }
 
 /** Normalize legacy type labels to modern ones for display */

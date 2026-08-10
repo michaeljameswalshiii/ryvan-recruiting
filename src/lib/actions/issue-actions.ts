@@ -45,6 +45,18 @@ export async function createIssueAction(data: CreateIssueInput) {
 
   try {
     const actor = await actorFromSession();
+    let keyPrefix = "ISS";
+    try {
+      const { getTenantById } = await import(
+        "@/lib/db/repositories/tenant-repository"
+      );
+      const { issueKeyPrefix } = await import("@/lib/schemas/issue");
+      const tenant = await getTenantById(tenantId);
+      keyPrefix = issueKeyPrefix(tenant?.subdomain || tenant?.name);
+    } catch {
+      /* keep ISS */
+    }
+
     const issue = await issueRepository.create(
       {
         ...data,
@@ -53,7 +65,8 @@ export async function createIssueAction(data: CreateIssueInput) {
         reporterId: data.reporterId || actor.byId,
       },
       tenantId,
-      actor
+      actor,
+      { keyPrefix }
     );
     revalidatePath("/dashboard/issues");
     return { issue };
@@ -74,11 +87,58 @@ export async function listIssuesAction(
     const filters: IssueListFilters =
       typeof statusOrFilters === "string"
         ? { status: statusOrFilters }
-        : statusOrFilters || {};
+        : { ...(statusOrFilters || {}) };
+
+    if (filters.mine) {
+      const actor = await actorFromSession();
+      filters.mineUserId = actor.byId;
+      filters.mineEmail = actor.email;
+      filters.mineName = actor.byName;
+    }
+
     const issues = await issueRepository.listByTenant(tenantId, filters);
     return { issues };
   } catch (error: any) {
     return { error: error?.message || "Failed to list issues" };
+  }
+}
+
+export async function reorderIssuesAction(orderedIds: string[]) {
+  const tenantId = await getSessionTenantId();
+  if (!tenantId) return { error: "Unauthorized" };
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    return { error: "orderedIds required" };
+  }
+  try {
+    const issues = await issueRepository.reorder(tenantId, orderedIds);
+    revalidatePath("/dashboard/issues");
+    return { issues, success: true };
+  } catch (error: any) {
+    return { error: error?.message || "Failed to reorder" };
+  }
+}
+
+export async function bulkUpdateIssueStatusAction(
+  ids: string[],
+  status: string
+) {
+  const tenantId = await getSessionTenantId();
+  if (!tenantId) return { error: "Unauthorized" };
+  if (!Array.isArray(ids) || !ids.length) {
+    return { error: "Select at least one issue" };
+  }
+  try {
+    const actor = await actorFromSession();
+    const result = await issueRepository.bulkUpdateStatus(
+      tenantId,
+      ids,
+      status,
+      actor
+    );
+    revalidatePath("/dashboard/issues");
+    return result;
+  } catch (error: any) {
+    return { error: error?.message || "Failed to bulk update" };
   }
 }
 

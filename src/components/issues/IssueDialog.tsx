@@ -37,6 +37,9 @@ function buildForm(initialData: Partial<CreateIssueInput> = {}) {
       '',
     environment: initialData.environment || ('Dev' as const),
     tags: initialData.tags || [],
+    linkedType: initialData.linkedEntity?.type || "",
+    linkedId: initialData.linkedEntity?.id || "",
+    linkedLabel: initialData.linkedEntity?.label || "",
     attachments: (initialData.attachments || []) as Array<{
       id?: string;
       url: string;
@@ -117,6 +120,17 @@ export default function IssueDialog({
     try {
       // Omit empty optional strings so DynamoDB update stays valid
       const assigneeName = (form as any).assigneeName?.trim() || undefined;
+      const linkedType = (form as any).linkedType as string;
+      const linkedId = String((form as any).linkedId || "").trim();
+      const linkedLabel = String((form as any).linkedLabel || "").trim();
+      const linkedEntity =
+        linkedType && linkedId
+          ? {
+              type: linkedType as "candidate" | "job" | "company" | "contact",
+              id: linkedId,
+              label: linkedLabel || undefined,
+            }
+          : undefined;
       const payload = {
         ...form,
         title: form.title.trim(),
@@ -126,7 +140,12 @@ export default function IssueDialog({
         reportedBy: form.reportedBy?.trim() || undefined,
         assigneeName,
         assignedTo: assigneeName ? [assigneeName] : form.assignedTo,
+        linkedEntity,
       } as CreateIssueInput;
+      // strip UI-only fields
+      delete (payload as any).linkedType;
+      delete (payload as any).linkedId;
+      delete (payload as any).linkedLabel;
 
       await onSubmit(payload);
       // Success toast is handled by mutation hooks when used from list/detail
@@ -247,6 +266,49 @@ export default function IssueDialog({
             className="w-full border rounded-md px-3 py-2 h-24"
             placeholder="Detailed description..."
           />
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+          <label className="text-sm font-medium text-slate-800">
+            Link CRM record (optional)
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            <select
+              value={(form as any).linkedType || ""}
+              onChange={(e) =>
+                setForm({ ...form, linkedType: e.target.value } as any)
+              }
+              className="border rounded-md px-2 py-2 text-sm"
+            >
+              <option value="">None</option>
+              <option value="candidate">Candidate</option>
+              <option value="job">Job</option>
+              <option value="company">Company</option>
+              <option value="contact">Contact</option>
+            </select>
+            <input
+              value={(form as any).linkedId || ""}
+              onChange={(e) =>
+                setForm({ ...form, linkedId: e.target.value } as any)
+              }
+              className="border rounded-md px-2 py-2 text-sm col-span-1"
+              placeholder="Record id"
+              disabled={!(form as any).linkedType}
+            />
+            <input
+              value={(form as any).linkedLabel || ""}
+              onChange={(e) =>
+                setForm({ ...form, linkedLabel: e.target.value } as any)
+              }
+              className="border rounded-md px-2 py-2 text-sm"
+              placeholder="Label (name)"
+              disabled={!(form as any).linkedType}
+            />
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Paste candidate/job/company id from the URL and an optional display
+            name.
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

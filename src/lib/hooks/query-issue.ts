@@ -12,6 +12,8 @@ import {
   addIssueCommentAction,
   addIssueAttachmentAction,
   removeIssueAttachmentAction,
+  reorderIssuesAction,
+  bulkUpdateIssueStatusAction,
 } from "@/lib/actions/issue-actions";
 import type { CreateIssueInput, Issue, IssueListFilters } from "@/lib/schemas/issue";
 
@@ -271,6 +273,55 @@ export function useRemoveIssueAttachment(issueId: string) {
     },
     onError: (error) => {
       toast.error("Failed to remove attachment", {
+        description:
+          error instanceof Error ? error.message : "Please try again",
+      });
+    },
+  });
+}
+
+export function useReorderIssues() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (orderedIds: string[]) => {
+      const result = await reorderIssuesAction(orderedIds);
+      if (result.error) throw new Error(result.error);
+      return result.issues;
+    },
+    onSuccess: () => {
+      invalidateIssue(queryClient);
+    },
+    onError: (error) => {
+      toast.error("Failed to reorder", {
+        description:
+          error instanceof Error ? error.message : "Please try again",
+      });
+    },
+  });
+}
+
+export function useBulkUpdateIssueStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      ids,
+      status,
+    }: {
+      ids: string[];
+      status: string;
+    }) => {
+      const result = await bulkUpdateIssueStatusAction(ids, status);
+      if (result.error) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: (result) => {
+      toast.success(
+        `Updated ${result.updated || 0} work item${(result.updated || 0) === 1 ? "" : "s"}`
+      );
+      invalidateIssue(queryClient);
+    },
+    onError: (error) => {
+      toast.error("Bulk update failed", {
         description:
           error instanceof Error ? error.message : "Please try again",
       });

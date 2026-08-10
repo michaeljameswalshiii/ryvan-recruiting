@@ -713,9 +713,31 @@ export default function IssueDetailClient({ issueId }: { issueId: string }) {
                   <span>{i.reportedBy || '—'}</span>
                 </Field>
                 <Field label="Assigned to">
-                  {Array.isArray(i.assignedTo) && i.assignedTo.length > 0
-                    ? i.assignedTo.join(', ')
+                  {i.assigneeName ||
+                  (Array.isArray(i.assignedTo) && i.assignedTo.length > 0)
+                    ? i.assigneeName || i.assignedTo!.join(', ')
                     : '—'}
+                </Field>
+                <Field label="CRM link">
+                  {i.linkedEntity?.id ? (
+                    <Link
+                      href={
+                        i.linkedEntity.type === 'candidate'
+                          ? `/dashboard/candidates/${i.linkedEntity.id}`
+                          : i.linkedEntity.type === 'job'
+                            ? `/dashboard/jobs/${i.linkedEntity.id}`
+                            : i.linkedEntity.type === 'company'
+                              ? `/dashboard/companies/${i.linkedEntity.id}`
+                              : `/dashboard/contact-info/${i.linkedEntity.id}`
+                      }
+                      className="font-medium text-blue-700 hover:underline"
+                    >
+                      {i.linkedEntity.label ||
+                        `${i.linkedEntity.type} · ${i.linkedEntity.id.slice(0, 8)}…`}
+                    </Link>
+                  ) : (
+                    '—'
+                  )}
                 </Field>
                 <Field label="Tags">
                   {Array.isArray(i.tags) && i.tags.length > 0 ? (
@@ -819,6 +841,7 @@ export default function IssueDetailClient({ issueId }: { issueId: string }) {
           assigneeName: i.assigneeName || i.assignedTo?.[0],
           environment: i.environment,
           tags: i.tags,
+          linkedEntity: i.linkedEntity,
           attachments: i.attachments,
         }}
         onSubmit={handleUpdate}
