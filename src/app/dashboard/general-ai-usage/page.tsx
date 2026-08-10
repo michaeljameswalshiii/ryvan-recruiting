@@ -45,10 +45,12 @@ import {
   formatThreadWhen,
 } from '@/lib/ai/chat-history';
 import {
+  AI_CONSECUTIVE_FAIL_LIMIT,
   AI_UI_RENDER_MESSAGES,
   AI_UI_STORE_MESSAGES,
   buildSlimApiHistory,
   clampMessageContent,
+  compactUiMessages,
   downloadFromMeta,
   materializeGeneratedFiles,
   revokeGeneratedFileUrls,
@@ -56,6 +58,7 @@ import {
   stripAttachmentBodies,
   type GeneratedFileMeta,
 } from '@/lib/ai/chat-client-perf';
+import { AiErrorBoundary } from '@/components/ai/AiErrorBoundary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -291,14 +294,14 @@ function buildUserContent(text: string, files: ChatAttachment[]): string {
   const body =
     text.trim() ||
     'Please review the attached file(s) and provide a useful analysis.';
-  return clampMessageContent(`${body}\n\n${blocks.join('\n\n')}`, 30_000);
+  return clampMessageContent(`${body}\n\n${blocks.join('\n\n')}`, 14_000);
 }
 
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
-export default function GeneralAiUsagePage() {
+function GeneralAiUsagePageInner() {
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -390,6 +393,11 @@ export default function GeneralAiUsagePage() {
   threadCreatedAtRef.current = threadCreatedAt;
   const historyUserIdRef = useRef(historyUserId);
   historyUserIdRef.current = historyUserId;
+  /** Cancel in-flight /api/bedrock when a new send starts or chat resets */
+  const abortRef = useRef<AbortController | null>(null);
+  /** Ignore stale responses if a newer request superseded this one */
+  const requestGenRef = useRef(0);
+  const failStreakRef = useRef(0);
 
   const refreshHistoryList = useCallback(() => {
     setHistoryThreads(listChatHistory(historyUserIdRef.current));
@@ -438,14 +446,28 @@ export default function GeneralAiUsagePage() {
   const persistCurrentThread = useCallback(() => {
     const msgs = messagesRef.current;
     if (!msgs.length) return;
-    saveChatThread({
-      threadId: threadIdRef.current,
-      messages: msgs as unknown as Record<string, unknown>[],
-      userId: historyUserIdRef.current,
-      surface: 'general',
-      createdAt: threadCreatedAtRef.current,
-    });
-    refreshHistoryList();
+    try {
+      // Never persist blob URLs / huge bodies
+      const slim = compactUiMessages(msgs).map((m) => ({
+        ...m,
+        generatedFiles: m.generatedFiles?.map((f) => ({
+          fileName: f.fileName,
+          mimeType: f.mimeType,
+          sizeBytes: f.sizeBytes,
+          format: f.format,
+        })),
+      }));
+      saveChatThread({
+        threadId: threadIdRef.current,
+        messages: slim as unknown as Record<string, unknown>[],
+        userId: historyUserIdRef.current,
+        surface: 'general',
+        createdAt: threadCreatedAtRef.current,
+      });
+      refreshHistoryList();
+    } catch (e) {
+      console.warn('[General AI] persist thread failed', e);
+    }
   }, [refreshHistoryList]);
 
   useEffect(() => {
@@ -470,13 +492,24 @@ export default function GeneralAiUsagePage() {
   }, [messages, isLoading]);
 
   const startNewChat = useCallback(() => {
-    if (isLoading) return;
-    persistCurrentThread();
+    // Allow recover even while loading — abort the in-flight request
+    try {
+      abortRef.current?.abort();
+    } catch {
+      /* ignore */
+    }
+    abortRef.current = null;
+    requestGenRef.current += 1;
+    failStreakRef.current = 0;
+    if (!isLoading) {
+      persistCurrentThread();
+    }
     revokeGeneratedFileUrls(messagesRef.current);
     setMessages([]);
     setInput('');
     setPendingFiles([]);
     setLastMeta(null);
+    setIsLoading(false);
     setThreadId(makeThreadId());
     setThreadCreatedAt(nowIso());
     toast.success('New chat started — prior chat is in History');
@@ -608,6 +641,16 @@ export default function GeneralAiUsagePage() {
     const text = (rawText ?? input).trim();
     if ((!text && pendingFiles.length === 0) || isLoading) return;
 
+    // Cancel any previous in-flight request (prevents race crashes)
+    try {
+      abortRef.current?.abort();
+    } catch {
+      /* ignore */
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const gen = ++requestGenRef.current;
+
     const filesForTurn = [...pendingFiles];
     const displayContent =
       text ||
@@ -620,7 +663,7 @@ export default function GeneralAiUsagePage() {
       id: `u-${Date.now()}`,
       role: 'user',
       // Keep full text (with attachments) so revisions still see file context
-      content: apiContent,
+      content: clampMessageContent(apiContent, 14_000),
       displayContent,
       timestamp: nowIso(),
       attachments: filesForTurn.map((f) => ({
@@ -629,14 +672,48 @@ export default function GeneralAiUsagePage() {
       })),
     };
 
-    const prior = [...messages, userMessage];
+    const prior = compactUiMessages([...messagesRef.current, userMessage]);
     setMessages(prior);
     setInput('');
     setPendingFiles([]);
     setIsLoading(true);
 
     // Bounded multi-turn payload — strip old attachment bodies, cap size
-    const historyForApi = buildSlimApiHistory(prior);
+    let historyForApi = buildSlimApiHistory(prior);
+    // Always end with the latest user turn
+    if (
+      !historyForApi.length ||
+      historyForApi[historyForApi.length - 1]?.role !== 'user'
+    ) {
+      historyForApi = [
+        ...historyForApi,
+        {
+          role: 'user' as const,
+          content: clampMessageContent(userMessage.content, 8_000),
+        },
+      ];
+    }
+
+    const pushErrorAssistant = (content: string) => {
+      failStreakRef.current += 1;
+      setMessages((prev) =>
+        compactUiMessages([
+          ...prev,
+          {
+            id: `a-${Date.now()}`,
+            role: 'assistant' as const,
+            content: clampMessageContent(content, 4_000),
+            timestamp: nowIso(),
+          },
+        ])
+      );
+      if (failStreakRef.current >= AI_CONSECUTIVE_FAIL_LIMIT) {
+        toast.error(
+          'AI hit repeated errors. Start a New chat for best stability.',
+          { duration: 6_000 }
+        );
+      }
+    };
 
     try {
       // CRM tools need Claude tool_use; Nova uses Converse chat only.
@@ -647,9 +724,8 @@ export default function GeneralAiUsagePage() {
         platformModel === 'grok-4.3' ||
         platformModel === 'sonnet';
 
-      // Client-side abort so "Failed to fetch" becomes a clear timeout message
-      const controller = new AbortController();
-      const abortMs = 90_000;
+      // Shorter client timeout — server maxDuration is 60s; fail gracefully
+      const abortMs = 75_000;
       const abortTimer = setTimeout(() => controller.abort(), abortMs);
 
       let res: Response;
@@ -672,6 +748,9 @@ export default function GeneralAiUsagePage() {
         clearTimeout(abortTimer);
       }
 
+      // Superseded by a newer send / New chat
+      if (gen !== requestGenRef.current) return;
+
       const { data: result, errorMessage, nonJson } =
         await parseAiFetchResponse(res);
       if (nonJson) {
@@ -682,26 +761,16 @@ export default function GeneralAiUsagePage() {
       }
 
       if (errorMessage || result.error) {
-        setMessages((prev) => {
-          const next = [
-            ...prev,
-            {
-              id: `a-${Date.now()}`,
-              role: 'assistant' as const,
-              content: clampMessageContent(
-                errorMessage ||
-                  String(
-                    result.message ||
-                      result.error ||
-                      `Request failed (${res.status})`
-                  )
-              ),
-              timestamp: nowIso(),
-            },
-          ];
-          return next.slice(-AI_UI_STORE_MESSAGES);
-        });
+        pushErrorAssistant(
+          errorMessage ||
+            String(
+              result.message ||
+                result.error ||
+                `Request failed (${res.status})`
+            )
+        );
       } else {
+        failStreakRef.current = 0;
         const toolsUsed: string[] = Array.isArray(result.toolsUsed)
           ? (result.toolsUsed as string[])
           : [];
@@ -711,12 +780,18 @@ export default function GeneralAiUsagePage() {
           (typeof result.modelLabel === 'string' && result.modelLabel) ||
           labelFromModelId(modelId);
         setLastMeta({ model: modelId, modelLabel, toolsUsed });
-        // Convert base64 → blob URLs immediately; never keep base64 in state
-        const generatedFiles = materializeGeneratedFiles(
-          Array.isArray(result.generatedFiles)
-            ? (result.generatedFiles as Array<Record<string, unknown>>)
-            : []
-        );
+
+        let generatedFiles: GeneratedFile[] = [];
+        try {
+          generatedFiles = materializeGeneratedFiles(
+            Array.isArray(result.generatedFiles)
+              ? (result.generatedFiles as Array<Record<string, unknown>>)
+              : []
+          );
+        } catch (e) {
+          console.warn('[General AI] file materialize failed', e);
+        }
+
         const toolCost =
           typeof result.estimatedToolCostUsd === 'number'
             ? result.estimatedToolCostUsd
@@ -729,37 +804,19 @@ export default function GeneralAiUsagePage() {
             : toolCost != null || modelCost != null
               ? (modelCost || 0) + (toolCost || 0)
               : undefined;
-        setMessages((prev) => {
-          // After the turn is stored, shrink prior attachment bodies in state
-          // so memory doesn't grow unbounded across the session.
-          const compacted = prev.map((m, i) => {
-            if (i === prev.length - 1 && m.role === 'user') {
-              // Keep latest user turn's attachment text (already capped for API)
-              return {
-                ...m,
-                content: clampMessageContent(m.content, 12_000),
-              };
-            }
-            if (m.role === 'user' && /--- Attached file:/.test(m.content)) {
-              return {
-                ...m,
-                content: clampMessageContent(stripAttachmentBodies(m.content)),
-              };
-            }
-            if (m.role === 'assistant' && m.content.length > 8_000) {
-              return { ...m, content: clampMessageContent(m.content, 8_000) };
-            }
-            return m;
-          });
-          const next = [
-            ...compacted,
+
+        if (gen !== requestGenRef.current) return;
+
+        setMessages((prev) =>
+          compactUiMessages([
+            ...prev,
             {
               id: `a-${Date.now()}`,
               role: 'assistant' as const,
               content: clampMessageContent(
                 (typeof result.response === 'string' && result.response) ||
                   'No response generated.',
-                12_000
+                8_000
               ),
               timestamp: nowIso(),
               toolsUsed,
@@ -771,9 +828,9 @@ export default function GeneralAiUsagePage() {
               estimatedToolCostUsd: toolCost,
               estimatedTotalCostUsd: totalCost,
             },
-          ];
-          return next.slice(-AI_UI_STORE_MESSAGES);
-        });
+          ])
+        );
+
         // CRM tools write on the server — refresh lists after idle (don't block nav)
         const crmMutated = result.crmMutated === true;
         if (
@@ -784,22 +841,25 @@ export default function GeneralAiUsagePage() {
             forceClients: toolsUsed.some((t) =>
               /company|contact|client/i.test(t)
             ),
-            delayMs: 100,
+            delayMs: 150,
           });
         }
       }
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `a-${Date.now()}`,
-          role: 'assistant',
-          content: explainAiFetchError(err),
-          timestamp: nowIso(),
-        },
-      ]);
+      if (gen !== requestGenRef.current) return;
+      // Abort from New chat — don't toast as error
+      if (
+        err instanceof DOMException &&
+        (err.name === 'AbortError' || err.message.includes('aborted'))
+      ) {
+        return;
+      }
+      pushErrorAssistant(explainAiFetchError(err));
     } finally {
-      setIsLoading(false);
+      if (gen === requestGenRef.current) {
+        setIsLoading(false);
+        if (abortRef.current === controller) abortRef.current = null;
+      }
     }
   };
 
@@ -1445,5 +1505,24 @@ export default function GeneralAiUsagePage() {
         onClearAll={handleClearHistory}
       />
     </div>
+  );
+}
+
+/** Public page export — structural error boundary so multi-turn bugs don't white-screen. */
+export default function GeneralAiUsagePage() {
+  return (
+    <AiErrorBoundary
+      surface="general-ai-usage"
+      onReset={() => {
+        try {
+          sessionStorage.removeItem(LEGACY_SESSION_KEY);
+        } catch {
+          /* ignore */
+        }
+        window.location.href = '/dashboard/general-ai-usage';
+      }}
+    >
+      <GeneralAiUsagePageInner />
+    </AiErrorBoundary>
   );
 }

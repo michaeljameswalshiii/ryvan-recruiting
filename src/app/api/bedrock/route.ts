@@ -1682,24 +1682,48 @@ Rules:
   if (!toolContext.generatedFiles) toolContext.generatedFiles = [];
   const toolResultSnippets: Array<{ tool: string; content: string }> = [];
 
-  // Prior turns (user/assistant text only), then current user query
+  // Prior turns (user/assistant text only), then current user query.
+  // Hard caps prevent multi-turn tool loops from blowing Vercel maxDuration.
+  const historyCap = options?.agentMode ? 12 : 8;
   const prior = (options?.history || [])
     .filter((m) => m.role === "user" || m.role === "assistant")
     .filter((m) => typeof m.content === "string" && m.content.trim().length > 0)
-    .slice(-20)
-    .map((m) => ({
-      role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
-      content: m.content,
-    }));
+    .slice(-historyCap)
+    .map((m) => {
+      let content = String(m.content || "");
+      if (content.length > 4000) {
+        content =
+          content.slice(0, 2800) +
+          `\n\n…[truncated ${content.length - 3600} chars]…\n\n` +
+          content.slice(-800);
+      }
+      return {
+        role: (m.role === "assistant" ? "assistant" : "user") as
+          | "user"
+          | "assistant",
+        content,
+      };
+    });
 
   let messages: ClaudeMessage[] = [
     ...prior,
-    { role: "user", content: query },
+    {
+      role: "user",
+      content:
+        query.length > 12_000
+          ? query.slice(0, 10_000) +
+            `\n\n…[truncated ${query.length - 11_000} chars]…\n\n` +
+            query.slice(-1_000)
+          : query,
+    },
   ];
 
+  // General chat: fewer tool iterations (crash/timeout prevention).
+  // Agent desk can go higher for multi-step goals.
+  const defaultIters = options?.agentMode ? 8 : 4;
   const MAX_ITERATIONS = Math.min(
-    15,
-    Math.max(5, options?.maxIterations ?? (options?.agentMode ? 10 : 5))
+    12,
+    Math.max(3, options?.maxIterations ?? defaultIters)
   );
   let iteration = 0;
 
@@ -2131,6 +2155,33 @@ try {
 
     // Validate messages exist
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return NextResponse.json(
+        { error: "messages array is required and cannot be empty" },
+        { status: 400 }
+      );
+    }
+
+    // Structural hard-cap on inbound history (defense in depth vs client bugs).
+    // Prevents payload-too-large / function timeout after several tool turns.
+    messages = messages
+      .filter(
+        (m: any) =>
+          m &&
+          (m.role === "user" || m.role === "assistant") &&
+          typeof m.content === "string"
+      )
+      .slice(-10)
+      .map((m: any) => {
+        let content = String(m.content || "");
+        if (content.length > 6_000) {
+          content =
+            content.slice(0, 4_200) +
+            `\n\n…[server-truncated ${content.length - 5_200} chars]…\n\n` +
+            content.slice(-1_000);
+        }
+        return { role: m.role, content };
+      });
+    if (messages.length === 0) {
       return NextResponse.json(
         { error: "messages array is required and cannot be empty" },
         { status: 400 }

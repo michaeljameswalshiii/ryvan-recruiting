@@ -15,20 +15,28 @@ import {
   type CrmInvalidateOptions,
 } from '@/lib/hooks/invalidate-crm-cache';
 
+/**
+ * Multi-turn stability budgets (crash prevention).
+ * Tool-heavy chats grow quickly; keep payloads small so Vercel/Bedrock
+ * don't time out and Chrome doesn't OOM after a few turns.
+ */
 /** Max turns sent to /api/bedrock (keeps request body bounded) */
-export const AI_API_HISTORY_TURNS = 12;
+export const AI_API_HISTORY_TURNS = 8;
 
 /** Cap each message content when building API history */
-export const AI_API_MSG_MAX_CHARS = 6_000;
+export const AI_API_MSG_MAX_CHARS = 4_000;
 
 /** Cap total chars across the history payload */
-export const AI_API_TOTAL_MAX_CHARS = 36_000;
+export const AI_API_TOTAL_MAX_CHARS = 24_000;
 
 /** How many messages to keep fully rendered in the DOM */
-export const AI_UI_RENDER_MESSAGES = 40;
+export const AI_UI_RENDER_MESSAGES = 24;
 
 /** sessionStorage / local message cap */
-export const AI_UI_STORE_MESSAGES = 50;
+export const AI_UI_STORE_MESSAGES = 30;
+
+/** After this many consecutive failures, auto-start a compacted thread */
+export const AI_CONSECUTIVE_FAIL_LIMIT = 2;
 
 const ATTACH_START = /--- Attached file: .+? ---/;
 const ATTACH_BLOCK =
@@ -65,6 +73,64 @@ export type ApiChatMessage = { role: 'user' | 'assistant'; content: string };
  * - strip attachment bodies from older turns (keep latest user attachment full, capped)
  * - per-message + total char caps
  */
+/**
+ * Compact in-memory UI messages after each successful turn so React state
+ * cannot grow without bound (main crash source after “a few interactions”).
+ */
+export function compactUiMessages<
+  T extends {
+    role: string;
+    content: string;
+    generatedFiles?: GeneratedFileMeta[];
+  },
+>(messages: T[], storeCap = AI_UI_STORE_MESSAGES): T[] {
+  const sliced = messages.slice(-storeCap);
+  let lastUserIdx = -1;
+  for (let i = sliced.length - 1; i >= 0; i--) {
+    if (sliced[i].role === "user") {
+      lastUserIdx = i;
+      break;
+    }
+  }
+  // Revoke blob URLs we are about to drop from state
+  for (let i = 0; i < sliced.length; i++) {
+    const m = sliced[i];
+    const keepFiles =
+      m.role === "assistant" &&
+      Array.isArray(m.generatedFiles) &&
+      m.generatedFiles.length > 0 &&
+      i >= sliced.length - 4;
+    if (!keepFiles && m.generatedFiles?.length) {
+      try {
+        revokeGeneratedFileUrls([m]);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return sliced.map((m, i) => {
+    const isLatestUser = m.role === "user" && i === lastUserIdx;
+    let content = String(m.content || "");
+    if (!isLatestUser && /--- Attached file:/.test(content)) {
+      content = clampMessageContent(stripAttachmentBodies(content), 2_000);
+    } else if (m.role === "assistant") {
+      content = clampMessageContent(content, 6_000);
+    } else {
+      content = clampMessageContent(content, isLatestUser ? 10_000 : 4_000);
+    }
+    const keepFiles =
+      m.role === "assistant" &&
+      Array.isArray(m.generatedFiles) &&
+      m.generatedFiles.length > 0 &&
+      i >= sliced.length - 4;
+    return {
+      ...m,
+      content,
+      generatedFiles: keepFiles ? m.generatedFiles : undefined,
+    };
+  });
+}
+
 export function buildSlimApiHistory(
   messages: Array<{ role: string; content?: string }>,
   options?: { maxTurns?: number; maxPerMsg?: number; maxTotal?: number }
