@@ -21,10 +21,7 @@ import {
 } from "lucide-react";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { LinkJobModal } from "@/components/candidate/LinkJobModal";
-import {
-  SendEmailModal,
-  openGmailCompose,
-} from "@/components/email/send-email-modal";
+import { SendEmailModal } from "@/components/email/send-email-modal";
 import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
 import { Button } from "@/components/ui/button";
 import {
@@ -275,38 +272,16 @@ export function CandidateDetailClient({
     };
   }, []);
 
+  const candidateEmail = String(candidate?.email || "").trim();
+
   const handleEmailClick = () => {
-    const to = String(candidate?.email || "").trim();
-    if (!to) {
+    if (!candidateEmail) {
       toast.error("This candidate has no email address");
       return;
     }
-    // Connected Gmail/Outlook → in-app modal. null means still checking → treat as fallback.
-    if (emailConfigured === true) {
-      setEmailOpen(true);
-      return;
-    }
-    // Fallback: Gmail web compose (works when signed into Gmail in the browser)
-    const opened = openGmailCompose(to);
-    if (opened) {
-      toast.success("Opening Gmail…", {
-        description:
-          "Connect Gmail or Outlook in Settings for in-app send + activity logging.",
-      });
-    } else {
-      // Popup blocked — same-tab navigate so something always happens
-      const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}`;
-      toast.message("Popup blocked — opening Gmail in this tab", {
-        description: "Allow popups for this site to open compose in a new tab.",
-        action: {
-          label: "Open Gmail",
-          onClick: () => {
-            window.open(url, "_blank");
-          },
-        },
-      });
-      window.location.assign(url);
-    }
+    // Always open the compose modal so the click is never silent.
+    // Gmail web is available as a real link inside the modal.
+    setEmailOpen(true);
   };
   const salaryRequirement =
     candidate?.salaryRequirements || candidate?.salary_requirements || "";
@@ -703,7 +678,7 @@ export function CandidateDetailClient({
                     </div>
                   )}
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {candidate?.email && (
+                    {candidateEmail && (
                       <button
                         type="button"
                         onClick={handleEmailClick}
@@ -711,7 +686,7 @@ export function CandidateDetailClient({
                         title={
                           emailConfigured
                             ? "Send via your connected email"
-                            : "Open Gmail compose (connect email in Settings for in-app send)"
+                            : "Compose email (Gmail web or connect in Settings)"
                         }
                       >
                         Email
@@ -1386,11 +1361,10 @@ export function CandidateDetailClient({
         open={emailOpen}
         onOpenChange={setEmailOpen}
         candidate={
-          candidate?.email
-            ? { email: String(candidate.email), name }
-            : null
+          candidateEmail ? { email: candidateEmail, name } : null
         }
         fromLabel={emailFromLabel}
+        allowInAppSend={emailConfigured === true}
         onSend={async (subject, body) => {
           const res = await fetch("/api/email/send", {
             method: "POST",

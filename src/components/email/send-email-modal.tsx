@@ -1,17 +1,11 @@
 "use client";
 
 import * as React from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Send, Loader2, Mail, ExternalLink } from "lucide-react";
+import { Send, Loader2, Mail, ExternalLink, X } from "lucide-react";
 
 export interface CandidateInfo {
   email: string;
@@ -29,6 +23,8 @@ interface SendEmailModalProps {
   onSend?: (subject: string, body: string) => Promise<void>;
   /** Shown under the form (e.g. "Sending as you@company.com via Gmail") */
   fromLabel?: string;
+  /** When false, disable in-app Send and push user to Gmail web */
+  allowInAppSend?: boolean;
 }
 
 const EMAIL_TEMPLATES = [
@@ -69,8 +65,7 @@ export function buildGmailComposeUrl(
 
 /**
  * Open Gmail web compose in a new tab.
- * Returns true if a new window/tab was opened; false if the browser blocked it.
- * Call this synchronously from a click handler for best chance of not being blocked.
+ * Prefer a real <a target="_blank"> when possible — more reliable than window.open.
  */
 export function openGmailCompose(
   to: string,
@@ -78,7 +73,6 @@ export function openGmailCompose(
   body?: string
 ): boolean {
   const url = buildGmailComposeUrl(to, subject, body);
-  // Do not pass a features string — that makes browsers treat it as a popup and block it.
   const win = window.open(url, "_blank");
   if (win) {
     try {
@@ -88,7 +82,6 @@ export function openGmailCompose(
     }
     return true;
   }
-  // Popup blocked: try a programmatic anchor (still in user-gesture stack).
   try {
     const a = document.createElement("a");
     a.href = url;
@@ -110,6 +103,7 @@ export function SendEmailModal({
   candidate,
   onSend,
   fromLabel,
+  allowInAppSend = true,
 }: SendEmailModalProps) {
   const [subject, setSubject] = React.useState("");
   const [message, setMessage] = React.useState("");
@@ -125,6 +119,24 @@ export function SendEmailModal({
       setError("");
     }
   }, [candidate, open]);
+
+  // Escape to close
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onOpenChange(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onOpenChange]);
+
+  const gmailHref = candidate?.email
+    ? buildGmailComposeUrl(
+        candidate.email,
+        subject || undefined,
+        message || undefined
+      )
+    : "#";
 
   const handleTemplateSelect = (templateId: string) => {
     const template = EMAIL_TEMPLATES.find((t) => t.id === templateId);
@@ -153,6 +165,12 @@ export function SendEmailModal({
   const handleSend = async () => {
     if (!candidate || !subject || !message) {
       setError("Please fill in subject and message");
+      return;
+    }
+    if (!allowInAppSend) {
+      setError(
+        "No email account connected. Use Open in Gmail, or connect Gmail/Outlook in Settings."
+      );
       return;
     }
 
@@ -185,41 +203,46 @@ export function SendEmailModal({
       setTimeout(() => onOpenChange(false), 1500);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to send email. Please try again."
+        err instanceof Error
+          ? err.message
+          : "Failed to send email. Please try again."
       );
     } finally {
       setSending(false);
     }
   };
 
-  const openInGmail = () => {
-    if (!candidate?.email) return;
-    const opened = openGmailCompose(
-      candidate.email,
-      subject || undefined,
-      message || undefined
-    );
-    if (!opened) {
-      window.location.assign(
-        buildGmailComposeUrl(
-          candidate.email,
-          subject || undefined,
-          message || undefined
-        )
-      );
-    }
-  };
-
-  if (!candidate) return null;
+  if (!open || !candidate) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Send Email to Candidate</DialogTitle>
-        </DialogHeader>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={() => onOpenChange(false)}
+        aria-hidden
+      />
 
-        <div className="space-y-6">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="send-email-title"
+        className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl border border-gray-200 bg-white text-slate-900 shadow-xl"
+      >
+        <div className="flex items-center justify-between border-b border-gray-200 bg-slate-50 px-6 py-4">
+          <h2 id="send-email-title" className="text-lg font-semibold">
+            Send Email to Candidate
+          </h2>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-6">
           {sent ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
@@ -236,15 +259,21 @@ export function SendEmailModal({
           ) : (
             <>
               <div className="space-y-2">
-                <Label htmlFor="to">To</Label>
+                <Label htmlFor="send-email-to">To</Label>
                 <Input
-                  id="to"
+                  id="send-email-to"
                   value={`${candidate.name || ""} <${candidate.email}>`.trim()}
                   disabled
-                  className="bg-muted"
+                  className="bg-slate-50"
                 />
-                {fromLabel && (
-                  <p className="text-xs text-muted-foreground">{fromLabel}</p>
+                {fromLabel ? (
+                  <p className="text-xs text-slate-500">{fromLabel}</p>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    No in-app email connected — use{" "}
+                    <strong>Open in Gmail</strong>, or connect Gmail/Outlook in
+                    Settings.
+                  </p>
                 )}
               </div>
 
@@ -256,7 +285,7 @@ export function SendEmailModal({
                       key={template.id}
                       type="button"
                       onClick={() => handleTemplateSelect(template.id)}
-                      className="rounded-full border border-border px-3 py-1.5 text-xs transition-colors hover:bg-accent"
+                      className="rounded-full border border-slate-200 px-3 py-1.5 text-xs transition-colors hover:bg-slate-100"
                     >
                       {template.label}
                     </button>
@@ -265,50 +294,52 @@ export function SendEmailModal({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="subject">Subject</Label>
+                <Label htmlFor="send-email-subject">Subject</Label>
                 <Input
-                  id="subject"
+                  id="send-email-subject"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
                   placeholder="Enter subject..."
+                  className="bg-white"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="message">Message</Label>
+                <Label htmlFor="send-email-message">Message</Label>
                 <Textarea
-                  id="message"
+                  id="send-email-message"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder="Type your message..."
-                  className="min-h-[200px] resize-none"
+                  className="min-h-[180px] resize-none bg-white"
                 />
               </div>
 
               {error && (
                 <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
                   {error}
-                  <button
-                    type="button"
-                    onClick={openInGmail}
+                  <a
+                    href={gmailHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="mt-2 flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                     Open in Gmail instead
-                  </button>
+                  </a>
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={openInGmail}
-                  className="mr-auto"
+              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-4">
+                <a
+                  href={gmailHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mr-auto inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
                 >
                   <ExternalLink className="mr-2 h-4 w-4" />
                   Open in Gmail
-                </Button>
+                </a>
                 <Button
                   type="button"
                   variant="outline"
@@ -319,7 +350,14 @@ export function SendEmailModal({
                 <Button
                   type="button"
                   onClick={() => void handleSend()}
-                  disabled={sending || !subject || !message}
+                  disabled={
+                    !allowInAppSend || sending || !subject || !message
+                  }
+                  title={
+                    allowInAppSend
+                      ? "Send via connected Gmail/Outlook"
+                      : "Connect Gmail or Outlook in Settings to send in-app"
+                  }
                 >
                   {sending ? (
                     <>
@@ -337,7 +375,7 @@ export function SendEmailModal({
             </>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }
