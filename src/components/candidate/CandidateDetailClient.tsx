@@ -508,8 +508,14 @@ export function CandidateDetailClient({
           </Link>
         </div>
 
-        <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(240px,0.9fr)_minmax(280px,0.9fr)_minmax(440px,1.35fr)]">
-          <div className="space-y-3 xl:contents">
+        {/*
+          Layout (xl):
+            [ header (2 cols)     ][ resume ]
+            [ apps | AI eval      ][ resume ]
+            [ timeline (2 cols)   ][ resume ]
+          Apps + AI share one explicit 2-col grid so they always align/stretch.
+        */}
+        <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(440px,1.25fr)] xl:grid-rows-[auto_auto_1fr]">
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 xl:col-span-2 xl:col-start-1 xl:row-start-1">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -730,16 +736,16 @@ export function CandidateDetailClient({
             )}
           </section>
 
-          <div className="grid items-stretch gap-3 xl:contents">
-            <div className="flex h-full min-h-0 flex-col xl:col-start-1 xl:row-start-2 xl:self-stretch">
-              <section className="flex h-full min-h-[320px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          {/* Apps + AI Evaluation: one shared row, equal stretch */}
+          <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2 xl:col-span-2 xl:col-start-1 xl:row-start-2">
+              <section className="flex h-full min-h-[280px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
                     Applications ({jobs.length})
                   </h2>
                   <Briefcase className="h-4 w-4 text-slate-400" />
                 </div>
-                <div className="space-y-3">
+                <div className="min-h-0 flex-1 space-y-3">
                   {visibleApplications.map((job: any, index: number) => {
                     const jobId = String(job.jobId || job.id || "");
                     const id = jobId || `application-${index}`;
@@ -904,7 +910,128 @@ export function CandidateDetailClient({
                   {tagError && <p className="mt-1 text-xs text-red-600">{tagError}</p>}
                 </div>
               </section>
-            </div>
+
+              <section
+                data-ai-evaluation
+                className="flex h-full min-h-[280px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+              >
+                <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                  <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
+                </h2>
+
+                <div className="mb-3 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="relative flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center rounded-full"
+                      style={{
+                        background: `conic-gradient(${fitRingColor} ${Math.max(0, Math.min(100, Number(fitScore) || 0)) * 3.6}deg, #e2e8f0 0deg)`,
+                      }}
+                      aria-label={
+                        fitScore != null
+                          ? `Overall fit ${Math.round(Number(fitScore))} out of 100`
+                          : "Not scored"
+                      }
+                    >
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-lg font-bold text-slate-900">
+                        {fitScore != null ? Math.round(Number(fitScore)) : "—"}
+                      </div>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                        Overall fit
+                      </div>
+                      <div className={`text-base font-semibold ${fitGradeColor}`}>
+                        {fitGradeLetter
+                          ? `Grade ${fitGradeLetter}`
+                          : fitScore != null
+                            ? "Scored"
+                            : "Not scored"}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-700">
+                          Domain{" "}
+                          {fitDomainScore != null
+                            ? `${Math.round(Number(fitDomainScore))}/100`
+                            : "—"}
+                        </span>
+                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-700">
+                          {!fitToolsApplicable
+                            ? "Tools n/a"
+                            : fitToolScore != null
+                              ? `Tools ${Math.round(Number(fitToolScore))}/100`
+                              : "Tools —"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-3 grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2 sm:grid-rows-1">
+                  <div className="flex h-full min-h-[9rem] min-w-0 flex-col rounded-lg border border-emerald-100 bg-emerald-50/40 p-2.5">
+                    <div className="mb-1.5 shrink-0 text-[11px] font-bold uppercase tracking-wide text-emerald-800">
+                      Key strengths
+                    </div>
+                    <ul className="min-h-0 flex-1 space-y-1.5 overflow-hidden text-xs leading-snug text-slate-700">
+                      {fitStrengthsList.length ? (
+                        fitStrengthsList.slice(0, 4).map((item: string) => (
+                          <li key={item} className="flex gap-1.5" title={item}>
+                            <span className="shrink-0 font-bold text-emerald-600">
+                              ✓
+                            </span>
+                            <span className="min-w-0 break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden">
+                              {item}
+                            </span>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-slate-500">
+                          {fitScore != null
+                            ? "No strong factors (75+) on this run."
+                            : "Run AI Fit to score this application."}
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                  <div className="flex h-full min-h-[9rem] min-w-0 flex-col rounded-lg border border-amber-100 bg-amber-50/40 p-2.5">
+                    <div className="mb-1.5 shrink-0 text-[11px] font-bold uppercase tracking-wide text-amber-900">
+                      Potential concerns
+                    </div>
+                    <ul className="min-h-0 flex-1 space-y-1.5 overflow-hidden text-xs leading-snug text-slate-700">
+                      {fitGapsList.length ? (
+                        fitGapsList.slice(0, 4).map((item: string) => (
+                          <li key={item} className="flex gap-1.5" title={item}>
+                            <span className="shrink-0 text-amber-600">•</span>
+                            <span className="min-w-0 break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden">
+                              {item}
+                            </span>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-slate-500">
+                          {fitScore != null
+                            ? "No major concerns identified."
+                            : "—"}
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-auto w-full shrink-0 text-xs"
+                  disabled={fitBusy || !currentJob}
+                  onClick={() => void runFit()}
+                >
+                  {fitBusy
+                    ? "Scoring application..."
+                    : fitScore != null
+                      ? "Refresh AI Fit"
+                      : "Run AI Fit"}
+                </Button>
+              </section>
+          </div>
 
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2 xl:col-start-1 xl:row-start-3">
               <div className="mb-3">
@@ -1065,152 +1192,29 @@ export function CandidateDetailClient({
               </div>
             </section>
 
-          </div>
-          </div>
-
-            <div className="space-y-3 xl:contents">
-              <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm xl:col-start-3 xl:row-span-3 xl:row-start-1">
-                <div className="border-b border-slate-200 px-4 py-3">
-                  <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                    Resume
-                  </h2>
-                </div>
-                <div className="h-[min(68vh,720px)] min-h-[420px]">
-                  <ResumeViewer
-                    url={resumeUrl}
-                    fileName={resumeName}
-                    fileKey={resumeKey}
-                    candidateId={candidate.id}
-                    className="h-full"
-                    onUrlUpdated={setResumeUrl}
-                    onResumeChanged={(info) => {
-                      if (!info) return;
-                      setResumeUrl(info.resumeUrl || "");
-                      setResumeName(info.fileName || "");
-                      setResumeKey(info.fileKey || info.resumeUrl || "");
-                    }}
-                  />
-                </div>
-              </section>
-              <section
-                data-ai-evaluation
-                className="flex h-full min-h-[320px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-start-2 xl:row-start-2 xl:self-stretch"
-              >
-                <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
-                  <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
-                </h2>
-
-                {/* Score header — overall + domain/tools together */}
-                <div className="mb-3 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="relative flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center rounded-full"
-                      style={{
-                        background: `conic-gradient(${fitRingColor} ${Math.max(0, Math.min(100, Number(fitScore) || 0)) * 3.6}deg, #e2e8f0 0deg)`,
-                      }}
-                      aria-label={
-                        fitScore != null
-                          ? `Overall fit ${Math.round(Number(fitScore))} out of 100`
-                          : "Not scored"
-                      }
-                    >
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-lg font-bold text-slate-900">
-                        {fitScore != null ? Math.round(Number(fitScore)) : "—"}
-                      </div>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                        Overall fit
-                      </div>
-                      <div className={`text-base font-semibold ${fitGradeColor}`}>
-                        {fitGradeLetter
-                          ? `Grade ${fitGradeLetter}`
-                          : fitScore != null
-                            ? "Scored"
-                            : "Not scored"}
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-700">
-                          Domain{" "}
-                          {fitDomainScore != null
-                            ? `${Math.round(Number(fitDomainScore))}/100`
-                            : "—"}
-                        </span>
-                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-700">
-                          {!fitToolsApplicable
-                            ? "Tools n/a"
-                            : fitToolScore != null
-                              ? `Tools ${Math.round(Number(fitToolScore))}/100`
-                              : "Tools —"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Equal-height strength / concern columns */}
-                <div className="mb-3 grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2 sm:items-stretch">
-                  <div className="flex min-h-[8.5rem] min-w-0 flex-col rounded-lg border border-emerald-100 bg-emerald-50/40 p-2.5">
-                    <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-emerald-800">
-                      Key strengths
-                    </div>
-                    <ul className="flex-1 space-y-1.5 text-xs leading-snug text-slate-700">
-                      {fitStrengthsList.length ? (
-                        fitStrengthsList.slice(0, 4).map((item: string) => (
-                          <li key={item} className="flex gap-1.5" title={item}>
-                            <span className="shrink-0 font-bold text-emerald-600">
-                              ✓
-                            </span>
-                            <span className="min-w-0 break-words">{item}</span>
-                          </li>
-                        ))
-                      ) : (
-                        <li className="text-slate-500">
-                          {fitScore != null
-                            ? "No strong factors (75+) on this run."
-                            : "Run AI Fit to score this application."}
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                  <div className="flex min-h-[8.5rem] min-w-0 flex-col rounded-lg border border-amber-100 bg-amber-50/40 p-2.5">
-                    <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-900">
-                      Potential concerns
-                    </div>
-                    <ul className="flex-1 space-y-1.5 text-xs leading-snug text-slate-700">
-                      {fitGapsList.length ? (
-                        fitGapsList.slice(0, 4).map((item: string) => (
-                          <li key={item} className="flex gap-1.5" title={item}>
-                            <span className="shrink-0 text-amber-600">•</span>
-                            <span className="min-w-0 break-words">{item}</span>
-                          </li>
-                        ))
-                      ) : (
-                        <li className="text-slate-500">
-                          {fitScore != null
-                            ? "No major concerns identified."
-                            : "—"}
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                </div>
-
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-auto w-full shrink-0 text-xs"
-                  disabled={fitBusy || !currentJob}
-                  onClick={() => void runFit()}
-                >
-                  {fitBusy
-                    ? "Scoring application..."
-                    : fitScore != null
-                      ? "Refresh AI Fit"
-                      : "Run AI Fit"}
-                </Button>
-              </section>
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm xl:col-start-3 xl:row-span-3 xl:row-start-1">
+            <div className="border-b border-slate-200 px-4 py-3">
+              <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                Resume
+              </h2>
             </div>
+            <div className="h-[min(68vh,720px)] min-h-[420px]">
+              <ResumeViewer
+                url={resumeUrl}
+                fileName={resumeName}
+                fileKey={resumeKey}
+                candidateId={candidate.id}
+                className="h-full"
+                onUrlUpdated={setResumeUrl}
+                onResumeChanged={(info) => {
+                  if (!info) return;
+                  setResumeUrl(info.resumeUrl || "");
+                  setResumeName(info.fileName || "");
+                  setResumeKey(info.fileKey || info.resumeUrl || "");
+                }}
+              />
+            </div>
+          </section>
         </div>
       </div>
     </div>
