@@ -16,6 +16,7 @@ import {
   Users,
   Loader2,
   ChevronDown,
+  Columns3,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -230,6 +231,51 @@ function locationLine(company: any): string {
   return parts.join(', ');
 }
 
+/** Optional / toggleable table columns (company + actions always shown). */
+type CompanyColumnId =
+  | 'primary_contact'
+  | 'industry'
+  | 'location'
+  | 'stage'
+  | 'contacts'
+  | 'added'
+  | 'last_activity';
+
+const COMPANY_COLUMN_DEFS: {
+  id: CompanyColumnId;
+  label: string;
+  defaultOn: boolean;
+}[] = [
+  { id: 'primary_contact', label: 'Primary Contact', defaultOn: true },
+  { id: 'industry', label: 'Industry', defaultOn: true },
+  { id: 'location', label: 'Location', defaultOn: false },
+  { id: 'stage', label: 'Stage & Progress', defaultOn: true },
+  { id: 'contacts', label: 'Contacts', defaultOn: true },
+  { id: 'added', label: 'Added', defaultOn: true },
+  { id: 'last_activity', label: 'Last Activity', defaultOn: true },
+];
+
+const COLUMNS_STORAGE_KEY = 'trio.companies.tableColumns.v1';
+
+function defaultColumnVisibility(): Record<CompanyColumnId, boolean> {
+  return Object.fromEntries(
+    COMPANY_COLUMN_DEFS.map((c) => [c.id, c.defaultOn])
+  ) as Record<CompanyColumnId, boolean>;
+}
+
+function loadColumnVisibility(): Record<CompanyColumnId, boolean> {
+  const defaults = defaultColumnVisibility();
+  if (typeof window === 'undefined') return defaults;
+  try {
+    const raw = localStorage.getItem(COLUMNS_STORAGE_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw) as Partial<Record<CompanyColumnId, boolean>>;
+    return { ...defaults, ...parsed };
+  } catch {
+    return defaults;
+  }
+}
+
 export function CompaniesClient() {
   const router = useRouter();
   const { isDark } = useTheme();
@@ -251,6 +297,38 @@ export function CompaniesClient() {
   const [bulkStage, setBulkStage] = useState('');
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [page, setPage] = useState(1);
+  const [columnVisibility, setColumnVisibility] = useState<
+    Record<CompanyColumnId, boolean>
+  >(defaultColumnVisibility);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+
+  useEffect(() => {
+    setColumnVisibility(loadColumnVisibility());
+  }, []);
+
+  const col = (id: CompanyColumnId) => columnVisibility[id] !== false;
+
+  const toggleColumn = (id: CompanyColumnId) => {
+    setColumnVisibility((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
+  const resetColumns = () => {
+    const next = defaultColumnVisibility();
+    setColumnVisibility(next);
+    try {
+      localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  };
 
   /**
    * Update company BD pipeline stage from the list.
@@ -634,7 +712,7 @@ export function CompaniesClient() {
             style={isDark ? { color: '#ffffff', backgroundColor: '#1e293b' } : undefined}
           />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <select
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as SortKey)}
@@ -652,6 +730,76 @@ export function CompaniesClient() {
             <option value="stage">Sort: Stage</option>
             <option value="contacts">Sort: Contacts</option>
           </select>
+
+          {/* Column visibility picker */}
+          <div className="relative">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={
+                isDark
+                  ? 'h-9 border-slate-500 bg-[#1e293b] text-white hover:bg-slate-800'
+                  : 'h-9'
+              }
+              onClick={() => {
+                setOpenMenuId(null);
+                setColumnsOpen((v) => !v);
+              }}
+              aria-expanded={columnsOpen}
+              aria-haspopup="menu"
+              title="Choose which columns appear in the table"
+            >
+              <Columns3 className="mr-1.5 h-4 w-4" />
+              Columns
+            </Button>
+            {columnsOpen && (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-30 cursor-default"
+                  aria-label="Close columns menu"
+                  onClick={() => setColumnsOpen(false)}
+                />
+                <div
+                  role="menu"
+                  className="absolute right-0 top-10 z-40 w-60 rounded-xl border border-gray-200 bg-white p-3 shadow-xl text-slate-900"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                      Visible columns
+                    </p>
+                    <button
+                      type="button"
+                      onClick={resetColumns}
+                      className="text-[11px] font-semibold text-blue-600 hover:underline"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  <p className="mb-2 text-[11px] text-slate-500">
+                    Company name and Actions always stay on.
+                  </p>
+                  <ul className="space-y-1">
+                    {COMPANY_COLUMN_DEFS.map((def) => (
+                      <li key={def.id}>
+                        <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            checked={col(def.id)}
+                            onChange={() => toggleColumn(def.id)}
+                          />
+                          <span className="text-slate-800">{def.label}</span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            )}
+          </div>
+
           <span
             className="text-xs font-medium whitespace-nowrap"
             style={{ color: isDark ? '#ffffff' : undefined }}
@@ -753,10 +901,10 @@ export function CompaniesClient() {
       ) : (
         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px]">
+            <table className="w-full min-w-[720px] border-separate border-spacing-0">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
-                  <th className="text-left px-3 py-3 w-10">
+                  <th className="sticky left-0 z-[5] bg-gray-50 text-left px-3 py-3 w-10">
                     <input
                       type="checkbox"
                       className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -790,28 +938,45 @@ export function CompaniesClient() {
                       }}
                     />
                   </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 min-w-[12rem]">
                     Company
                   </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Primary Contact
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Industry
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Stage &amp; Progress
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Contacts
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Added
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Last Activity
-                  </th>
-                  <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  {col('primary_contact') && (
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                      Primary Contact
+                    </th>
+                  )}
+                  {col('industry') && (
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                      Industry
+                    </th>
+                  )}
+                  {col('location') && (
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                      Location
+                    </th>
+                  )}
+                  {col('stage') && (
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                      Stage &amp; Progress
+                    </th>
+                  )}
+                  {col('contacts') && (
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                      Contacts
+                    </th>
+                  )}
+                  {col('added') && (
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                      Added
+                    </th>
+                  )}
+                  {col('last_activity') && (
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                      Last Activity
+                    </th>
+                  )}
+                  <th className="sticky right-0 z-10 bg-gray-50 text-right px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)] min-w-[5.5rem]">
                     Actions
                   </th>
                 </tr>
@@ -820,11 +985,17 @@ export function CompaniesClient() {
                 {paged.slice.map((c) => (
                   <tr
                     key={c.id}
-                    className={`hover:bg-gray-50/80 transition-colors ${
+                    className={`group hover:bg-gray-50/80 transition-colors ${
                       selectedIds.has(c.id) ? 'bg-blue-50/40' : ''
                     }`}
                   >
-                    <td className="px-3 py-3.5 align-middle">
+                    <td
+                      className={`sticky left-0 z-[5] px-3 py-3.5 align-middle ${
+                        selectedIds.has(c.id)
+                          ? 'bg-blue-50/90'
+                          : 'bg-white group-hover:bg-gray-50'
+                      }`}
+                    >
                       <input
                         type="checkbox"
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -848,8 +1019,11 @@ export function CompaniesClient() {
                           >
                             {c.name}
                           </Link>
+                          {/* Domain under name when location is its own column; else location/domain */}
                           <div className="text-xs text-gray-500 truncate flex items-center gap-1">
-                            {c.location ? (
+                            {col('location') ? (
+                              c.domain || '—'
+                            ) : c.location ? (
                               <>
                                 <MapPin className="h-3 w-3 shrink-0" />
                                 {c.location}
@@ -864,123 +1038,155 @@ export function CompaniesClient() {
                       </div>
                     </td>
 
-                    <td className="px-4 py-3.5">
-                      {c.primary ? (
-                        <div className="min-w-0">
-                          {c.primary.id ? (
-                            <Link
-                              href={`/dashboard/contact-info/${encodeURIComponent(c.primary.id)}?companyId=${encodeURIComponent(c.id)}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline block truncate"
-                              title={`Open contact: ${c.primary.name}`}
-                            >
-                              {c.primary.name}
-                            </Link>
-                          ) : (
-                            <Link
-                              href={`/dashboard/companies/${c.id}?tab=contacts`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline block truncate"
-                              title="Open company contacts"
-                            >
-                              {c.primary.name}
-                            </Link>
-                          )}
-                          <span className="text-xs text-gray-500 block truncate">
-                            {c.primary.title || c.primary.email || '—'}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-gray-400 italic">No contacts</span>
-                      )}
-                    </td>
-
-                    <td className="px-4 py-3.5 text-sm text-gray-700">
-                      {c.industry || '—'}
-                    </td>
-
-                    <td className="px-4 py-3.5">
-                      <div className="space-y-1.5 min-w-[160px]">
-                        <div className="flex items-center gap-2">
-                          <div className="relative inline-flex items-center">
-                            <select
-                              value={
-                                companyStageOptions.some((o) => o.id === c.stage)
-                                  ? c.stage
-                                  : normalizeCompanyStage(c.stage)
-                              }
-                              disabled={updatingStageId === c.id}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                if (e.target.value === c.stage) return;
-                                void handleStageChange(c.id, c.name, e.target.value);
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              title="Change company pipeline stage (does not update contacts)"
-                              aria-label={`Pipeline stage for ${c.name}`}
-                              className={`appearance-none cursor-pointer pr-6 pl-2 py-0.5 rounded-full border text-[11px] font-medium max-w-[9.5rem] truncate disabled:opacity-60 disabled:cursor-wait focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${stageBadgeClasses(c.stage)}`}
-                            >
-                              {/* Keep current value selectable even if legacy */}
-                              {!companyStageOptions.some((o) => o.id === c.stage) && (
-                                <option value={c.stage}>{stageLabel(c.stage)}</option>
-                              )}
-                              {companyStageOptions.map((opt) => (
-                                <option key={opt.id} value={opt.id}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                            <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-current opacity-60">
-                              {updatingStageId === c.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <ChevronDown className="h-3 w-3" />
-                              )}
+                    {col('primary_contact') && (
+                      <td className="px-4 py-3.5">
+                        {c.primary ? (
+                          <div className="min-w-0">
+                            {c.primary.id ? (
+                              <Link
+                                href={`/dashboard/contact-info/${encodeURIComponent(c.primary.id)}?companyId=${encodeURIComponent(c.id)}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline block truncate"
+                                title={`Open contact: ${c.primary.name}`}
+                              >
+                                {c.primary.name}
+                              </Link>
+                            ) : (
+                              <Link
+                                href={`/dashboard/companies/${c.id}?tab=contacts`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline block truncate"
+                                title="Open company contacts"
+                              >
+                                {c.primary.name}
+                              </Link>
+                            )}
+                            <span className="text-xs text-gray-500 block truncate">
+                              {c.primary.title || c.primary.email || '—'}
                             </span>
                           </div>
-                          <span className="text-[11px] text-gray-400 tabular-nums shrink-0">
-                            {c.stage === 'lost' || c.stage === 'dnu'
-                              ? '—'
-                              : `${Math.min(c.progress, 5)} of 5`}
-                          </span>
-                        </div>
-                        {c.stage !== 'lost' && c.stage !== 'dnu' && (
-                          <div className="flex gap-0.5">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                              <div
-                                key={i}
-                                className={`h-1.5 flex-1 rounded-full ${
-                                  i < c.progress
-                                    ? getProgressColor(c.progress, c.stage)
-                                    : 'bg-gray-200'
-                                }`}
-                              />
-                            ))}
-                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400 italic">No contacts</span>
                         )}
-                      </div>
-                    </td>
+                      </td>
+                    )}
 
-                    <td className="px-4 py-3.5">
-                      <Link
-                        href={`/dashboard/companies/${c.id}?tab=contacts`}
-                        className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600"
-                      >
-                        <Users className="h-3.5 w-3.5 text-gray-400" />
-                        <span className="tabular-nums font-medium">{c.contactCount}</span>
-                      </Link>
-                    </td>
+                    {col('industry') && (
+                      <td className="px-4 py-3.5 text-sm text-gray-700">
+                        {c.industry || '—'}
+                      </td>
+                    )}
 
-                    <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
-                      {formatShortDate(c.added)}
-                    </td>
+                    {col('location') && (
+                      <td className="px-4 py-3.5 text-sm text-gray-700">
+                        <span className="inline-flex items-center gap-1 min-w-0">
+                          {c.location ? (
+                            <>
+                              <MapPin className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                              <span className="truncate">{c.location}</span>
+                            </>
+                          ) : (
+                            '—'
+                          )}
+                        </span>
+                      </td>
+                    )}
 
-                    <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
-                      {formatRelativeActivity(c.lastActivity)}
-                    </td>
+                    {col('stage') && (
+                      <td className="px-4 py-3.5">
+                        <div className="space-y-1.5 min-w-[160px]">
+                          <div className="flex items-center gap-2">
+                            <div className="relative inline-flex items-center">
+                              <select
+                                value={
+                                  companyStageOptions.some((o) => o.id === c.stage)
+                                    ? c.stage
+                                    : normalizeCompanyStage(c.stage)
+                                }
+                                disabled={updatingStageId === c.id}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  if (e.target.value === c.stage) return;
+                                  void handleStageChange(c.id, c.name, e.target.value);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                title="Change company pipeline stage (does not update contacts)"
+                                aria-label={`Pipeline stage for ${c.name}`}
+                                className={`appearance-none cursor-pointer pr-6 pl-2 py-0.5 rounded-full border text-[11px] font-medium max-w-[9.5rem] truncate disabled:opacity-60 disabled:cursor-wait focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${stageBadgeClasses(c.stage)}`}
+                              >
+                                {!companyStageOptions.some((o) => o.id === c.stage) && (
+                                  <option value={c.stage}>{stageLabel(c.stage)}</option>
+                                )}
+                                {companyStageOptions.map((opt) => (
+                                  <option key={opt.id} value={opt.id}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-current opacity-60">
+                                {updatingStageId === c.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <ChevronDown className="h-3 w-3" />
+                                )}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-gray-400 tabular-nums shrink-0">
+                              {c.stage === 'lost' || c.stage === 'dnu'
+                                ? '—'
+                                : `${Math.min(c.progress, 5)} of 5`}
+                            </span>
+                          </div>
+                          {c.stage !== 'lost' && c.stage !== 'dnu' && (
+                            <div className="flex gap-0.5">
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <div
+                                  key={i}
+                                  className={`h-1.5 flex-1 rounded-full ${
+                                    i < c.progress
+                                      ? getProgressColor(c.progress, c.stage)
+                                      : 'bg-gray-200'
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    )}
 
-                    <td className="px-4 py-3.5 text-right">
-                      <div className="relative inline-flex items-center gap-1 justify-end">
+                    {col('contacts') && (
+                      <td className="px-4 py-3.5">
+                        <Link
+                          href={`/dashboard/companies/${c.id}?tab=contacts`}
+                          className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600"
+                        >
+                          <Users className="h-3.5 w-3.5 text-gray-400" />
+                          <span className="tabular-nums font-medium">{c.contactCount}</span>
+                        </Link>
+                      </td>
+                    )}
+
+                    {col('added') && (
+                      <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
+                        {formatShortDate(c.added)}
+                      </td>
+                    )}
+
+                    {col('last_activity') && (
+                      <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
+                        {formatRelativeActivity(c.lastActivity)}
+                      </td>
+                    )}
+
+                    <td
+                      className={`sticky right-0 z-10 px-3 py-3.5 text-right shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)] ${
+                        selectedIds.has(c.id)
+                          ? 'bg-blue-50/90'
+                          : 'bg-white group-hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="relative inline-flex items-center gap-0.5 justify-end">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -994,15 +1200,16 @@ export function CompaniesClient() {
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0"
-                          onClick={() =>
-                            setOpenMenuId((id) => (id === c.id ? null : c.id))
-                          }
+                          onClick={() => {
+                            setColumnsOpen(false);
+                            setOpenMenuId((id) => (id === c.id ? null : c.id));
+                          }}
                           title="More actions"
                         >
                           <MoreHorizontal className="h-4 w-4 text-gray-500" />
                         </Button>
                         {openMenuId === c.id && (
-                          <div className="absolute right-0 top-9 z-20 w-40 rounded-lg border border-gray-200 bg-white shadow-lg py-1 text-left">
+                          <div className="absolute right-0 bottom-9 z-30 w-40 rounded-lg border border-gray-200 bg-white shadow-lg py-1 text-left">
                             <button
                               type="button"
                               className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
