@@ -33,29 +33,13 @@ export interface ParsedResume {
 }
 
 /**
- * Parse a resume file using the server API
+ * Parse a resume file using the server API (S3 direct upload path).
  */
 export async function processResumeFile(file: File): Promise<ParsedResume> {
-  const formData = new FormData();
-  formData.append('resume', file);
-
-  const response = await fetch('/api/parse-resume', {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Upload failed' }));
-    throw new Error(error.error || 'Failed to parse resume');
-  }
-
-  const data = await response.json();
-
-  if (!data.success) {
-    throw new Error(data.error || 'Failed to parse resume');
-  }
-
-  const resume = data.resume;
+  const { parseResumeFile } = await import(
+    '@/lib/candidates/resume-parse-client'
+  );
+  const { resume } = await parseResumeFile(file);
   return {
     fullName: resume.name || '',
     title: resume.title || '',
@@ -76,13 +60,17 @@ export async function processResumeFile(file: File): Promise<ParsedResume> {
             .filter(Boolean)
         : [],
     })),
-    technologies: resume.skills || [],
+    technologies: Array.isArray(resume.skills)
+      ? resume.skills
+      : typeof resume.skills === 'string'
+        ? resume.skills.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : [],
     education: (resume.education || []).map((e: any) => ({
       school: e.school || '',
       degree: e.degree || '',
       field: e.field || '',
       year: e.dates || e.year || '',
     })),
-    rawText: data.rawText || '',
+    rawText: '',
   };
 }

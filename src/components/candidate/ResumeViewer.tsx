@@ -16,6 +16,8 @@ import {
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
+import { uploadResumeToS3 } from "@/lib/candidates/resume-parse-client";
+import { validateResumeFileClient } from "@/lib/candidates/resume-upload-limits";
 
 interface ResumeViewerProps {
   url?: string;
@@ -312,15 +314,28 @@ export function ResumeViewer({
 
   const handleReplaceFile = async (file: File | null | undefined) => {
     if (!file || !candidateId) return;
+    const validation = validateResumeFileClient(file);
+    if (!validation.ok) {
+      toast.error(validation.error);
+      return;
+    }
     setUploading(true);
     setError(null);
     try {
-      const fd = new FormData();
-      fd.append("resume", file);
+      // Direct-to-S3 then finalize on server (avoids body size limits)
+      const { s3Key, contentType } = await uploadResumeToS3(file, {
+        candidateId,
+      });
       const res = await fetch(`/api/candidate/${candidateId}/resume`, {
         method: "POST",
         credentials: "include",
-        body: fd,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          s3Key,
+          fileName: file.name,
+          contentType,
+          parse: true,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -331,11 +346,15 @@ export function ResumeViewer({
       setHasTriedAutoRefresh(false);
       setFileType(detectFileType(file.name, file.name));
       onResumeChanged?.({
-        resumeUrl: data.resume_url || data.fileKey || "",
+        resumeUrl: data.resume_url || data.fileKey || s3Key,
         fileName: data.resume_file_name || file.name,
-        fileKey: data.fileKey || data.resume_url,
+        fileKey: data.fileKey || data.resume_url || s3Key,
       });
-      toast.success("Resume uploaded");
+      if (data.warning) {
+        toast.warning(data.warning);
+      } else {
+        toast.success("Resume uploaded");
+      }
       // Fetch signed URL for preview
       await refreshUrl(true);
     } catch (err: any) {

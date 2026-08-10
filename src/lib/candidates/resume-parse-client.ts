@@ -2,6 +2,11 @@
  * Client-side helpers for resume parse → candidate form autofill
  */
 
+import {
+  resumeFileTooLargeMessage,
+  validateResumeFileClient,
+} from '@/lib/candidates/resume-upload-limits';
+
 export type ParsedResumeFields = {
   name?: string;
   title?: string;
@@ -236,26 +241,183 @@ export function mergeFormWithParsed(
   };
 }
 
-/**
- * Parse a resume file via /api/parse-resume (no candidateId required).
- */
-export async function parseResumeFile(file: File): Promise<{
+export type ParseResumeResult = {
   resume: ParsedResumeFields & Record<string, any>;
   resumeUrl?: string | null;
   fileKey?: string | null;
-}> {
+  code?: string;
+};
+
+/**
+ * Upload resume directly to S3 (presigned PUT), then parse from the S3 key.
+ * Bypasses serverless request body limits for large PDFs.
+ */
+export async function uploadResumeToS3(
+  file: File,
+  opts?: { candidateId?: string; onProgress?: (label: string) => void }
+): Promise<{ s3Key: string; contentType: string }> {
+  const validation = validateResumeFileClient(file);
+  if (!validation.ok) {
+    throw new Error(validation.error);
+  }
+
+  opts?.onProgress?.('Preparing secure upload…');
+  const presignRes = await fetch('/api/parse-resume/presign', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fileName: file.name,
+      contentType: file.type || undefined,
+      sizeBytes: file.size,
+      candidateId: opts?.candidateId || undefined,
+    }),
+  });
+  const presign = await presignRes.json().catch(() => ({}));
+  if (!presignRes.ok || !presign.uploadUrl || !presign.s3Key) {
+    const err = new Error(
+      presign.error ||
+        `Could not prepare resume upload (${presignRes.status})`
+    ) as Error & { code?: string };
+    err.code = presign.code || 'PRESIGN_FAILED';
+    throw err;
+  }
+
+  const contentType =
+    presign.contentType ||
+    file.type ||
+    'application/octet-stream';
+
+  opts?.onProgress?.('Uploading resume…');
+  let putRes: Response;
+  try {
+    putRes = await fetch(presign.uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: {
+        'Content-Type': contentType,
+      },
+    });
+  } catch (err) {
+    // Typical when S3 bucket CORS is missing for the app origin
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      /failed to fetch|networkerror|cors/i.test(msg)
+        ? 'Direct upload to storage failed (network/CORS). Ask an admin to allow PUT from this app on the resume S3 bucket, or try a smaller text-based PDF.'
+        : `Upload failed: ${msg}`
+    );
+  }
+
+  if (!putRes.ok) {
+    if (putRes.status === 403 || putRes.status === 400) {
+      throw new Error(
+        'Storage rejected the upload. The file may be too large, the wrong type, or S3 CORS may block browser uploads.'
+      );
+    }
+    throw new Error(
+      `Storage upload failed (${putRes.status}). Try a smaller text-based resume.`
+    );
+  }
+
+  return { s3Key: presign.s3Key as string, contentType };
+}
+
+/**
+ * Parse a resume file via presigned S3 upload + /api/parse-resume.
+ * Falls back to multipart only for small files if presign fails with S3 not configured.
+ */
+export async function parseResumeFile(
+  file: File,
+  opts?: { candidateId?: string; onProgress?: (label: string) => void }
+): Promise<ParseResumeResult> {
+  const validation = validateResumeFileClient(file);
+  if (!validation.ok) {
+    throw new Error(validation.error);
+  }
+
+  // Prefer direct-to-S3 for all sizes so prod never hits body limits
+  try {
+    const { s3Key, contentType } = await uploadResumeToS3(file, opts);
+    opts?.onProgress?.('Reading resume…');
+    const res = await fetch('/api/parse-resume', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        s3Key,
+        fileName: file.name,
+        contentType,
+        candidateId: opts?.candidateId || undefined,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || data.error) {
+      const err = new Error(
+        data.error || `Failed to parse resume (${res.status})`
+      ) as Error & { code?: string; fileKey?: string };
+      err.code = data.code;
+      err.fileKey = data.fileKey;
+      throw err;
+    }
+
+    if (!data.success || !data.resume) {
+      throw new Error(
+        data.error || 'No candidate data extracted from resume'
+      );
+    }
+
+    return {
+      resume: data.resume,
+      resumeUrl: data.resumeUrl,
+      fileKey: data.fileKey || s3Key,
+      code: data.code,
+    };
+  } catch (err: any) {
+    // If S3 isn't configured, fall back to multipart for small files only
+    const msg = String(err?.message || '');
+    const code = err?.code || '';
+    if (
+      code === 'S3_NOT_CONFIGURED' ||
+      /S3_NOT_CONFIGURED|not configured|AWS_S3_BUCKET/i.test(msg)
+    ) {
+      if (file.size > 4 * 1024 * 1024) {
+        throw new Error(
+          resumeFileTooLargeMessage(file.size) +
+            ' Resume storage is not configured for large uploads.'
+        );
+      }
+      return parseResumeFileMultipart(file, opts?.candidateId);
+    }
+    // Re-throw parse/size/empty-text errors as-is
+    throw err;
+  }
+}
+
+/** Legacy multipart path (small files / no S3). */
+async function parseResumeFileMultipart(
+  file: File,
+  candidateId?: string
+): Promise<ParseResumeResult> {
   const formData = new FormData();
   formData.append('resume', file);
+  if (candidateId) formData.append('candidateId', candidateId);
 
   const res = await fetch('/api/parse-resume', {
     method: 'POST',
+    credentials: 'include',
     body: formData,
   });
 
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok || data.error) {
-    throw new Error(data.error || `Failed to parse resume (${res.status})`);
+    const err = new Error(
+      data.error || `Failed to parse resume (${res.status})`
+    ) as Error & { code?: string; fileKey?: string };
+    err.code = data.code;
+    err.fileKey = data.fileKey;
+    throw err;
   }
 
   if (!data.success || !data.resume) {

@@ -25,7 +25,9 @@ import {
   mapParsedResumeToForm,
   mergeFormWithParsed,
   parseResumeFile,
+  uploadResumeToS3 as directUploadResumeToS3,
 } from '@/lib/candidates/resume-parse-client';
+import { validateResumeFileClient } from '@/lib/candidates/resume-upload-limits';
 
 const sourceOptions = [
   { value: 'manual', label: 'Manual Entry' },
@@ -111,17 +113,9 @@ export default function NewCandidatePage() {
   const handleResumeFile = async (file: File | null | undefined) => {
     if (!file) return;
 
-    const lower = file.name.toLowerCase();
-    const ok =
-      lower.endsWith('.pdf') ||
-      lower.endsWith('.doc') ||
-      lower.endsWith('.docx') ||
-      file.type.includes('pdf') ||
-      file.type.includes('word') ||
-      file.type.includes('officedocument');
-
-    if (!ok) {
-      toast.error('Please upload a PDF or Word file (.pdf, .doc, .docx)');
+    const validation = validateResumeFileClient(file);
+    if (!validation.ok) {
+      toast.error(validation.error);
       return;
     }
 
@@ -177,25 +171,15 @@ export default function NewCandidatePage() {
 
   const uploadResumeToS3 = async (candidateId: string): Promise<string | null> => {
     if (!uploadedFile) return null;
-
-    const formDataObj = new FormData();
-    formDataObj.append('resume', uploadedFile);
-    formDataObj.append('candidateId', candidateId);
-
+    // If parse already stored a key on the form, reuse it
+    if (formData.resume_url && !String(formData.resume_url).startsWith('http')) {
+      return formData.resume_url;
+    }
     try {
-      const res = await fetch('/api/parse-resume', {
-        method: 'POST',
-        body: formDataObj,
+      const { s3Key } = await directUploadResumeToS3(uploadedFile, {
+        candidateId,
       });
-      const data = await res.json();
-      if (data.fileKey || data.resumeUrl) return data.fileKey || data.resumeUrl;
-
-      const uploadRes = await fetch('/api/upload-resume', {
-        method: 'POST',
-        body: formDataObj,
-      });
-      const uploadData = await uploadRes.json();
-      return uploadData.resumeUrl || uploadData.fileKey || null;
+      return s3Key;
     } catch (err) {
       console.error('Failed to upload resume:', err);
       return null;

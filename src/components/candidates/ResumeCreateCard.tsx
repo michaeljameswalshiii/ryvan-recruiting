@@ -10,6 +10,7 @@ import {
   parseResumeFile,
   saveResumeDraft,
 } from '@/lib/candidates/resume-parse-client';
+import { validateResumeFileClient } from '@/lib/candidates/resume-upload-limits';
 
 /**
  * Always-visible resume upload used from the Candidates list.
@@ -26,17 +27,9 @@ export function ResumeCreateCard() {
   const onFile = async (file: File | null | undefined) => {
     if (!file) return;
 
-    const lower = file.name.toLowerCase();
-    const ok =
-      lower.endsWith('.pdf') ||
-      lower.endsWith('.doc') ||
-      lower.endsWith('.docx') ||
-      file.type.includes('pdf') ||
-      file.type.includes('word') ||
-      file.type.includes('officedocument');
-
-    if (!ok) {
-      toast.error('Please upload a PDF or Word resume (.pdf, .doc, .docx)');
+    const validation = validateResumeFileClient(file);
+    if (!validation.ok) {
+      toast.error(validation.error);
       return;
     }
 

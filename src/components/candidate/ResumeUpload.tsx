@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FileText, Upload, X, Loader2, Link as LinkIcon } from "lucide-react";
 import { toast } from "sonner";
+import { parseResumeFile } from "@/lib/candidates/resume-parse-client";
+import {
+  MAX_RESUME_BYTES,
+  resumeFileTooLargeMessage,
+  resumeUnsupportedTypeMessage,
+  validateResumeFileClient,
+} from "@/lib/candidates/resume-upload-limits";
 
 interface ResumeUploadProps {
   candidateId?: string;
@@ -46,7 +53,7 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
     },
     maxFiles: 1,
-    maxSize: 10 * 1024 * 1024, // 10MB
+    maxSize: MAX_RESUME_BYTES,
     onDropAccepted: (files) => {
       const file = files[0];
       if (validateFile(file)) {
@@ -56,9 +63,9 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
     onDropRejected: (files) => {
       const file = files[0];
       if (file.errors.some(e => e.code === 'file-too-large')) {
-        toast.error('File too large. Maximum size is 10MB.');
+        toast.error(resumeFileTooLargeMessage(file.file?.size));
       } else if (file.errors.some(e => e.code === 'file-invalid-type')) {
-        toast.error('Invalid file type. Please upload PDF, DOC, or DOCX files.');
+        toast.error(resumeUnsupportedTypeMessage());
       } else {
         toast.error('File rejected. Please try again.');
       }
@@ -67,24 +74,11 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
 
   // Validate file
   const validateFile = (file: File): boolean => {
-    const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-    const validExtensions = ['.pdf', '.doc', '.docx'];
-    const fileNameLower = file.name.toLowerCase();
-    
-    const hasValidType = validTypes.includes(file.type);
-    const hasValidExtension = validExtensions.some(ext => fileNameLower.endsWith(ext));
-    
-    if (!hasValidType && !hasValidExtension) {
-      toast.error('Invalid file type. Please upload PDF, DOC, or DOCX files.');
+    const result = validateResumeFileClient(file);
+    if (!result.ok) {
+      toast.error(result.error);
       return false;
     }
-    
-    // Check file size (10MB max)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('File too large. Maximum size is 10MB.');
-      return false;
-    }
-    
     return true;
   };
 
@@ -235,31 +229,18 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
     // Existing candidate: parse + S3 upload + update record
     setUploadProgress(
       candidateId
-        ? "Parsing resume and uploading to S3..."
-        : "Parsing resume and filling candidate form..."
+        ? "Uploading resume and parsing..."
+        : "Uploading resume and filling candidate form..."
     );
 
     try {
-      const parseFormData = new FormData();
-      parseFormData.append('resume', selectedFile);
-      if (candidateId) {
-        parseFormData.append('candidateId', candidateId);
-      }
-
-      const parseResponse = await fetch('/api/parse-resume', {
-        method: 'POST',
-        body: parseFormData,
+      const parseResult = await parseResumeFile(selectedFile, {
+        candidateId,
+        onProgress: setUploadProgress,
       });
 
-      const parseResult = await parseResponse.json();
-
-      if (!parseResponse.ok || parseResult.error) {
-        console.error('Parse failed:', parseResult.error);
-        throw new Error(parseResult.error || 'Failed to parse resume');
-      }
-
-      if (!parseResult.success || !parseResult.resume) {
-        throw new Error(parseResult.error || 'Could not extract candidate info from resume');
+      if (!parseResult.resume) {
+        throw new Error('Could not extract candidate info from resume');
       }
 
       const parsedData = parseResult.resume as ParsedResumeData;

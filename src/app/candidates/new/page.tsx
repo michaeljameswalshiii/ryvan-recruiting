@@ -30,50 +30,30 @@ export default function NewCandidatePage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
-    const validTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-    const validExtensions = ['.pdf', '.docx'];
-    const fileNameLower = file.name.toLowerCase();
-    
-    const hasValidType = validTypes.includes(file.type);
-    const hasValidExtension = validExtensions.some(ext => fileNameLower.endsWith(ext));
-    
-    if (!hasValidType && !hasValidExtension) {
-      toast.error('Invalid file type. Please upload PDF or Word (.docx) files.');
-      return;
-    }
-
     setIsUploading(true);
-    const formDataUpload = new FormData();
-    formDataUpload.append('resume', file);
-
     try {
-      const res = await fetch('/api/parse-resume', {
-        method: 'POST',
-        body: formDataUpload,
+      const { parseResumeFile } = await import(
+        '@/lib/candidates/resume-parse-client'
+      );
+      const { resume: parsed } = await parseResumeFile(file);
+      setFormData({
+        name: parsed.name || '',
+        title: parsed.title || '',
+        email: parsed.email || '',
+        phone: parsed.phone || '',
+        location: parsed.location || '',
+        linkedin_url: parsed.linkedin || parsed.linkedin_url || '',
+        notes: '',
+        skills: Array.isArray(parsed.skills)
+          ? parsed.skills.join(', ')
+          : typeof parsed.skills === 'string'
+            ? parsed.skills
+            : '',
+        summary: parsed.summary || '',
       });
-
-      const data = await res.json();
-
-      if (data.success && data.resume) {
-        const parsed = data.resume;
-        setFormData({
-          name: parsed.name || '',
-          title: parsed.title || '',
-          email: parsed.email || '',
-          phone: parsed.phone || '',
-          location: parsed.location || '',
-          linkedin_url: parsed.linkedin || '',
-          notes: parsed.raw_text || '',
-          skills: parsed.skills?.join(', ') || '',
-          summary: parsed.summary || '',
-        });
-        toast.success('Resume parsed successfully! Fields pre-filled.');
-      } else {
-        toast.error(data.error || 'Failed to parse resume');
-      }
-    } catch (err) {
-      toast.error('Upload failed');
+      toast.success('Resume parsed successfully! Fields pre-filled.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Upload failed');
     } finally {
       setIsUploading(false);
     }

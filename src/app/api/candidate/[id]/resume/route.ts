@@ -13,6 +13,19 @@ import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client
 import { addNoteToCandidate } from "@/lib/events/candidate-events";
 import { parseResumeBuffer } from "@/lib/candidates/resume-extract-server";
 import { mergeParsedIntoEmptyFields } from "@/lib/candidates/resume-text-parser";
+import {
+  getS3ObjectBuffer,
+  isAllowedResumeS3Key,
+} from "@/lib/aws/s3";
+import {
+  isSparseParsedResume,
+  MAX_RESUME_BYTES,
+  resumeFileTooLargeMessage,
+  resumeNoExtractableTextMessage,
+  resumeUnsupportedTypeMessage,
+  isAllowedResumeFileName,
+  isAllowedResumeMime,
+} from "@/lib/candidates/resume-upload-limits";
 
 function getS3Client() {
   const region =
@@ -159,9 +172,12 @@ export async function DELETE(
 }
 
 /**
- * POST multipart: file field "resume" — upload replacement.
- * By default re-parses the file and fills empty profile fields only
- * (pass parse=0 to skip parse, or fill=overwrite to replace scalars when present).
+ * POST resume replacement:
+ * - Preferred JSON: { s3Key, fileName, contentType?, parse?, fill? } after client presigned upload
+ * - Legacy multipart: file field "resume"
+ *
+ * By default re-parses and fills empty profile fields only
+ * (pass parse=0/false to skip parse, or fill=overwrite to replace scalars).
  */
 export async function POST(
   request: NextRequest,
@@ -179,40 +195,110 @@ export async function POST(
       return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
     }
 
-    const form = await request.formData();
-    const file = form.get("resume") as File | null;
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    }
+    const contentTypeHeader = request.headers.get("content-type") || "";
+    let buffer: Buffer;
+    let fileName: string;
+    let s3Key: string;
+    let shouldParse = true;
+    let fillMode = "empty";
+    let contentType = "application/pdf";
 
-    const lower = file.name.toLowerCase();
-    const ok =
-      lower.endsWith(".pdf") ||
-      lower.endsWith(".doc") ||
-      lower.endsWith(".docx") ||
-      file.type.includes("pdf") ||
-      file.type.includes("word");
-    if (!ok) {
-      return NextResponse.json(
-        { error: "Upload PDF or Word (.pdf, .doc, .docx)" },
-        { status: 400 }
+    if (contentTypeHeader.includes("application/json")) {
+      const body = await request.json();
+      s3Key = String(body.s3Key || body.fileKey || "").trim();
+      fileName = String(body.fileName || body.file_name || "resume.pdf").trim();
+      contentType = String(body.contentType || contentType);
+      const parseFlag = String(body.parse ?? "1").toLowerCase();
+      shouldParse = parseFlag !== "0" && parseFlag !== "false" && body.parse !== false;
+      fillMode = String(body.fill ?? "empty").toLowerCase();
+
+      if (!s3Key) {
+        return NextResponse.json(
+          { error: "s3Key is required (upload via presign first)" },
+          { status: 400 }
+        );
+      }
+      if (!isAllowedResumeS3Key(s3Key, tenantId)) {
+        return NextResponse.json(
+          { error: "Invalid resume storage key" },
+          { status: 403 }
+        );
+      }
+      if (
+        !isAllowedResumeFileName(fileName) &&
+        !isAllowedResumeMime(contentType)
+      ) {
+        return NextResponse.json(
+          { error: resumeUnsupportedTypeMessage() },
+          { status: 400 }
+        );
+      }
+
+      const obj = await getS3ObjectBuffer(s3Key);
+      buffer = obj.buffer;
+      if (obj.contentType) contentType = obj.contentType;
+      if (buffer.length > MAX_RESUME_BYTES) {
+        return NextResponse.json(
+          { error: resumeFileTooLargeMessage(buffer.length), code: "TOO_LARGE" },
+          { status: 400 }
+        );
+      }
+    } else {
+      const form = await request.formData();
+      const file = form.get("resume") as File | null;
+      if (!file) {
+        return NextResponse.json({ error: "No file provided" }, { status: 400 });
+      }
+
+      fileName = file.name;
+      const lower = file.name.toLowerCase();
+      const ok =
+        isAllowedResumeFileName(file.name) ||
+        isAllowedResumeMime(file.type) ||
+        lower.endsWith(".doc");
+      if (!ok) {
+        return NextResponse.json(
+          { error: resumeUnsupportedTypeMessage() },
+          { status: 400 }
+        );
+      }
+      if (file.size > MAX_RESUME_BYTES) {
+        return NextResponse.json(
+          { error: resumeFileTooLargeMessage(file.size), code: "TOO_LARGE" },
+          { status: 400 }
+        );
+      }
+
+      const parseFlag = String(form.get("parse") ?? "1").toLowerCase();
+      shouldParse = parseFlag !== "0" && parseFlag !== "false";
+      fillMode = String(form.get("fill") ?? "empty").toLowerCase();
+
+      buffer = Buffer.from(await file.arrayBuffer());
+      const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+      s3Key = `candidates/${id}/${Date.now()}-${safeName}`;
+      contentType =
+        file.type ||
+        (lower.endsWith(".pdf")
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+
+      await getS3Client().send(
+        new PutObjectCommand({
+          Bucket: getBucket(),
+          Key: s3Key,
+          Body: buffer,
+          ContentType: contentType,
+        })
       );
     }
-    if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 400 });
-    }
 
-    const parseFlag = String(form.get("parse") ?? "1").toLowerCase();
-    const shouldParse = parseFlag !== "0" && parseFlag !== "false";
-    const fillMode = String(form.get("fill") ?? "empty").toLowerCase(); // empty | overwrite
-
-    // Remove old S3 object if present
+    // Remove old S3 object if present (and different key)
     const c = candidate as any;
     const oldKey = extractS3Key(
       c.resume_url,
       c.resume_key || c.resumeKey || c.resume_s3_key
     );
-    if (oldKey) {
+    if (oldKey && oldKey !== s3Key) {
       try {
         await getS3Client().send(
           new DeleteObjectCommand({ Bucket: getBucket(), Key: oldKey })
@@ -222,33 +308,16 @@ export async function POST(
       }
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-    const s3Key = `candidates/${id}/${Date.now()}-${safeName}`;
-    const contentType =
-      file.type ||
-      (lower.endsWith(".pdf")
-        ? "application/pdf"
-        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-
-    await getS3Client().send(
-      new PutObjectCommand({
-        Bucket: getBucket(),
-        Key: s3Key,
-        Body: buffer,
-        ContentType: contentType,
-      })
-    );
-
     const updatePayload: Record<string, unknown> = {
       resume_url: s3Key,
     };
     let filledKeys: string[] = [];
     let parsedSummary: Record<string, unknown> | null = null;
+    let warning: string | undefined;
 
     if (shouldParse) {
       try {
-        const { parsed, method } = await parseResumeBuffer(buffer, file.name);
+        const { parsed, method, text } = await parseResumeBuffer(buffer, fileName);
         parsedSummary = {
           name: parsed.name,
           title: parsed.title,
@@ -259,7 +328,21 @@ export async function POST(
           method,
         };
 
-        if (fillMode === "overwrite") {
+        if (
+          isSparseParsedResume({
+            rawText: text,
+            name: parsed.name,
+            email: parsed.email,
+            phone: parsed.phone,
+            title: parsed.title,
+            skills: parsed.skills,
+            experience: parsed.experience,
+            education: parsed.education,
+            fileName,
+          })
+        ) {
+          warning = resumeNoExtractableTextMessage(fileName);
+        } else if (fillMode === "overwrite") {
           if (parsed.name) updatePayload.name = parsed.name;
           if (parsed.email) updatePayload.email = parsed.email;
           if (parsed.phone) updatePayload.phone = parsed.phone;
@@ -284,6 +367,8 @@ export async function POST(
         }
       } catch (parseErr) {
         console.warn("[POST resume] parse failed (upload still saved):", parseErr);
+        warning =
+          "Resume was saved, but automatic field extraction failed. You can edit the profile manually.";
       }
     }
 
@@ -322,7 +407,7 @@ export async function POST(
             "SET resume_url = :k, resume_key = :k, resume_s3_key = :k, resume_file_name = :n, modified_at = :m",
           ExpressionAttributeValues: {
             ":k": { S: s3Key },
-            ":n": { S: file.name },
+            ":n": { S: fileName },
             ":m": { S: new Date().toISOString() },
           },
         })
@@ -336,11 +421,13 @@ export async function POST(
       filledKeys.length > 0
         ? ` Filled empty fields: ${filledKeys.join(", ")}.`
         : shouldParse
-          ? " Profile fields already set; no empty fields filled."
+          ? warning
+            ? " Could not extract text for autofill."
+            : " Profile fields already set; no empty fields filled."
           : "";
     await addNoteToCandidate(
       id,
-      `Resume replaced: ${file.name}.${filledNote}`,
+      `Resume replaced: ${fileName}.${filledNote}`,
       session?.email || "system",
       { noteType: "profile_updated" }
     ).catch(() => {});
@@ -348,10 +435,12 @@ export async function POST(
     return NextResponse.json({
       success: true,
       resume_url: s3Key,
-      resume_file_name: file.name,
+      resume_file_name: fileName,
       fileKey: s3Key,
       filledFields: filledKeys,
       parsed: parsedSummary,
+      warning,
+      code: warning ? "NO_EXTRACTABLE_TEXT" : undefined,
     });
   } catch (error) {
     console.error("[POST resume]", error);
