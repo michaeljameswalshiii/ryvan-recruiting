@@ -71,7 +71,7 @@ export function useCandidate(id: string) {
     queryKey: candidateKeys.detail(id),
     queryFn: () => getCandidate(id),
     enabled: !!id,
-    staleTime: 0, // immediate UI — mutations refresh active queries
+    staleTime: 0, // immediate UI - mutations refresh active queries
   });
 }
 

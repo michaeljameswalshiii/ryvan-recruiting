@@ -55,7 +55,7 @@ export function useJobs(includeStats = false) {
       
       return includeStats ? { jobs, stats: result.stats } : jobs;
     },
-    staleTime: 0, // immediate UI — mutations refresh active queries
+    staleTime: 0, // immediate UI - mutations refresh active queries
     retry: 2,
   });
 }
@@ -73,7 +73,7 @@ export function useJob(jobId: string) {
       }
       return result.job;
     },
-    staleTime: 0, // immediate UI — mutations refresh active queries
+    staleTime: 0, // immediate UI - mutations refresh active queries
     retry: 2,
     enabled: !!jobId,
   });
@@ -708,7 +708,7 @@ export function useLinkedJobsForCandidate(candidateId: string) {
       // Return the linkedJobs array from the candidate record
       return data.lead?.linkedJobs || [];
     },
-    staleTime: 0, // immediate UI — mutations refresh active queries
+    staleTime: 0, // immediate UI - mutations refresh active queries
     retry: 2,
     enabled: !!candidateId,
   });

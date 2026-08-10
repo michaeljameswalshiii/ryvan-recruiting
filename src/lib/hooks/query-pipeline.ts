@@ -49,7 +49,7 @@ export function usePipeline() {
         throw err;
       }
     },
-    staleTime: 0, // immediate UI — mutations refresh active queries
+    staleTime: 0, // immediate UI - mutations refresh active queries
     retry: 2,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
