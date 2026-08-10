@@ -2389,11 +2389,23 @@ export function scoreCandidateJobFit(
       toolsApplicable ? toolReadinessScore : "n/a"
     }`
   );
+  // Prefer short, parallel labels so Strengths / Concerns columns align in the UI.
+  // Keep detail after an em dash for hover/tooltip context.
   for (const d of applicableDims) {
-    if (d.score >= 80) {
-      strengths.push(`${d.label}: ${d.detail}`);
+    if (d.score >= 75) {
+      strengths.push(`${d.label} (${d.score}/100) — ${d.detail}`);
     } else if (d.score < 55) {
-      gaps.push(`${d.label}: ${d.detail}`);
+      gaps.push(`${d.label} (${d.score}/100) — ${d.detail}`);
+    }
+  }
+  // If everything is middling, still surface top/bottom so the panel is never empty
+  if (!strengths.length && !gaps.length && applicableDims.length) {
+    const sorted = [...applicableDims].sort((a, b) => b.score - a.score);
+    const top = sorted[0];
+    const bottom = sorted[sorted.length - 1];
+    if (top) strengths.push(`${top.label} (${top.score}/100) — ${top.detail}`);
+    if (bottom && bottom.id !== top?.id) {
+      gaps.push(`${bottom.label} (${bottom.score}/100) — ${bottom.detail}`);
     }
   }
 

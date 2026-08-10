@@ -182,7 +182,16 @@ async function loadResumeTextForLead(lead: any): Promise<string> {
       process.env.AWS_REGION ||
       process.env.NEXT_PUBLIC_AWS_REGION ||
       "us-east-1";
-    const client = new S3Client({ region });
+    const accessKeyId =
+      process.env.AWS_ACCESS_KEY_ID || process.env.MY_AWS_ACCESS_KEY_ID;
+    const secretAccessKey =
+      process.env.AWS_SECRET_ACCESS_KEY || process.env.MY_AWS_SECRET_ACCESS_KEY;
+    const client = new S3Client({
+      region,
+      ...(accessKeyId && secretAccessKey
+        ? { credentials: { accessKeyId, secretAccessKey } }
+        : {}),
+    });
     const obj = await client.send(
       new GetObjectCommand({ Bucket: bucket, Key: s3Key })
     );
@@ -206,16 +215,18 @@ async function buildCandidateInput(lead: any): Promise<{
   input: FitCandidateInput;
   resumeUsed: boolean;
 }> {
-  let input = leadToCandidateInput(lead);
-  let resumeUsed = false;
-  if (candidateInputIsSparse(input)) {
-    const resumeText = await loadResumeTextForLead(lead);
-    if (resumeText.length >= 40) {
-      input = leadToCandidateInput(lead, resumeText);
-      resumeUsed = true;
-    }
+  // Always try resume text when available so synonym/tool free-text matching
+  // sees the real document (not only sparse CRM profiles).
+  const resumeText = await loadResumeTextForLead(lead);
+  const resumeUsed = resumeText.length >= 40;
+  if (resumeUsed || candidateInputIsSparse(leadToCandidateInput(lead))) {
+    const input = leadToCandidateInput(
+      lead,
+      resumeUsed ? resumeText : undefined
+    );
+    return { input, resumeUsed };
   }
-  return { input, resumeUsed };
+  return { input: leadToCandidateInput(lead), resumeUsed: false };
 }
 
 /** Shared fit fields written to both sides of the dual-write link. */
