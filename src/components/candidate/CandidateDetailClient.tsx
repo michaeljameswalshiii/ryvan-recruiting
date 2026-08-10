@@ -258,10 +258,25 @@ export function CandidateDetailClient({
     currentJob?.company ||
     "";
   const fit = fitOverlay || currentJob || {};
-  const fitScore = fit.fitScore ?? fit.fit_score;
+  const fitScore = fit.fitScore ?? fit.fit_score ?? null;
   const fitGradeLetter = String(fit.fitGrade || fit.fit_grade || "")
     .trim()
     .toUpperCase();
+  const fitStrengthsList: string[] = Array.isArray(fit.fitStrengths)
+    ? fit.fitStrengths
+    : Array.isArray(fit.strengths)
+      ? fit.strengths
+      : [];
+  const fitGapsList: string[] = Array.isArray(fit.fitGaps)
+    ? fit.fitGaps
+    : Array.isArray(fit.gaps)
+      ? fit.gaps
+      : [];
+  const fitDomainScore =
+    fit.fitDomainScore ?? fit.fit_domain_score ?? fit.domainScore ?? null;
+  const fitToolScore =
+    fit.fitToolScore ?? fit.fit_tool_score ?? fit.toolScore ?? null;
+  const fitToolsApplicable = fit.fitToolApplicable !== false;
   const fitGradeColor =
     fitGradeLetter === "A"
       ? "text-emerald-700"
@@ -289,26 +304,36 @@ export function CandidateDetailClient({
   const runFit = async () => {
     const jobId = currentJob?.jobId || currentJob?.id;
     if (!jobId) {
-      console.warn("[runFit] No job selected");
+      toast.error("Select an application first, then run AI Fit");
+      return;
+    }
+    if (!candidate?.id) {
+      toast.error("Missing candidate id");
       return;
     }
     setFitBusy(true);
     try {
-      const response = await fetch(`/api/jobs/${encodeURIComponent(String(jobId))}/fit-score`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          candidateId: candidate.id,
-          persist: true,
-        }),
-      });
+      const response = await fetch(
+        `/api/jobs/${encodeURIComponent(String(jobId))}/fit-score`,
+        {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            candidateId: String(candidate.id),
+            persist: true,
+          }),
+        }
+      );
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(body?.error || `Fit scoring failed (${response.status})`);
+        throw new Error(
+          body?.error || `Fit scoring failed (HTTP ${response.status})`
+        );
       }
       // POST returns { scores: [{ fit }] }; GET-style also may return { fit }
-      const row = body?.scores?.[0];
+      const row = Array.isArray(body?.scores) ? body.scores[0] : null;
       const scored =
         body?.fit ||
         row?.fit ||
@@ -339,7 +364,6 @@ export function CandidateDetailClient({
       );
     } catch (err: any) {
       console.error("[runFit]", err);
-      // Visible feedback — previously errors were swallowed and the button looked "broken"
       toast.error(err?.message || "Failed to refresh AI Fit");
     } finally {
       setFitBusy(false);
@@ -1068,81 +1092,96 @@ export function CandidateDetailClient({
                   />
                 </div>
               </section>
-              <section className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-start-2 xl:row-start-2">
+              <section
+                data-ai-evaluation
+                className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-start-2 xl:row-start-2"
+              >
                 <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
                   <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
                 </h2>
-                {/* Row 1: overall ring + domain/tools — stays left-aligned as a score header */}
-                <div className="mb-4 flex flex-wrap items-center gap-4 border-b border-slate-100 pb-4">
+
+                {/* Score header — overall + domain/tools together (not under strengths) */}
+                <div className="mb-4 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
                   <div className="flex items-center gap-3">
                     <div
-                      className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full"
+                      className="relative flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center rounded-full"
                       style={{
-                        background: `conic-gradient(${fitRingColor} ${Math.max(0, Math.min(100, Number(fitScore) || 0)) * 3.6}deg, #d1d5db 0deg)`,
+                        background: `conic-gradient(${fitRingColor} ${Math.max(0, Math.min(100, Number(fitScore) || 0)) * 3.6}deg, #e2e8f0 0deg)`,
                       }}
+                      aria-label={
+                        fitScore != null
+                          ? `Overall fit ${Math.round(Number(fitScore))} out of 100`
+                          : "Not scored"
+                      }
                     >
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-lg font-semibold text-slate-900">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-lg font-bold text-slate-900">
                         {fitScore != null ? Math.round(Number(fitScore)) : "—"}
                       </div>
                     </div>
-                    <div>
-                      <div className="text-xs text-slate-500">Overall fit</div>
-                      <div className={`text-sm font-semibold ${fitGradeColor}`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                        Overall fit
+                      </div>
+                      <div className={`text-base font-semibold ${fitGradeColor}`}>
                         {fitGradeLetter
                           ? `Grade ${fitGradeLetter}`
                           : fitScore != null
                             ? "Scored"
                             : "Not scored"}
                       </div>
-                      <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-semibold tabular-nums">
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-700">
-                          {fit.fitDomainScore != null
-                            ? `Domain ${Math.round(Number(fit.fitDomainScore))}/100`
-                            : "Domain —"}
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-700">
+                          Domain{" "}
+                          {fitDomainScore != null
+                            ? `${Math.round(Number(fitDomainScore))}/100`
+                            : "—"}
                         </span>
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-700">
-                          {fit.fitToolApplicable === false
+                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-700">
+                          {!fitToolsApplicable
                             ? "Tools n/a"
-                            : fit.fitToolScore != null
-                              ? `Tools ${Math.round(Number(fit.fitToolScore))}/100`
+                            : fitToolScore != null
+                              ? `Tools ${Math.round(Number(fitToolScore))}/100`
                               : "Tools —"}
                         </span>
                       </div>
                     </div>
                   </div>
                 </div>
-                {/* Row 2: equal columns for strengths vs concerns */}
-                <div className="mb-3 grid gap-4 sm:grid-cols-2">
-                  <div className="min-w-0">
-                    <div className="text-xs font-semibold text-slate-600">
+
+                {/* Equal two-column strengths / concerns */}
+                <div className="mb-3 grid min-h-[7rem] flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="min-w-0 rounded-lg border border-emerald-100 bg-emerald-50/40 p-2.5">
+                    <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-emerald-800">
                       Key strengths
                     </div>
-                    <ul className="mt-1.5 space-y-1.5 text-xs text-slate-700">
-                      {(fit.fitStrengths || []).length ? (
-                        (fit.fitStrengths || []).slice(0, 4).map((item: string) => (
+                    <ul className="space-y-1.5 text-xs leading-snug text-slate-700">
+                      {fitStrengthsList.length ? (
+                        fitStrengthsList.slice(0, 4).map((item: string) => (
                           <li key={item} className="flex gap-1.5" title={item}>
-                            <span className="shrink-0 text-emerald-600">✓</span>
+                            <span className="shrink-0 font-bold text-emerald-600">
+                              ✓
+                            </span>
                             <span className="min-w-0 break-words">{item}</span>
                           </li>
                         ))
                       ) : (
                         <li className="text-slate-500">
                           {fitScore != null
-                            ? "No strong factors (80+) on this run."
+                            ? "No strong factors (75+) on this run."
                             : "Run AI Fit to score this application."}
                         </li>
                       )}
                     </ul>
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-semibold text-slate-600">
+                  <div className="min-w-0 rounded-lg border border-amber-100 bg-amber-50/40 p-2.5">
+                    <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-900">
                       Potential concerns
                     </div>
-                    <ul className="mt-1.5 space-y-1.5 text-xs text-slate-700">
-                      {(fit.fitGaps || []).length ? (
-                        (fit.fitGaps || []).slice(0, 4).map((item: string) => (
+                    <ul className="space-y-1.5 text-xs leading-snug text-slate-700">
+                      {fitGapsList.length ? (
+                        fitGapsList.slice(0, 4).map((item: string) => (
                           <li key={item} className="flex gap-1.5" title={item}>
-                            <span className="shrink-0 text-amber-500">•</span>
+                            <span className="shrink-0 text-amber-600">•</span>
                             <span className="min-w-0 break-words">{item}</span>
                           </li>
                         ))
@@ -1156,10 +1195,11 @@ export function CandidateDetailClient({
                     </ul>
                   </div>
                 </div>
+
                 <Button
                   size="sm"
                   variant="outline"
-                  className="mt-2 w-full text-xs"
+                  className="mt-auto w-full text-xs"
                   disabled={fitBusy || !currentJob}
                   onClick={() => void runFit()}
                 >

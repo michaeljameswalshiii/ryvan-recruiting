@@ -29,7 +29,7 @@ import {
   type FitCandidateInput,
 } from "@/lib/ai/fit-score";
 import { scoreCandidateJobFitWithOutcomes } from "@/lib/ai/outcome-rank";
-import { getSkillsGraphFresh } from "@/lib/db/repositories/skills-graph-repository";
+import { getSkillsGraph } from "@/lib/db/repositories/skills-graph-repository";
 import {
   getItem,
   updateItem,
@@ -211,22 +211,47 @@ async function loadResumeTextForLead(lead: any): Promise<string> {
   }
 }
 
+/** Don't let S3/pdf parsing block the whole fit request past this budget. */
+const RESUME_LOAD_TIMEOUT_MS = 4000;
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  fallback: T
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function buildCandidateInput(lead: any): Promise<{
   input: FitCandidateInput;
   resumeUsed: boolean;
 }> {
-  // Always try resume text when available so synonym/tool free-text matching
-  // sees the real document (not only sparse CRM profiles).
-  const resumeText = await loadResumeTextForLead(lead);
+  // Prefer resume text for synonym matching, but never hang the request.
+  // getSkillsGraphFresh rebuilds can also be slow — kept out of this path.
+  const base = leadToCandidateInput(lead);
+  const resumeText = await withTimeout(
+    loadResumeTextForLead(lead),
+    RESUME_LOAD_TIMEOUT_MS,
+    ""
+  );
   const resumeUsed = resumeText.length >= 40;
-  if (resumeUsed || candidateInputIsSparse(leadToCandidateInput(lead))) {
-    const input = leadToCandidateInput(
-      lead,
-      resumeUsed ? resumeText : undefined
-    );
-    return { input, resumeUsed };
+  if (resumeUsed) {
+    return {
+      input: leadToCandidateInput(lead, resumeText),
+      resumeUsed: true,
+    };
   }
-  return { input: leadToCandidateInput(lead), resumeUsed: false };
+  return { input: base, resumeUsed: false };
 }
 
 /** Shared fit fields written to both sides of the dual-write link. */
@@ -397,77 +422,106 @@ async function scoreOne(
   resumeUsed?: boolean;
   recruiterNotesUsed?: boolean;
 } | null> {
-  const lead = await getLeadById(tenantId, candidateId);
-  if (!lead) return null;
+  try {
+    const lead = await getLeadById(tenantId, candidateId);
+    if (!lead) return null;
 
-  const { input: baseInput, resumeUsed } = await buildCandidateInput(
-    lead as any
-  );
-  const notes = (opts?.recruiterNotes || "").trim();
-  const recruiterNotesUsed = notes.length > 0;
-  const candidateInput = applyRecruiterNotes(baseInput, notes);
-
-  let fit: FitScoreResult & {
-    baseScore?: number;
-    outcomeBoost?: number;
-    rankedWithOutcomes?: boolean;
-    summary?: string;
-  };
-
-  if (opts?.useOutcomes !== false) {
+    let resumeUsed = false;
+    let candidateInput: FitCandidateInput;
     try {
-      const { graph } = await getSkillsGraphFresh(tenantId, { rebuild: false });
-      fit = scoreCandidateJobFitWithOutcomes(
-        candidateInput,
-        jobFitInput(job),
-        graph
-      );
-    } catch {
+      const built = await buildCandidateInput(lead as any);
+      candidateInput = built.input;
+      resumeUsed = built.resumeUsed;
+    } catch (buildErr) {
+      console.warn("[fit-score] buildCandidateInput failed:", buildErr);
+      candidateInput = leadToCandidateInput(lead as any);
+    }
+
+    const notes = (opts?.recruiterNotes || "").trim();
+    const recruiterNotesUsed = notes.length > 0;
+    candidateInput = applyRecruiterNotes(candidateInput, notes);
+
+    let fit: FitScoreResult & {
+      baseScore?: number;
+      outcomeBoost?: number;
+      rankedWithOutcomes?: boolean;
+      summary?: string;
+    };
+
+    // Never rebuild the skills graph here — rebuild scans all leads/jobs and
+    // times out the fit request (500 "Failed to compute fit score").
+    // Use a cached graph only; otherwise pure deterministic scoring.
+    try {
+      if (opts?.useOutcomes === false) {
+        fit = scoreCandidateJobFit(candidateInput, jobFitInput(job));
+      } else {
+        const graph = await withTimeout(getSkillsGraph(tenantId), 2500, null);
+        if (graph) {
+          fit = scoreCandidateJobFitWithOutcomes(
+            candidateInput,
+            jobFitInput(job),
+            graph
+          );
+        } else {
+          fit = scoreCandidateJobFit(candidateInput, jobFitInput(job));
+        }
+      }
+    } catch (scoreErr) {
+      console.warn("[fit-score] scoring failed, retry base:", scoreErr);
       fit = scoreCandidateJobFit(candidateInput, jobFitInput(job));
     }
-  } else {
-    fit = scoreCandidateJobFit(candidateInput, jobFitInput(job));
-  }
 
-  fit.summary = formatFitSummary(fit);
-  if (recruiterNotesUsed) {
-    fit.reasons = [
-      "Recruiter notes included in Domain / Tools score",
-      ...fit.reasons,
-    ].slice(0, 12);
-    fit.summary = [
-      fit.summary,
-      "",
-      "Recruiter notes considered:",
-      notes.slice(0, 1500),
-    ].join("\n");
-  }
-  if (resumeUsed) {
-    fit.reasons = [
-      "Scored using resume file text (profile skills/summary were sparse)",
-      ...fit.reasons,
-    ].slice(0, 12);
-  }
+    try {
+      fit.summary = formatFitSummary(fit);
+    } catch {
+      fit.summary = `Fit ${fit.score}/100 (${fit.grade})`;
+    }
+    if (recruiterNotesUsed) {
+      fit.reasons = [
+        "Recruiter notes included in Domain / Tools score",
+        ...(fit.reasons || []),
+      ].slice(0, 12);
+      fit.summary = [
+        fit.summary,
+        "",
+        "Recruiter notes considered:",
+        notes.slice(0, 1500),
+      ].join("\n");
+    }
+    if (resumeUsed) {
+      fit.reasons = [
+        "Scored using resume file text",
+        ...(fit.reasons || []),
+      ].slice(0, 12);
+    }
 
-  let persisted = false;
-  if (opts?.persist !== false) {
-    persisted = await tryStoreFitOnLinkedCandidate(
-      tenantId,
-      job.id!,
-      job.title || "Job",
+    let persisted = false;
+    if (opts?.persist !== false) {
+      try {
+        persisted = await tryStoreFitOnLinkedCandidate(
+          tenantId,
+          job.id!,
+          job.title || "Job",
+          candidateId,
+          fit,
+          opts?.createdBy || "system"
+        );
+      } catch (persistErr) {
+        console.warn("[fit-score] persist failed (score still returned):", persistErr);
+      }
+    }
+    return {
       candidateId,
+      candidateName: lead.name,
       fit,
-      opts?.createdBy || "system"
-    );
+      persisted,
+      resumeUsed,
+      recruiterNotesUsed,
+    };
+  } catch (err) {
+    console.error("[fit-score] scoreOne fatal:", err);
+    throw err;
   }
-  return {
-    candidateId,
-    candidateName: lead.name,
-    fit,
-    persisted,
-    resumeUsed,
-    recruiterNotesUsed,
-  };
 }
 
 /**
@@ -523,8 +577,12 @@ export async function GET(
     });
   } catch (error) {
     console.error("[fit-score] GET error:", error);
+    const message =
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to compute fit score";
     return NextResponse.json(
-      { error: "Failed to compute fit score" },
+      { error: message, code: "FIT_SCORE_FAILED" },
       { status: 500 }
     );
   }
@@ -663,8 +721,12 @@ export async function POST(
     });
   } catch (error) {
     console.error("[fit-score] POST error:", error);
+    const message =
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to compute fit score";
     return NextResponse.json(
-      { error: "Failed to compute fit score" },
+      { error: message, code: "FIT_SCORE_FAILED" },
       { status: 500 }
     );
   }
