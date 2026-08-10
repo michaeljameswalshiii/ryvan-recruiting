@@ -7,8 +7,8 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect, useMemo } from 'react';
+import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import {
   Mail,
   Link2,
@@ -26,6 +26,7 @@ import {
   MessageSquare,
   Shield,
   FileText,
+  UserRound,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -81,9 +82,30 @@ type SettingsTab =
   | 'texting'
   | 'security';
 
+/** Personal vs org-level settings (sidebar: My Settings / Company Settings) */
+type SettingsScope = 'my' | 'company';
+
+const MY_TABS: SettingsTab[] = ['account'];
+const COMPANY_TABS: SettingsTab[] = [
+  'team',
+  'organization',
+  'invoices',
+  'integrations',
+  'texting',
+  'security',
+  'plan',
+];
+
 export default function SettingsPage() {
+  const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<SettingsTab>('account');
+  const scope: SettingsScope = pathname?.includes('/settings/company')
+    ? 'company'
+    : 'my';
+  const [tab, setTab] = useState<SettingsTab>(
+    scope === 'company' ? 'team' : 'account'
+  );
   const [userRole, setUserRole] = useState<string | null>(null);
   const [connections, setConnections] = useState<EmailConnection[]>([]);
   const [activeConnections, setActiveConnections] = useState<ActiveConnection[]>([]);
@@ -109,10 +131,10 @@ export default function SettingsPage() {
   // Get user ID from session (in real app, get from auth)
   const userId = 'demo-user'; // TODO: Get from session
   
-  // Deep-link ?tab=texting|account|...
+  // Deep-link ?tab=… and keep scope URLs consistent
   useEffect(() => {
-    const t = searchParams.get('tab');
-    if (
+    const t = searchParams.get('tab') as SettingsTab | null;
+    const valid =
       t === 'account' ||
       t === 'team' ||
       t === 'organization' ||
@@ -120,11 +142,26 @@ export default function SettingsPage() {
       t === 'integrations' ||
       t === 'texting' ||
       t === 'security' ||
-      t === 'invoices'
-    ) {
-      setTab(t as SettingsTab);
+      t === 'invoices';
+
+    if (valid && t) {
+      // Old bookmarks: company tabs under /settings → bounce to /settings/company
+      if (scope === 'my' && COMPANY_TABS.includes(t)) {
+        router.replace(`/dashboard/settings/company?tab=${t}`);
+        return;
+      }
+      // My-only tabs under company → bounce home to My Settings
+      if (scope === 'company' && MY_TABS.includes(t)) {
+        router.replace(`/dashboard/settings?tab=${t}`);
+        return;
+      }
+      setTab(t);
+      return;
     }
-  }, [searchParams]);
+
+    // Default tab when switching scopes
+    setTab(scope === 'company' ? 'team' : 'account');
+  }, [searchParams, scope, router]);
 
   // Handle OAuth callback messages
   useEffect(() => {
@@ -419,90 +456,152 @@ export default function SettingsPage() {
   const isGmailConnected = activeConnections.some(c => c.provider === 'gmail');
   const isOutlookConnected = activeConnections.some(c => c.provider === 'outlook');
   
-  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
-    { id: 'account', label: 'Account', icon: <Sparkles className="h-4 w-4" /> },
-    { id: 'team', label: 'Team', icon: <Users className="h-4 w-4" />, adminOnly: true },
-    { id: 'organization', label: 'Organization', icon: <Building2 className="h-4 w-4" />, adminOnly: true },
+  const allTabs: {
+    id: SettingsTab;
+    label: string;
+    icon: React.ReactNode;
+    scope: SettingsScope;
+    adminOnly?: boolean;
+  }[] = [
+    {
+      id: 'account',
+      label: 'Account',
+      icon: <UserRound className="h-4 w-4" />,
+      scope: 'my',
+    },
+    {
+      id: 'team',
+      label: 'Team',
+      icon: <Users className="h-4 w-4" />,
+      scope: 'company',
+      adminOnly: true,
+    },
+    {
+      id: 'organization',
+      label: 'Organization',
+      icon: <Building2 className="h-4 w-4" />,
+      scope: 'company',
+      adminOnly: true,
+    },
     {
       id: 'invoices',
       label: 'Invoices',
       icon: <FileText className="h-4 w-4" />,
+      scope: 'company',
       adminOnly: true,
     },
     {
       id: 'integrations',
       label: 'Integrations',
       icon: <Terminal className="h-4 w-4" />,
+      scope: 'company',
       adminOnly: true,
     },
     {
       id: 'texting',
       label: 'Texting',
       icon: <MessageSquare className="h-4 w-4" />,
+      scope: 'company',
+      adminOnly: true,
     },
     {
       id: 'security',
       label: 'Security',
       icon: <Shield className="h-4 w-4" />,
+      scope: 'company',
       adminOnly: true,
     },
-    { id: 'plan', label: 'Plan', icon: <CreditCard className="h-4 w-4" /> },
+    {
+      id: 'plan',
+      label: 'Plan & billing',
+      icon: <CreditCard className="h-4 w-4" />,
+      scope: 'company',
+      adminOnly: true,
+    },
   ];
+
+  const tabs = useMemo(
+    () =>
+      allTabs.filter(
+        (t) =>
+          t.scope === scope && (!t.adminOnly || canTeamAdmin || scope === 'my')
+      ),
+    [scope, canTeamAdmin]
+  );
+
+  // Company settings require team admin
+  useEffect(() => {
+    if (scope === 'company' && userRole !== null && !canTeamAdmin) {
+      router.replace('/dashboard/settings');
+    }
+  }, [scope, userRole, canTeamAdmin, router]);
+
+  const selectTab = (id: SettingsTab) => {
+    setTab(id);
+    const base =
+      scope === 'company'
+        ? '/dashboard/settings/company'
+        : '/dashboard/settings';
+    router.replace(`${base}?tab=${id}`, { scroll: false });
+  };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Settings</h1>
+        <h1 className="text-3xl font-bold">
+          {scope === 'company' ? 'Company Settings' : 'My Settings'}
+        </h1>
         <p className="text-muted-foreground mt-2">
-          Manage your account, team, organization, and plan
+          {scope === 'company'
+            ? 'Team, organization, integrations, billing, and shared company tools'
+            : 'Your email, password, and personal AI preferences'}
         </p>
       </div>
 
       <div className="flex flex-wrap gap-2 border-b pb-3">
-        {tabs
-          .filter((t) => !t.adminOnly || canTeamAdmin)
-          .map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                tab === t.id
-                  ? 'bg-blue-50 text-blue-800 border border-blue-200'
-                  : 'text-slate-300 hover:bg-white/10 hover:text-white dark:text-slate-300 border border-transparent'
-              }`}
-            >
-              {t.icon}
-              {t.label}
-            </button>
-          ))}
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => selectTab(t.id)}
+            className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              tab === t.id
+                ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                : 'text-slate-300 hover:bg-white/10 hover:text-white dark:text-slate-300 border border-transparent'
+            }`}
+          >
+            {t.icon}
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {tab === 'team' && canTeamAdmin && <TeamSettings />}
-      {tab === 'organization' && canTeamAdmin && <OrgSettings />}
-      {tab === 'invoices' && canTeamAdmin && <InvoiceTemplatesSettings />}
-      {tab === 'integrations' && canTeamAdmin && (
+      {scope === 'company' && tab === 'team' && canTeamAdmin && <TeamSettings />}
+      {scope === 'company' && tab === 'organization' && canTeamAdmin && (
+        <OrgSettings />
+      )}
+      {scope === 'company' && tab === 'invoices' && canTeamAdmin && (
+        <InvoiceTemplatesSettings />
+      )}
+      {scope === 'company' && tab === 'integrations' && canTeamAdmin && (
         <div className="space-y-6">
-          <ApolloSettings />
+          <div id="apollo-company-key" className="scroll-mt-6">
+            <ApolloSettings />
+          </div>
           <McpKeysSettings />
         </div>
       )}
-      {tab === 'texting' && <TextingSettings />}
-      {tab === 'security' && canTeamAdmin && <SecuritySettings />}
-      {tab === 'plan' && <PlanSettings />}
+      {scope === 'company' && tab === 'texting' && canTeamAdmin && (
+        <TextingSettings />
+      )}
+      {scope === 'company' && tab === 'security' && canTeamAdmin && (
+        <SecuritySettings />
+      )}
+      {scope === 'company' && tab === 'plan' && canTeamAdmin && <PlanSettings />}
 
-      {tab === 'account' && (
+      {scope === 'my' && tab === 'account' && (
       <>
-      {/*
-        Company Apollo BYOK — tenant-wide people search key.
-        Team admins save; every user in the tenant uses it (Fill job, AI tools, etc.).
-        Also on Integrations tab for admins.
-      */}
-      <div id="apollo-company-key" className="scroll-mt-6">
-        <ApolloSettings />
-      </div>
-
-      {/* AI Providers — always light surfaces (readable in dark theme) */}
+      {/* AI Providers — personal BYOK for chat sessions */}
       <Card
         data-ink-on-light
         className="border-blue-100 bg-white shadow-sm text-slate-900"

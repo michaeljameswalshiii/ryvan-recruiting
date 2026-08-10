@@ -21,6 +21,7 @@ import {
   Activity,
   Moon,
   Sun,
+  UserRound,
 } from 'lucide-react';
 import {
   hasPermission,
@@ -45,7 +46,15 @@ const menuItems: MenuItem[] = [
   { name: 'Talent Graph', href: '/dashboard/talent-graph', icon: Network, permission: 'core_ats' },
   { name: 'Sequences', href: '/dashboard/sequences', icon: ListOrdered, permission: 'core_ats' },
   { name: 'AI', href: '/dashboard/general-ai-usage', icon: MessageSquare, permission: 'core_ats' },
-  { name: 'Settings', href: '/dashboard/settings', icon: Settings, permission: 'settings' },
+  // Personal: email, password, AI BYOK
+  { name: 'My Settings', href: '/dashboard/settings', icon: UserRound, permission: 'settings' },
+  // Org: team, branding, integrations, billing (company admins+)
+  {
+    name: 'Company Settings',
+    href: '/dashboard/settings/company',
+    icon: Settings,
+    permission: 'team_admin',
+  },
 ];
 
 const adminItems: MenuItem[] = [
@@ -133,8 +142,26 @@ export default function Sidebar({ role, tenantScope }: SidebarProps) {
     }
   };
 
+  /** Exact path match, with special-case so My Settings ≠ Company Settings */
+  const isNavActive = (href: string) => {
+    if (href === '/dashboard/settings') {
+      return (
+        pathname === '/dashboard/settings' ||
+        (pathname.startsWith('/dashboard/settings/') &&
+          !pathname.startsWith('/dashboard/settings/company'))
+      );
+    }
+    if (href === '/dashboard/settings/company') {
+      return (
+        pathname === '/dashboard/settings/company' ||
+        pathname.startsWith('/dashboard/settings/company/')
+      );
+    }
+    return pathname === href || pathname.startsWith(href + '/');
+  };
+
   const linkClass = (href: string, activeTone: 'blue' | 'orange' | 'purple') => {
-    const isActive = pathname === href || pathname.startsWith(href + '/');
+    const isActive = isNavActive(href);
     // IMPORTANT: do not put light pastel classes (bg-blue-50, etc.) on the same
     // element in dark mode — globals map .dark .bg-blue-50 { color: near-black }
     // because the class name still matches even when dark:bg-* overrides fill.
@@ -214,8 +241,7 @@ export default function Sidebar({ role, tenantScope }: SidebarProps) {
       >
         <div className="space-y-1">
           {visibleMain.map((item) => {
-            const isActive =
-              pathname === item.href || pathname.startsWith(item.href + '/');
+            const isActive = isNavActive(item.href);
             const requiresTenant = item.href !== '/dashboard';
             if (allTenantsSelected && requiresTenant) {
               return (

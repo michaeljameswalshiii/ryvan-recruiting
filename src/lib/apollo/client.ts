@@ -456,7 +456,7 @@ async function apolloFetch(
       let friendly = msg;
       if (response.status === 401) {
         friendly =
-          'Invalid Apollo API key (401). Update the company key in Settings → Integrations.';
+          'Invalid Apollo API key (401). Update the company key in Company Settings → Integrations.';
       } else if (response.status === 403) {
         friendly =
           'Apollo plan or master API key required for this search (403).';
@@ -542,7 +542,7 @@ export async function searchPeople(
       people: [],
       total: 0,
       error:
-        'Apollo API key is not configured. Add a company Apollo master key in Settings → Integrations.',
+        'Apollo API key is not configured. Add a company Apollo master key in Company Settings → Integrations.',
       keySource: 'none',
     };
   }
@@ -652,8 +652,8 @@ export async function searchPeople(
     if (result.status === 401) {
       error =
         keyInfo.source === 'tenant'
-          ? 'Company Apollo key rejected (401 Invalid API key). Re-save a master key with People API Search in Settings → Integrations.'
-          : 'Platform Apollo key is invalid (401). Add/update the company Apollo master key in Settings → Integrations.';
+          ? 'Company Apollo key rejected (401 Invalid API key). Re-save a master key with People API Search in Company Settings → Integrations.'
+          : 'Platform Apollo key is invalid (401). Add/update the company Apollo master key in Company Settings → Integrations.';
     } else if (result.status === 403) {
       error =
         'Apollo 403 — key needs master access to People API Search (mixed_people/api_search). Create a master key in Apollo → Settings → API.';

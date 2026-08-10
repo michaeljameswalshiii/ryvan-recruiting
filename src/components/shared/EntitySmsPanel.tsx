@@ -186,7 +186,7 @@ export function EntitySmsPanel({
           typeof data.error === 'string'
             ? data.error
             : data.details
-              ? 'Invalid request — check phone and Settings → Texting'
+              ? 'Invalid request — check phone and Company Settings → Texting'
               : 'Send failed';
         throw new Error(msg);
       }
@@ -245,10 +245,10 @@ export function EntitySmsPanel({
               <span>
                 Texting is <strong>disabled</strong> for this workspace.{' '}
                 <a
-                  href="/dashboard/settings?tab=texting"
+                  href="/dashboard/settings/company?tab=texting"
                   className="underline font-semibold"
                 >
-                  Settings → Texting
+                  Company Settings → Texting
                 </a>{' '}
                 → enable texting, then try again.
               </span>

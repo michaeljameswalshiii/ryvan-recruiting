@@ -83,7 +83,7 @@ async function invokeGrok(params: {
     }
     if (res.status === 401) {
       throw new Error(
-        'Invalid Grok/xAI API key. Update it in Settings → AI Providers.'
+        'Invalid Grok/xAI API key. Update it in My Settings → Account.'
       );
     }
     if (res.status === 429) {

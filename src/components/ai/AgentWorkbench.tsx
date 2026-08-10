@@ -1124,7 +1124,7 @@ export function AgentWorkbench({
             {apolloStatus.tenantHasKey
               ? ` · company key ${apolloStatus.tenantKeyHint || 'saved'}`
               : ' · no company key saved'}
-            . Open <strong className="text-rose-50">Settings → Integrations</strong> and
+            . Open <strong className="text-rose-50">Company Settings → Integrations</strong> and
             re-save a <strong className="text-rose-50">master</strong> Apollo API key
             with People API Search. The LLM plan is fine — without a valid key Apollo
             returns 0 people.

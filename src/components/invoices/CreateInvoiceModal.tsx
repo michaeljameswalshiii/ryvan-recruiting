@@ -206,7 +206,7 @@ export function CreateInvoiceModal({
                 {companyId
                   ? "Logged on this company timeline / notes. "
                   : ""}
-                Manage status under Settings → Invoices or download the PDF now.
+                Manage status under Company Settings → Invoices or download the PDF now.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -283,7 +283,7 @@ export function CreateInvoiceModal({
               />
               {templates.length === 0 && (
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Tip: create branded templates under Settings → Invoices.
+                  Tip: create branded templates under Company Settings → Invoices.
                 </p>
               )}
             </div>

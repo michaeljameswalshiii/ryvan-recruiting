@@ -166,7 +166,12 @@ export function canAccessPath(
   ) {
     return hasPermission(role, "usage");
   }
+  if (path.startsWith("/dashboard/settings/company")) {
+    // Company-wide settings: team, org, billing, integrations
+    return hasPermission(role, "team_admin");
+  }
   if (path.startsWith("/dashboard/settings")) {
+    // My Settings: personal email, password, AI keys
     return hasPermission(role, "settings");
   }
   if (path.startsWith("/dashboard/site-admin")) {

@@ -65,7 +65,7 @@ async function invokeAnthropic(params: {
       if (text) msg = text.slice(0, 300);
     }
     if (res.status === 401) {
-      throw new Error('Invalid Anthropic API key. Update it in Settings → AI Providers.');
+      throw new Error('Invalid Anthropic API key. Update it in My Settings → Account.');
     }
     if (res.status === 429) {
       throw new Error('Anthropic rate limit exceeded. Try again shortly.');
