@@ -11,7 +11,6 @@ import {
   PutItemCommand,
   UpdateItemCommand,
   DeleteItemCommand,
-  QueryCommand,
 } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { type UserEmailConnection, type EmailProvider, getConnectionId } from '../../schemas/email-connection';
@@ -47,31 +46,19 @@ export async function getEmailConnection(
 }
 
 /**
- * Get all email connections for a user
+ * Get all email connections for a user.
+ *
+ * Table PK is connectionId = `${userId}#${provider}` (no GSI on userId),
+ * so we GetItem per known provider instead of an invalid begins_with Query.
  */
 export async function getUserEmailConnections(
   userId: string
 ): Promise<UserEmailConnection[]> {
-  const connectionIdPrefix = `${userId}#`;
-  
-  const command = new QueryCommand({
-    TableName: emailConnectionsTable,
-    KeyConditionExpression: 'begins_with(#connectionId, :prefix)',
-    ExpressionAttributeNames: {
-      '#connectionId': 'connectionId',
-    },
-    ExpressionAttributeValues: marshall({
-      ':prefix': connectionIdPrefix,
-    }),
-  });
-  
-  const response = await client.send(command);
-  
-  if (!response.Items || response.Items.length === 0) {
-    return [];
-  }
-  
-return response.Items.map(item => unmarshall(item) as unknown as UserEmailConnection);
+  const providers: EmailProvider[] = ['gmail', 'outlook'];
+  const results = await Promise.all(
+    providers.map((provider) => getEmailConnection(userId, provider))
+  );
+  return results.filter((c): c is UserEmailConnection => c != null);
 }
 
 /**

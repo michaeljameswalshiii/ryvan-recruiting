@@ -281,16 +281,32 @@ export function CandidateDetailClient({
       toast.error("This candidate has no email address");
       return;
     }
-    if (emailConfigured) {
+    // Connected Gmail/Outlook → in-app modal. null means still checking → treat as fallback.
+    if (emailConfigured === true) {
       setEmailOpen(true);
       return;
     }
-    // Fallback: Gmail web compose (always works in browser when signed into Gmail)
-    openGmailCompose(to);
-    toast.message("Opened Gmail compose", {
-      description:
-        "Connect Gmail or Outlook in Settings for in-app send + activity logging.",
-    });
+    // Fallback: Gmail web compose (works when signed into Gmail in the browser)
+    const opened = openGmailCompose(to);
+    if (opened) {
+      toast.success("Opening Gmail…", {
+        description:
+          "Connect Gmail or Outlook in Settings for in-app send + activity logging.",
+      });
+    } else {
+      // Popup blocked — same-tab navigate so something always happens
+      const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}`;
+      toast.message("Popup blocked — opening Gmail in this tab", {
+        description: "Allow popups for this site to open compose in a new tab.",
+        action: {
+          label: "Open Gmail",
+          onClick: () => {
+            window.open(url, "_blank");
+          },
+        },
+      });
+      window.location.assign(url);
+    }
   };
   const salaryRequirement =
     candidate?.salaryRequirements || candidate?.salary_requirements || "";

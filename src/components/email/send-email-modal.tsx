@@ -55,12 +55,53 @@ const EMAIL_TEMPLATES = [
   { id: "custom", label: "Custom Message", subject: "" },
 ];
 
-export function openGmailCompose(to: string, subject?: string, body?: string) {
+/** Build Gmail web compose URL for a recipient (and optional subject/body). */
+export function buildGmailComposeUrl(
+  to: string,
+  subject?: string,
+  body?: string
+): string {
   const params = new URLSearchParams({ view: "cm", fs: "1", to });
   if (subject) params.set("su", subject);
   if (body) params.set("body", body);
-  const url = `https://mail.google.com/mail/?${params.toString()}`;
-  window.open(url, "_blank", "noopener,noreferrer");
+  return `https://mail.google.com/mail/?${params.toString()}`;
+}
+
+/**
+ * Open Gmail web compose in a new tab.
+ * Returns true if a new window/tab was opened; false if the browser blocked it.
+ * Call this synchronously from a click handler for best chance of not being blocked.
+ */
+export function openGmailCompose(
+  to: string,
+  subject?: string,
+  body?: string
+): boolean {
+  const url = buildGmailComposeUrl(to, subject, body);
+  // Do not pass a features string — that makes browsers treat it as a popup and block it.
+  const win = window.open(url, "_blank");
+  if (win) {
+    try {
+      win.opener = null;
+    } catch {
+      /* ignore */
+    }
+    return true;
+  }
+  // Popup blocked: try a programmatic anchor (still in user-gesture stack).
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function SendEmailModal({
@@ -153,7 +194,20 @@ export function SendEmailModal({
 
   const openInGmail = () => {
     if (!candidate?.email) return;
-    openGmailCompose(candidate.email, subject || undefined, message || undefined);
+    const opened = openGmailCompose(
+      candidate.email,
+      subject || undefined,
+      message || undefined
+    );
+    if (!opened) {
+      window.location.assign(
+        buildGmailComposeUrl(
+          candidate.email,
+          subject || undefined,
+          message || undefined
+        )
+      );
+    }
   };
 
   if (!candidate) return null;
