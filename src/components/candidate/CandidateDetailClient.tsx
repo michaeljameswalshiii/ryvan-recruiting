@@ -731,8 +731,8 @@ export function CandidateDetailClient({
           </section>
 
           <div className="grid items-stretch gap-3 xl:contents">
-            <div className="h-full xl:col-start-1 xl:row-start-2 xl:self-stretch">
-              <section className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex h-full min-h-0 flex-col xl:col-start-1 xl:row-start-2 xl:self-stretch">
+              <section className="flex h-full min-h-[320px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
                     Applications ({jobs.length})
@@ -1094,14 +1094,14 @@ export function CandidateDetailClient({
               </section>
               <section
                 data-ai-evaluation
-                className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-start-2 xl:row-start-2"
+                className="flex h-full min-h-[320px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-start-2 xl:row-start-2 xl:self-stretch"
               >
                 <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
                   <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
                 </h2>
 
-                {/* Score header — overall + domain/tools together (not under strengths) */}
-                <div className="mb-4 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
+                {/* Score header — overall + domain/tools together */}
+                <div className="mb-3 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
                   <div className="flex items-center gap-3">
                     <div
                       className="relative flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center rounded-full"
@@ -1148,13 +1148,13 @@ export function CandidateDetailClient({
                   </div>
                 </div>
 
-                {/* Equal two-column strengths / concerns */}
-                <div className="mb-3 grid min-h-[7rem] flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="min-w-0 rounded-lg border border-emerald-100 bg-emerald-50/40 p-2.5">
+                {/* Equal-height strength / concern columns */}
+                <div className="mb-3 grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2 sm:items-stretch">
+                  <div className="flex min-h-[8.5rem] min-w-0 flex-col rounded-lg border border-emerald-100 bg-emerald-50/40 p-2.5">
                     <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-emerald-800">
                       Key strengths
                     </div>
-                    <ul className="space-y-1.5 text-xs leading-snug text-slate-700">
+                    <ul className="flex-1 space-y-1.5 text-xs leading-snug text-slate-700">
                       {fitStrengthsList.length ? (
                         fitStrengthsList.slice(0, 4).map((item: string) => (
                           <li key={item} className="flex gap-1.5" title={item}>
@@ -1173,11 +1173,11 @@ export function CandidateDetailClient({
                       )}
                     </ul>
                   </div>
-                  <div className="min-w-0 rounded-lg border border-amber-100 bg-amber-50/40 p-2.5">
+                  <div className="flex min-h-[8.5rem] min-w-0 flex-col rounded-lg border border-amber-100 bg-amber-50/40 p-2.5">
                     <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-900">
                       Potential concerns
                     </div>
-                    <ul className="space-y-1.5 text-xs leading-snug text-slate-700">
+                    <ul className="flex-1 space-y-1.5 text-xs leading-snug text-slate-700">
                       {fitGapsList.length ? (
                         fitGapsList.slice(0, 4).map((item: string) => (
                           <li key={item} className="flex gap-1.5" title={item}>
@@ -1199,7 +1199,7 @@ export function CandidateDetailClient({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="mt-auto w-full text-xs"
+                  className="mt-auto w-full shrink-0 text-xs"
                   disabled={fitBusy || !currentJob}
                   onClick={() => void runFit()}
                 >

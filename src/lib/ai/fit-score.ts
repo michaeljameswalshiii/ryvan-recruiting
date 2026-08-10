@@ -975,9 +975,12 @@ export function skillMatchCredit(
   if (candNorm.includes(job)) return { credit: 1, matchedAs: job };
 
   // Related skill family on structured skill lists
-  if (related) {
+  // Guard: related must be a Set (.has); never call .has on arrays
+  const relatedSet =
+    related instanceof Set ? related : related ? new Set(related) : null;
+  if (relatedSet) {
     for (const c of candNorm) {
-      if (related.has(c)) {
+      if (relatedSet.has(c)) {
         return { credit: 0.88, matchedAs: c };
       }
     }
@@ -1000,8 +1003,8 @@ export function skillMatchCredit(
     }
 
     // Related-family skills + their surface forms in free text
-    if (related) {
-      for (const rel of related) {
+    if (relatedSet) {
+      for (const rel of relatedSet) {
         if (rel === job) continue;
         for (const form of surfaceFormsForSkill(rel)) {
           if (blobHasPhrase(blob, form)) {
@@ -1015,17 +1018,18 @@ export function skillMatchCredit(
     // (e.g. skills list says "Customer Service" while JD asks for CRM)
     for (const c of candNorm) {
       if (!c || c === job) continue;
-      if (related?.has(c)) {
+      if (relatedSet?.has(c)) {
         // already handled above, but ensure free-text co-presence boosts
         if (blobHasPhrase(blob, c)) {
           return { credit: 0.85, matchedAs: c };
         }
       }
       // Token-level synonym: multi-word candidate skill vs job
+      // skillTokens() returns string[] — use includes, not Set.has
       const cToks = skillTokens(c);
       const jobToks = skillTokens(job);
       if (cToks.length && jobToks.length) {
-        const hits = jobToks.filter((t) => cToks.has(t)).length;
+        const hits = jobToks.filter((tok) => cToks.includes(tok)).length;
         if (hits / jobToks.length >= 0.6 && hits >= 1) {
           return { credit: 0.7, matchedAs: c };
         }
