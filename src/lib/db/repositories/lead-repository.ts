@@ -249,31 +249,18 @@ export async function getLeadsNotInPipeline(tenantId: string): Promise<Lead[]> {
 }
 
 /**
- * Get a single lead by ID
+ * Get a single lead by ID.
+ * Always reads DynamoDB (no per-lead memory cache) so link/unlink of
+ * applications is never stale across warm serverless instances.
  */
 export async function getLeadById(
   tenantId: string,
   leadId: string,
 ): Promise<Lead | null> {
-  const cacheKey = makeCacheKey(tenantId, "leads", leadId);
-
-  // Try cache first
-  const cached = await getCached<Lead>(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  // Get from DynamoDB
-  const lead = await getItem<Lead>(leadsTable, {
+  return getItem<Lead>(leadsTable, {
     tenant_id: tenantId,
     id: leadId,
   });
-
-  if (lead) {
-    await setCached(cacheKey, lead, CACHE_TTL);
-  }
-
-  return lead;
 }
 
 /**
@@ -823,6 +810,14 @@ export async function linkCandidateToJobForApplication(
   return updated;
 }
 
+function sameJobId(a: unknown, b: unknown): boolean {
+  return String(a ?? "").trim() === String(b ?? "").trim();
+}
+
+function linkedJobKey(j: { jobId?: string; id?: string } | null | undefined): string {
+  return String(j?.jobId || j?.id || "").trim();
+}
+
 /**
  * Unlink a candidate from a job
  * Removes the job from linkedJobs
@@ -839,17 +834,28 @@ export async function unlinkCandidateFromJobForApplication(
     throw new Error("Candidate not found");
   }
 
-  // Filter out the job from linkedJobs
-  const currentLinkedJobs = lead.linkedJobs || [];
-  const removed = currentLinkedJobs.find((j) => j.jobId === jobId);
-  const newLinkedJobs = currentLinkedJobs.filter((j) => j.jobId !== jobId);
+  const targetId = String(jobId || "").trim();
+
+  // Filter out the job from linkedJobs (string-safe id match)
+  const currentLinkedJobs = Array.isArray(lead.linkedJobs) ? lead.linkedJobs : [];
+  const removed = currentLinkedJobs.find((j) => sameJobId(linkedJobKey(j), targetId));
+  const newLinkedJobs = currentLinkedJobs.filter(
+    (j) => !sameJobId(linkedJobKey(j), targetId),
+  );
 
   // Also update legacy linkedJobIds
-  const currentLinkedJobIds = lead.linkedJobIds || [];
-  const newLinkedJobIds = currentLinkedJobIds.filter((id) => id !== jobId);
+  const currentLinkedJobIds = Array.isArray(lead.linkedJobIds)
+    ? lead.linkedJobIds
+    : [];
+  const newLinkedJobIds = currentLinkedJobIds.filter(
+    (id) => !sameJobId(id, targetId),
+  );
 
   // If nothing changed, job was not linked (or wrong jobId)
-  if (newLinkedJobs.length === currentLinkedJobs.length) {
+  if (
+    newLinkedJobs.length === currentLinkedJobs.length &&
+    newLinkedJobIds.length === currentLinkedJobIds.length
+  ) {
     throw new Error("Candidate is not linked to this job");
   }
 
@@ -880,8 +886,8 @@ export async function unlinkCandidateFromJobForApplication(
         await import("@/lib/events/candidate-events");
       const result = await recordJobUnlinked(
         leadId,
-        jobId,
-        removed?.jobTitle || jobId,
+        targetId,
+        removed?.jobTitle || targetId,
         "system",
       );
       if (!result.success) {

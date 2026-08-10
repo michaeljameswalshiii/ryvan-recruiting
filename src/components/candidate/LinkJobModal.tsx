@@ -46,7 +46,7 @@ export function LinkJobModal({
       : [];
 
   const currentIds = currentLinkedJobs
-    .map((j) => j.jobId)
+    .map((j) => String(j.jobId || "").trim())
     .filter(Boolean);
 
   useEffect(() => {
@@ -69,32 +69,33 @@ export function LinkJobModal({
   });
 
   const toggleJob = (jobId: string) => {
+    const id = String(jobId || "").trim();
     setSelectedJobIds((prev) =>
-      prev.includes(jobId)
-        ? prev.filter((id) => id !== jobId)
-        : [...prev, jobId]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
 
   const selectedJobs = allJobs.filter((job: any) =>
-    selectedJobIds.includes(job.id)
+    selectedJobIds.includes(String(job.id || "").trim())
   );
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const toAdd = selectedJobIds.filter((id) => !currentIds.includes(id));
-      const toRemove = currentIds.filter((id) => !selectedJobIds.includes(id));
+      const selected = selectedJobIds.map((id) => String(id).trim()).filter(Boolean);
+      const current = currentIds;
+      const toAdd = selected.filter((id) => !current.includes(id));
+      const toRemove = current.filter((id) => !selected.includes(id));
 
       for (const jobId of toAdd) {
-        const job = allJobs.find((j: any) => j.id === jobId);
+        const job = allJobs.find((j: any) => String(j.id) === jobId);
         if (!job) continue;
         const res = await fetch(`/api/data/leads/${candidateId}/job/link`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            jobId: job.id,
+            jobId: String(job.id),
             jobTitle: job.title || "Job",
             companyId: job.companyId || job.company_id,
             companyName: job.companyName || job.company_name,
@@ -109,24 +110,30 @@ export function LinkJobModal({
 
       for (const jobId of toRemove) {
         const res = await fetch(
-          `/api/data/leads/${candidateId}/job/${jobId}/unlink`,
+          `/api/data/leads/${candidateId}/job/${encodeURIComponent(jobId)}/unlink`,
           {
             method: "POST",
             credentials: "include",
           }
         );
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
+        // If already unlinked on server, treat as success so UI can clear
+        if (
+          !res.ok &&
+          !String(data.error || "")
+            .toLowerCase()
+            .includes("not linked")
+        ) {
           throw new Error(data.error || "Failed to unlink job");
         }
       }
 
-      // Build updated list for UI
+      // Build updated list for UI — only jobs still selected
       const kept = currentLinkedJobs.filter((j) =>
-        selectedJobIds.includes(j.jobId)
+        selected.includes(String(j.jobId || "").trim())
       );
       const added: LinkedJobSummary[] = toAdd.map((jobId) => {
-        const job = allJobs.find((j: any) => j.id === jobId);
+        const job = allJobs.find((j: any) => String(j.id) === jobId);
         return {
           jobId,
           jobTitle: job?.title || "Job",
@@ -139,8 +146,8 @@ export function LinkJobModal({
 
       onLinked?.(next);
       toast.success(
-        selectedJobIds.length > 0
-          ? `Attached ${selectedJobIds.length} job(s)`
+        selected.length > 0
+          ? `Attached ${selected.length} job(s)`
           : "Jobs detached"
       );
       onOpenChange(false);

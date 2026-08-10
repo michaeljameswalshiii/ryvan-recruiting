@@ -1331,7 +1331,8 @@ export function CandidateDetailClient({
           stage: j.stage,
         }))}
         onLinked={(next) => {
-          // Merge modal summary with any existing stage metadata we already had
+          // Merge modal summary with any existing stage metadata we already had.
+          // `next` is the full desired set — unlinked jobs are omitted entirely.
           const byId = new Map(
             linkedJobs.map((j: any) => [String(j.jobId || j.id || ""), j]),
           );
@@ -1351,8 +1352,13 @@ export function CandidateDetailClient({
             };
           });
           setLinkedJobs(merged);
-          if (merged.length && !selectedJobId) {
-            setSelectedJobId(String(merged[0].jobId || ""));
+          const stillSelected = merged.some(
+            (j) => String(j.jobId || j.id || "") === String(selectedJobId),
+          );
+          if (!merged.length) {
+            setSelectedJobId("");
+          } else if (!stillSelected) {
+            setSelectedJobId(String(merged[0].jobId || merged[0].id || ""));
           }
           // Refresh server props so other panels stay consistent
           router.refresh();
