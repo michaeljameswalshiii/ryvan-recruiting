@@ -10,6 +10,7 @@ import {
   DynamoDBClient,
   PutItemCommand,
   QueryCommand,
+  ScanCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 
@@ -192,22 +193,19 @@ export async function listSecurityAuditAll(opts?: {
 }): Promise<SecurityAuditEvent[]> {
   const limit = Math.min(opts?.limit ?? 150, 500);
   try {
-    const { ScanCommand } = await import("@aws-sdk/client-dynamodb");
     const items: SecurityAuditEvent[] = [];
-    let ExclusiveStartKey: Record<string, unknown> | undefined;
+    let ExclusiveStartKey: Record<string, any> | undefined;
     do {
       const res = await getClient().send(
         new ScanCommand({
           TableName: TABLE,
-          ExclusiveStartKey: ExclusiveStartKey as any,
+          ExclusiveStartKey,
         })
       );
       for (const raw of res.Items || []) {
         items.push(unmarshall(raw) as SecurityAuditEvent);
       }
-      ExclusiveStartKey = res.LastEvaluatedKey as
-        | Record<string, unknown>
-        | undefined;
+      ExclusiveStartKey = res.LastEvaluatedKey;
       if (items.length >= 2000) break;
     } while (ExclusiveStartKey);
 

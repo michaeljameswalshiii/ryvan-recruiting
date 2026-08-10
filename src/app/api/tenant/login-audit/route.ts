@@ -1,10 +1,11 @@
 /**
  * GET /api/tenant/login-audit
- * Login / logout history.
- * - Company admin: current tenant only
- * - Site admin: all tenants (platform-wide) so emails are visible across orgs
+ * Login / logout history with email addresses.
  *
- * Always returns email (actorEmail). Never returns passwords.
+ * - Site admin: always platform-wide (all tenants) — works with "All Tenants" scope
+ * - Company admin: current tenant only
+ *
+ * Never returns passwords.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -26,6 +27,9 @@ import {
 import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const LOGIN_ACTIONS = [
   "auth.login.success",
   "auth.login.failure",
@@ -40,7 +44,6 @@ const region =
 const profilesTable =
   process.env.DYNAMODB_PROFILES_TABLE || "turnkey-profiles";
 
-/** userId → email for backfilling sparse historical rows */
 async function buildUserEmailMap(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   try {
@@ -91,7 +94,6 @@ function resolveEmail(
   if (direct && direct.includes("@")) return direct;
   const uid = String(e.actorUserId || "").trim();
   if (uid && userEmails.has(uid)) return userEmails.get(uid)!;
-  // last resort: dig meta
   const meta = e.meta && typeof e.meta === "object" ? e.meta : {};
   const fromMeta = String(
     (meta as any).email || (meta as any).actorEmail || ""
@@ -110,11 +112,8 @@ export async function GET(request: NextRequest) {
     const teamOk = requireTeamAdmin(auth);
     if (isAuthError(teamOk)) return teamOk;
 
-    const tenantId = requireTenantId(auth);
-    if (isAuthError(tenantId)) return tenantId;
-
     const limit = Math.min(
-      Number(request.nextUrl.searchParams.get("limit") || 150),
+      Number(request.nextUrl.searchParams.get("limit") || 200),
       400
     );
     const emailQ = (request.nextUrl.searchParams.get("email") || "")
@@ -122,9 +121,22 @@ export async function GET(request: NextRequest) {
       .toLowerCase();
     const siteWide = isSiteAdmin(auth.role);
 
-    const events = siteWide
-      ? await listSecurityAuditAll({ limit, actions: LOGIN_ACTIONS })
-      : await listSecurityAudit(tenantId, { limit, actions: LOGIN_ACTIONS });
+    let events: SecurityAuditEvent[] = [];
+    let scopeTenantId = auth.tenantId || "";
+
+    if (siteWide) {
+      // Platform-wide — do NOT require a selected tenant (All Tenants works)
+      events = await listSecurityAuditAll({ limit, actions: LOGIN_ACTIONS });
+      scopeTenantId = "all";
+    } else {
+      const tenantId = requireTenantId(auth);
+      if (isAuthError(tenantId)) return tenantId;
+      scopeTenantId = tenantId;
+      events = await listSecurityAudit(tenantId, {
+        limit,
+        actions: LOGIN_ACTIONS,
+      });
+    }
 
     const userEmails = await buildUserEmailMap();
 
@@ -159,7 +171,6 @@ export async function GET(request: NextRequest) {
       return {
         id: e.id,
         createdAt: e.createdAt,
-        /** Always surface login email for the audit table */
         email: email || "—",
         actorEmail: email || "—",
         role: e.actorRole || "—",
@@ -186,13 +197,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       events: rows,
       scope: siteWide ? "all_tenants" : "tenant",
-      tenantId,
-      note: "Passwords are never stored in the audit log. Email is always shown when known.",
+      tenantId: scopeTenantId,
+      count: rows.length,
+      note: "Passwords are never stored. Email is shown when known.",
     });
   } catch (e) {
     console.error("[GET /api/tenant/login-audit]", e);
     return NextResponse.json(
-      { error: "Failed to load login audit" },
+      {
+        error: "Failed to load login audit",
+        detail: e instanceof Error ? e.message : String(e),
+      },
       { status: 500 }
     );
   }

@@ -116,8 +116,11 @@ export default function LoginAuditPage() {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<"tenant" | "all_tenants">("tenant");
 
+  const [loadError, setLoadError] = useState("");
+
   const load = useCallback(async (email?: string) => {
     setLoading(true);
+    setLoadError("");
     try {
       const params = new URLSearchParams({ limit: "200" });
       if (email?.trim()) params.set("email", email.trim());
@@ -125,12 +128,22 @@ export default function LoginAuditPage() {
         credentials: "include",
         cache: "no-store",
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg =
+          data.error ||
+          (res.status === 409
+            ? "Select a tenant, or wait for the platform audit fix to deploy"
+            : `Failed to load (${res.status})`);
+        throw new Error(msg);
+      }
       setRows(Array.isArray(data.events) ? data.events : []);
       setScope(data.scope === "all_tenants" ? "all_tenants" : "tenant");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load login audit");
+      const msg =
+        e instanceof Error ? e.message : "Failed to load login audit";
+      setLoadError(msg);
+      toast.error(msg);
       setRows([]);
     } finally {
       setLoading(false);
@@ -227,6 +240,19 @@ export default function LoginAuditPage() {
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-600">
             <Loader2 className="h-5 w-5 animate-spin" />
             Loading login history…
+          </div>
+        ) : loadError ? (
+          <div className="px-6 py-16 text-center text-sm text-red-700">
+            <p className="font-semibold">Could not load login audit</p>
+            <p className="mt-2 text-red-600">{loadError}</p>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4"
+              onClick={() => void load(query)}
+            >
+              Try again
+            </Button>
           </div>
         ) : rows.length === 0 ? (
           <div className="px-6 py-16 text-center text-sm text-slate-600">
