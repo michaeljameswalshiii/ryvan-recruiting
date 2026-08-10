@@ -17,7 +17,6 @@ import {
   Database,
   Mail,
   Kanban,
-  AlertCircle,
   ChevronUp,
   ChevronDown,
   Contact,
