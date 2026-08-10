@@ -196,13 +196,15 @@ export async function middleware(request: NextRequest) {
       return unauthorizedApi();
     }
     // Site Admin + "All Tenants": block tenant-scoped operational APIs, but allow
-    // platform tools (site-admin/*), auth, and platform-wide login audit.
+    // platform tools (site-admin/*), auth, login audit, and AI reliability (aggregates).
     if (
       isAllTenantSiteAdmin(session) &&
       !matchesPrefix(pathname, "/api/site-admin") &&
       !matchesPrefix(pathname, "/api/auth") &&
       !matchesPrefix(pathname, "/api/tenant/login-audit") &&
-      !matchesPrefix(pathname, "/api/tenant/audit")
+      !matchesPrefix(pathname, "/api/tenant/audit") &&
+      !matchesPrefix(pathname, "/api/ai/tool-audit") &&
+      !matchesPrefix(pathname, "/api/bedrock")
     ) {
       return NextResponse.json(
         { error: "Select a tenant before accessing operational data" },

@@ -229,3 +229,71 @@ export async function getToolAuditStats(
     return null;
   }
 }
+
+/**
+ * Platform-wide stats for Site Admin (All Tenants).
+ * Merges per-tenant stats counters.
+ */
+export async function getToolAuditStatsAll(): Promise<{
+  tools: Record<string, ToolStatBucket>;
+  updatedAt: string | null;
+  tenantCount: number;
+}> {
+  try {
+    const items = await scanItems<ToolAuditStatsRecord>(
+      tableNames.profiles,
+      "#type = :type",
+      { ":type": "tool_audit_stats" },
+      { "#type": "type" }
+    );
+    const tools: Record<string, ToolStatBucket> = {};
+    let updatedAt: string | null = null;
+    let tenantCount = 0;
+    for (const rec of items || []) {
+      if (!rec || rec.type !== "tool_audit_stats") continue;
+      tenantCount += 1;
+      if (rec.updatedAt && (!updatedAt || rec.updatedAt > updatedAt)) {
+        updatedAt = rec.updatedAt;
+      }
+      for (const [name, bucket] of Object.entries(rec.tools || {})) {
+        const cur = tools[name] || {
+          calls: 0,
+          successes: 0,
+          failures: 0,
+          totalMs: 0,
+        };
+        cur.calls += bucket.calls || 0;
+        cur.successes += bucket.successes || 0;
+        cur.failures += bucket.failures || 0;
+        cur.totalMs += bucket.totalMs || 0;
+        tools[name] = cur;
+      }
+    }
+    return { tools, updatedAt, tenantCount };
+  } catch (err) {
+    console.warn("[tool-audit] get stats all failed:", err);
+    return { tools: {}, updatedAt: null, tenantCount: 0 };
+  }
+}
+
+/** Platform-wide recent audits (Site Admin All Tenants). */
+export async function listToolAuditsAll(
+  limit = 50
+): Promise<ToolAuditRecord[]> {
+  const capped = Math.min(Math.max(1, limit), 200);
+  try {
+    const items = await scanItems<ToolAuditRecord>(
+      tableNames.profiles,
+      "#type = :type",
+      { ":type": "tool_audit" },
+      { "#type": "type" }
+    );
+    return (items || [])
+      .filter((a) => a && a.type === "tool_audit")
+      .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
+      .slice(0, capped);
+  } catch (err) {
+    console.warn("[tool-audit] list all failed:", err);
+    return [];
+  }
+}
