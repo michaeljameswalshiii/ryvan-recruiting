@@ -2,15 +2,18 @@
  * Role-based access control (RBAC)
  *
  * Roles:
- * - site_admin     Platform operator — all screens + multi-tenant tools
- * - company_admin  Company / tenant admin — elevated screens within their tenant
+ * - site_admin     System Admin (UI) — platform operator, multi-tenant tools
+ * - company_admin  Company Admin — elevated screens within their tenant
  * - user           Standard recruiter — core ATS screens
  *
  * Legacy values (admin, customer_admin, member, viewer) are normalized on read.
+ * Internal key remains site_admin for storage compatibility; display is "System Admin".
  */
 
 export const ROLES = {
   SITE_ADMIN: "site_admin",
+  /** @deprecated Prefer SITE_ADMIN — same role; UI label is System Admin */
+  SYSTEM_ADMIN: "site_admin",
   COMPANY_ADMIN: "company_admin",
   USER: "user",
   /**
@@ -23,14 +26,14 @@ export const ROLES = {
 export type AppRole = "site_admin" | "company_admin" | "user";
 
 export const ROLE_LABELS: Record<AppRole, string> = {
-  site_admin: "Site Admin",
+  site_admin: "System Admin",
   company_admin: "Company Admin",
   user: "User",
 };
 
 /** Short descriptions for invite UI / settings */
 export const ROLE_DESCRIPTIONS: Record<AppRole, string> = {
-  site_admin: "Platform operator with multi-tenant tools",
+  site_admin: "System admin — platform operator with multi-tenant tools",
   company_admin: "Manages team and company settings for this organization",
   user: "Standard recruiter access to core ATS features",
 };
@@ -75,6 +78,8 @@ export function normalizeRole(raw: string | null | undefined): AppRole {
   if (
     r === ROLES.SITE_ADMIN ||
     r === "siteadmin" ||
+    r === "system_admin" ||
+    r === "systemadmin" ||
     r === "super_admin" ||
     r === "superadmin"
   ) {

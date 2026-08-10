@@ -175,7 +175,7 @@ export default function LoginAuditPage() {
             and time, and success/fail. Passwords are never stored.
             {showTenant ? (
               <span className="mt-1 block text-violet-700 dark:text-violet-300">
-                Site Admin view — all tenants.
+                System Admin view — all tenants.
               </span>
             ) : null}
           </p>

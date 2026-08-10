@@ -53,7 +53,7 @@ export function requireSiteAdminTools(
 ): true | NextResponse {
   if (!hasPermission(session.role, "site_admin_tools")) {
     return NextResponse.json(
-      { error: "Forbidden — Site Admin only" },
+      { error: "Forbidden — System Admin only" },
       { status: 403 }
     );
   }

@@ -140,7 +140,7 @@ export async function requireSiteAdminSession(): Promise<
   if (auth instanceof NextResponse) return auth;
 
   if (!isSiteAdmin(auth.role)) {
-    return NextResponse.json({ error: "Forbidden — Site Admin only" }, { status: 403 });
+    return NextResponse.json({ error: "Forbidden — System Admin only" }, { status: 403 });
   }
 
   return auth;

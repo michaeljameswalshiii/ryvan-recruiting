@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const role = normalizeRole(parsed.data.role || ROLES.USER);
     if (role === ROLES.SITE_ADMIN) {
       return NextResponse.json(
-        { error: "Cannot invite as Site Admin from team settings" },
+        { error: "Cannot invite as System Admin from team settings" },
         { status: 400 }
       );
     }

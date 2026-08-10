@@ -87,7 +87,7 @@ export function PlanSettings() {
           )}
           <p className="text-sm text-muted-foreground border-t pt-3 mt-3">
             Self-serve billing (Stripe) is not enabled yet. Contact support or a
-            Site Admin to change plans or seat limits.
+            System Admin to change plans or seat limits.
             {data.stripe_connected ? " Stripe account linked." : ""}
           </p>
         </CardContent>

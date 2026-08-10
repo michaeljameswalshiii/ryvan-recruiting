@@ -63,7 +63,7 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       normalizeRole(profile.role) === ROLES.SITE_ADMIN &&
       normalizeRole(auth.role) !== ROLES.SITE_ADMIN
     ) {
-      return NextResponse.json({ error: "Cannot modify Site Admin" }, { status: 403 });
+      return NextResponse.json({ error: "Cannot modify System Admin" }, { status: 403 });
     }
 
     const body = await request.json();

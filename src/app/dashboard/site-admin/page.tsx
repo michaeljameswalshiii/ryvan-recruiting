@@ -133,10 +133,10 @@ export default function SiteAdminPage() {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Building2 className="h-8 w-8" />
-            Site Admin
+            Tenants
           </h1>
           <p className="text-muted-foreground mt-2">
-            Multi-tenant console — plans, seats, and status
+            System Admin — multi-tenant console (plans, seats, and status)
           </p>
         </div>
         <Button variant="outline" onClick={load} disabled={loading}>
