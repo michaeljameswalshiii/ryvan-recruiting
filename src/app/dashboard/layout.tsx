@@ -36,8 +36,9 @@ export default async function DashboardLayout({
 
   // Cookie role + env allowlists only — no DynamoDB on every menu click
   const role = await resolveLayoutRole(session);
+  // Operational picker: real customer orgs only (not the internal platform home)
   const availableTenants = isSiteAdmin(role)
-    ? (await getAllTenants())
+    ? (await getAllTenants({ includePlatform: false }))
         .map((tenant) => ({ id: tenant.id, name: tenant.name }))
         .sort((a, b) => a.name.localeCompare(b.name))
     : [];
@@ -46,8 +47,11 @@ export default async function DashboardLayout({
     userId: session.userId || "",
     email: session.email || "",
     fullName: "User",
+    // Site admins: home is platform; scope defaults to all
     tenantId: session.tenantId || "",
-    tenantScope: isSiteAdmin(role) ? session.tenantScope || "all" : session.tenantId || "",
+    tenantScope: isSiteAdmin(role)
+      ? session.tenantScope || "all"
+      : session.tenantId || "",
     availableTenants,
     role,
   };

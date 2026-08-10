@@ -172,12 +172,20 @@ export async function getTenantBySubdomain(
   }
 }
 
-export async function getAllTenants(): Promise<Tenant[]> {
+export async function getAllTenants(opts?: {
+  /** Include internal platform tenant (default false for operational lists) */
+  includePlatform?: boolean;
+}): Promise<Tenant[]> {
   try {
     const command = new ScanCommand({ TableName: getTenantsTable() });
     const response = await dynamoClient.send(command);
     if (!response.Items) return [];
-    return response.Items.map((item) => unmarshall(item) as Tenant);
+    let tenants = response.Items.map((item) => unmarshall(item) as Tenant);
+    if (!opts?.includePlatform) {
+      const { PLATFORM_TENANT_ID } = await import("@/lib/platform-tenant");
+      tenants = tenants.filter((t) => t.id !== PLATFORM_TENANT_ID);
+    }
+    return tenants;
   } catch (error) {
     console.error("getAllTenants error:", error);
     return [];

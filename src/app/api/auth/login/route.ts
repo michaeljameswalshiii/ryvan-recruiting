@@ -19,6 +19,46 @@ import {
   writeSecurityAudit,
   requestAuditMeta,
 } from "@/lib/security/audit";
+import { isSiteAdmin } from "@/lib/roles";
+import {
+  ensurePlatformTenant,
+  PLATFORM_TENANT_ID,
+} from "@/lib/platform-tenant";
+import { updateProfile } from "@/lib/db/repositories/profile-repository";
+
+/**
+ * Site admins live on tenant-platform and start in All Tenants scope.
+ * Migrates profile.tenant_id if still pointing at a customer org.
+ */
+async function resolveSiteAdminSessionHome(
+  role: string,
+  userId: string,
+  currentTenantId?: string | null
+): Promise<{ tenantId: string; tenantScope?: string }> {
+  if (!isSiteAdmin(role)) {
+    return { tenantId: String(currentTenantId || "").trim() };
+  }
+  try {
+    await ensurePlatformTenant();
+  } catch (e) {
+    console.warn("[LOGIN] ensurePlatformTenant:", e);
+  }
+  const home = PLATFORM_TENANT_ID;
+  if (userId && currentTenantId && currentTenantId !== home) {
+    try {
+      await updateProfile(userId, { tenant_id: home });
+    } catch (e) {
+      console.warn("[LOGIN] move site_admin to platform tenant:", e);
+    }
+  } else if (userId && !currentTenantId) {
+    try {
+      await updateProfile(userId, { tenant_id: home });
+    } catch {
+      /* ignore */
+    }
+  }
+  return { tenantId: home, tenantScope: "all" };
+}
 
 const region =
   process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || "us-east-1";
@@ -165,8 +205,15 @@ export async function POST(request: NextRequest) {
           (await resolveUserRole(result.userId, result.email)) ||
           normalizeRole(result.role);
 
+        const { tenantId: homeTenantId, tenantScope } =
+          await resolveSiteAdminSessionHome(
+            role,
+            result.userId,
+            result.tenantId
+          );
+
         void writeSecurityAudit({
-          tenantId: result.tenantId || "unknown",
+          tenantId: homeTenantId || result.tenantId || "unknown",
           action: "auth.login.success",
           actorUserId: result.userId,
           actorEmail: result.email,
@@ -183,14 +230,16 @@ export async function POST(request: NextRequest) {
             user: {
               id: result.userId,
               email: result.email,
-              tenantId: result.tenantId,
+              tenantId: homeTenantId,
               role,
+              tenantScope,
             },
           }),
           {
             userId: result.userId || "",
             email: result.email || "",
-            tenantId: result.tenantId || "",
+            tenantId: homeTenantId,
+            tenantScope,
             role,
             accessToken: result.AccessToken || "",
             refreshToken: result.RefreshToken || "",
@@ -220,8 +269,11 @@ export async function POST(request: NextRequest) {
       (await resolveUserRole(session.userId, session.email)) ||
       normalizeRole(session.role);
 
+    const { tenantId: homeTenantId, tenantScope } =
+      await resolveSiteAdminSessionHome(role, session.userId, session.tenantId);
+
     void writeSecurityAudit({
-      tenantId: session.tenantId || "unknown",
+      tenantId: homeTenantId || session.tenantId || "unknown",
       action: "auth.login.success",
       actorUserId: session.userId,
       actorEmail: session.email,
@@ -237,14 +289,16 @@ export async function POST(request: NextRequest) {
         user: {
           id: session.userId,
           email: session.email,
-          tenantId: session.tenantId,
+          tenantId: homeTenantId,
           role,
+          tenantScope,
         },
       }),
       {
         userId: session.userId || "",
         email: session.email || "",
-        tenantId: session.tenantId || "",
+        tenantId: homeTenantId,
+        tenantScope,
         role,
         accessToken: session.AccessToken || "",
         refreshToken: session.RefreshToken || "",

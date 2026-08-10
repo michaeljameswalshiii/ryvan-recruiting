@@ -38,6 +38,8 @@ export interface UpdateProfileInput {
   full_name?: string;
   role?: string;
   status?: MemberStatus | string;
+  /** Move user home tenant (e.g. site admins → tenant-platform) */
+  tenant_id?: string;
   invite_token_hash?: string | null;
   invite_expires_at?: string | null;
   invited_at?: string | null;
@@ -330,14 +332,28 @@ export async function createProfile(
   input: CreateProfileInput
 ): Promise<Profile> {
   const email = input.email.toLowerCase();
+  const role = input.role ? normalizeRole(input.role) : "user";
+  // Site admins always home on the platform tenant
+  let tenant_id = input.tenant_id;
+  if (role === "site_admin") {
+    try {
+      const { ensurePlatformTenant, PLATFORM_TENANT_ID } = await import(
+        "@/lib/platform-tenant"
+      );
+      await ensurePlatformTenant();
+      tenant_id = PLATFORM_TENANT_ID;
+    } catch (e) {
+      console.warn("[createProfile] ensurePlatformTenant failed:", e);
+    }
+  }
   const profile: Profile = {
     id:
       input.id ||
       `user-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-    tenant_id: input.tenant_id,
+    tenant_id,
     email,
     full_name: input.full_name,
-    role: input.role ? normalizeRole(input.role) : "user",
+    role,
     status: input.status || "active",
     created_at: new Date().toISOString(),
     ...(input.invited_at ? { invited_at: input.invited_at } : {}),
@@ -385,6 +401,19 @@ export async function updateProfile(
     names["#role"] = "role";
     updates.push("#role = :role");
     values[":role"] = normalizeRole(input.role);
+    // Promoting to site_admin → home on platform tenant
+    if (normalizeRole(input.role) === "site_admin" && input.tenant_id === undefined) {
+      try {
+        const { ensurePlatformTenant, PLATFORM_TENANT_ID } = await import(
+          "@/lib/platform-tenant"
+        );
+        await ensurePlatformTenant();
+        updates.push("tenant_id = :tenant_id_from_role");
+        values[":tenant_id_from_role"] = PLATFORM_TENANT_ID;
+      } catch (e) {
+        console.warn("[updateProfile] platform home for site_admin:", e);
+      }
+    }
   }
   if (input.status !== undefined) {
     names["#status"] = "status";
@@ -394,6 +423,10 @@ export async function updateProfile(
   if (input.password_hash !== undefined) {
     updates.push("password_hash = :password_hash");
     values[":password_hash"] = input.password_hash;
+  }
+  if (input.tenant_id !== undefined) {
+    updates.push("tenant_id = :tenant_id");
+    values[":tenant_id"] = input.tenant_id;
   }
 
   // Clear invite fields on accept

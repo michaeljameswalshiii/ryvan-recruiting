@@ -118,12 +118,30 @@ export async function setSessionCookie(
   response: NextResponse,
   session: SessionData
 ): Promise<NextResponse> {
+  const role = session.role;
+  // Site admins: home tenant is always platform; scope defaults to All Tenants
+  let tenantId = session.tenantId;
+  let tenantScope = session.tenantScope;
+  if (isSiteAdmin(role)) {
+    try {
+      const {
+        ensurePlatformTenant,
+        PLATFORM_TENANT_ID,
+      } = await import('@/lib/platform-tenant');
+      await ensurePlatformTenant();
+      tenantId = PLATFORM_TENANT_ID;
+    } catch (e) {
+      console.warn('[setSessionCookie] platform tenant ensure failed:', e);
+    }
+    if (!tenantScope) tenantScope = 'all';
+  }
+
   const sealed = await sealSession({
     userId: session.userId,
     email: session.email,
-    tenantId: session.tenantId,
+    tenantId,
     tenantScope:
-      session.tenantScope || (isSiteAdmin(session.role) ? 'all' : undefined),
+      tenantScope || (isSiteAdmin(role) ? 'all' : undefined),
     role: session.role,
     accessToken: session.accessToken || '',
     refreshToken: session.refreshToken || '',

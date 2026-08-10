@@ -28,11 +28,14 @@ export async function GET() {
       return NextResponse.json({ error: "Rate limited" }, { status: 429 });
     }
 
-    const tenants = await getAllTenants();
+    // Include platform tenant so site admins can see their home org + sysadmins on it
+    const tenants = await getAllTenants({ includePlatform: true });
+    const { PLATFORM_TENANT_ID } = await import("@/lib/platform-tenant");
     const rows = await Promise.all(
       tenants.map(async (t) => {
         const enriched = withPlanDefaults(t);
         const members = await getProfilesByTenant(t.id);
+        const isPlatform = t.id === PLATFORM_TENANT_ID;
         return {
           id: enriched.id,
           name: enriched.name,
@@ -45,6 +48,7 @@ export async function GET() {
           member_count: members.length,
           created_at: enriched.created_at,
           logo_url: enriched.logo_url || null,
+          is_platform: isPlatform,
         };
       })
     );
