@@ -297,15 +297,69 @@ const SKILL_ALIASES: Record<string, string> = {
   xero: "xero",
   sage: "sage",
   "sage intacct": "sage",
+  // Ops / retail / admin tools (different words, same capability)
+  pos: "pos",
+  "point of sale": "pos",
+  "point-of-sale": "pos",
+  "cash register": "pos",
+  "register system": "pos",
+  square: "pos",
+  toast: "pos",
+  clover: "pos",
+  "shopify pos": "pos",
+  crm: "crm",
+  "customer relationship management": "crm",
+  "customer database": "crm",
+  "client database": "crm",
+  "patient records": "crm",
+  "lead management": "crm",
+  "lead tracking": "crm",
+  "data entry": "data entry",
+  "data-entry": "data entry",
+  "data management": "data entry",
+  "data-management": "data entry",
+  scheduling: "scheduling",
+  "appointment scheduling": "scheduling",
+  "calendar management": "scheduling",
+  calendly: "scheduling",
+  inventory: "inventory",
+  "inventory management": "inventory",
+  "stock management": "inventory",
+  "store operations": "store operations",
+  "retail operations": "store operations",
+  "daily operations": "store operations",
+  "opening and closing": "store operations",
+  "team leadership": "leadership",
+  "crew supervision": "leadership",
+  "people management": "leadership",
+  "customer service": "customer service",
+  "guest service": "customer service",
+  "conflict resolution": "customer service",
+  "front desk": "customer service",
+  receptionist: "customer service",
+  "ms word": "microsoft office",
+  powerpoint: "microsoft office",
+  "microsoft word": "microsoft office",
+  spreadsheets: "excel",
+  spreadsheet: "excel",
+  "computer systems": "microsoft office",
+  "computer skills": "microsoft office",
+  "office software": "microsoft office",
+  "office systems": "microsoft office",
+  "record keeping": "data entry",
+  recordkeeping: "data entry",
+  "compliance logging": "compliance",
+  "food safety": "compliance",
+  "temperature logs": "compliance",
 };
 
 /**
  * Related skill groups — near-matches count (not just exact strings).
  * Keys and values should be canonical (post-alias) forms.
- */
-/**
- * Tight related groups only — near-matches must be genuinely interchangeable.
- * (Broad groups caused noise like month-end≈AP and unreadable ≈ labels.)
+ *
+ * Groups capture *interchangeable or closely transferable* capabilities so
+ * "different words, same meaning" (and sibling tools in a category) score as
+ * adjacent rather than missing. Keep groups tight enough to avoid noise.
  */
 const RELATED_SKILL_GROUPS: string[][] = [
   ["quickbooks", "xero", "sage", "netsuite", "financial systems"],
@@ -319,11 +373,24 @@ const RELATED_SKILL_GROUPS: string[][] = [
   ["fund accounting", "nonprofit"],
   ["donor management", "planning center", "bloomerang", "givebutter"],
   ["implementation", "client onboarding", "data migration"],
-  ["client-facing", "training", "account management", "customer success"],
+  ["client-facing", "training", "account management", "customer success", "customer service"],
   ["project management", "implementation"],
-  ["audit", "1099s"],
+  ["audit", "1099s", "compliance"],
   ["google workspace", "microsoft office", "microsoft 365", "excel"],
   ["gusto", "payroll"],
+  // Ops / systems: brand names vs generic resume language
+  ["crm", "salesforce", "hubspot", "data entry"],
+  ["pos", "store operations", "retail operations"],
+  ["scheduling", "customer service", "client onboarding"],
+  ["inventory", "store operations"],
+  ["leadership", "customer service", "training"],
+  ["jira", "asana", "monday.com", "project management"],
+  ["tableau", "power bi", "excel"],
+  ["docker", "kubernetes", "devops"],
+  ["amazon web services", "microsoft azure", "google cloud"],
+  ["react", "angular", "vue", "frontend"],
+  ["node.js", "python", "java", "backend"],
+  ["postgresql", "mysql", "sql server", "mongodb", "sql"],
 ];
 
 /** Skills often present because the *agency* name is in the JD, not a requirement */
@@ -342,15 +409,55 @@ const RELATED_LOOKUP: Map<string, Set<string>> = (() => {
   return m;
 })();
 
-/** Loose normalize used only while building related lookup (before full normalizeSkill exists). */
+/** Normalize used while building related lookup (applies aliases when possible). */
 function normalizeSkillLoose(s: string): string {
-  return String(s || "")
+  let t = String(s || "")
     .toLowerCase()
     .trim()
     .replace(/[_\s]+/g, " ")
     .replace(/[^\w+#./\s-]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+  if (!t) return "";
+  if (SKILL_ALIASES[t]) return SKILL_ALIASES[t];
+  const stripped = t
+    .replace(/\b(online|desktop|cloud|software|system|platform|suite)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (stripped && SKILL_ALIASES[stripped]) return SKILL_ALIASES[stripped];
+  return t;
+}
+
+/** All surface forms (aliases + self) that map to a canonical skill. */
+function surfaceFormsForSkill(canonical: string): string[] {
+  const forms = new Set<string>();
+  const job = normalizeSkillLoose(canonical) || String(canonical || "").toLowerCase();
+  if (job) forms.add(job);
+  for (const [alias, canon] of Object.entries(SKILL_ALIASES)) {
+    if (canon === job) forms.add(alias);
+  }
+  for (const hint of SKILL_TEXT_HINTS[job] || []) {
+    const h = String(hint || "").toLowerCase().trim();
+    if (h.length >= 3) forms.add(h);
+  }
+  return Array.from(forms);
+}
+
+/** True when `needle` appears as a real phrase in free text (not a random substring). */
+function blobHasPhrase(blob: string, needle: string): boolean {
+  const n = String(needle || "").toLowerCase().trim();
+  if (!n || n.length < 2) return false;
+  if (blob.includes(n)) {
+    // Short tokens need word-boundary-ish match to avoid false positives (e.g. "ar" in "hard")
+    if (n.length <= 3) {
+      const escaped = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(?:^|[^a-z0-9])${escaped}(?=[^a-z0-9]|$)`, "i").test(
+        blob
+      );
+    }
+    return true;
+  }
+  return false;
 }
 
 /** Multi-word and single-token tech / soft skills for extraction */
@@ -501,6 +608,15 @@ const COMMON_SKILLS: string[] = [
   "xero",
   "sage",
   "expense management",
+  // Ops / retail / admin tools
+  "pos",
+  "crm",
+  "data entry",
+  "scheduling",
+  "inventory",
+  "store operations",
+  "customer service",
+  "compliance",
   // Roles / domains often used as skill signals
   "full-stack",
   "frontend",
@@ -695,11 +811,154 @@ const SKILL_TEXT_HINTS: Record<string, string[]> = {
   quickbooks: ["quickbooks", "qbo", "quick books"],
   "fund accounting": ["fund accounting", "fund-based", "restricted funds"],
   "donor management": ["donor", "donation management", "giving platform"],
+  // Tools & ops — different wording, same capability
+  excel: [
+    "excel",
+    "spreadsheet",
+    "spreadsheets",
+    "pivot table",
+    "vlookup",
+    "google sheets",
+  ],
+  "microsoft office": [
+    "microsoft office",
+    "ms office",
+    "office 365",
+    "microsoft 365",
+    "computer systems",
+    "computer skills",
+    "office software",
+    "office systems",
+    "word and excel",
+    "ms word",
+    "powerpoint",
+  ],
+  "microsoft 365": [
+    "microsoft 365",
+    "office 365",
+    "o365",
+    "ms office",
+    "microsoft office",
+  ],
+  "google workspace": [
+    "google workspace",
+    "g suite",
+    "gsuite",
+    "google docs",
+    "google drive",
+    "google sheets",
+  ],
+  crm: [
+    "crm",
+    "customer relationship",
+    "customer database",
+    "client database",
+    "patient records",
+    "lead management",
+    "lead tracking",
+    "logged every lead",
+    "entered every lead",
+    "leads into the company system",
+    "company system",
+    "salesforce",
+    "hubspot",
+  ],
+  salesforce: ["salesforce", "sfdc", "sales force"],
+  hubspot: ["hubspot", "hub spot"],
+  pos: [
+    "point of sale",
+    "point-of-sale",
+    "pos system",
+    "pos ",
+    "cash register",
+    "register system",
+    "rung up",
+    "transactions",
+    "store system",
+    "high-volume",
+    "high volume",
+    "opening and closing",
+    "product preparation",
+  ],
+  scheduling: [
+    "scheduling",
+    "schedule appointments",
+    "appointment scheduling",
+    "booked appointments",
+    "calendar management",
+    "answering phones, scheduling",
+  ],
+  "data entry": [
+    "data entry",
+    "data-entry",
+    "data management",
+    "data-management",
+    "entered every lead",
+    "logged and entered",
+    "logged and recorded",
+    "entering information into computer",
+    "record keeping",
+    "recordkeeping",
+  ],
+  inventory: [
+    "inventory",
+    "stock management",
+    "product preparation",
+    "stock levels",
+    "store presentation",
+  ],
+  "store operations": [
+    "store operations",
+    "daily store operations",
+    "daily operations",
+    "opening and closing",
+    "retail operations",
+    "store running",
+    "crew to keep the store",
+  ],
+  leadership: [
+    "team leadership",
+    "crew supervision",
+    "led and supervised",
+    "led and coordinate",
+    "lead and coordinate",
+    "people management",
+    "promoted from",
+    "shift leader",
+    "team leader",
+  ],
+  "customer service": [
+    "customer service",
+    "guest service",
+    "customer experience",
+    "customer-focused",
+    "customer focused",
+    "conflict resolution",
+    "customer complaints",
+    "positive guest experience",
+    "friendly, efficient service",
+  ],
+  compliance: [
+    "compliance",
+    "food safety",
+    "temperature logs",
+    "product temperatures",
+    "manager book",
+    "quality standards",
+  ],
+  "project management": [
+    "project management",
+    "coordinated",
+    "managed opening",
+    "oversaw daily",
+    "oversee daily",
+  ],
 };
 
 /**
  * Soft skill match: exact, related-group, free-text hints, substring, or tokens.
- * Returns 0–1 credit so near-matches count (user expectation).
+ * Returns 0–1 credit so near-matches count when resumes use different words
+ * for the same capability (aliases, sibling tools, operational language).
  */
 export function skillMatchCredit(
   jobSkill: string,
@@ -710,12 +969,12 @@ export function skillMatchCredit(
   if (!job) return { credit: 0 };
   const candNorm = candidateSkills.map(normalizeSkill).filter(Boolean);
   const blob = (candidateText || "").toLowerCase();
+  const related = RELATED_LOOKUP.get(job);
 
-  // Exact
+  // Exact (after alias normalization — e.g. QBO ↔ QuickBooks)
   if (candNorm.includes(job)) return { credit: 1, matchedAs: job };
 
-  // Related skill family (tight groups only)
-  const related = RELATED_LOOKUP.get(job);
+  // Related skill family on structured skill lists
   if (related) {
     for (const c of candNorm) {
       if (related.has(c)) {
@@ -724,28 +983,51 @@ export function skillMatchCredit(
     }
   }
 
-  // Free-text / resume language (catches "month end", "JEs", "client training")
+  // Free-text / resume language (different words, same meaning)
   if (blob.length > 20) {
-    if (blob.includes(job)) {
-      return { credit: 0.95, matchedAs: job };
-    }
-    const hints = SKILL_TEXT_HINTS[job] || [];
-    for (const hint of hints) {
-      if (hint.length >= 3 && blob.includes(hint.toLowerCase())) {
-        return { credit: 0.9, matchedAs: hint.trim() };
+    // All surface forms of the JD skill (aliases + self + hints)
+    const surfaces = surfaceFormsForSkill(job);
+    for (const form of surfaces) {
+      if (blobHasPhrase(blob, form)) {
+        // Exact surface of the job skill → near-exact; alias/hint → strong adjacent
+        const exactish =
+          form === job || normalizeSkillLoose(form) === job;
+        return {
+          credit: exactish ? 0.95 : 0.9,
+          matchedAs: form.trim(),
+        };
       }
     }
-    // Also search related-family skills in free text
+
+    // Related-family skills + their surface forms in free text
     if (related) {
       for (const rel of related) {
-        if (rel !== job && blob.includes(rel)) {
-          return { credit: 0.8, matchedAs: rel };
-        }
-        const relHints = SKILL_TEXT_HINTS[rel] || [];
-        for (const hint of relHints) {
-          if (hint.length >= 4 && blob.includes(hint.toLowerCase())) {
-            return { credit: 0.78, matchedAs: hint.trim() };
+        if (rel === job) continue;
+        for (const form of surfaceFormsForSkill(rel)) {
+          if (blobHasPhrase(blob, form)) {
+            return { credit: 0.82, matchedAs: form.trim() };
           }
+        }
+      }
+    }
+
+    // Candidate skill labels that appear only as free-text phrases
+    // (e.g. skills list says "Customer Service" while JD asks for CRM)
+    for (const c of candNorm) {
+      if (!c || c === job) continue;
+      if (related?.has(c)) {
+        // already handled above, but ensure free-text co-presence boosts
+        if (blobHasPhrase(blob, c)) {
+          return { credit: 0.85, matchedAs: c };
+        }
+      }
+      // Token-level synonym: multi-word candidate skill vs job
+      const cToks = skillTokens(c);
+      const jobToks = skillTokens(job);
+      if (cToks.length && jobToks.length) {
+        const hits = jobToks.filter((t) => cToks.has(t)).length;
+        if (hits / jobToks.length >= 0.6 && hits >= 1) {
+          return { credit: 0.7, matchedAs: c };
         }
       }
     }
@@ -776,7 +1058,8 @@ export function skillMatchCredit(
         bestC = c;
       }
     }
-    if (best >= 0.5) {
+    // Slightly softer threshold so multi-word near-matches still count as adjacent
+    if (best >= 0.45) {
       return { credit: 0.55 + best * 0.35, matchedAs: bestC };
     }
   }
@@ -823,6 +1106,10 @@ const DOMAIN_SKILL_SET = new Set<string>([
   "analysis",
   "reporting",
   "reconciliation",
+  "store operations",
+  "compliance",
+  "training",
+  "project management",
 ]);
 
 /** Known product / platform names (always tool readiness). */
@@ -849,6 +1136,7 @@ const KNOWN_TOOL_SKILLS = new Set<string>([
   "quickbooks online",
   "google workspace",
   "microsoft 365",
+  "microsoft office",
   "excel",
   "power bi",
   "tableau",
@@ -856,6 +1144,11 @@ const KNOWN_TOOL_SKILLS = new Set<string>([
   "asana",
   "monday.com",
   "salesforce npsp",
+  "pos",
+  "crm",
+  "scheduling",
+  "inventory",
+  "data entry",
 ]);
 
 function isDomainSkill(skill: string): boolean {
@@ -1266,16 +1559,24 @@ function scoreAchievements(candText: string): {
     return { score: 40, detail: "Too little resume text to judge achievements" };
   }
   const money = (t.match(/\$[\d,.]+|\d+(\.\d+)?\s*%/g) || []).length;
+  // "200 leads", "15 years", "12 hours", "3 stores" etc.
+  const volumeMetrics = (
+    t.match(
+      /\b\d{1,4}(?:,\d{3})*\+?\s*(?:leads?|customers?|clients?|patients?|orders?|tickets?|employees?|team members?|stores?|locations?|hours?|years?|accounts?|transactions?)\b/gi
+    ) || []
+  ).length;
   const impact =
     t.match(
-      /\b(increased|decreased|reduced|grew|saved|delivered|generated|improved|cut|raised|closed|hired|built|launched|scaled|won)\b/gi
+      /\b(increased|decreased|reduced|grew|saved|delivered|generated|improved|cut|raised|closed|hired|built|launched|scaled|won|promoted|oversaw|managed|coordinated|ensured|maintained|supervised|earned|recognized|consistently met|meeting a daily goal)\b/gi
     ) || [];
   const numbers = (t.match(/\b\d{2,}\b/g) || []).length;
-  const hits = money + impact.length * 0.6 + Math.min(4, numbers * 0.15);
+  const metricLike = money + volumeMetrics;
+  const hits =
+    metricLike + impact.length * 0.55 + Math.min(4, numbers * 0.12);
   const score = Math.max(25, Math.min(100, Math.round(35 + hits * 8)));
   const detail =
-    money + impact.length > 0
-      ? `Quantified / impact language found (${money} metric-like, ${impact.length} impact verbs)`
+    metricLike + impact.length > 0
+      ? `Quantified / impact language found (${metricLike} metric-like, ${impact.length} impact verbs)`
       : "Mostly responsibility language — few quantified results visible";
   return { score, detail };
 }
@@ -1622,6 +1923,8 @@ export function scoreCandidateJobFit(
   const skillsMissing: string[] = [];
   const skillsNear: string[] = [];
   const matchCreditBySkill = new Map<string, number>();
+  /** How each JD skill was evidenced (synonym / free-text phrase). */
+  const matchAsBySkill = new Map<string, string>();
   let creditSum = 0;
   let weightSum = 0;
 
@@ -1634,10 +1937,19 @@ export function scoreCandidateJobFit(
       candText
     );
     matchCreditBySkill.set(js, credit);
+    if (matchedAs) matchAsBySkill.set(js, matchedAs);
     if (credit >= 0.5) {
       creditSum += credit * importance;
-      skillsMatched.push(prettySkill(js));
-      if (credit < 0.99 && matchedAs && normalizeSkill(matchedAs) !== js) {
+      const via =
+        matchedAs &&
+        credit < 0.99 &&
+        normalizeSkill(matchedAs) !== js
+          ? matchedAs
+          : "";
+      skillsMatched.push(
+        via ? `${prettySkill(js)} (via ${via})` : prettySkill(js)
+      );
+      if (via) {
         skillsNear.push(prettySkill(js));
       }
     } else {
@@ -1810,7 +2122,14 @@ export function scoreCandidateJobFit(
       toolSkillWeight += importance;
       if (credit >= 0.5) {
         toolSkillCredit += credit * importance;
-        toolsMatched.push(prettySkill(js));
+        const via = matchAsBySkill.get(js);
+        const label = prettySkill(js);
+        const viaNorm = via ? normalizeSkill(via) : "";
+        if (via && viaNorm && viaNorm !== js && credit < 0.99) {
+          toolsMatched.push(`${label} (via ${via})`);
+        } else {
+          toolsMatched.push(label);
+        }
       } else if (importance <= 0.4) {
         toolSkillCredit += 0.55 * importance;
         toolsMissing.push(`${prettySkill(js)} (nice-to-have)`);
@@ -2186,7 +2505,9 @@ function prettySkill(s: string): string {
   return t
     .split(" ")
     .map((w) => {
-      if (["ap", "ar", "gl", "hr", "ui", "ux"].includes(w)) return w.toUpperCase();
+      if (["ap", "ar", "gl", "hr", "ui", "ux", "pos", "crm", "erp", "sql"].includes(w)) {
+        return w.toUpperCase();
+      }
       if (w.includes(".")) return w; // bill.com, node.js
       if (w === "quickbooks") return "QuickBooks";
       if (w === "1099s") return "1099s";
