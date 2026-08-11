@@ -11,6 +11,7 @@ import {
   Terminal,
   Cloud,
   Globe,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +34,15 @@ type KeyRow = {
   last_used_at?: string;
 };
 
+type OAuthClientRow = {
+  id: string;
+  name: string;
+  client_id: string;
+  client_secret_prefix: string;
+  redirect_uris: string[];
+  created_at: string;
+};
+
 export function McpKeysSettings() {
   const [keys, setKeys] = useState<KeyRow[]>([]);
   const [tenantId, setTenantId] = useState("");
@@ -45,14 +55,34 @@ export function McpKeysSettings() {
   const [remoteSnippet, setRemoteSnippet] = useState<string | null>(null);
   const [claudeCodeCli, setClaudeCodeCli] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [oauthClients, setOauthClients] = useState<OAuthClientRow[]>([]);
+  const [oauthName, setOauthName] = useState("Claude Connector");
+  const [oauthRedirectUri, setOauthRedirectUri] = useState(
+    "https://claude.ai/api/mcp/auth_callback, https://claude.com/api/mcp/auth_callback"
+  );
+  const [creatingOauth, setCreatingOauth] = useState(false);
+  const [newOauth, setNewOauth] = useState<{
+    clientId: string;
+    clientSecret: string;
+    authorizationUrl: string;
+    tokenUrl: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/tenant/mcp-keys", { credentials: "include" });
-      const data = await res.json().catch(() => ({}));
+      const [res, oauthRes] = await Promise.all([
+        fetch("/api/tenant/mcp-keys", { credentials: "include" }),
+        fetch("/api/tenant/mcp-oauth-clients", { credentials: "include" }),
+      ]);
+      const [data, oauthData] = await Promise.all([
+        res.json().catch(() => ({})),
+        oauthRes.json().catch(() => ({})),
+      ]);
       if (!res.ok) throw new Error(data.error || "Failed to load keys");
+      if (!oauthRes.ok) throw new Error(oauthData.error || "Failed to load OAuth clients");
       setKeys(data.keys || []);
+      setOauthClients(oauthData.clients || []);
       setTenantId(data.tenantId || "");
       const origin = data.appUrl || window.location.origin;
       setAppUrl(origin);
@@ -120,6 +150,57 @@ export function McpKeysSettings() {
       await load();
     } catch (e: any) {
       toast.error(e?.message || "Failed to revoke");
+    }
+  };
+
+  const createOauthClient = async () => {
+    setCreatingOauth(true);
+    setNewOauth(null);
+    try {
+      const res = await fetch("/api/tenant/mcp-oauth-clients", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: oauthName.trim() || "Claude Connector",
+          redirectUris: oauthRedirectUri
+            .split(/[,\n]/)
+            .map((value) => value.trim())
+            .filter(Boolean),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to create OAuth client");
+      setNewOauth({
+        clientId: data.client.client_id,
+        clientSecret: data.clientSecret,
+        authorizationUrl: data.authorizationUrl,
+        tokenUrl: data.tokenUrl,
+      });
+      toast.success("OAuth client created - copy the secret now");
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to create OAuth client");
+    } finally {
+      setCreatingOauth(false);
+    }
+  };
+
+  const revokeOauthClient = async (id: string, label: string) => {
+    if (!confirm(`Revoke OAuth client "${label}"? Existing access and refresh tokens will stop working.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/tenant/mcp-oauth-clients/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to revoke OAuth client");
+      toast.success("OAuth client revoked");
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to revoke OAuth client");
     }
   };
 
@@ -343,6 +424,101 @@ export function McpKeysSettings() {
                       onClick={() => void revoke(k.id, k.name)}
                     >
                       <Trash2 className="h-3.5 w-3.5 mr-1" />
+                      Revoke
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="border-t border-slate-200 pt-5 space-y-4">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <ShieldCheck className="h-4 w-4 text-blue-600" />
+                OAuth 2.1 clients
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Recommended for Claude custom connectors. Uses authorization code with PKCE, short-lived access tokens, and refresh tokens.
+              </p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)_auto] md:items-end">
+              <div>
+                <Label htmlFor="mcp-oauth-name">Client label</Label>
+                <Input
+                  id="mcp-oauth-name"
+                  value={oauthName}
+                  onChange={(event) => setOauthName(event.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="mcp-oauth-redirect">OAuth callback URLs</Label>
+                <Input
+                  id="mcp-oauth-redirect"
+                  value={oauthRedirectUri}
+                  onChange={(event) => setOauthRedirectUri(event.target.value)}
+                  className="mt-1 font-mono text-xs"
+                />
+              </div>
+              <Button
+                onClick={() => void createOauthClient()}
+                disabled={creatingOauth || !oauthRedirectUri.trim()}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {creatingOauth ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-2 h-4 w-4" />
+                )}
+                Create OAuth client
+              </Button>
+            </div>
+
+            {newOauth && (
+              <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-medium text-amber-950">
+                  Copy the client secret now - it will not be shown again.
+                </p>
+                {[
+                  ["Client ID", newOauth.clientId, "oauth-client-id"],
+                  ["Client secret", newOauth.clientSecret, "oauth-client-secret"],
+                  ["Authorization URL", newOauth.authorizationUrl, "oauth-auth-url"],
+                  ["Token URL", newOauth.tokenUrl, "oauth-token-url"],
+                ].map(([label, value, copyId]) => (
+                  <div key={copyId} className="grid gap-1 sm:grid-cols-[8rem_minmax(0,1fr)_auto] sm:items-center">
+                    <span className="text-xs font-medium text-amber-900">{label}</span>
+                    <code className="break-all rounded border border-amber-100 bg-white px-2.5 py-2 text-xs">{value}</code>
+                    <Button variant="outline" size="sm" onClick={() => void copyText(value, copyId)}>
+                      {copied === copyId ? <Check className="mr-1 h-3.5 w-3.5" /> : <Copy className="mr-1 h-3.5 w-3.5" />}
+                      Copy
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {oauthClients.length === 0 ? (
+              <p className="text-sm text-slate-500">No OAuth clients yet.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                {oauthClients.map((client) => (
+                  <li key={client.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-slate-900">{client.name}</div>
+                      <div className="truncate font-mono text-xs text-slate-500">{client.client_id}</div>
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        Callback: {client.redirect_uris.join(", ")}
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-red-200 text-red-600 hover:bg-red-50"
+                      onClick={() => void revokeOauthClient(client.id, client.name)}
+                    >
+                      <Trash2 className="mr-1 h-3.5 w-3.5" />
                       Revoke
                     </Button>
                   </li>
