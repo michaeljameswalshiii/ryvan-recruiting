@@ -1,10 +1,8 @@
 /**
  * In-process MCP server for remote Streamable HTTP transport.
- * High-leverage recruiting tools bound to one authenticated tenant.
+ * Recruiting tools bound to one authenticated tenant.
  *
- * Tools:
- *   list_candidates, get_candidate, update_candidate_stage,
- *   add_note, list_jobs, search_pipeline
+ * Prefer recruiter-language tool descriptions — Claude chooses tools from them.
  *
  * @serverOnly
  */
@@ -12,13 +10,25 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ValidatedMcpKey } from "@/lib/mcp/api-keys";
-import { getAllLeads, getLeadById } from "@/lib/db/repositories/lead-repository";
-import { getAllJobs } from "@/lib/db/repositories/job-repository";
+import {
+  createLead,
+  getAllLeads,
+  getLeadById,
+  updateLead,
+} from "@/lib/db/repositories/lead-repository";
+import {
+  getAllJobs,
+  getJobById,
+  linkCandidateToJob,
+} from "@/lib/db/repositories/job-repository";
 import {
   addNoteToCandidate,
   getCandidateEvents,
 } from "@/lib/events/candidate-events";
-import { setCandidatePipelineStage, normStatus } from "@/lib/candidates/stage-sync";
+import {
+  setCandidatePipelineStage,
+  normStatus,
+} from "@/lib/candidates/stage-sync";
 import { normalizeJobStatus } from "@/lib/jobs/status";
 
 function textResult(data: unknown) {
@@ -40,10 +50,12 @@ function errorResult(message: string) {
   };
 }
 
+const STAGE_HINT =
+  "Common stages: sourced, contacted, interested, pre_screened, submitted, interviewing, second_interview, offer_out, offer_accepted, placed, rejected, not_interested";
+
 function summarizeLead(l: any) {
   const linked = Array.isArray(l.linkedJobs) ? l.linkedJobs : [];
-  const primaryStage =
-    linked[0]?.stage || l.status || null;
+  const primaryStage = linked[0]?.stage || l.status || null;
   return {
     id: l.id,
     name: l.name || null,
@@ -66,6 +78,24 @@ function summarizeLead(l: any) {
   };
 }
 
+function summarizeJob(j: any) {
+  return {
+    id: j.id,
+    title: j.title || null,
+    status: j.status || null,
+    companyName: j.companyName || null,
+    companyId: j.companyId || null,
+    location: j.location || null,
+    employmentType: j.employmentType || null,
+    salaryRange: j.salaryRange || null,
+    candidateCount: Array.isArray(j.candidates) ? j.candidates.length : 0,
+    descriptionPreview: j.description
+      ? String(j.description).slice(0, 280)
+      : null,
+    createdAt: j.created_at || null,
+  };
+}
+
 function matchesQuery(l: any, q: string): boolean {
   if (!q) return true;
   const hay = [
@@ -79,7 +109,12 @@ function matchesQuery(l: any, q: string): boolean {
     l.id,
     Array.isArray(l.skills) ? l.skills.join(" ") : l.skills,
     ...(Array.isArray(l.linkedJobs)
-      ? l.linkedJobs.flatMap((j: any) => [j.stage, j.title, j.jobTitle, j.jobId])
+      ? l.linkedJobs.flatMap((j: any) => [
+          j.stage,
+          j.title,
+          j.jobTitle,
+          j.jobId,
+        ])
       : []),
   ]
     .filter(Boolean)
@@ -100,43 +135,61 @@ function jobOnLead(l: any, jobId: string): boolean {
   const want = jobId.trim();
   if (!want) return true;
   const linked = Array.isArray(l.linkedJobs) ? l.linkedJobs : [];
-  return linked.some(
-    (j: any) => String(j?.jobId || j?.id || "") === want
-  );
+  return linked.some((j: any) => String(j?.jobId || j?.id || "") === want);
 }
 
 /**
  * Build a fresh MCP server bound to one authenticated tenant.
- * Create one instance per HTTP request (stateless / serverless-safe).
+ * One instance per HTTP request (stateless / serverless-safe).
  */
 export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
   const server = new McpServer({
     name: "trio-recruiting",
-    version: "2.1.0",
+    version: "2.2.0",
   });
 
   const tenantId = auth.tenantId;
   const actor = `mcp:${auth.keyName}`;
+  const actorUser = { userId: auth.keyId || "mcp", email: actor };
 
-  // -------------------------------------------------------------------------
-  // 1. list_candidates
-  // -------------------------------------------------------------------------
+  // =========================================================================
+  // READ
+  // =========================================================================
+
   server.tool(
     "list_candidates",
-    "Search or list candidates in the ATS. Filter by name/free-text, pipeline stage, or job id. Use for pipeline overviews and finding people.",
+    [
+      "Find people in the ATS (candidates/leads).",
+      "Use when the user asks who is in the system, wants to search by name/email/title/skills,",
+      "filter by pipeline stage, or see who is on a job.",
+      "Returns a short list (id, name, stage, title, linked jobs) — call get_candidate for full detail.",
+    ].join(" "),
     {
       query: z
         .string()
         .optional()
-        .describe("Name, email, title, skills, or free-text search"),
+        .describe(
+          "Free-text: person name, email, phone, job title, skills, location, or source"
+        ),
       stage: z
         .string()
         .optional()
         .describe(
-          "Pipeline stage (e.g. interviewing, submitted, offer_out, sourced)"
+          `Only candidates currently in this pipeline stage. ${STAGE_HINT}`
         ),
-      jobId: z.string().optional().describe("Job / position id"),
-      limit: z.number().int().min(1).max(50).optional(),
+      jobId: z
+        .string()
+        .optional()
+        .describe(
+          "Only candidates linked to this job id (get id from list_jobs first)"
+        ),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe("Max results (default 20, max 50)"),
     },
     async ({ query, stage, jobId, limit }) => {
       try {
@@ -168,12 +221,11 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
     }
   );
 
-  // Back-compat alias used by older clients
   server.tool(
     "search_candidates",
-    "Alias of list_candidates. Search Trio Recruiting candidates by name, email, phone, title, status, or source.",
+    "Same as list_candidates with a required search string. Prefer list_candidates when filtering by stage or job.",
     {
-      query: z.string().describe("Search text"),
+      query: z.string().describe("Name, email, title, or other search text"),
       limit: z.number().int().min(1).max(50).optional(),
     },
     async ({ query, limit }) => {
@@ -181,9 +233,7 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
         const q = (query || "").trim().toLowerCase();
         const max = limit ?? 20;
         const leads = await getAllLeads(tenantId);
-        const rows = q
-          ? leads.filter((l: any) => matchesQuery(l, q))
-          : leads;
+        const rows = q ? leads.filter((l: any) => matchesQuery(l, q)) : leads;
         return textResult({
           tenantId,
           query: q || null,
@@ -196,13 +246,17 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
     }
   );
 
-  // -------------------------------------------------------------------------
-  // 2. get_candidate
-  // -------------------------------------------------------------------------
   server.tool(
     "get_candidate",
-    "Retrieve full details for a candidate by id, including recent activity notes.",
-    { candidateId: z.string().describe("Candidate UUID") },
+    [
+      "Load one candidate’s full profile by id, including linked jobs and recent activity notes.",
+      "Use after list_candidates when you need email/phone, summary, skills, or recent notes before writing or updating stage.",
+    ].join(" "),
+    {
+      candidateId: z
+        .string()
+        .describe("Candidate UUID from list_candidates or the ATS"),
+    },
     async ({ candidateId }) => {
       try {
         const id = candidateId.trim();
@@ -214,10 +268,10 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
         let recentNotes: unknown[] = [];
         try {
           const events = await getCandidateEvents(id, {
-            limit: 15,
+            limit: 20,
             eventTypes: ["NOTE"],
           });
-          recentNotes = (events.events || []).slice(0, 15).map((ev: any) => ({
+          recentNotes = (events.events || []).slice(0, 20).map((ev: any) => ({
             id: ev.SK || ev.eventId || null,
             date: ev.createdAt || null,
             title: ev.title || null,
@@ -226,7 +280,7 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
             createdBy: ev.createdBy || null,
           }));
         } catch {
-          /* notes optional */
+          /* optional */
         }
 
         return textResult({
@@ -235,6 +289,8 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
             ...summarizeLead(l),
             notesField: l.notes || null,
             summary: l.summary || null,
+            linkedin_url: l.linkedin_url || null,
+            salary_requirements: l.salary_requirements || null,
             linkedJobs: l.linkedJobs || [],
             modifiedAt: l.modified_at || null,
             recentNotes,
@@ -246,23 +302,377 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
     }
   );
 
-  // -------------------------------------------------------------------------
-  // 3. update_candidate_stage
-  // -------------------------------------------------------------------------
+  server.tool(
+    "list_jobs",
+    [
+      "List job openings / positions in the ATS.",
+      "Use when matching candidates to roles, checking open reqs, or before link_candidate_to_job.",
+      "Default shows Open jobs only.",
+    ].join(" "),
+    {
+      status: z
+        .string()
+        .optional()
+        .describe(
+          "open (default) | closed | all | or exact: Open, Paused, Filled, Lost, Closed"
+        ),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe("Max jobs (default 20)"),
+    },
+    async ({ status, limit }) => {
+      try {
+        let jobs = await getAllJobs(tenantId);
+        const st = (status || "open").toString();
+        if (st.toLowerCase() !== "all") {
+          if (st.toLowerCase() === "open") {
+            jobs = jobs.filter(
+              (j: any) => normalizeJobStatus(j.status) === "Open"
+            );
+          } else if (st.toLowerCase() === "closed") {
+            jobs = jobs.filter((j: any) => {
+              const s = normalizeJobStatus(j.status);
+              return s === "Closed" || s === "Filled" || s === "Lost";
+            });
+          } else {
+            const want = normalizeJobStatus(st);
+            jobs = jobs.filter(
+              (j: any) => normalizeJobStatus(j.status) === want
+            );
+          }
+        }
+        const rows = jobs.slice(0, limit ?? 20).map(summarizeJob);
+        return textResult({
+          tenantId,
+          statusFilter: status || "open",
+          count: rows.length,
+          jobs: rows,
+        });
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "get_job",
+    [
+      "Get one job/req by id: title, company, status, location, description preview, and candidate count.",
+      "Use when the user asks about a specific opening or before linking candidates.",
+    ].join(" "),
+    {
+      jobId: z.string().describe("Job UUID from list_jobs"),
+    },
+    async ({ jobId }) => {
+      try {
+        const id = jobId.trim();
+        if (!id) return errorResult("jobId is required");
+        const job = await getJobById(tenantId, id);
+        if (!job) return errorResult(`Job not found: ${id}`);
+        const j = job as any;
+        const candidates = Array.isArray(j.candidates)
+          ? j.candidates.slice(0, 40).map((c: any) => ({
+              candidateId: c.candidateId || null,
+              name: c.candidateName || null,
+              email: c.candidateEmail || null,
+              stage: c.stage || null,
+            }))
+          : [];
+        return textResult({
+          tenantId,
+          job: {
+            ...summarizeJob(j),
+            description: j.description || null,
+            candidatesOnJob: candidates,
+          },
+        });
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "search_pipeline",
+    [
+      "Pipeline snapshot: counts of candidates by stage, with a small sample per stage.",
+      "Use for “what does my pipeline look like?” or “who is interviewing on this job?”",
+      "Not a full export — use list_candidates with stage/jobId for complete lists.",
+    ].join(" "),
+    {
+      jobId: z
+        .string()
+        .optional()
+        .describe("Optional: only this job’s pipeline"),
+      limitPerStage: z
+        .number()
+        .int()
+        .min(1)
+        .max(30)
+        .optional()
+        .describe("Sample size per stage (default 10)"),
+    },
+    async ({ jobId, limitPerStage }) => {
+      try {
+        const per = limitPerStage ?? 10;
+        let leads = await getAllLeads(tenantId);
+        if (jobId?.trim()) {
+          leads = leads.filter((l: any) => jobOnLead(l, jobId));
+        }
+
+        const buckets: Record<
+          string,
+          {
+            stage: string;
+            count: number;
+            sample: ReturnType<typeof summarizeLead>[];
+          }
+        > = {};
+
+        for (const l of leads) {
+          const linked = Array.isArray((l as any).linkedJobs)
+            ? (l as any).linkedJobs
+            : [];
+          if (jobId?.trim() && linked.length) {
+            const j = linked.find(
+              (x: any) => String(x?.jobId || x?.id || "") === jobId.trim()
+            );
+            const st = normStatus(j?.stage || (l as any).status) || "unknown";
+            if (!buckets[st]) buckets[st] = { stage: st, count: 0, sample: [] };
+            buckets[st].count += 1;
+            if (buckets[st].sample.length < per) {
+              buckets[st].sample.push(summarizeLead(l));
+            }
+          } else if (linked.length) {
+            const seen = new Set<string>();
+            for (const j of linked) {
+              const st = normStatus(j?.stage) || "unknown";
+              if (seen.has(st)) continue;
+              seen.add(st);
+              if (!buckets[st]) {
+                buckets[st] = { stage: st, count: 0, sample: [] };
+              }
+              buckets[st].count += 1;
+              if (buckets[st].sample.length < per) {
+                buckets[st].sample.push(summarizeLead(l));
+              }
+            }
+          } else {
+            const st = normStatus((l as any).status) || "unknown";
+            if (!buckets[st]) buckets[st] = { stage: st, count: 0, sample: [] };
+            buckets[st].count += 1;
+            if (buckets[st].sample.length < per) {
+              buckets[st].sample.push(summarizeLead(l));
+            }
+          }
+        }
+
+        return textResult({
+          tenantId,
+          jobId: jobId || null,
+          totalCandidates: leads.length,
+          stages: Object.values(buckets).sort((a, b) =>
+            a.stage.localeCompare(b.stage)
+          ),
+        });
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "list_candidate_activity",
+    [
+      "Recent activity timeline for one candidate (notes and other events).",
+      "Use when the user asks what happened with someone, or wants call/interview history.",
+    ].join(" "),
+    {
+      candidateId: z.string().describe("Candidate UUID"),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe("Max events (default 20)"),
+    },
+    async ({ candidateId, limit }) => {
+      try {
+        const id = candidateId.trim();
+        if (!id) return errorResult("candidateId is required");
+        const lead = await getLeadById(tenantId, id);
+        if (!lead) return errorResult(`Candidate not found: ${id}`);
+        const max = limit ?? 20;
+        const events = await getCandidateEvents(id, { limit: max });
+        const rows = (events.events || []).slice(0, max).map((ev: any) => ({
+          date: ev.createdAt || null,
+          type: ev.eventType || null,
+          title: ev.title || null,
+          description: ev.description || null,
+          createdBy: ev.createdBy || null,
+        }));
+        return textResult({
+          tenantId,
+          candidateId: id,
+          candidateName: (lead as any).name || null,
+          count: rows.length,
+          activity: rows,
+        });
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  // =========================================================================
+  // WRITE
+  // =========================================================================
+
+  server.tool(
+    "create_candidate",
+    [
+      "Create a new candidate (person) in the ATS.",
+      "Use when the user wants to add someone new — name is required; email/phone/title optional.",
+      "Does not auto-link to a job; call link_candidate_to_job after if needed.",
+    ].join(" "),
+    {
+      name: z.string().min(1).max(100).describe("Full name (required)"),
+      email: z.string().optional().describe("Email address"),
+      phone: z.string().optional().describe("Phone number"),
+      title: z.string().optional().describe("Current or target job title"),
+      location: z.string().optional().describe("City / location"),
+      source: z
+        .string()
+        .optional()
+        .describe("Where they came from (e.g. LinkedIn, referral, inbound)"),
+      skills: z
+        .array(z.string())
+        .optional()
+        .describe("Skill tags as short strings"),
+      summary: z.string().optional().describe("Short profile summary"),
+      linkedin_url: z.string().optional().describe("LinkedIn profile URL"),
+      notes: z.string().optional().describe("Initial free-text notes field"),
+    },
+    async (input) => {
+      try {
+        const name = input.name.trim();
+        if (!name) return errorResult("name is required");
+        const lead = await createLead(
+          tenantId,
+          {
+            name,
+            email: input.email?.trim() || "",
+            phone: input.phone?.trim() || "",
+            title: input.title?.trim() || "",
+            location: input.location?.trim() || "",
+            source: input.source?.trim() || "mcp",
+            notes: input.notes?.trim() || "",
+            linkedin_url: input.linkedin_url?.trim() || "",
+            status: "identification",
+            skills: input.skills,
+            summary: input.summary?.trim(),
+          } as any,
+          actorUser
+        );
+        return textResult({
+          success: true,
+          tenantId,
+          candidate: summarizeLead(lead),
+          message: `Created candidate ${lead.name} (${lead.id})`,
+        });
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "update_candidate",
+    [
+      "Update fields on an existing candidate (name, email, phone, title, location, skills, summary, etc.).",
+      "Use for profile corrections — not for pipeline stage (use update_candidate_stage) or timeline notes (use add_note).",
+    ].join(" "),
+    {
+      candidateId: z.string().describe("Candidate UUID"),
+      name: z.string().optional(),
+      email: z.string().optional().nullable(),
+      phone: z.string().optional().nullable(),
+      title: z.string().optional().nullable(),
+      location: z.string().optional().nullable(),
+      source: z.string().optional().nullable(),
+      skills: z.array(z.string()).optional().nullable(),
+      summary: z.string().optional().nullable(),
+      notes: z
+        .string()
+        .optional()
+        .nullable()
+        .describe("Profile notes field (not timeline activity)"),
+      linkedin_url: z.string().optional().nullable(),
+      salary_requirements: z.string().optional().nullable(),
+    },
+    async (input) => {
+      try {
+        const id = input.candidateId.trim();
+        if (!id) return errorResult("candidateId is required");
+        const existing = await getLeadById(tenantId, id);
+        if (!existing) return errorResult(`Candidate not found: ${id}`);
+
+        const patch: Record<string, unknown> = {};
+        const keys = [
+          "name",
+          "email",
+          "phone",
+          "title",
+          "location",
+          "source",
+          "skills",
+          "summary",
+          "notes",
+          "linkedin_url",
+          "salary_requirements",
+        ] as const;
+        for (const k of keys) {
+          if (input[k] !== undefined) patch[k] = input[k];
+        }
+        if (Object.keys(patch).length === 0) {
+          return errorResult("No fields to update");
+        }
+
+        const updated = await updateLead(tenantId, id, patch as any);
+        if (!updated) return errorResult("Update failed");
+        return textResult({
+          success: true,
+          tenantId,
+          candidate: summarizeLead(updated),
+          message: `Updated candidate ${id}`,
+        });
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
   server.tool(
     "update_candidate_stage",
-    "Move a candidate to a new pipeline stage (e.g. interviewing, submitted, offer_out). Optionally scope to one job and attach a note.",
+    [
+      "Move a candidate to a new pipeline stage (e.g. interviewing, submitted, offer_out).",
+      "This is the primary write recruiters do all day. Optionally scope to one job and add a note.",
+      STAGE_HINT,
+    ].join(" "),
     {
       candidateId: z.string().describe("Candidate UUID"),
       newStage: z
         .string()
-        .describe(
-          "Target stage (snake_case preferred: interviewing, submitted, offer_out, rejected, …)"
-        ),
+        .describe(`Target stage (snake_case preferred). ${STAGE_HINT}`),
       jobId: z
         .string()
         .optional()
-        .describe("If set, only update stage on this linked job"),
+        .describe("If set, only update stage on this linked job application"),
       note: z
         .string()
         .optional()
@@ -312,20 +722,24 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
     }
   );
 
-  // -------------------------------------------------------------------------
-  // 4. add_note
-  // -------------------------------------------------------------------------
   server.tool(
     "add_note",
-    "Add an activity note to a candidate timeline. Use after calls, interviews, or any recruiter follow-up.",
+    [
+      "Add a timeline/activity note on a candidate (calls, interviews, feedback).",
+      "Use after conversations or when the user says “log that…” / “note that…”.",
+      "Does not change pipeline stage unless you also call update_candidate_stage.",
+    ].join(" "),
     {
       candidateId: z.string().describe("Candidate UUID"),
-      text: z.string().min(1).describe("Note content"),
+      text: z.string().min(1).describe("Note body the recruiter would write"),
       noteType: z
         .string()
         .optional()
-        .describe("Optional type label (default Note)"),
-      jobId: z.string().optional().describe("Optional related job id"),
+        .describe("Optional type, e.g. Note, Call, Interview (default Note)"),
+      jobId: z
+        .string()
+        .optional()
+        .describe("Optional job this note relates to"),
     },
     async ({ candidateId, text, noteType, jobId }) => {
       try {
@@ -363,10 +777,9 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
     }
   );
 
-  // Back-compat: older schema used noteText
   server.tool(
     "add_candidate_note",
-    "Alias of add_note. Add an activity note to a candidate timeline.",
+    "Alias of add_note (parameter name noteText). Prefer add_note.",
     {
       candidateId: z.string(),
       noteText: z.string().min(1),
@@ -400,145 +813,67 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
     }
   );
 
-  // -------------------------------------------------------------------------
-  // 5. list_jobs
-  // -------------------------------------------------------------------------
   server.tool(
-    "list_jobs",
-    "List open jobs / positions in the ATS. Filter by status: open, closed, all (or Open, Paused, Filled, Lost, Closed).",
+    "link_candidate_to_job",
+    [
+      "Attach a candidate to a job/req (create an application on that pipeline).",
+      "Use when the user says someone should be on a specific opening.",
+      "Fails if already linked. Default starting stage is sourced.",
+    ].join(" "),
     {
-      status: z
+      candidateId: z.string().describe("Candidate UUID"),
+      jobId: z.string().describe("Job UUID from list_jobs"),
+      stage: z
         .string()
         .optional()
-        .describe(
-          "Job status filter: open | closed | all | Open | Paused | Filled | Lost | Closed (default open)"
-        ),
-      limit: z.number().int().min(1).max(50).optional(),
-    },
-    async ({ status, limit }) => {
-      try {
-        let jobs = await getAllJobs(tenantId);
-        const st = (status || "open").toString();
-        if (st.toLowerCase() !== "all") {
-          if (st.toLowerCase() === "open") {
-            jobs = jobs.filter(
-              (j: any) => normalizeJobStatus(j.status) === "Open"
-            );
-          } else if (st.toLowerCase() === "closed") {
-            jobs = jobs.filter((j: any) => {
-              const s = normalizeJobStatus(j.status);
-              return s === "Closed" || s === "Filled" || s === "Lost";
-            });
-          } else {
-            const want = normalizeJobStatus(st);
-            jobs = jobs.filter(
-              (j: any) => normalizeJobStatus(j.status) === want
-            );
-          }
-        }
-        const rows = jobs.slice(0, limit ?? 20).map((j: any) => ({
-          id: j.id,
-          title: j.title || null,
-          status: j.status || null,
-          companyName: j.companyName || null,
-          location: j.location || null,
-          employmentType: j.employmentType || null,
-          candidateCount: Array.isArray(j.candidates) ? j.candidates.length : 0,
-          createdAt: j.created_at || null,
-        }));
-        return textResult({
-          tenantId,
-          statusFilter: status || "open",
-          count: rows.length,
-          jobs: rows,
-        });
-      } catch (e) {
-        return errorResult(e instanceof Error ? e.message : String(e));
-      }
-    }
-  );
-
-  // -------------------------------------------------------------------------
-  // 6. search_pipeline
-  // -------------------------------------------------------------------------
-  server.tool(
-    "search_pipeline",
-    "Quick pipeline overview: candidates grouped by stage. Optionally filter to one job.",
-    {
-      jobId: z.string().optional().describe("Limit to one job / position"),
-      limitPerStage: z
-        .number()
-        .int()
-        .min(1)
-        .max(30)
+        .describe(`Initial stage on this job (default sourced). ${STAGE_HINT}`),
+      notes: z
+        .string()
         .optional()
-        .describe("Max candidates listed per stage (default 10)"),
+        .describe("Optional note when linking"),
     },
-    async ({ jobId, limitPerStage }) => {
+    async ({ candidateId, jobId, stage, notes }) => {
       try {
-        const per = limitPerStage ?? 10;
-        let leads = await getAllLeads(tenantId);
-        if (jobId?.trim()) {
-          leads = leads.filter((l: any) => jobOnLead(l, jobId));
+        const cid = candidateId.trim();
+        const jid = jobId.trim();
+        if (!cid) return errorResult("candidateId is required");
+        if (!jid) return errorResult("jobId is required");
+
+        const lead = await getLeadById(tenantId, cid);
+        if (!lead) return errorResult(`Candidate not found: ${cid}`);
+        const job = await getJobById(tenantId, jid);
+        if (!job) return errorResult(`Job not found: ${jid}`);
+
+        const initialStage = normStatus(stage || "sourced") || "sourced";
+
+        await linkCandidateToJob(tenantId, jid, {
+          candidateId: cid,
+          candidateName: (lead as any).name || "Candidate",
+          candidateEmail: (lead as any).email || "",
+          stage: initialStage,
+          notes: notes?.trim() || "",
+        });
+
+        if (notes?.trim()) {
+          await addNoteToCandidate(cid, notes.trim(), actor, {
+            noteType: "Note",
+            jobId: jid,
+            jobTitle: (job as any).title || null,
+            companyName: (job as any).companyName || null,
+            tenantId,
+            via: "mcp-link-job",
+          });
         }
-
-        const buckets: Record<
-          string,
-          { stage: string; count: number; sample: ReturnType<typeof summarizeLead>[] }
-        > = {};
-
-        for (const l of leads) {
-          const linked = Array.isArray((l as any).linkedJobs)
-            ? (l as any).linkedJobs
-            : [];
-          if (jobId?.trim() && linked.length) {
-            const j = linked.find(
-              (x: any) => String(x?.jobId || x?.id || "") === jobId.trim()
-            );
-            const st = normStatus(j?.stage || (l as any).status) || "unknown";
-            if (!buckets[st]) {
-              buckets[st] = { stage: st, count: 0, sample: [] };
-            }
-            buckets[st].count += 1;
-            if (buckets[st].sample.length < per) {
-              buckets[st].sample.push(summarizeLead(l));
-            }
-          } else if (linked.length) {
-            // Count each linked job stage once per candidate-job pair
-            const seen = new Set<string>();
-            for (const j of linked) {
-              const st = normStatus(j?.stage) || "unknown";
-              if (seen.has(st)) continue;
-              seen.add(st);
-              if (!buckets[st]) {
-                buckets[st] = { stage: st, count: 0, sample: [] };
-              }
-              buckets[st].count += 1;
-              if (buckets[st].sample.length < per) {
-                buckets[st].sample.push(summarizeLead(l));
-              }
-            }
-          } else {
-            const st = normStatus((l as any).status) || "unknown";
-            if (!buckets[st]) {
-              buckets[st] = { stage: st, count: 0, sample: [] };
-            }
-            buckets[st].count += 1;
-            if (buckets[st].sample.length < per) {
-              buckets[st].sample.push(summarizeLead(l));
-            }
-          }
-        }
-
-        const stages = Object.values(buckets).sort((a, b) =>
-          a.stage.localeCompare(b.stage)
-        );
 
         return textResult({
+          success: true,
           tenantId,
-          jobId: jobId || null,
-          totalCandidates: leads.length,
-          stages,
+          candidateId: cid,
+          candidateName: (lead as any).name || null,
+          jobId: jid,
+          jobTitle: (job as any).title || null,
+          stage: initialStage,
+          message: `Linked ${(lead as any).name || cid} to ${(job as any).title || jid} at ${initialStage}`,
         });
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));

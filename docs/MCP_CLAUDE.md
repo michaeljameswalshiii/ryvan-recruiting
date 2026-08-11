@@ -8,14 +8,24 @@ https://<your-domain>/api/mcp
 
 ## Tools
 
-| Tool | Purpose |
-|------|---------|
-| `list_candidates` | Search / filter candidates (query, stage, jobId) |
-| `get_candidate` | Full candidate + recent notes |
-| `update_candidate_stage` | Move pipeline stage (optional job + note) |
-| `add_note` | Activity note on candidate |
-| `list_jobs` | Open (or filtered) jobs |
-| `search_pipeline` | Candidates grouped by stage |
+### Read
+| Tool | When Claude should use it |
+|------|---------------------------|
+| `list_candidates` | Find people (name/skills/stage/job filters) |
+| `get_candidate` | Full profile + recent notes by id |
+| `list_jobs` | Open reqs / positions |
+| `get_job` | One job + candidates on it |
+| `search_pipeline` | Stage counts / pipeline snapshot |
+| `list_candidate_activity` | Timeline history |
+
+### Write
+| Tool | When Claude should use it |
+|------|---------------------------|
+| `create_candidate` | Add a new person (name required) |
+| `update_candidate` | Fix profile fields (not stage) |
+| `update_candidate_stage` | Move pipeline stage |
+| `add_note` | Log a call/interview note |
+| `link_candidate_to_job` | Put someone on a job/req |
 
 Legacy aliases: `search_candidates`, `add_candidate_note`.
 

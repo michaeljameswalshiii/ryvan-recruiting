@@ -5,8 +5,8 @@
  * Auth: Authorization: Bearer <trio_mcp_...>  (required by middleware)
  *       X-Trio-Tenant-Id optional — resolved from key when omitted
  *
- * Tools: list_candidates, get_candidate, update_candidate_stage,
- *        add_note, list_jobs, search_pipeline (+ legacy aliases)
+ * Tools: list/get candidates & jobs, pipeline, activity;
+ *        create/update candidate, stage, note, link to job
  *
  * Stateless + JSON responses — safe on Vercel serverless.
  *
