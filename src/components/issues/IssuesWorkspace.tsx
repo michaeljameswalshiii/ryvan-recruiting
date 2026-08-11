@@ -42,7 +42,7 @@ import type { CreateIssueInput, IssueListFilters } from "@/lib/schemas/issue";
 
 type ViewMode = "board" | "backlog";
 
-type ChipId = "mine" | "bugs" | "open" | "blocked" | "critical";
+type ChipId = "mine" | "bugs" | "open" | "blocked" | "critical" | "customer";
 
 export default function IssuesWorkspace() {
   const router = useRouter();
@@ -56,6 +56,7 @@ export default function IssuesWorkspace() {
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [mineOnly, setMineOnly] = useState(false);
+  const [customerOnly, setCustomerOnly] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -69,8 +70,9 @@ export default function IssuesWorkspace() {
     if (statusFilter) f.status = statusFilter;
     if (priorityFilter) f.priority = Number(priorityFilter);
     if (mineOnly) f.mine = true;
+    if (customerOnly) f.customerRequest = true;
     return f;
-  }, [q, typeFilter, statusFilter, priorityFilter, mineOnly]);
+  }, [q, typeFilter, statusFilter, priorityFilter, mineOnly, customerOnly]);
 
   const { data: issues = [], isLoading } = useIssues(filters);
   const createIssue = useCreateIssue();
@@ -106,6 +108,10 @@ export default function IssuesWorkspace() {
     }
     if (chip === "critical") {
       setPriorityFilter((p) => (p === "1" ? "" : "1"));
+      return;
+    }
+    if (chip === "customer") {
+      setCustomerOnly((v) => !v);
     }
   };
 
@@ -115,6 +121,7 @@ export default function IssuesWorkspace() {
     setStatusFilter("");
     setPriorityFilter("");
     setMineOnly(false);
+    setCustomerOnly(false);
   };
 
   const handleCreate = async (data: CreateIssueInput) => {
@@ -235,6 +242,7 @@ export default function IssuesWorkspace() {
           {(
             [
               ["mine", "My issues", mineOnly],
+              ["customer", "Customer requests", customerOnly],
               ["bugs", "Bugs", typeFilter === "Bug"],
               ["open", "Open", statusFilter === "Open"],
               ["blocked", "Blocked", statusFilter === "Blocked"],
@@ -256,6 +264,7 @@ export default function IssuesWorkspace() {
             </button>
           ))}
           {(mineOnly ||
+            customerOnly ||
             typeFilter ||
             statusFilter ||
             priorityFilter ||
@@ -519,6 +528,15 @@ function IssueCard({
           />
           {priorityLabel(issue.priority)}
         </span>
+        {issue.customerRequest ? (
+          <span
+            className="inline-flex items-center rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800"
+            title={issue.customerName || "Customer-specific request"}
+          >
+            Customer
+            {issue.customerName ? `: ${issue.customerName}` : ""}
+          </span>
+        ) : null}
       </div>
       {issue.linkedEntity?.label ? (
         <div className="mb-1 truncate text-[10px] text-blue-700">
@@ -632,18 +650,24 @@ function BacklogView({
                 >
                   {issue.title}
                 </Link>
-                {issue.tags && issue.tags.length > 0 ? (
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {issue.tags.slice(0, 3).map((t) => (
-                      <span
-                        key={t}
-                        className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600"
-                      >
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {issue.customerRequest ? (
+                    <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
+                      Customer
+                      {issue.customerName ? `: ${issue.customerName}` : ""}
+                    </span>
+                  ) : null}
+                  {issue.tags && issue.tags.length > 0
+                    ? issue.tags.slice(0, 3).map((t) => (
+                        <span
+                          key={t}
+                          className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600"
+                        >
+                          {t}
+                        </span>
+                      ))
+                    : null}
+                </div>
               </td>
               <td className="px-4 py-3">
                 <span

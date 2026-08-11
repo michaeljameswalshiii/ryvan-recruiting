@@ -112,6 +112,13 @@ export interface Issue {
   assigneeName?: string;
   environment?: "Dev" | "QA" | "Prod";
   tags?: string[];
+  /**
+   * True when this work item is a customer-specific request
+   * (vs internal product / platform work).
+   */
+  customerRequest?: boolean;
+  /** Customer / account name when customerRequest is true */
+  customerName?: string;
   dueDate?: string;
   storyPoints?: number;
   linkedEntity?: IssueLinkedEntity;
@@ -142,6 +149,8 @@ export interface IssueListFilters {
   q?: string;
   /** my = assigned to current user */
   mine?: boolean;
+  /** Only customer-request work items */
+  customerRequest?: boolean;
   /** Set by server when mine=true */
   mineUserId?: string;
   mineEmail?: string;

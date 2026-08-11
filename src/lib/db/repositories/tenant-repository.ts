@@ -274,6 +274,10 @@ export async function updateTenant(
     updates.push("ownership = :ownership");
     values[":ownership"] = input.ownership;
   }
+  if ((input as any).product_config !== undefined) {
+    updates.push("product_config = :product_config");
+    values[":product_config"] = (input as any).product_config;
+  }
 
   if (updates.length === 0) {
     return getTenantById(tenantId);

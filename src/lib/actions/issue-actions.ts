@@ -204,6 +204,8 @@ export async function updateIssueAction(
       assigneeName: data.assigneeName,
       environment: data.environment,
       tags: data.tags,
+      customerRequest: data.customerRequest,
+      customerName: data.customerName,
       dueDate: data.dueDate,
       storyPoints: data.storyPoints,
       linkedEntity: data.linkedEntity,

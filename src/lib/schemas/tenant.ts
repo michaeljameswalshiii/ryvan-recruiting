@@ -45,6 +45,11 @@ export interface Tenant {
     updatedAt?: string;
     updatedBy?: string;
   };
+  /**
+   * Product configuration / customization foundation.
+   * See lib/tenant-config/types.ts
+   */
+  product_config?: Record<string, unknown>;
 }
 
 export const createTenantSchema = z.object({

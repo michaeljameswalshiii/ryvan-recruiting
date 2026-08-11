@@ -299,6 +299,15 @@ export default function IssueDetailClient({ issueId }: { issueId: string }) {
                       MVP
                     </span>
                   )}
+                  {i.customerRequest && (
+                    <span
+                      className="px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-900 ring-1 ring-violet-200"
+                      title="Customer-specific request"
+                    >
+                      Customer
+                      {i.customerName ? ` · ${i.customerName}` : ""}
+                    </span>
+                  )}
                   <span
                     className={`inline-flex items-center gap-1.5 text-xs font-semibold text-white px-2 py-1 rounded-full ring-2 ${priorityBadge(i.priority)}`}
                     title={`Priority ${i.priority}`}
@@ -841,6 +850,8 @@ export default function IssueDetailClient({ issueId }: { issueId: string }) {
           assigneeName: i.assigneeName || i.assignedTo?.[0],
           environment: i.environment,
           tags: i.tags,
+          customerRequest: i.customerRequest,
+          customerName: i.customerName,
           linkedEntity: i.linkedEntity,
           attachments: i.attachments,
         }}

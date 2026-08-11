@@ -27,6 +27,7 @@ import {
   Shield,
   FileText,
   UserRound,
+  Settings2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,6 +44,7 @@ import { TextingSettings } from '@/components/settings/TextingSettings';
 import { SecuritySettings } from '@/components/settings/SecuritySettings';
 import { ChangePasswordCard } from '@/components/settings/ChangePasswordCard';
 import { InvoiceTemplatesSettings } from '@/components/settings/InvoiceTemplatesSettings';
+import { ProductConfigSettings } from '@/components/settings/ProductConfigSettings';
 
 interface EmailConnection {
   provider: 'gmail' | 'outlook';
@@ -79,6 +81,7 @@ type SettingsTab =
   | 'invoices'
   | 'plan'
   | 'integrations'
+  | 'product'
   | 'texting'
   | 'security';
 
@@ -91,6 +94,7 @@ const COMPANY_TABS: SettingsTab[] = [
   'organization',
   'invoices',
   'integrations',
+  'product',
   'texting',
   'security',
   'plan',
@@ -498,6 +502,13 @@ export default function SettingsPage() {
       adminOnly: true,
     },
     {
+      id: 'product',
+      label: 'Product config',
+      icon: <Settings2 className="h-4 w-4" />,
+      scope: 'company',
+      adminOnly: true,
+    },
+    {
       id: 'texting',
       label: 'Texting',
       icon: <MessageSquare className="h-4 w-4" />,
@@ -590,6 +601,9 @@ export default function SettingsPage() {
           </div>
           <McpKeysSettings />
         </div>
+      )}
+      {scope === 'company' && tab === 'product' && canTeamAdmin && (
+        <ProductConfigSettings />
       )}
       {scope === 'company' && tab === 'texting' && canTeamAdmin && (
         <TextingSettings />

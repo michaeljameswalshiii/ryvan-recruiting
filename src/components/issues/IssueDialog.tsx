@@ -37,6 +37,8 @@ function buildForm(initialData: Partial<CreateIssueInput> = {}) {
       '',
     environment: initialData.environment || ('Dev' as const),
     tags: initialData.tags || [],
+    customerRequest: !!initialData.customerRequest,
+    customerName: initialData.customerName || "",
     linkedType: initialData.linkedEntity?.type || "",
     linkedId: initialData.linkedEntity?.id || "",
     linkedLabel: initialData.linkedEntity?.label || "",
@@ -131,6 +133,8 @@ export default function IssueDialog({
               label: linkedLabel || undefined,
             }
           : undefined;
+      const customerRequest = !!(form as any).customerRequest;
+      const customerName = String((form as any).customerName || "").trim();
       const payload = {
         ...form,
         title: form.title.trim(),
@@ -140,6 +144,8 @@ export default function IssueDialog({
         reportedBy: form.reportedBy?.trim() || undefined,
         assigneeName,
         assignedTo: assigneeName ? [assigneeName] : form.assignedTo,
+        customerRequest,
+        customerName: customerRequest ? customerName || undefined : undefined,
         linkedEntity,
       } as CreateIssueInput;
       // strip UI-only fields
@@ -266,6 +272,40 @@ export default function IssueDialog({
             className="w-full border rounded-md px-3 py-2 h-24"
             placeholder="Detailed description..."
           />
+        </div>
+
+        <div className="rounded-lg border border-violet-100 bg-violet-50/50 p-3 space-y-2">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
+            <input
+              type="checkbox"
+              checked={!!(form as any).customerRequest}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  customerRequest: e.target.checked,
+                  customerName: e.target.checked
+                    ? (form as any).customerName || ""
+                    : "",
+                } as any)
+              }
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Customer-specific request
+          </label>
+          <p className="text-[11px] text-slate-500">
+            Mark when this work is for a particular customer account (not
+            internal platform work).
+          </p>
+          {(form as any).customerRequest ? (
+            <input
+              value={(form as any).customerName || ""}
+              onChange={(e) =>
+                setForm({ ...form, customerName: e.target.value } as any)
+              }
+              className="w-full border rounded-md px-3 py-2 text-sm"
+              placeholder="Customer / account name"
+            />
+          ) : null}
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">

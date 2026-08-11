@@ -135,6 +135,8 @@ function mapItem(item: any): Issue {
     assigneeName,
     environment: item.environment,
     tags: item.tags || [],
+    customerRequest: !!item.customerRequest,
+    customerName: item.customerName || undefined,
     dueDate: item.dueDate,
     storyPoints:
       typeof item.storyPoints === "number" ? item.storyPoints : undefined,
@@ -193,6 +195,8 @@ function toDbItem(issue: Issue, tenantId: string) {
     assigneeName: issue.assigneeName,
     environment: issue.environment,
     tags: issue.tags || [],
+    customerRequest: !!issue.customerRequest,
+    customerName: issue.customerName,
     dueDate: issue.dueDate,
     storyPoints: issue.storyPoints,
     linkedEntity: issue.linkedEntity,
@@ -266,6 +270,8 @@ export const issueRepository = {
       assigneeName,
       environment: data.environment,
       tags: data.tags || [],
+      customerRequest: !!data.customerRequest,
+      customerName: data.customerName?.trim() || undefined,
       dueDate: data.dueDate,
       storyPoints: data.storyPoints,
       linkedEntity: data.linkedEntity,
@@ -334,6 +340,9 @@ export const issueRepository = {
           )
       );
     }
+    if (f.customerRequest) {
+      items = items.filter((i) => !!i.customerRequest);
+    }
     if (f.q) {
       const q = f.q.toLowerCase();
       items = items.filter(
@@ -341,6 +350,9 @@ export const issueRepository = {
           i.title?.toLowerCase().includes(q) ||
           i.description?.toLowerCase().includes(q) ||
           i.issueId?.toLowerCase().includes(q) ||
+          String(i.customerName || "")
+            .toLowerCase()
+            .includes(q) ||
           (i.tags || []).some((t) => t.toLowerCase().includes(q))
       );
     }
