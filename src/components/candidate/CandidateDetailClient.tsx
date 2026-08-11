@@ -23,6 +23,7 @@ import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { LinkJobModal } from "@/components/candidate/LinkJobModal";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
+import { FormatActivityNoteButton } from "@/components/shared/FormatActivityNoteButton";
 import { Button } from "@/components/ui/button";
 import {
   ACTIVITY_BADGE_BASE_CLASS,
@@ -1143,7 +1144,7 @@ export function CandidateDetailClient({
                 </p>
               </div>
               <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/40 p-2.5">
-                <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="flex flex-col items-start gap-2 sm:flex-row">
                   <select
                     value={noteType}
                     onChange={(event) => setNoteType(event.target.value)}
@@ -1155,24 +1156,29 @@ export function CandidateDetailClient({
                       </option>
                     ))}
                   </select>
-                  <input
+                  <textarea
                     value={noteText}
                     onChange={(event) => setNoteText(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
+                      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                         event.preventDefault();
                         void addActivity();
                       }
                     }}
-                    placeholder=""
-                    autoComplete="off"
-                    className="h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                    placeholder="Add activity details..."
+                    rows={3}
+                    className="min-h-[76px] min-w-0 flex-1 resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                  />
+                  <FormatActivityNoteButton
+                    value={noteText}
+                    onChange={setNoteText}
+                    disabled={noteBusy}
                   />
                   <Button
                     size="sm"
                     disabled={noteBusy || !noteText.trim()}
                     onClick={() => void addActivity()}
-                    className="h-9 bg-blue-600 text-xs hover:bg-blue-700"
+                    className="h-9 shrink-0 bg-blue-600 text-xs hover:bg-blue-700"
                   >
                     {noteBusy ? "Saving..." : "Log"}
                   </Button>

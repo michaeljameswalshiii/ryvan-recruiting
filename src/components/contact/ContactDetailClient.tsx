@@ -46,6 +46,7 @@ import {
   stripActivityTypePrefix,
 } from '@/lib/contacts/activity-types';
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
+import { FormatActivityNoteButton } from '@/components/shared/FormatActivityNoteButton';
 import { EntitySmsPanel } from '@/components/shared/EntitySmsPanel';
 import { EntityFilesPanel } from '@/components/shared/EntityFilesPanel';
 import {
@@ -758,7 +759,7 @@ export default function ContactDetailClient({
                   </p>
                 </div>
               )}
-              <div className="flex flex-col sm:flex-row gap-2 mb-5">
+              <div className="flex flex-col items-start sm:flex-row gap-2 mb-5">
                 <select
                   value={noteType}
                   onChange={(e) => setNoteType(e.target.value)}
@@ -770,17 +771,23 @@ export default function ContactDetailClient({
                     </option>
                   ))}
                 </select>
-                <Input
+                <textarea
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
                   placeholder="Optional note detail..."
-                  className="flex-1 bg-white"
+                  rows={3}
+                  className="min-h-[76px] w-full flex-1 resize-y rounded-md border border-input bg-white px-3 py-2 text-sm"
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault();
                       handleLogNote();
                     }
                   }}
+                />
+                <FormatActivityNoteButton
+                  value={newNote}
+                  onChange={setNewNote}
+                  disabled={addingNote}
                 />
                 <Button
                   onClick={handleLogNote}
@@ -998,7 +1005,7 @@ export default function ContactDetailClient({
           <h2 className="text-base font-semibold text-gray-900 mb-4">
             Full Timeline
           </h2>
-          <div className="flex flex-col sm:flex-row gap-2 mb-5">
+          <div className="flex flex-col items-start sm:flex-row gap-2 mb-5">
             <select
               value={noteType}
               onChange={(e) => setNoteType(e.target.value)}
@@ -1010,11 +1017,23 @@ export default function ContactDetailClient({
                 </option>
               ))}
             </select>
-            <Input
+            <textarea
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
               placeholder="Optional note detail..."
-              className="flex-1 bg-white"
+              rows={3}
+              className="min-h-[76px] w-full flex-1 resize-y rounded-md border border-input bg-white px-3 py-2 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  handleLogNote();
+                }
+              }}
+            />
+            <FormatActivityNoteButton
+              value={newNote}
+              onChange={setNewNote}
+              disabled={addingNote}
             />
             <Button
               onClick={handleLogNote}

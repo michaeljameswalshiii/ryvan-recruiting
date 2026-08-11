@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
+import { FormatActivityNoteButton } from '@/components/shared/FormatActivityNoteButton';
 import {
   PaginationBar,
   paginateItems,
@@ -416,7 +416,7 @@ export function JobActivityNotes({
         )}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-2 mb-5">
+      <div className="flex flex-col items-start sm:flex-row gap-2 mb-5">
         <select
           value={noteType}
           onChange={(e) => setNoteType(e.target.value)}
@@ -428,17 +428,23 @@ export function JobActivityNotes({
             </option>
           ))}
         </select>
-        <Input
+        <textarea
           value={newNote}
           onChange={(e) => setNewNote(e.target.value)}
           placeholder="Optional note detail..."
-          className="flex-1 bg-white"
+          rows={3}
+          className="min-h-[76px] w-full flex-1 resize-y rounded-md border border-input bg-white px-3 py-2 text-sm"
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
               void handleAddNote();
             }
           }}
+        />
+        <FormatActivityNoteButton
+          value={newNote}
+          onChange={setNewNote}
+          disabled={addingNote}
         />
         <Button
           onClick={() => void handleAddNote()}
