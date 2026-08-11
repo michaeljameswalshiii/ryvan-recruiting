@@ -5,7 +5,7 @@
  * APIs: only explicit public prefixes; everything else needs a sealed session.
  * Extra gates:
  *   - /api/cron requires CRON_SECRET (Bearer or x-cron-secret)
- *   - /api/mcp requires Authorization Bearer header (key checked in handler)
+ *   - /api/mcp authentication is checked in the handler so OAuth discovery works
  *   - Email OAuth: only provider callback paths are public (start flows need session)
  *
  * Session cookie is JWE-sealed (see session-seal.ts).
@@ -32,6 +32,7 @@ const PUBLIC_PAGE_ROUTES = [
   "/invite",
   "/privacy",
   "/terms",
+  "/oauth",
 ] as const;
 
 /**
@@ -43,7 +44,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/public", // careers, token schedule, SMS inbound
   "/api/health",
   "/api/cron", // still requires CRON_SECRET below
-  "/api/mcp", // still requires Bearer header below
+  "/api/mcp", // handler validates OAuth tokens / API keys and returns discovery challenges
 ] as const;
 
 const DEBUG_MW = process.env.MIDDLEWARE_DEBUG === "true";
@@ -66,6 +67,10 @@ function isPublicPage(pathname: string): boolean {
  * Email OAuth: only callback URLs (Google/Microsoft redirect), not "start OAuth".
  */
 function isPublicApi(pathname: string): boolean {
+  // OAuth AS endpoints used by Claude custom connectors (no session)
+  if (pathname === "/api/oauth/token") return true;
+  if (pathname === "/api/oauth/register") return true;
+  if (matchesPrefix(pathname, "/.well-known")) return true;
   if (PUBLIC_API_PREFIXES.some((p) => matchesPrefix(pathname, p))) {
     return true;
   }
@@ -134,12 +139,6 @@ function cronAuthorized(request: NextRequest): boolean {
   return bearer === secret || header === secret;
 }
 
-/** MCP: require Authorization header presence (full key check in route). */
-function mcpHasBearer(request: NextRequest): boolean {
-  const auth = request.headers.get("authorization") || "";
-  return auth.startsWith("Bearer ") && auth.slice(7).trim().length >= 8;
-}
-
 // ============================================================================
 // Main
 // ============================================================================
@@ -172,15 +171,8 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    // MCP: Bearer header required; key validated in handler
+    // MCP handler validates credentials and emits the RFC 9728 OAuth challenge.
     if (matchesPrefix(pathname, "/api/mcp")) {
-      if (request.method === "OPTIONS") {
-        return NextResponse.next();
-      }
-      if (!mcpHasBearer(request)) {
-        mwLog(`[Middleware] MCP missing bearer: ${pathname}`);
-        return unauthorizedApi("Unauthorized");
-      }
       return NextResponse.next();
     }
 

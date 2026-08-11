@@ -1,16 +1,29 @@
 /**
- * Authenticate MCP HTTP requests (API key; tenant optional when key resolves it).
+ * Authenticate MCP HTTP requests using OAuth access tokens or legacy API keys.
  * @serverOnly
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
 import {
   extractApiKeyFromHeaders,
   extractTenantFromHeaders,
   resolveMcpApiKey,
   validateMcpApiKey,
   type ValidatedMcpKey,
-} from "@/lib/mcp/api-keys";
+} from '@/lib/mcp/api-keys';
+import { oauthAppUrl, validateMcpOAuthAccessToken } from '@/lib/mcp/oauth';
+
+function unauthorized(message: string): NextResponse {
+  return NextResponse.json(
+    { error: message },
+    {
+      status: 401,
+      headers: {
+        'WWW-Authenticate': `Bearer resource_metadata="${oauthAppUrl()}/.well-known/oauth-protected-resource", scope="mcp"`,
+      },
+    }
+  );
+}
 
 export async function requireMcpHttpAuth(
   request: NextRequest
@@ -18,54 +31,50 @@ export async function requireMcpHttpAuth(
   | { ok: true; auth: ValidatedMcpKey }
   | { ok: false; response: NextResponse }
 > {
-  const apiKey = extractApiKeyFromHeaders(request.headers);
+  const bearer = extractApiKeyFromHeaders(request.headers);
   const headerTenant =
     extractTenantFromHeaders(request.headers) ||
-    request.nextUrl.searchParams.get("tenantId") ||
-    "";
+    request.nextUrl.searchParams.get('tenantId') ||
+    '';
 
-  if (!apiKey) {
+  if (!bearer) {
     return {
       ok: false,
-      response: NextResponse.json(
-        {
-          error:
-            "Missing API key. Send Authorization: Bearer <key> (or X-Trio-Api-Key).",
-        },
-        { status: 401 }
-      ),
+      response: unauthorized('Missing bearer token. Use OAuth or send an MCP API key.'),
     };
   }
 
-  // Prefer explicit tenant + key (fast path)
+  // OAuth tokens are short-lived, audience-bound, and already contain tenant context.
+  if (!bearer.startsWith('trio_mcp_')) {
+    const oauth = await validateMcpOAuthAccessToken(bearer);
+    if (oauth && (!headerTenant.trim() || oauth.tenantId === headerTenant.trim())) {
+      return { ok: true, auth: oauth };
+    }
+    return {
+      ok: false,
+      response: unauthorized('Invalid, expired, or revoked OAuth access token'),
+    };
+  }
+
   if (headerTenant.trim()) {
-    const auth = await validateMcpApiKey(headerTenant.trim(), apiKey);
+    const auth = await validateMcpApiKey(headerTenant.trim(), bearer);
     if (!auth) {
       return {
         ok: false,
-        response: NextResponse.json(
-          { error: "Invalid or revoked MCP API key for this tenant" },
-          { status: 401 }
-        ),
+        response: unauthorized('Invalid or revoked MCP API key for this tenant'),
       };
     }
     return { ok: true, auth };
   }
 
-  // Claude connector path: Bearer only → resolve tenant from key
-  const resolved = await resolveMcpApiKey(apiKey);
+  const resolved = await resolveMcpApiKey(bearer);
   if (!resolved) {
     return {
       ok: false,
-      response: NextResponse.json(
-        {
-          error:
-            "Invalid API key, or key could not be resolved to a tenant. Create a key in Company Settings → MCP, or set TRIO_MCP_TEST_KEY + TRIO_MCP_TEST_TENANT_ID. Optionally send X-Trio-Tenant-Id.",
-        },
-        { status: 401 }
+      response: unauthorized(
+        'Invalid API key, or key could not be resolved to a tenant. Create credentials in Company Settings.'
       ),
     };
   }
-
   return { ok: true, auth: resolved };
 }

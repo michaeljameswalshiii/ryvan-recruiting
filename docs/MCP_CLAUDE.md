@@ -1,9 +1,9 @@
 # Trio MCP — Claude connector
 
-Remote Streamable HTTP MCP for recruiting tools. Endpoint:
+Remote Streamable HTTP MCP for recruiting tools.
 
 ```
-https://<your-domain>/api/mcp
+https://turnkey-optimization.vercel.app/api/mcp
 ```
 
 ## Tools
@@ -29,32 +29,36 @@ https://<your-domain>/api/mcp
 
 Legacy aliases: `search_candidates`, `add_candidate_note`.
 
-## Auth
+## Auth for Claude.ai (required path)
 
-1. **Production:** Create a key in **Company Settings → MCP API keys** (team admin).  
-   Key format: `trio_mcp_…`  
-   Send: `Authorization: Bearer <key>`  
-   Tenant is resolved from the key (optional `X-Trio-Tenant-Id` still supported).
+Claude custom connectors use **OAuth 2.1 + PKCE**, not only a static API key.
 
-2. **Dev / smoke test:** set env:
-   ```bash
-   TRIO_MCP_TEST_KEY=trio_mcp_dev_key_change_me
-   TRIO_MCP_TEST_TENANT_ID=tenant-xxxxxxxx
-   ```
+### Happy path
 
-Middleware requires a Bearer token on `/api/mcp` (session cookie not used).
+1. In Trio, select a **customer company** in the header (not **All Tenants** / Platform).
+2. Be logged in as **Company Admin** or **Site Admin**.
+3. In Claude: **Customize → Connectors → Add custom connector**
+4. URL: `https://turnkey-optimization.vercel.app/api/mcp`
+5. Click **Connect** → browser opens Trio **Authorize connection** → approve.
+6. Claude Dynamic Client Registration hits `/api/oauth/register` automatically.
 
-## Claude.ai
+### If you see “Invalid connection request”
 
-1. Connectors → Add custom connector  
-2. URL: `https://turnkey-optimization.vercel.app/api/mcp` (or your domain)  
-3. Auth header: `Authorization: Bearer <your_key>`  
-4. Try: “List my open candidates” or “Move &lt;name&gt; to interviewing and add a note that the screen went well.”
+That screen is **Trio’s** OAuth page. Common causes:
 
-## Claude Code
+| Cause | Fix |
+|--------|-----|
+| Organization mismatch / All Tenants | Select the real customer tenant, then Connect again |
+| Not an admin | Use company_admin or site_admin |
+| Unknown client | Remove connector in Claude, re-add (triggers DCR after deploy) |
+| Manual setup | Company Settings → Integrations → create **OAuth client** → paste Client ID + Secret in Claude **Advanced settings** |
+
+### Optional: static API keys (Claude Code)
+
+Company Settings → Integrations → create `trio_mcp_…` key:
 
 ```bash
-claude mcp add --transport http trio-recruiting https://YOUR_APP/api/mcp \
+claude mcp add --transport http trio-recruiting https://turnkey-optimization.vercel.app/api/mcp \
   --header "Authorization: Bearer YOUR_KEY"
 ```
 
@@ -69,6 +73,5 @@ Same auth as MCP:
 
 ## Notes
 
-- Data is **tenant-isolated** via the resolved API key’s tenant.
+- Claude.ai data access is **tenant-isolated** to the org you authorize.
 - Stage writes use `setCandidatePipelineStage` (lead + linked jobs).
-- Notes store events with the MCP tenant id (not session).
