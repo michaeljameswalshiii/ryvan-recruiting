@@ -2,15 +2,22 @@
  * Remote MCP Streamable HTTP endpoint (no local install).
  *
  * POST/GET/DELETE  /api/mcp
- * Auth: Authorization: Bearer <trio_mcp_...>
- *       X-Trio-Tenant-Id: <tenantId>
+ * Auth: Authorization: Bearer <trio_mcp_...>  (required by middleware)
+ *       X-Trio-Tenant-Id optional — resolved from key when omitted
+ *
+ * Tools: list_candidates, get_candidate, update_candidate_stage,
+ *        add_note, list_jobs, search_pipeline (+ legacy aliases)
  *
  * Stateless + JSON responses — safe on Vercel serverless.
  *
+ * Claude.ai connector: URL https://YOUR_APP/api/mcp
+ *   Authorization: Bearer <key>
+ *
  * Claude Code:
  *   claude mcp add --transport http trio-recruiting https://YOUR_APP/api/mcp \
- *     --header "Authorization: Bearer KEY" \
- *     --header "X-Trio-Tenant-Id: TENANT"
+ *     --header "Authorization: Bearer KEY"
+ *
+ * Dev: TRIO_MCP_TEST_KEY + TRIO_MCP_TEST_TENANT_ID
  */
 
 import { NextRequest } from "next/server";

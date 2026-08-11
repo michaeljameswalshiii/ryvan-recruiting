@@ -37,7 +37,7 @@ export async function POST(
       id,
       noteText,
       `mcp:${gate.auth.keyName}`,
-      { noteType, via: "mcp-http" }
+      { noteType, via: "mcp-http", tenantId: gate.auth.tenantId }
     );
 
     if (!result.success) {

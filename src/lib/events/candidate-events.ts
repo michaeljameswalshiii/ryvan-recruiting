@@ -137,14 +137,18 @@ export async function recordEvent(
   candidateId: string,
   eventType: CandidateEventType,
   details: EventDetails,
-  createdBy: string
+  createdBy: string,
+  /** Prefer explicit tenant (e.g. MCP API key) over session */
+  options?: { tenantId?: string | null }
 ): Promise<RecordEventResponse> {
   try {
     const timestamp = new Date().toISOString();
     const eventId = `${candidateId}-${timestamp}`;
     
     // Get tenant ID for isolation
-    const tenantId = await getEventTenantId();
+    const tenantId =
+      (options?.tenantId && String(options.tenantId).trim()) ||
+      (await getEventTenantId());
 
     const event: CandidateEvent = {
       PK: `ENTITY#candidate#${candidateId}`,
@@ -476,6 +480,8 @@ export async function addNoteToCandidate(
     jobId?: string | null;
     jobTitle?: string | null;
     companyName?: string | null;
+    /** Explicit tenant for MCP / non-session callers */
+    tenantId?: string | null;
     [key: string]: unknown;
   }
 ): Promise<RecordEventResponse> {
@@ -530,7 +536,8 @@ export async function addNoteToCandidate(
       description,
       metadata,
     },
-    createdBy
+    createdBy,
+    { tenantId: options?.tenantId }
   );
 }
 

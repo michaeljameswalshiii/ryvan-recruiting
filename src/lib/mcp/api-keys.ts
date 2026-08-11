@@ -163,7 +163,20 @@ export async function validateMcpApiKey(
   rawKey: string
 ): Promise<ValidatedMcpKey | null> {
   const key = rawKey.trim();
-  if (!key.startsWith("trio_mcp_")) return null;
+  if (!key.startsWith("trio_mcp_") && !isTestMcpKey(key)) return null;
+
+  // Dev/test key: TRIO_MCP_TEST_KEY (+ optional TRIO_MCP_TEST_TENANT_ID)
+  if (isTestMcpKey(key)) {
+    const testTenant =
+      (process.env.TRIO_MCP_TEST_TENANT_ID || "").trim() || tenantId;
+    if (!testTenant) return null;
+    if (tenantId && tenantId !== testTenant) return null;
+    return {
+      tenantId: testTenant,
+      keyId: "mcpkey_test",
+      keyName: "Test key (env)",
+    };
+  }
 
   const tenant = await loadTenantRaw(tenantId);
   if (!tenant) return null;
@@ -190,6 +203,75 @@ export async function validateMcpApiKey(
     keyId: match.id,
     keyName: match.name,
   };
+}
+
+function isTestMcpKey(raw: string): boolean {
+  const expected = (process.env.TRIO_MCP_TEST_KEY || "").trim();
+  return !!expected && raw.trim() === expected;
+}
+
+/**
+ * Resolve API key without a pre-known tenant (Claude connector often only sends Bearer).
+ * 1) TRIO_MCP_TEST_KEY + TRIO_MCP_TEST_TENANT_ID
+ * 2) Scan tenants for matching key hash (fine for small multi-tenant deployments)
+ */
+export async function resolveMcpApiKey(
+  rawKey: string
+): Promise<ValidatedMcpKey | null> {
+  const key = rawKey.trim();
+  if (!key) return null;
+
+  if (isTestMcpKey(key)) {
+    const testTenant = (process.env.TRIO_MCP_TEST_TENANT_ID || "").trim();
+    if (!testTenant) {
+      console.warn(
+        "[mcp] TRIO_MCP_TEST_KEY set but TRIO_MCP_TEST_TENANT_ID is missing"
+      );
+      return null;
+    }
+    return {
+      tenantId: testTenant,
+      keyId: "mcpkey_test",
+      keyName: "Test key (env)",
+    };
+  }
+
+  if (!key.startsWith("trio_mcp_")) return null;
+
+  const hash = hashMcpApiKey(key);
+  try {
+    const { getAllTenants } = await import(
+      "@/lib/db/repositories/tenant-repository"
+    );
+    const tenants = await getAllTenants({ includePlatform: true });
+    for (const t of tenants || []) {
+      const tid = String((t as any).id || "").trim();
+      if (!tid) continue;
+      const keys = ((t as any).mcp_api_keys || []) as McpApiKeyRecord[];
+      const match = keys.find((k) => k.key_hash === hash && !k.revoked_at);
+      if (match) {
+        // Best-effort last_used
+        try {
+          const next = keys.map((k) =>
+            k.id === match.id
+              ? { ...k, last_used_at: new Date().toISOString() }
+              : k
+          );
+          await saveMcpKeys(tid, next);
+        } catch {
+          /* ignore */
+        }
+        return {
+          tenantId: tid,
+          keyId: match.id,
+          keyName: match.name,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[mcp] resolveMcpApiKey scan failed:", err);
+  }
+  return null;
 }
 
 /** Extract bearer / x-api-key from a request */
