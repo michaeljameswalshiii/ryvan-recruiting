@@ -45,6 +45,7 @@ export type Permission =
   | "ai_apollo"
   | "issues"
   | "usage"
+  | "performance"
   | "team_admin"
   | "dynamo_search"
   | "multi_tenant"
@@ -61,6 +62,7 @@ const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
     "ai_apollo",
     "issues", // Work items tracker (Admin → Work items)
     "usage",
+    "performance",
     "team_admin",
     "dynamo_search",
     "multi_tenant",
@@ -167,7 +169,8 @@ export function canAccessPath(
   }
   if (
     path.startsWith("/dashboard/usage") ||
-    path.startsWith("/dashboard/ai-reliability")
+    path.startsWith("/dashboard/ai-reliability") ||
+    path.startsWith("/dashboard/performance")
   ) {
     return hasPermission(role, "usage");
   }

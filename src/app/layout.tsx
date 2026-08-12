@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 /**
  * UI sans: Inter — designed for screens, high x-height, clear at 12–14px.
@@ -41,6 +42,7 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <Providers>{children}</Providers>
+          <SpeedInsights />
         </ThemeProvider>
       </body>
     </html>

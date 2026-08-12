@@ -90,6 +90,11 @@ console.log('🔧 DynamoDB Init:', {
   return _client;
 }
 
+/** Raw client for infrastructure diagnostics; application data access stays behind helpers. */
+export function getRawDynamoClient(): DynamoDBClient {
+  return getClient();
+}
+
 // Get DynamoDBDocumentClient with global removeUndefinedValues
 export function getDocClient(): DynamoDBDocumentClient {
   if (!_docClient) {
