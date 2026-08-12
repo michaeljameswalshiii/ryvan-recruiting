@@ -219,7 +219,7 @@ export default function NewCandidatePage() {
 
       if (formData.skills) {
         payload.skills = formData.skills
-          .split(',')
+          .split(/[,;\n]/)
           .map((s) => s.trim())
           .filter(Boolean);
       }
@@ -358,7 +358,7 @@ export default function NewCandidatePage() {
                 className="text-xs !text-slate-700"
                 style={{ color: '#334155', WebkitTextFillColor: '#334155' }}
               >
-                PDF or Word — fills name, email, phone, title, location, LinkedIn, skills &amp; summary.
+                PDF or Word — fills name, email, phone, title, location, LinkedIn, skills &amp; summary. Scanned or image-based PDFs are read with OCR.
               </p>
 
               <input
@@ -626,13 +626,17 @@ export default function NewCandidatePage() {
               </div>
               <div>
                 <Label htmlFor="skills" className={fieldLabelClass}>Skills</Label>
-                <Input
+                <textarea
                   id="skills"
                   value={formData.skills}
                   onChange={(e) => handleChange('skills', e.target.value)}
-                  className={fieldInputClass}
-                  placeholder="Comma-separated"
+                  className="mt-0.5 min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="Comma-separated or one skill per line"
+                  rows={3}
                 />
+                <p className="mt-1 text-xs text-slate-500">
+                  Prioritized from the resume summary. Add, remove, or reorder before creating.
+                </p>
               </div>
               <div>
                 <Label htmlFor="tags" className={fieldLabelClass}>Candidate Tags</Label>
@@ -650,9 +654,9 @@ export default function NewCandidatePage() {
                   id="summary"
                   value={formData.summary}
                   onChange={(e) => handleChange('summary', e.target.value)}
-                  className="mt-0.5 min-h-[48px] w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                  placeholder="Short ATS blurb (~20 words)"
-                  rows={2}
+                  className="mt-0.5 min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="Candidate summary from the resume"
+                  rows={5}
                 />
               </div>
             </CardContent>

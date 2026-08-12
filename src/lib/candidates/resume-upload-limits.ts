@@ -55,9 +55,9 @@ export function resumeUnsupportedTypeMessage(): string {
 export function resumeNoExtractableTextMessage(fileName?: string): string {
   const name = fileName ? ` (“${fileName}”)` : "";
   return (
-    `We couldn’t read any text from this resume${name}. ` +
-    `It looks like a scanned or image-based PDF (for example a LinkedIn profile export). ` +
-    `Export a text-based PDF or Word (.docx) resume and try again — or enter details manually.`
+    `We couldn’t read any text from this resume${name}, even after OCR. ` +
+    `The scan may be too faint or low-resolution. ` +
+    `Try a clearer scan, or a text-based PDF / Word (.docx) file — or enter details manually.`
   );
 }
 

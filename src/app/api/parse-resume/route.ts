@@ -35,6 +35,8 @@ import {
   resumeUnsupportedTypeMessage,
 } from "@/lib/candidates/resume-upload-limits";
 
+export const maxDuration = 60;
+
 const SEVEN_DAYS_SECONDS = 604800;
 
 function getS3Client(): S3Client {
@@ -186,7 +188,9 @@ async function finishParse(opts: {
     parsed,
     text: rawText,
     method: extractionMethod,
-  } = await parseResumeBuffer(buffer, fileName);
+  } = await parseResumeBuffer(buffer, fileName, {
+    s3Key: existingS3Key,
+  });
 
   console.log(
     "parse-resume: extraction method =",

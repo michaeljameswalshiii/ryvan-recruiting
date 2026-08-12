@@ -27,6 +27,8 @@ import {
   isAllowedResumeMime,
 } from "@/lib/candidates/resume-upload-limits";
 
+export const maxDuration = 60;
+
 function getS3Client() {
   const region =
     process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || "us-east-1";
@@ -317,7 +319,9 @@ export async function POST(
 
     if (shouldParse) {
       try {
-        const { parsed, method, text } = await parseResumeBuffer(buffer, fileName);
+        const { parsed, method, text } = await parseResumeBuffer(buffer, fileName, {
+          s3Key,
+        });
         parsedSummary = {
           name: parsed.name,
           title: parsed.title,

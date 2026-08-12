@@ -15,6 +15,8 @@ import {
   textFromPdfItems,
   type StructuredParsedResume,
 } from '@/lib/candidates/resume-text-parser';
+import { isSparseParsedResume } from '@/lib/candidates/resume-upload-limits';
+import { extractResumeTextWithOcr } from '@/lib/candidates/resume-ocr';
 
 function nodeRequire(id: string): any {
   try {
@@ -566,7 +568,8 @@ export async function extractTextFromResumeBuffer(
 
 export async function parseResumeBuffer(
   buffer: Buffer,
-  fileName: string
+  fileName: string,
+  options?: { s3Key?: string }
 ): Promise<{
   parsed: StructuredParsedResume;
   text: string;
@@ -592,7 +595,33 @@ export async function parseResumeBuffer(
     }
   }
 
-  const parsed = parseResumeText(workingText, { filename: fileName });
+  let parsed = parseResumeText(workingText, { filename: fileName });
+
+  const looksSparse = isSparseParsedResume({
+    rawText: workingText,
+    name: parsed.name,
+    email: parsed.email,
+    phone: parsed.phone,
+    title: parsed.title,
+    skills: parsed.skills,
+    experience: parsed.experience,
+    education: parsed.education,
+    fileName,
+  });
+
+  const isPdf = fileName.toLowerCase().endsWith('.pdf');
+  if (isPdf && looksSparse) {
+    const ocr = await extractResumeTextWithOcr(buffer, {
+      fileName,
+      s3Key: options?.s3Key,
+    });
+    if (ocr?.text && ocr.text.trim().length > workingText.trim().length) {
+      workingText = ocr.text;
+      workingMethod = workingMethod ? `${workingMethod}+${ocr.method}` : ocr.method;
+      parsed = parseResumeText(workingText, { filename: fileName });
+    }
+  }
+
   if (!parsed.name) {
     parsed.name =
       extractNameFromFilename(fileName) ||
