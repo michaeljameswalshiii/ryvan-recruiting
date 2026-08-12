@@ -121,15 +121,9 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
   const isAllTenants = user?.role === "site_admin" && user?.tenantScope === "all";
 
   return (
-    <header className="sticky top-0 z-40 h-16 border-b border-border flex items-center justify-between gap-4 px-6 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <header className="sticky top-0 z-50 h-16 border-b border-border flex items-center justify-between gap-4 px-6 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="flex items-center gap-4 flex-1 min-w-0">
-        {isAllTenants ? (
-          <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-            Platform overview across all tenants
-          </div>
-        ) : (
-          <GlobalSearch />
-        )}
+        <GlobalSearch />
       </div>
 
       <div className="flex items-center gap-3 shrink-0">

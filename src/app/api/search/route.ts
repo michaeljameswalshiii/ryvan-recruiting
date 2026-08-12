@@ -1,17 +1,22 @@
 /**
  * GET /api/search?q=...
- * Global tenant search: candidates, companies, contacts, jobs.
+ * Global search: candidates, companies, contacts, jobs.
+ * Works for a single tenant and for System Admin "All Tenants".
  *
  * @serverOnly
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionTenantId } from "@/lib/server-auth";
-import { getAllLeadsWithLinkedJobs } from "@/lib/db/repositories/lead-repository";
+import { getSession, getSessionTenantId } from "@/lib/server-auth";
+import { isSiteAdmin } from "@/lib/roles";
+import { getAllLeads } from "@/lib/db/repositories/lead-repository";
 import { getAllClients } from "@/lib/db/repositories/client-repository";
 import { getAllJobs } from "@/lib/db/repositories/job-repository";
+import { getAllContactsForTenant } from "@/lib/db/repositories/contact-repository";
+import { getAllTenants } from "@/lib/db/repositories/tenant-repository";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 export type GlobalSearchHit = {
   id: string;
@@ -21,6 +26,8 @@ export type GlobalSearchHit = {
   href: string;
 };
 
+type TenantTarget = { id: string; name?: string };
+
 function norm(s: unknown): string {
   return String(s ?? "")
     .toLowerCase()
@@ -29,34 +36,223 @@ function norm(s: unknown): string {
     .trim();
 }
 
+function personName(row: Record<string, unknown>): string {
+  const direct =
+    row.name ||
+    row.full_name ||
+    row.fullName ||
+    row.displayName;
+  if (direct) return String(direct);
+  const first = row.firstName || row.first_name;
+  const last = row.lastName || row.last_name;
+  const joined = [first, last].filter(Boolean).join(" ");
+  return joined || "";
+}
+
 function scoreMatch(query: string, ...fields: unknown[]): number {
   const q = norm(query);
   if (!q) return 0;
   const hay = fields.map(norm).filter(Boolean);
   let best = 0;
+  const qDigits = q.replace(/\D/g, "");
   for (const h of hay) {
     if (!h) continue;
     if (h === q) best = Math.max(best, 100);
     else if (h.startsWith(q)) best = Math.max(best, 80);
     else if (h.includes(q)) best = Math.max(best, 50);
     else {
-      // multi-token: all tokens present
       const tokens = q.split(/\s+/).filter(Boolean);
       if (tokens.length > 1 && tokens.every((t) => h.includes(t))) {
         best = Math.max(best, 60);
       }
     }
+    if (qDigits.length >= 3) {
+      const hDigits = h.replace(/\D/g, "");
+      if (hDigits && hDigits.includes(qDigits)) best = Math.max(best, 70);
+    }
   }
   return best;
 }
 
+function withTenant(subtitle: string, tenantName?: string): string | undefined {
+  const bits = [subtitle, tenantName].filter(Boolean);
+  return bits.length ? bits.join(" · ") : undefined;
+}
+
+async function searchOneTenant(
+  tenant: TenantTarget,
+  q: string
+): Promise<Array<GlobalSearchHit & { score: number }>> {
+  const tenantId = tenant.id;
+  const tenantName = tenant.name;
+  const scored: Array<GlobalSearchHit & { score: number }> = [];
+
+  const [leads, clients, jobs, contacts] = await Promise.all([
+    getAllLeads(tenantId).catch(() => []),
+    getAllClients(tenantId).catch(() => []),
+    getAllJobs(tenantId).catch(() => []),
+    getAllContactsForTenant(tenantId).catch(() => []),
+  ]);
+
+  for (const lead of Array.isArray(leads) ? leads : []) {
+    const id = String(lead.id || "");
+    if (!id) continue;
+    const row = lead as unknown as Record<string, unknown>;
+    const name = personName(row) || "Candidate";
+    const score = scoreMatch(
+      q,
+      name,
+      lead.email,
+      lead.phone,
+      lead.title,
+      lead.company,
+      (lead as { currentCompany?: string }).currentCompany,
+      lead.location
+    );
+    if (score <= 0) continue;
+    scored.push({
+      id,
+      type: "candidate",
+      title: String(name),
+      subtitle: withTenant(
+        [lead.title, lead.email, lead.company || (lead as { currentCompany?: string }).currentCompany]
+          .filter(Boolean)
+          .join(" · "),
+        tenantName
+      ),
+      href: `/dashboard/candidates/${id}`,
+      score,
+    });
+  }
+
+  for (const client of Array.isArray(clients) ? clients : []) {
+    const id = String(client.id || "");
+    if (!id) continue;
+    const sk = String(
+      (client as { SK?: string; sk?: string }).SK ||
+        (client as { SK?: string; sk?: string }).sk ||
+        ""
+    );
+    if (sk.startsWith("CONTACT#")) continue;
+    const companyName =
+      client.name || client.companyName || client.company || "Company";
+    const companyScore = scoreMatch(
+      q,
+      companyName,
+      client.domain,
+      client.industry,
+      client.city,
+      client.state,
+      client.email
+    );
+    if (companyScore > 0) {
+      scored.push({
+        id,
+        type: "company",
+        title: String(companyName),
+        subtitle: withTenant(
+          [client.industry, client.city, client.state].filter(Boolean).join(" · "),
+          tenantName
+        ),
+        href: `/dashboard/companies/${id}`,
+        score: companyScore,
+      });
+    }
+  }
+
+  const seenContacts = new Set<string>();
+  for (const c of Array.isArray(contacts) ? contacts : []) {
+    const cid = String(c.id || "");
+    if (!cid || seenContacts.has(cid)) continue;
+    seenContacts.add(cid);
+    const row = c as unknown as Record<string, unknown>;
+    const cname = personName(row) || "Contact";
+    const companyId = String(c.companyId || "");
+    const companyName = String(
+      (c as { companyName?: string }).companyName || ""
+    );
+    const extraPhones = Array.isArray((c as { phones?: Array<{ number?: string }> }).phones)
+      ? (c as { phones?: Array<{ number?: string }> }).phones!.map((p) => p.number)
+      : [];
+    const cscore = scoreMatch(
+      q,
+      cname,
+      c.email,
+      c.title,
+      c.phone,
+      (c as { preferredPhone?: string }).preferredPhone,
+      ...extraPhones
+    );
+    if (cscore <= 0) continue;
+    scored.push({
+      id: cid,
+      type: "contact",
+      title: String(cname),
+      subtitle: withTenant(
+        [c.title, companyName, c.email].filter(Boolean).join(" · "),
+        tenantName
+      ),
+      href: companyId
+        ? `/dashboard/contact-info/${cid}?companyId=${encodeURIComponent(companyId)}`
+        : `/dashboard/contact-info/${cid}`,
+      score: cscore,
+    });
+  }
+
+  for (const job of Array.isArray(jobs) ? jobs : []) {
+    const id = String(job.id || "");
+    if (!id) continue;
+    const title = job.title || "Untitled job";
+    const score = scoreMatch(
+      q,
+      title,
+      job.companyName,
+      job.location,
+      job.status,
+      job.employmentType
+    );
+    if (score <= 0) continue;
+    scored.push({
+      id,
+      type: "job",
+      title: String(title),
+      subtitle: withTenant(
+        [job.companyName, job.status, job.location].filter(Boolean).join(" · "),
+        tenantName
+      ),
+      href: `/dashboard/jobs/${id}`,
+      score,
+    });
+  }
+
+  return scored;
+}
+
+async function resolveTenants(): Promise<
+  { tenants: TenantTarget[]; error?: string; status?: number }
+> {
+  const session = await getSession();
+  if (!session?.userId) {
+    return { tenants: [], error: "Unauthorized", status: 401 };
+  }
+
+  const scoped = await getSessionTenantId();
+  if (scoped) {
+    return { tenants: [{ id: scoped }] };
+  }
+
+  if (isSiteAdmin(session.role)) {
+    const all = await getAllTenants({ includePlatform: false });
+    return {
+      tenants: (all || []).map((t) => ({ id: t.id, name: t.name })),
+    };
+  }
+
+  return { tenants: [], error: "Unauthorized", status: 401 };
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const tenantId = await getSessionTenantId();
-    if (!tenantId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const q = (request.nextUrl.searchParams.get("q") || "").trim();
     const limit = Math.min(
       parseInt(request.nextUrl.searchParams.get("limit") || "20", 10) || 20,
@@ -70,121 +266,34 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const [leads, clients, jobs] = await Promise.all([
-      getAllLeadsWithLinkedJobs(tenantId).catch(() => []),
-      getAllClients(tenantId).catch(() => []),
-      getAllJobs(tenantId).catch(() => []),
-    ]);
+    const resolved = await resolveTenants();
+    if (resolved.error) {
+      return NextResponse.json(
+        { error: resolved.error },
+        { status: resolved.status || 401 }
+      );
+    }
+
+    const tenants = resolved.tenants;
+    if (tenants.length === 0) {
+      return NextResponse.json({
+        query: q,
+        results: [] as GlobalSearchHit[],
+      });
+    }
 
     const scored: Array<GlobalSearchHit & { score: number }> = [];
-
-    // Candidates
-    for (const lead of Array.isArray(leads) ? leads : []) {
-      const id = String(lead.id || "");
-      if (!id) continue;
-      const name =
-        lead.full_name ||
-        lead.fullName ||
-        lead.name ||
-        [lead.firstName, lead.lastName].filter(Boolean).join(" ") ||
-        "Candidate";
-      const score = scoreMatch(
-        q,
-        name,
-        lead.email,
-        lead.phone,
-        lead.title,
-        lead.company,
-        lead.currentCompany
+    const batchSize = 4;
+    for (let i = 0; i < tenants.length; i += batchSize) {
+      const batch = tenants.slice(i, i + batchSize);
+      const parts = await Promise.all(
+        batch.map((t) => searchOneTenant(t, q).catch(() => []))
       );
-      if (score <= 0) continue;
-      scored.push({
-        id,
-        type: "candidate",
-        title: String(name),
-        subtitle: [lead.title, lead.email, lead.company || lead.currentCompany]
-          .filter(Boolean)
-          .join(" · "),
-        href: `/dashboard/candidates/${id}`,
-        score,
-      });
-    }
-
-    // Companies + nested contacts
-    for (const client of Array.isArray(clients) ? clients : []) {
-      const id = String(client.id || "");
-      if (!id) continue;
-      const companyName =
-        client.name || client.companyName || client.company || "Company";
-      const companyScore = scoreMatch(
-        q,
-        companyName,
-        client.domain,
-        client.industry,
-        client.city,
-        client.state,
-        client.email
-      );
-      if (companyScore > 0) {
-        scored.push({
-          id,
-          type: "company",
-          title: String(companyName),
-          subtitle: [client.industry, client.city, client.state]
-            .filter(Boolean)
-            .join(" · "),
-          href: `/dashboard/companies/${id}`,
-          score: companyScore,
-        });
-      }
-
-      const contacts = Array.isArray(client.contacts) ? client.contacts : [];
-      for (const c of contacts) {
-        const cid = String(c.id || "");
-        if (!cid) continue;
-        const cname = c.name || c.full_name || "Contact";
-        const cscore = scoreMatch(q, cname, c.email, c.title, c.phone);
-        if (cscore <= 0) continue;
-        scored.push({
-          id: cid,
-          type: "contact",
-          title: String(cname),
-          subtitle: [c.title, companyName, c.email].filter(Boolean).join(" · "),
-          href: `/dashboard/contact-info/${cid}?companyId=${encodeURIComponent(id)}`,
-          score: cscore,
-        });
-      }
-    }
-
-    // Jobs
-    for (const job of Array.isArray(jobs) ? jobs : []) {
-      const id = String(job.id || "");
-      if (!id) continue;
-      const title = job.title || "Untitled job";
-      const score = scoreMatch(
-        q,
-        title,
-        job.companyName,
-        job.location,
-        job.status,
-        job.employmentType
-      );
-      if (score <= 0) continue;
-      scored.push({
-        id,
-        type: "job",
-        title: String(title),
-        subtitle: [job.companyName, job.status, job.location]
-          .filter(Boolean)
-          .join(" · "),
-        href: `/dashboard/jobs/${id}`,
-        score,
-      });
+      for (const part of parts) scored.push(...part);
     }
 
     scored.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
 
-    // Cap per type so one type doesn't dominate
     const perType = 8;
     const counts: Record<string, number> = {};
     const results: GlobalSearchHit[] = [];
