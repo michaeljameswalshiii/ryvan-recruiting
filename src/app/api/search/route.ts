@@ -55,16 +55,19 @@ function scoreMatch(query: string, ...fields: unknown[]): number {
   const hay = fields.map(norm).filter(Boolean);
   let best = 0;
   const qDigits = q.replace(/\D/g, "");
+  const qTokens = q.split(/\s+/).filter(Boolean);
   for (const h of hay) {
     if (!h) continue;
     if (h === q) best = Math.max(best, 100);
     else if (h.startsWith(q)) best = Math.max(best, 80);
-    else if (h.includes(q)) best = Math.max(best, 50);
-    else {
-      const tokens = q.split(/\s+/).filter(Boolean);
-      if (tokens.length > 1 && tokens.every((t) => h.includes(t))) {
-        best = Math.max(best, 60);
-      }
+    else if (h.includes(q)) best = Math.max(best, 55);
+    const nameTokens = h.split(/[\s,./_-]+/).filter(Boolean);
+    for (const token of nameTokens) {
+      if (token === q) best = Math.max(best, 95);
+      else if (token.startsWith(q)) best = Math.max(best, 88);
+    }
+    if (qTokens.length > 1 && qTokens.every((t) => h.includes(t))) {
+      best = Math.max(best, 70);
     }
     if (qDigits.length >= 3) {
       const hDigits = h.replace(/\D/g, "");
@@ -72,6 +75,49 @@ function scoreMatch(query: string, ...fields: unknown[]): number {
     }
   }
   return best;
+}
+
+function pushContactHit(
+  scored: Array<GlobalSearchHit & { score: number }>,
+  seen: Set<string>,
+  c: Record<string, unknown>,
+  companyId: string,
+  companyName: string,
+  tenantName: string | undefined,
+  q: string
+) {
+  const cname = personName(c);
+  if (!cname && !c.email && !c.phone) return;
+  const cid = String(c.id || `${companyId}-${cname}`);
+  if (!cid || seen.has(cid)) return;
+  const extraPhones = Array.isArray(c.phones)
+    ? (c.phones as Array<{ number?: string }>).map((p) => p.number)
+    : [];
+  const cscore = scoreMatch(
+    q,
+    cname,
+    c.email,
+    c.title,
+    c.phone,
+    c.preferredPhone,
+    companyName,
+    ...extraPhones
+  );
+  if (cscore <= 0) return;
+  seen.add(cid);
+  scored.push({
+    id: cid,
+    type: "contact",
+    title: cname || "Contact",
+    subtitle: withTenant(
+      [c.title, companyName, c.email].filter(Boolean).join(" · "),
+      tenantName
+    ),
+    href: companyId
+      ? `/dashboard/contact-info/${encodeURIComponent(cid)}?companyId=${encodeURIComponent(companyId)}`
+      : `/dashboard/contact-info/${encodeURIComponent(cid)}`,
+    score: cscore,
+  });
 }
 
 function withTenant(subtitle: string, tenantName?: string): string | undefined {
@@ -125,6 +171,8 @@ async function searchOneTenant(
     });
   }
 
+  const seenContacts = new Set<string>();
+
   for (const client of Array.isArray(clients) ? clients : []) {
     const id = String(client.id || "");
     if (!id) continue;
@@ -158,45 +206,31 @@ async function searchOneTenant(
         score: companyScore,
       });
     }
+
+    const embedded = Array.isArray(client.contacts) ? client.contacts : [];
+    for (const c of embedded) {
+      pushContactHit(
+        scored,
+        seenContacts,
+        (c || {}) as Record<string, unknown>,
+        id,
+        String(companyName),
+        tenantName,
+        q
+      );
+    }
   }
 
-  const seenContacts = new Set<string>();
   for (const c of Array.isArray(contacts) ? contacts : []) {
-    const cid = String(c.id || "");
-    if (!cid || seenContacts.has(cid)) continue;
-    seenContacts.add(cid);
-    const row = c as unknown as Record<string, unknown>;
-    const cname = personName(row) || "Contact";
-    const companyId = String(c.companyId || "");
-    const companyName = String(
-      (c as { companyName?: string }).companyName || ""
+    pushContactHit(
+      scored,
+      seenContacts,
+      c as unknown as Record<string, unknown>,
+      String(c.companyId || ""),
+      String((c as { companyName?: string }).companyName || ""),
+      tenantName,
+      q
     );
-    const extraPhones = Array.isArray((c as { phones?: Array<{ number?: string }> }).phones)
-      ? (c as { phones?: Array<{ number?: string }> }).phones!.map((p) => p.number)
-      : [];
-    const cscore = scoreMatch(
-      q,
-      cname,
-      c.email,
-      c.title,
-      c.phone,
-      (c as { preferredPhone?: string }).preferredPhone,
-      ...extraPhones
-    );
-    if (cscore <= 0) continue;
-    scored.push({
-      id: cid,
-      type: "contact",
-      title: String(cname),
-      subtitle: withTenant(
-        [c.title, companyName, c.email].filter(Boolean).join(" · "),
-        tenantName
-      ),
-      href: companyId
-        ? `/dashboard/contact-info/${cid}?companyId=${encodeURIComponent(companyId)}`
-        : `/dashboard/contact-info/${cid}`,
-      score: cscore,
-    });
   }
 
   for (const job of Array.isArray(jobs) ? jobs : []) {

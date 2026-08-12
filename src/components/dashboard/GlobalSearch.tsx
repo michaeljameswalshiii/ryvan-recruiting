@@ -196,15 +196,11 @@ export function GlobalSearch() {
       setActiveIndex((i) => Math.max(i - 1, -1));
     } else if (e.key === "Enter") {
       e.preventDefault();
+      if (loading) return;
       if (activeIndex >= 0 && results[activeIndex]) {
         go(results[activeIndex]);
       } else if (results[0]) {
         go(results[0]);
-      } else if (query.trim().length >= 2) {
-        setOpen(false);
-        router.push(
-          `/dashboard/candidates?q=${encodeURIComponent(query.trim())}`
-        );
       }
     }
   };

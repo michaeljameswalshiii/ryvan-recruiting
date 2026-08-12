@@ -41,15 +41,21 @@ function generateId(): string {
 async function queryAllContactChildRows(
   tenantId: string
 ): Promise<CompanyContact[]> {
-  const result = await queryItems<Contact>(
-    clientsTable,
-    'tenant_id = :tenantId AND begins_with(SK, :contactPrefix)',
-    {
-      ':tenantId': tenantId,
-      ':contactPrefix': `CONTACT#`,
-    }
-  );
-  return (result.items || []) as CompanyContact[];
+  try {
+    const result = await queryItems<Contact>(
+      clientsTable,
+      'tenant_id = :tenantId AND begins_with(SK, :contactPrefix)',
+      {
+        ':tenantId': tenantId,
+        ':contactPrefix': `CONTACT#`,
+      }
+    );
+    return (result.items || []) as CompanyContact[];
+  } catch (err) {
+    // turnkey-clients is keyed tenant_id + id, not SK. Child-row query is optional.
+    console.warn('[queryAllContactChildRows] skipped', (err as Error)?.message);
+    return [];
+  }
 }
 
 /**
@@ -109,17 +115,19 @@ export async function getAllContactsForTenant(
       const companyName = String(co.name || '');
       const embedded = Array.isArray(co.contacts) ? co.contacts : [];
       for (const c of embedded) {
-        if (!c?.id) continue;
-        if (byId.has(c.id)) {
+        if (!c?.id && !c?.name) continue;
+        const cid = String(c.id || `${companyId}-${c.name}`);
+        if (byId.has(cid)) {
           // Prefer enriching company name
-          const prev = byId.get(c.id)!;
+          const prev = byId.get(cid)!;
           if (!prev.companyName && companyName) {
-            byId.set(c.id, { ...prev, companyName, companyId: prev.companyId || companyId });
+            byId.set(cid, { ...prev, companyName, companyId: prev.companyId || companyId });
           }
           continue;
         }
-        byId.set(c.id, {
+        byId.set(cid, {
           ...c,
+          id: cid,
           companyId: String(c.companyId || companyId),
           companyName,
           source: 'embedded',
