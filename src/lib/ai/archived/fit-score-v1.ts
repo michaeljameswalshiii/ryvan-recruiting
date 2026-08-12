@@ -1,20 +1,14 @@
 /**
- * Trio Fit Score — Version 2 (live).
+ * ARCHIVED — Trio Fit Score Version 1 (frozen August 2026).
  *
- * Composite = 50% Version 1 dimension average + 50% review rubric
- * (experience 35 / industry 25 / skills 25 / location 15), then field-fit
- * multiplier on both halves, then hard-gate caps.
+ * Do not use this as the live scorer. Live scoring is Version 2 in
+ * src/lib/ai/fit-score.ts (50% V1 + 50% review rubric + field-fit gate).
  *
- * Version 1 is frozen in src/lib/ai/archived/fit-score-v1.ts and still
- * callable here as scoreCandidateJobFitV1.
+ * Keep this file so we can restore or A/B the original formula.
  *
- * Pure functions — no DynamoDB / server deps.
+ * Original: deterministic + light-heuristic candidate↔job fit scorer.
+ * Overall = equal-weight average of applicable dimensions.
  */
-
-import {
-  assessFieldFit,
-  type FieldFitResult,
-} from "@/lib/ai/occupation-fields";
 
 export type FitGrade = "A" | "B" | "C" | "D" | "F";
 
@@ -50,39 +44,8 @@ export interface FitDimensionScore {
   applicable: boolean;
 }
 
-export type ScoringVersion = "v1" | "v2";
-
-export type FitRubricFactorId =
-  | "experience"
-  | "industry"
-  | "skills"
-  | "location";
-
-export interface FitRubricFactor {
-  id: FitRubricFactorId;
-  label: string;
-  points: number;
-  max: number;
-  detail: string;
-}
-
-export type FitHardGateId =
-  | "work_authorization"
-  | "required_license"
-  | "hard_location"
-  | "field_mismatch";
-
-export interface FitHardGate {
-  id: FitHardGateId;
-  label: string;
-  passed: boolean;
-  /** Score ceiling when the gate fails */
-  cap?: number;
-  detail: string;
-}
-
 export interface FitScoreResult {
-  /** Overall = V2 blend (or V1 average when scored via scoreCandidateJobFitV1). */
+  /** Overall = average of applicable dimensions. */
   score: number; // 0-100
   grade: FitGrade;
   /** Domain / role fit rollup (for compact badges). */
@@ -101,16 +64,6 @@ export interface FitScoreResult {
   skillsMissing: string[];
   toolsMatched: string[];
   toolsMissing: string[];
-  /** Live scorer is v2. Present on archived V1 runs only when set explicitly. */
-  scoringVersion?: ScoringVersion;
-  /** Raw Version 1 dimension-average score (before blend / field / gates). */
-  v1Score?: number;
-  /** Review-rubric composite 1–100 (before field / gates). */
-  v2RubricScore?: number;
-  fieldFit?: FieldFitResult;
-  rubric?: FitRubricFactor[];
-  gates?: FitHardGate[];
-  verifyBeforeAdvancing?: string[];
 }
 
 export interface FitReviewAssessment {
@@ -128,11 +81,6 @@ export interface FitReviewAssessment {
   toolsMatched: string[];
   toolsMissing: string[];
   confidence: "high" | "medium" | "low";
-  scoringVersion?: ScoringVersion;
-  fieldFit?: FieldFitResult;
-  rubric?: FitRubricFactor[];
-  gates?: FitHardGate[];
-  verifyBeforeAdvancing?: string[];
 }
 
 export interface FitCandidateInput {
@@ -228,19 +176,6 @@ const SKILL_ALIASES: Record<string, string> = {
   "ms office": "microsoft office",
   "office 365": "microsoft 365",
   o365: "microsoft 365",
-  "microsoft project": "ms project",
-  "msproject": "ms project",
-  "primavera p6": "primavera",
-  p6: "primavera",
-  "autodesk bim 360": "bim 360",
-  bim360: "bim 360",
-  "auto cad": "autocad",
-  "rfi": "rfis",
-  "request for information": "rfis",
-  "change order": "change orders",
-  "submittal": "submittals",
-  osha: "osha 30",
-  "osha30": "osha 30",
   "rest api": "rest",
   restful: "rest",
   graphql: "graphql",
@@ -454,8 +389,7 @@ const RELATED_SKILL_GROUPS: string[][] = [
   ["scheduling", "customer service", "client onboarding"],
   ["inventory", "store operations"],
   ["leadership", "customer service", "training"],
-  ["jira", "asana", "monday.com", "project management", "ms project", "primavera"],
-  ["procore", "bluebeam", "bim 360", "submittals", "rfis", "change orders"],
+  ["jira", "asana", "monday.com", "project management"],
   ["tableau", "power bi", "excel"],
   ["docker", "kubernetes", "devops"],
   ["amazon web services", "microsoft azure", "google cloud"],
@@ -688,21 +622,6 @@ const COMMON_SKILLS: string[] = [
   "store operations",
   "customer service",
   "compliance",
-  // Construction / project delivery
-  "procore",
-  "bluebeam",
-  "ms project",
-  "primavera",
-  "tekla",
-  "bim 360",
-  "autocad",
-  "revit",
-  "osha 30",
-  "change orders",
-  "submittals",
-  "rfis",
-  "closeout",
-  "scheduling",
   // Roles / domains often used as skill signals
   "full-stack",
   "frontend",
@@ -1200,10 +1119,6 @@ const DOMAIN_SKILL_SET = new Set<string>([
   "compliance",
   "training",
   "project management",
-  "change orders",
-  "submittals",
-  "rfis",
-  "closeout",
 ]);
 
 /** Known product / platform names (always tool readiness). */
@@ -1243,14 +1158,6 @@ const KNOWN_TOOL_SKILLS = new Set<string>([
   "scheduling",
   "inventory",
   "data entry",
-  "procore",
-  "bluebeam",
-  "tekla",
-  "bim 360",
-  "autocad",
-  "revit",
-  "primavera",
-  "ms project",
 ]);
 
 function isDomainSkill(skill: string): boolean {
@@ -1373,25 +1280,6 @@ const DOMAIN_KEYWORDS: string[] = [
   "g suite",
   "financial reporting",
   "financial statements",
-  "construction",
-  "jobsite",
-  "job site",
-  "superintendent",
-  "general contractor",
-  "submittal",
-  "submittals",
-  "change order",
-  "change orders",
-  "rfi",
-  "rfis",
-  "closeout",
-  "punch list",
-  "procore",
-  "bluebeam",
-  "osha",
-  "ground-up",
-  "tenant improvement",
-  "cost control",
 ];
 
 function domainKeywordOverlap(candText: string, jobText: string): {
@@ -1959,10 +1847,10 @@ function titleKeywordScore(
 }
 
 /**
- * Version 1 scorer — equal-weight average of applicable dimensions.
- * Kept callable so we can restore or A/B against Version 2.
+ * Score candidate fitness for a job.
+ * Weights: skills 60%, title/role 20%, location 10%, seniority/years 10%.
  */
-export function scoreCandidateJobFitV1(
+export function scoreCandidateJobFit(
   candidate: FitCandidateInput,
   job: FitJobInput
 ): FitScoreResult {
@@ -2628,8 +2516,6 @@ export function scoreCandidateJobFitV1(
     toolsMissing: uniq(
       toolsMissing.map((s) => s.replace(/\s*\(nice-to-have\)/i, ""))
     ),
-    scoringVersion: "v1",
-    v1Score: score,
   };
 }
 
@@ -2663,15 +2549,6 @@ function summarizeDomainHits(hits: string[]): string {
   if (h.some((x) => /implement|onboard|migration|training|client/.test(x))) {
     bits.push("implementation / client work");
   }
-  if (
-    h.some((x) =>
-      /construct|jobsite|superintendent|submittal|change order|rfi|procore|bluebeam|closeout|punch/.test(
-        x
-      )
-    )
-  ) {
-    bits.push("construction / project delivery");
-  }
   if (!bits.length) return "";
   return `Domain experience signals: ${bits.join("; ")}`;
 }
@@ -2698,12 +2575,7 @@ export function buildReviewerAssessment(
   let headline: string;
   let summary: string;
 
-  if (result.fieldFit?.alignment === "unrelated") {
-    headline = "Field mismatch — transferable skills are not a role fit";
-    summary =
-      result.fieldFit.reason ||
-      "The candidate’s occupation is a different field than this job. Shared skills (budget, Excel, coordination) are not enough.";
-  } else if (toolsApply && domain.score >= 85 && tools.score < 70) {
+  if (toolsApply && domain.score >= 85 && tools.score < 70) {
     headline = "Strong domain fit — tool stack still unproven";
     summary =
       "Functional/domain signals look strong, but named tools or implementation skills from the JD are thin. Screen hard on stack before treating as a full advance.";
@@ -2755,11 +2627,6 @@ export function buildReviewerAssessment(
     toolsMatched: (result.toolsMatched || []).slice(0, 8),
     toolsMissing: (result.toolsMissing || []).slice(0, 6),
     confidence,
-    scoringVersion: result.scoringVersion,
-    fieldFit: result.fieldFit,
-    rubric: result.rubric,
-    gates: result.gates,
-    verifyBeforeAdvancing: result.verifyBeforeAdvancing,
   };
 }
 
@@ -2768,14 +2635,8 @@ export function buildReviewerAssessment(
  */
 export function formatFitSummary(result: FitScoreResult): string {
   const assessment = buildReviewerAssessment(result);
-  const versionLabel =
-    assessment.scoringVersion === "v2"
-      ? "Version 2 · 50% V1 + 50% review rubric"
-      : assessment.scoringVersion === "v1"
-        ? "Version 1 · dimension average"
-        : "Fit score";
   const lines: string[] = [
-    `Overall ${assessment.score}/100 · Grade ${assessment.grade} · ${versionLabel}`,
+    `Overall ${assessment.score}/100 · Grade ${assessment.grade}`,
     `Domain rollup ${assessment.domainFit.score}/100 · Grade ${assessment.domainFit.grade}`,
     assessment.toolReadiness.applicable === false
       ? `Tool readiness n/a · No tool stack called out on JD`
@@ -2784,50 +2645,6 @@ export function formatFitSummary(result: FitScoreResult): string {
     "",
     assessment.summary,
   ];
-
-  if (
-    result.v1Score != null &&
-    result.v2RubricScore != null &&
-    assessment.scoringVersion === "v2"
-  ) {
-    lines.push("");
-    lines.push(
-      `Blend: V1 ${result.v1Score}/100 + rubric ${result.v2RubricScore}/100 (equal weight)`
-    );
-  }
-
-  if (assessment.fieldFit) {
-    lines.push(
-      `Field fit: ${assessment.fieldFit.alignment} — ${assessment.fieldFit.reason}`
-    );
-  }
-
-  if (assessment.rubric?.length) {
-    lines.push("");
-    lines.push("Review rubric");
-    for (const f of assessment.rubric) {
-      lines.push(`• ${f.label}: ${f.points}/${f.max} — ${f.detail}`);
-    }
-  }
-
-  const failedGates = (assessment.gates || []).filter((g) => !g.passed);
-  lines.push("");
-  lines.push(
-    failedGates.length
-      ? `GATE FLAGS: ${failedGates.map((g) => g.label).join("; ")}`
-      : "GATE FLAGS: none"
-  );
-  for (const g of failedGates) {
-    lines.push(`• ${g.detail}`);
-  }
-
-  if (assessment.verifyBeforeAdvancing?.length) {
-    lines.push("");
-    lines.push("VERIFY BEFORE ADVANCING:");
-    for (const q of assessment.verifyBeforeAdvancing) {
-      lines.push(`- ${q}`);
-    }
-  }
 
   if (assessment.dimensions?.length) {
     lines.push("");
@@ -2878,370 +2695,4 @@ export function formatFitSummary(result: FitScoreResult): string {
   }
 
   return lines.join("\n");
-}
-
-function clampScore100(n: number): number {
-  return Math.max(0, Math.min(100, Math.round(n)));
-}
-
-function dimensionScore(
-  dimensions: FitDimensionScore[],
-  id: FitDimensionId,
-  fallback = 50
-): number {
-  const d = dimensions.find((x) => x.id === id);
-  if (!d || d.applicable === false) return fallback;
-  return d.score;
-}
-
-function bandLabel(score: number): string {
-  if (score >= 85) return "Strong fit";
-  if (score >= 70) return "Good fit";
-  if (score >= 55) return "Partial fit";
-  return "Weak fit";
-}
-
-function buildReviewRubric(v1: FitScoreResult): {
-  score: number;
-  factors: FitRubricFactor[];
-} {
-  const dims = v1.dimensions || [];
-  const expRaw = clampScore100(
-    dimensionScore(dims, "responsibilities") * 0.4 +
-      dimensionScore(dims, "years_experience") * 0.25 +
-      dimensionScore(dims, "career_trajectory") * 0.15 +
-      dimensionScore(dims, "achievements") * 0.1 +
-      dimensionScore(dims, "seniority_scope") * 0.1
-  );
-  const industryRaw = dimensionScore(dims, "industry_domain");
-  const skillsRaw = dimensionScore(dims, "skills_match");
-  const locationRaw = dimensionScore(dims, "location_arrangement");
-
-  const factors: FitRubricFactor[] = [
-    {
-      id: "experience",
-      label: "Relevant Experience / Can-Do",
-      points: Math.round((expRaw / 100) * 35),
-      max: 35,
-      detail: `Capability from responsibilities, tenure, trajectory, achievements (${expRaw}/100)`,
-    },
-    {
-      id: "industry",
-      label: "Industry Alignment",
-      points: Math.round((industryRaw / 100) * 25),
-      max: 25,
-      detail:
-        dims.find((d) => d.id === "industry_domain")?.detail ||
-        `Domain language ${industryRaw}/100`,
-    },
-    {
-      id: "skills",
-      label: "Software / Skills / Certs",
-      points: Math.round((skillsRaw / 100) * 25),
-      max: 25,
-      detail:
-        dims.find((d) => d.id === "skills_match")?.detail ||
-        `Skills match ${skillsRaw}/100`,
-    },
-    {
-      id: "location",
-      label: "Location & Logistics",
-      points: Math.round((locationRaw / 100) * 15),
-      max: 15,
-      detail:
-        dims.find((d) => d.id === "location_arrangement")?.detail ||
-        `Location ${locationRaw}/100`,
-    },
-  ];
-
-  return {
-    score: factors.reduce((s, f) => s + f.points, 0),
-    factors,
-  };
-}
-
-const REQUIRED_LICENSES: Array<{
-  label: string;
-  jd: RegExp;
-  evidenced: RegExp;
-}> = [
-  {
-    label: "PE license / stamp",
-    jd: /\b(p\.?e\.?\s*stamp|professional engineer|pe license|licensed professional engineer)\b/i,
-    evidenced: /\b(p\.?e\.?|professional engineer)\b/i,
-  },
-  {
-    label: "bar admission",
-    jd: /\b(bar admission|admitted to the bar|licensed (to practice law|attorney))\b/i,
-    evidenced: /\b(bar admission|admitted to the bar|esq\.?|attorney|juris doctor|\bjd\b)\b/i,
-  },
-  {
-    label: "RN license",
-    jd: /\b(rn license|licensed registered nurse|active rn|nursing license)\b/i,
-    evidenced: /\b(\brn\b|registered nurse|nursing license)\b/i,
-  },
-  {
-    label: "CDL",
-    jd: /\b(cdl\s*(class\s*[ab])?|commercial driver'?s? license)\b/i,
-    evidenced: /\b(cdl|commercial driver)\b/i,
-  },
-  {
-    label: "trade license",
-    jd: /\b(journeyman|master electrician|master plumber|electrical license|plumbing license|contractor'?s? license)\b/i,
-    evidenced:
-      /\b(journeyman|master electrician|master plumber|licensed (electrician|plumber|contractor)|contractor'?s? license)\b/i,
-  },
-];
-
-function evaluateHardGates(input: {
-  jobText: string;
-  candidateText: string;
-  candidateLocation?: string;
-  jobLocation?: string;
-  locationScore: number;
-  fieldFit: FieldFitResult;
-}): FitHardGate[] {
-  const jobText = input.jobText;
-  const candText = `${input.candidateText}\n${input.candidateLocation || ""}`;
-  const gates: FitHardGate[] = [];
-
-  const jdRequiresAuth =
-    /\b(authorized to work|work authorization|no (visa )?sponsorship|sponsorship (is )?not (available|offered)|must be (eligible|authorized) to work|u\.?s\.? work auth|eligible to work in the (u\.?s\.?|united states))\b/i.test(
-      jobText
-    );
-  const candNeedsSponsorship =
-    /\b(will (require|need) sponsorship|requires? sponsorship|need[s]? sponsorship|not authorized to work|sponsorship required|no work authorization)\b/i.test(
-      candText
-    );
-  if (jdRequiresAuth && candNeedsSponsorship) {
-    gates.push({
-      id: "work_authorization",
-      label: "Work authorization",
-      passed: false,
-      cap: 40,
-      detail:
-        "JD requires US work authorization; profile signals sponsorship is needed",
-    });
-  } else {
-    gates.push({
-      id: "work_authorization",
-      label: "Work authorization",
-      passed: true,
-      detail: jdRequiresAuth
-        ? "JD requires US work authorization; no sponsorship need signaled"
-        : "No work-authorization gate on this JD",
-    });
-  }
-
-  let licenseFail: string | null = null;
-  for (const lic of REQUIRED_LICENSES) {
-    if (!lic.jd.test(jobText)) continue;
-    if (/preferred|nice to have|a plus|bonus|or equivalent/i.test(jobText) &&
-        !/\b(must|required|valid)\b/i.test(jobText)) {
-      continue;
-    }
-    if (!lic.evidenced.test(candText)) {
-      licenseFail = lic.label;
-      break;
-    }
-  }
-  if (licenseFail) {
-    gates.push({
-      id: "required_license",
-      label: "Required license / cert",
-      passed: false,
-      cap: 55,
-      detail: `JD requires ${licenseFail}; not evidenced on the profile`,
-    });
-  } else {
-    gates.push({
-      id: "required_license",
-      label: "Required license / cert",
-      passed: true,
-      detail: "No unmet legally-required license on this JD",
-    });
-  }
-
-  const jobRemote = /\b(remote|hybrid|work from home|\bwfh\b)\b/i.test(jobText);
-  const hardOnsite =
-    (/\b(on[- ]site|in[- ]office|must be local|local candidates only)\b/i.test(
-      jobText
-    ) &&
-      !jobRemote) ||
-    /\b(no remote|not remote|relocation not (offered|available))\b/i.test(jobText);
-  const relocating =
-    /\b(relocat|willing to move|open to move|open to reloc)\b/i.test(candText);
-  if (hardOnsite && input.locationScore < 45 && !relocating) {
-    gates.push({
-      id: "hard_location",
-      label: "Hard location constraint",
-      passed: false,
-      cap: 70,
-      detail:
-        "On-site role and candidate is non-local with no relocation signal",
-    });
-  } else {
-    gates.push({
-      id: "hard_location",
-      label: "Hard location constraint",
-      passed: true,
-      detail: hardOnsite
-        ? "On-site constraint present; location or relocation is acceptable"
-        : "No hard on-site constraint",
-    });
-  }
-
-  if (input.fieldFit.alignment === "unrelated") {
-    gates.push({
-      id: "field_mismatch",
-      label: "Occupation field mismatch",
-      passed: false,
-      cap: 48,
-      detail: input.fieldFit.reason,
-    });
-  } else {
-    gates.push({
-      id: "field_mismatch",
-      label: "Occupation field mismatch",
-      passed: true,
-      detail: input.fieldFit.reason,
-    });
-  }
-
-  return gates;
-}
-
-function applyFitScoreV2(
-  v1: FitScoreResult,
-  candidate: FitCandidateInput,
-  job: FitJobInput
-): FitScoreResult {
-  const jobText = [job.title, job.description, job.salaryRange]
-    .filter(Boolean)
-    .join("\n");
-  const candidateText = [
-    candidate.title,
-    candidate.summary,
-    ...(candidate.skills || []),
-    ...(candidate.experience || []).flatMap((e) =>
-      [e.title, e.company, e.description].filter(Boolean)
-    ),
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const fieldFit = assessFieldFit({
-    jobTitle: job.title,
-    jobDescription: job.description,
-    candidateTitle: candidate.title,
-    candidateSummary: candidate.summary,
-    candidateExperience: candidate.experience,
-  });
-
-  const rubric = buildReviewRubric(v1);
-  const locationScore = dimensionScore(v1.dimensions || [], "location_arrangement");
-  const gates = evaluateHardGates({
-    jobText,
-    candidateText,
-    candidateLocation: candidate.location,
-    jobLocation: job.location,
-    locationScore,
-    fieldFit,
-  });
-
-  const v1Adjusted = clampScore100(v1.score * fieldFit.multiplier);
-  const rubricAdjusted = clampScore100(rubric.score * fieldFit.multiplier);
-  let score = clampScore100(0.5 * v1Adjusted + 0.5 * rubricAdjusted);
-
-  for (const gate of gates) {
-    if (!gate.passed && typeof gate.cap === "number") {
-      score = Math.min(score, gate.cap);
-    }
-  }
-
-  const grade = gradeFromScore(score);
-  const failedGates = gates.filter((g) => !g.passed);
-
-  const verify: string[] = [];
-  if (fieldFit.alignment === "unrelated") {
-    verify.push(
-      `Confirm this is not a field change: ${fieldFit.candidateLabel} background vs ${fieldFit.jobLabel} role`
-    );
-  } else if (fieldFit.alignment === "adjacent") {
-    verify.push(
-      `Adjacent field — confirm transferable experience is actually used on this kind of job`
-    );
-  } else if (fieldFit.alignment === "unknown" && fieldFit.multiplier < 1) {
-    verify.push("Candidate occupation is unclear — confirm they work in this field");
-  }
-  for (const g of failedGates) {
-    if (g.id !== "field_mismatch") verify.push(g.detail);
-  }
-  for (const gap of v1.gaps.slice(0, 2)) {
-    if (!verify.includes(gap)) verify.push(gap);
-  }
-
-  const reasons = [
-    `Overall ${score}/100 (${grade}) · ${bandLabel(score)} · V2 50/50 (V1 ${v1.score} · rubric ${rubric.score}) · field ${fieldFit.alignment}`,
-    ...v1.reasons.filter((r) => !/^Overall \d+\/100/.test(r)),
-  ].slice(0, 12);
-
-  const strengths = [...v1.strengths];
-  const gaps = [...v1.gaps];
-  if (fieldFit.alignment === "unrelated") {
-    gaps.unshift(fieldFit.reason);
-  } else if (fieldFit.alignment === "adjacent") {
-    gaps.unshift(fieldFit.reason);
-  } else if (fieldFit.alignment === "same") {
-    strengths.unshift(`Works in the same field (${fieldFit.jobLabel})`);
-  }
-
-  const dimensions =
-    fieldFit.multiplier < 1
-      ? v1.dimensions.map((d) => {
-          if (d.id !== "industry_domain" || !d.applicable) return d;
-          const next = clampScore100(d.score * fieldFit.multiplier);
-          return {
-            ...d,
-            score: next,
-            grade: gradeFromScore(next),
-            detail: `${d.detail} · ${fieldFit.reason}`,
-          };
-        })
-      : v1.dimensions;
-
-  const domainFit = { ...v1.domainFit };
-  if (fieldFit.multiplier < 1) {
-    domainFit.score = clampScore100(domainFit.score * fieldFit.multiplier);
-    domainFit.grade = gradeFromScore(domainFit.score);
-  }
-
-  return {
-    ...v1,
-    score,
-    grade,
-    domainFit,
-    dimensions,
-    reasons: Array.from(new Set(reasons.filter(Boolean))).slice(0, 12),
-    strengths: Array.from(new Set(strengths.filter(Boolean))).slice(0, 10),
-    gaps: Array.from(new Set(gaps.filter(Boolean))).slice(0, 8),
-    scoringVersion: "v2",
-    v1Score: v1.score,
-    v2RubricScore: rubric.score,
-    fieldFit,
-    rubric: rubric.factors,
-    gates,
-    verifyBeforeAdvancing: verify.slice(0, 6),
-  };
-}
-
-/**
- * Live scorer (Version 2): 50% V1 + 50% review rubric, field-fit on both, then gates.
- */
-export function scoreCandidateJobFit(
-  candidate: FitCandidateInput,
-  job: FitJobInput
-): FitScoreResult {
-  const v1 = scoreCandidateJobFitV1(candidate, job);
-  return applyFitScoreV2(v1, candidate, job);
 }

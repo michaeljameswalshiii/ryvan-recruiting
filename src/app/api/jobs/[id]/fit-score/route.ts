@@ -269,6 +269,10 @@ function fitLinkFields(result: FitScoreResult, scoredAt: string) {
     fitGaps: result.gaps.slice(0, 6),
     fitSummary: formatFitSummary(result),
     fitScoredAt: scoredAt,
+    fitScoringVersion: result.scoringVersion || "v2",
+    fitV1Score: result.v1Score,
+    fitRubricScore: result.v2RubricScore,
+    fitFieldAlignment: result.fieldFit?.alignment,
   };
 }
 
