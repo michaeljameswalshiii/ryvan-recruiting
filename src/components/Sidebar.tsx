@@ -44,6 +44,7 @@ const menuItems: MenuItem[] = [
   { name: 'Candidates', href: '/dashboard/candidates', icon: Users, permission: 'core_ats' },
   { name: 'Companies', href: '/dashboard/companies', icon: Building2, permission: 'core_ats' },
   { name: 'Contacts', href: '/dashboard/contact-info', icon: Contact, permission: 'core_ats' },
+  { name: 'Texting', href: '/dashboard/texting', icon: MessageSquare, permission: 'core_ats' },
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase, permission: 'core_ats' },
   { name: 'Talent Graph', href: '/dashboard/talent-graph', icon: Network, permission: 'core_ats' },
   { name: 'Sequences', href: '/dashboard/sequences', icon: ListOrdered, permission: 'core_ats' },
@@ -61,12 +62,12 @@ const menuItems: MenuItem[] = [
 
 /** Platform / elevated tools — single "System Admin" nav group (was Admin + Site Admin). */
 const systemAdminItems: MenuItem[] = [
-  // Login history for company/system admins (passwords never stored)
+  // Login history is a platform-admin tool (passwords are never stored).
   {
     name: 'Login audit',
     href: '/dashboard/login-audit',
     icon: ScrollText,
-    permission: 'team_admin',
+    permission: 'site_admin_tools',
   },
   // Work items = ADO/Jira-style tracker (system admin only; replaces old "Issues")
   {
@@ -78,7 +79,7 @@ const systemAdminItems: MenuItem[] = [
   // AI Apollo: only when NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true (code kept for re-enable)
   { name: 'AI Apollo', href: '/dashboard/ai-apollo', icon: Bug, permission: 'ai_apollo' },
   { name: 'AI Reliability', href: '/dashboard/ai-reliability', icon: Activity, permission: 'usage' },
-  { name: 'Performance', href: '/dashboard/performance', icon: Gauge, permission: 'performance' },
+  { name: 'Ops Health', href: '/dashboard/performance', icon: Gauge, permission: 'performance' },
   { name: 'Usage', href: '/dashboard/usage', icon: BarChart3, permission: 'usage' },
   { name: 'Tenants', href: '/dashboard/site-admin', icon: Building2, permission: 'site_admin_tools' },
   { name: 'Dynamo Search Tool', href: '/dashboard/dynamo-search', icon: Database, permission: 'dynamo_search' },

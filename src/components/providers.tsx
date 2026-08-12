@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
 import { subscribeCrmCacheBroadcast } from "@/lib/hooks/invalidate-crm-cache";
+import { OpsTelemetry } from "@/components/ops/OpsTelemetry";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -35,6 +36,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
+      <OpsTelemetry />
       <Toaster />
     </QueryClientProvider>
   );
