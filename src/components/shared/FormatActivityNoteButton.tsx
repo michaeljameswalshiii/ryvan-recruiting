@@ -70,7 +70,7 @@ export function FormatActivityNoteButton({
         size="sm"
         disabled={disabled || formatting || value.trim().length < 20}
         onClick={() => void formatNote()}
-        className="h-9 shrink-0 gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+        className="h-10 shrink-0 gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
         title="Preview a more readable version without changing the original"
       >
         {formatting ? (

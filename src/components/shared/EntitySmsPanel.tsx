@@ -211,7 +211,7 @@ export function EntitySmsPanel({
   return (
     <div
       data-ink-on-light
-      className="rounded-xl border border-slate-200 bg-white overflow-hidden text-slate-900 shadow-sm"
+      className="rounded-2xl border border-gray-200 bg-white overflow-hidden text-slate-900 shadow-sm"
     >
       <button
         type="button"

@@ -444,7 +444,7 @@ export default function ContactDetailClient({
   const email = form.email || contact.email || '';
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-5 pb-10">
+    <div className="w-full min-w-0 space-y-5 pb-10">
       {/* ── Header ───────────────────────────────────────────────── */}
       <div data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
@@ -734,10 +734,13 @@ export default function ContactDetailClient({
 
       {/* ── Overview ─────────────────────────────────────────────── */}
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          <div className="xl:col-span-7 space-y-5">
+        <div className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-12">
+          <div className="flex h-full min-h-0 flex-col xl:col-span-7">
             {/* Notes & activity — primary content (header already shows contact identity) */}
-            <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+            <section
+              data-ink-on-light
+              className="flex h-full min-h-[280px] flex-col bg-white border border-gray-200 rounded-2xl shadow-sm p-5"
+            >
               <div className="flex items-center justify-between gap-3 mb-4">
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
                   Notes & Activity Log
@@ -759,11 +762,11 @@ export default function ContactDetailClient({
                   </p>
                 </div>
               )}
-              <div className="flex flex-col items-start sm:flex-row gap-2 mb-5">
+              <div className="mb-5 grid grid-cols-1 items-stretch gap-2 sm:grid-cols-[14rem_minmax(0,1fr)_auto]">
                 <select
                   value={noteType}
                   onChange={(e) => setNoteType(e.target.value)}
-                  className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm sm:w-56"
+                  className="h-[76px] w-full rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm"
                 >
                   {NOTE_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -776,7 +779,7 @@ export default function ContactDetailClient({
                   onChange={(e) => setNewNote(e.target.value)}
                   placeholder="Optional note detail..."
                   rows={3}
-                  className="min-h-[76px] w-full flex-1 resize-y rounded-md border border-input bg-white px-3 py-2 text-sm"
+                  className="h-[76px] min-h-[76px] w-full min-w-0 resize-y rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault();
@@ -784,34 +787,36 @@ export default function ContactDetailClient({
                     }
                   }}
                 />
-                <FormatActivityNoteButton
-                  value={newNote}
-                  onChange={setNewNote}
-                  disabled={addingNote}
-                />
-                <Button
-                  onClick={handleLogNote}
-                  disabled={addingNote}
-                  className="bg-blue-600 hover:bg-blue-700 shrink-0"
-                >
-                  {addingNote ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    'Log'
-                  )}
-                </Button>
+                <div className="flex items-stretch gap-2 sm:flex-col">
+                  <FormatActivityNoteButton
+                    value={newNote}
+                    onChange={setNewNote}
+                    disabled={addingNote}
+                  />
+                  <Button
+                    onClick={handleLogNote}
+                    disabled={addingNote}
+                    className="h-10 bg-blue-600 hover:bg-blue-700 shrink-0 sm:mt-auto"
+                  >
+                    {addingNote ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Log'
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {activitiesLoading ? (
-                <div className="flex justify-center py-10">
+                <div className="flex flex-1 items-center justify-center py-10">
                   <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
                 </div>
               ) : sortedActivities.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-8">
+                <p className="flex flex-1 items-center justify-center text-sm text-gray-500 text-center py-8">
                   No activity yet. Log the first note above.
                 </p>
               ) : (
-                <div className="space-y-3">
+                <div className="min-h-0 flex-1 space-y-3">
                   <PaginationBar
                     page={pagedActivities.page}
                     totalPages={pagedActivities.totalPages}
@@ -871,8 +876,8 @@ export default function ContactDetailClient({
             </section>
           </div>
 
-          {/* Right column */}
-          <div className="xl:col-span-5 space-y-5">
+          {/* Right column — same top/bottom as notes card */}
+          <div className="flex h-full min-h-0 flex-col gap-5 xl:col-span-5">
             {contactId && companyId ? (
               <EntitySmsPanel
                 entity="contact"
@@ -882,7 +887,7 @@ export default function ContactDetailClient({
                 entityName={form.name || contact.name}
               />
             ) : null}
-            <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+            <section data-ink-on-light className="flex-1 bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-4">
                 Quick Stats
               </h2>
@@ -1005,11 +1010,11 @@ export default function ContactDetailClient({
           <h2 className="text-base font-semibold text-gray-900 mb-4">
             Full Timeline
           </h2>
-          <div className="flex flex-col items-start sm:flex-row gap-2 mb-5">
+          <div className="mb-5 grid grid-cols-1 items-stretch gap-2 sm:grid-cols-[14rem_minmax(0,1fr)_auto]">
             <select
               value={noteType}
               onChange={(e) => setNoteType(e.target.value)}
-              className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm sm:w-56"
+              className="h-[76px] w-full rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm"
             >
               {NOTE_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -1022,7 +1027,7 @@ export default function ContactDetailClient({
               onChange={(e) => setNewNote(e.target.value)}
               placeholder="Optional note detail..."
               rows={3}
-              className="min-h-[76px] w-full flex-1 resize-y rounded-md border border-input bg-white px-3 py-2 text-sm"
+              className="h-[76px] min-h-[76px] w-full min-w-0 resize-y rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
@@ -1030,18 +1035,20 @@ export default function ContactDetailClient({
                 }
               }}
             />
-            <FormatActivityNoteButton
-              value={newNote}
-              onChange={setNewNote}
-              disabled={addingNote}
-            />
-            <Button
-              onClick={handleLogNote}
-              disabled={addingNote}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              {addingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Log'}
-            </Button>
+            <div className="flex items-stretch gap-2 sm:flex-col">
+              <FormatActivityNoteButton
+                value={newNote}
+                onChange={setNewNote}
+                disabled={addingNote}
+              />
+              <Button
+                onClick={handleLogNote}
+                disabled={addingNote}
+                className="h-10 bg-blue-600 hover:bg-blue-700 shrink-0 sm:mt-auto"
+              >
+                {addingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Log'}
+              </Button>
+            </div>
           </div>
           {activitiesLoading ? (
             <div className="flex justify-center py-12">
