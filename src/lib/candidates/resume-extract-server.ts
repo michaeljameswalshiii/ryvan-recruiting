@@ -15,8 +15,10 @@ import {
   textFromPdfItems,
   type StructuredParsedResume,
 } from '@/lib/candidates/resume-text-parser';
-import { isSparseParsedResume } from '@/lib/candidates/resume-upload-limits';
-import { extractResumeTextWithOcr } from '@/lib/candidates/resume-ocr';
+import {
+  extractResumeTextWithOcr,
+  looksLikeScannedPdf,
+} from '@/lib/candidates/resume-ocr';
 
 function nodeRequire(id: string): any {
   try {
@@ -451,7 +453,19 @@ async function extractPdfText(
 
   // --- 1) unpdf (serverless-oriented pdfjs build) ---
   const unpdfResult = await extractWithUnpdf(buffer);
-  if (unpdfResult) return unpdfResult;
+  if (unpdfResult && !textLooksUnusable(unpdfResult.text)) return unpdfResult;
+
+  // Image-only / LinkedIn-style scans: skip slow pdfjs + stream inflate
+  // and let the OCR step handle it.
+  if (
+    looksLikeScannedPdf(buffer) ||
+    textLooksUnusable(unpdfResult?.text || '')
+  ) {
+    return {
+      text: unpdfResult?.text || '',
+      method: unpdfResult?.method || '',
+    };
+  }
 
   // --- 2) pdfjs-dist with DOM polyfills ---
   try {
@@ -618,32 +632,6 @@ export async function parseResumeBuffer(
   }
 
   let parsed = parseResumeText(workingText, { filename: fileName });
-
-  const looksSparse = isSparseParsedResume({
-    rawText: workingText,
-    name: parsed.name,
-    email: parsed.email,
-    phone: parsed.phone,
-    title: parsed.title,
-    skills: parsed.skills,
-    experience: parsed.experience,
-    education: parsed.education,
-    fileName,
-  });
-
-  const isPdf = fileName.toLowerCase().endsWith('.pdf');
-  const alreadyOcrd = /textract/i.test(workingMethod);
-  if (isPdf && looksSparse && !alreadyOcrd) {
-    const ocr = await extractResumeTextWithOcr(buffer, {
-      fileName,
-      s3Key: options?.s3Key,
-    });
-    if (ocr?.text && ocr.text.trim().length > workingText.trim().length) {
-      workingText = ocr.text;
-      workingMethod = workingMethod ? `${workingMethod}+${ocr.method}` : ocr.method;
-      parsed = parseResumeText(workingText, { filename: fileName });
-    }
-  }
 
   if (!parsed.name) {
     parsed.name =
