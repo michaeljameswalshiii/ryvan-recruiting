@@ -68,6 +68,7 @@ export default function NewCandidatePage() {
 
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
+  const [parseStatus, setParseStatus] = useState('');
   const [parsedFromResume, setParsedFromResume] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [resumeFileName, setResumeFileName] = useState('');
@@ -120,10 +121,13 @@ export default function NewCandidatePage() {
     }
 
     setParsing(true);
+    setParseStatus('Uploading resume…');
     setResumeFileName(file.name);
 
     try {
-      const { resume, resumeUrl, fileKey } = await parseResumeFile(file);
+      const { resume, resumeUrl, fileKey } = await parseResumeFile(file, {
+        onProgress: setParseStatus,
+      });
       const mapped = mapParsedResumeToForm(resume, {
         resumeUrl: fileKey || resumeUrl || '',
         fileName: file.name,
@@ -166,6 +170,7 @@ export default function NewCandidatePage() {
       toast.error(err?.message || 'Failed to parse resume');
     } finally {
       setParsing(false);
+      setParseStatus('');
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -428,7 +433,7 @@ export default function NewCandidatePage() {
                   >
                     <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
                     <p className="text-sm font-medium" style={{ color: '#0f172a' }}>
-                      Parsing resume…
+                      {parseStatus || 'Parsing resume…'}
                     </p>
                     {resumeFileName && (
                       <p className="text-xs" style={{ color: '#475569' }}>

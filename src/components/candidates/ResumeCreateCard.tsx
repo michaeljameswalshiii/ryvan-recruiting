@@ -130,7 +130,7 @@ export function ResumeCreateCard() {
             >
               {dragActive
                 ? 'Drop your resume to parse and continue…'
-                : 'Drag & drop a PDF or Word resume, or upload. We extract name, contact, title, skills, summary, experience, and education.'}
+                : 'Drag & drop a PDF or Word resume, or upload. Text and scanned/image PDFs are parsed the same way — name, contact, title, skills, summary, experience, and education.'}
             </p>
             {fileName && (
               <p

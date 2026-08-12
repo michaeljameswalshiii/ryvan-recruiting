@@ -356,7 +356,7 @@ export async function parseResumeFile(
   // Prefer direct-to-S3 for all sizes so prod never hits body limits
   try {
     const { s3Key, contentType } = await uploadResumeToS3(file, opts);
-    opts?.onProgress?.('Reading resume…');
+    opts?.onProgress?.('Reading resume — scanned pages use OCR…');
     const res = await fetch('/api/parse-resume', {
       method: 'POST',
       credentials: 'include',

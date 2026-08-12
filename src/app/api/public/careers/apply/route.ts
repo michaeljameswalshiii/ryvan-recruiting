@@ -15,6 +15,8 @@
  */
 
 import { NextRequest } from "next/server";
+
+export const maxDuration = 60;
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import {
   getJobById,

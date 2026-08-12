@@ -541,9 +541,17 @@ async function extractPdfText(
   return { text: '', method: '' };
 }
 
+function textLooksUnusable(text: string): boolean {
+  const t = (text || '').replace(/\s+/g, ' ').trim();
+  if (t.length < 80) return true;
+  const letters = (t.match(/[A-Za-z]/g) || []).length;
+  return letters < 40;
+}
+
 export async function extractTextFromResumeBuffer(
   buffer: Buffer,
-  fileName: string
+  fileName: string,
+  options?: { s3Key?: string }
 ): Promise<{ text: string; method: string }> {
   const lower = fileName.toLowerCase();
   let text = '';
@@ -553,6 +561,18 @@ export async function extractTextFromResumeBuffer(
     const result = await extractPdfText(buffer);
     text = result.text;
     method = result.method;
+    // Scanned / image-only PDFs have no usable text layer — OCR is part of
+    // the standard extract path so every Trio upload uses the same pipeline.
+    if (textLooksUnusable(text)) {
+      const ocr = await extractResumeTextWithOcr(buffer, {
+        fileName,
+        s3Key: options?.s3Key,
+      });
+      if (ocr?.text && ocr.text.trim().length > text.trim().length) {
+        text = ocr.text;
+        method = method ? `${method}+${ocr.method}` : ocr.method;
+      }
+    }
   } else if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
     try {
       const result = await mammoth.extractRawText({ buffer });
@@ -575,7 +595,9 @@ export async function parseResumeBuffer(
   text: string;
   method: string;
 }> {
-  const { text, method } = await extractTextFromResumeBuffer(buffer, fileName);
+  const { text, method } = await extractTextFromResumeBuffer(buffer, fileName, {
+    s3Key: options?.s3Key,
+  });
 
   // If pdf.js text is missing email/phone, graft contact tokens scraped from the
   // raw PDF (and re-parse). Letter-spaced PDFs often still embed plain emails.
@@ -610,7 +632,8 @@ export async function parseResumeBuffer(
   });
 
   const isPdf = fileName.toLowerCase().endsWith('.pdf');
-  if (isPdf && looksSparse) {
+  const alreadyOcrd = /textract/i.test(workingMethod);
+  if (isPdf && looksSparse && !alreadyOcrd) {
     const ocr = await extractResumeTextWithOcr(buffer, {
       fileName,
       s3Key: options?.s3Key,
