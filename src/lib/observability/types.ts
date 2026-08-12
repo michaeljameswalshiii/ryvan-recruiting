@@ -158,6 +158,7 @@ export type VercelSnapshot = {
 export type OpsOverview = {
   generatedAt: string;
   range: OpsRange;
+  scope: "all" | string;
   status: OpsStatus;
   statusReason: string;
   kpis: {

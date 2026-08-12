@@ -95,6 +95,22 @@ export function hourKey(date = new Date()): string {
   return iso.slice(0, 13);
 }
 
-export function hourBucketId(hour: string): string {
+export function hourBucketId(hour: string, tenantId?: string | null): string {
+  const scope = tenantId && tenantId !== "all" ? tenantId : "all";
+  return `ops-hour#${scope}#${hour}`;
+}
+
+/** Pre-tenant global hour key (still read for All Tenants history). */
+export function legacyHourBucketId(hour: string): string {
   return `ops-hour#${hour}`;
+}
+
+export function recentEventsId(tenantId?: string | null): string {
+  const scope = tenantId && tenantId !== "all" ? tenantId : "all";
+  return `ops-events#${scope}`;
+}
+
+export function recentErrorsId(tenantId?: string | null): string {
+  const scope = tenantId && tenantId !== "all" ? tenantId : "all";
+  return `ops-errors#${scope}`;
 }

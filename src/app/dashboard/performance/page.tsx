@@ -174,6 +174,15 @@ export default function OperationsHealthPage() {
           <p className="mt-1 max-w-3xl text-slate-600">
             Production errors, slowdowns, dependency health, and scheduled jobs.
             Open Vercel whenever you need the raw request log.
+            {data?.scope === "all" ? (
+              <span className="ml-1 font-semibold text-violet-700">
+                All Tenants — platform rollup across every workspace.
+              </span>
+            ) : data?.scope ? (
+              <span className="ml-1 font-semibold text-slate-700">
+                Scoped to the selected tenant.
+              </span>
+            ) : null}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

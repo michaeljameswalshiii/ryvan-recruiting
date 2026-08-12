@@ -196,6 +196,7 @@ export async function middleware(request: NextRequest) {
       !matchesPrefix(pathname, "/api/tenant/login-audit") &&
       !matchesPrefix(pathname, "/api/tenant/audit") &&
       !matchesPrefix(pathname, "/api/ai/tool-audit") &&
+      !matchesPrefix(pathname, "/api/performance") &&
       !matchesPrefix(pathname, "/api/bedrock")
     ) {
       return NextResponse.json(

@@ -12,10 +12,17 @@ import type {
   StoredError,
   StoredEvent,
 } from "./types";
-import { hourBucketId, hourKey, normalizePath } from "./links";
+import {
+  hourBucketId,
+  hourKey,
+  legacyHourBucketId,
+  normalizePath,
+  recentErrorsId,
+  recentEventsId,
+} from "./links";
 
-const RECENT_ERRORS_ID = "ops-errors#recent";
-const RECENT_EVENTS_ID = "ops-events#recent";
+const LEGACY_ERRORS_ID = "ops-errors#recent";
+const LEGACY_EVENTS_ID = "ops-events#recent";
 const MAX_ERRORS = 80;
 const MAX_EVENTS = 220;
 const SLOW_MS = 2000;
@@ -49,7 +56,10 @@ function clusterKey(error: Pick<StoredError, "name" | "message" | "path">): stri
   return `${error.name}|${error.path}|${error.message.slice(0, 80)}`;
 }
 
-async function incrementHour(events: IngestEvent[]): Promise<void> {
+async function incrementHour(
+  events: IngestEvent[],
+  tenantId?: string | null
+): Promise<void> {
   if (!events.length) return;
   let requests = 0;
   let errors = 0;
@@ -89,32 +99,45 @@ async function incrementHour(events: IngestEvent[]): Promise<void> {
 
   const hour = hourKey();
   const client = getRawDynamoClient();
-  await client.send(
-    new UpdateItemCommand({
-      TableName: table(),
-      Key: { id: { S: hourBucketId(hour) } },
-      UpdateExpression:
-        "SET #type = if_not_exists(#type, :type), #hour = if_not_exists(#hour, :hour), updatedAt = :now ADD requests :requests, errors :errors, clientErrors :clientErrors, serverErrors :serverErrors, slow :slow, totalMs :totalMs, navCount :navCount, navTotalMs :navTotalMs, lcpCount :lcpCount, lcpTotal :lcpTotal",
-      ExpressionAttributeNames: {
-        "#type": "type",
-        "#hour": "hour",
-      },
-      ExpressionAttributeValues: {
-        ":type": { S: "ops_hour" },
-        ":hour": { S: hour },
-        ":now": { S: new Date().toISOString() },
-        ":requests": { N: String(requests) },
-        ":errors": { N: String(errors) },
-        ":clientErrors": { N: String(clientErrors) },
-        ":serverErrors": { N: String(serverErrors) },
-        ":slow": { N: String(slow) },
-        ":totalMs": { N: String(totalMs) },
-        ":navCount": { N: String(navCount) },
-        ":navTotalMs": { N: String(navTotalMs) },
-        ":lcpCount": { N: String(lcpCount) },
-        ":lcpTotal": { N: String(lcpTotal) },
-      },
-    })
+  const ids = Array.from(
+    new Set(
+      [
+        hourBucketId(hour, "all"),
+        tenantId && tenantId !== "all" ? hourBucketId(hour, tenantId) : null,
+      ].filter(Boolean) as string[]
+    )
+  );
+
+  await Promise.all(
+    ids.map((id) =>
+      client.send(
+        new UpdateItemCommand({
+          TableName: table(),
+          Key: { id: { S: id } },
+          UpdateExpression:
+            "SET #type = if_not_exists(#type, :type), #hour = if_not_exists(#hour, :hour), updatedAt = :now ADD requests :requests, errors :errors, clientErrors :clientErrors, serverErrors :serverErrors, slow :slow, totalMs :totalMs, navCount :navCount, navTotalMs :navTotalMs, lcpCount :lcpCount, lcpTotal :lcpTotal",
+          ExpressionAttributeNames: {
+            "#type": "type",
+            "#hour": "hour",
+          },
+          ExpressionAttributeValues: {
+            ":type": { S: "ops_hour" },
+            ":hour": { S: hour },
+            ":now": { S: new Date().toISOString() },
+            ":requests": { N: String(requests) },
+            ":errors": { N: String(errors) },
+            ":clientErrors": { N: String(clientErrors) },
+            ":serverErrors": { N: String(serverErrors) },
+            ":slow": { N: String(slow) },
+            ":totalMs": { N: String(totalMs) },
+            ":navCount": { N: String(navCount) },
+            ":navTotalMs": { N: String(navTotalMs) },
+            ":lcpCount": { N: String(lcpCount) },
+            ":lcpTotal": { N: String(lcpTotal) },
+          },
+        })
+      )
+    )
   );
 }
 
@@ -181,40 +204,59 @@ async function prependList<T extends { items?: unknown[] }>(
   await putItem(table(), { ...next, id, type, updatedAt: new Date().toISOString() });
 }
 
-export async function recordOpsEvents(events: IngestEvent[]): Promise<void> {
+export async function recordOpsEvents(
+  events: IngestEvent[],
+  opts?: { tenantId?: string | null }
+): Promise<void> {
   const cleaned = events
     .filter((event) => event && event.kind)
     .slice(0, 40);
   if (!cleaned.length) return;
 
+  const tenantId = opts?.tenantId && opts.tenantId !== "all" ? opts.tenantId : null;
   const now = new Date().toISOString();
   const storedEvents = toStoredEvents(cleaned, now);
   const storedErrors = toStoredErrors(cleaned, now);
 
-  await incrementHour(cleaned).catch((err) => {
+  await incrementHour(cleaned, tenantId).catch((err) => {
     console.warn("[ops] hour increment failed", err);
   });
 
+  const eventIds = Array.from(
+    new Set([recentEventsId("all"), tenantId ? recentEventsId(tenantId) : null].filter(Boolean) as string[])
+  );
+  const errorIds = Array.from(
+    new Set([recentErrorsId("all"), tenantId ? recentErrorsId(tenantId) : null].filter(Boolean) as string[])
+  );
+
   if (storedEvents.length) {
-    await prependList<RecentEventsDoc>(RECENT_EVENTS_ID, "ops_events", (current) => ({
-      id: RECENT_EVENTS_ID,
-      type: "ops_events",
-      items: [...storedEvents, ...(current?.items || [])].slice(0, MAX_EVENTS),
-      updatedAt: now,
-    })).catch((err) => {
-      console.warn("[ops] event list failed", err);
-    });
+    await Promise.all(
+      eventIds.map((id) =>
+        prependList<RecentEventsDoc>(id, "ops_events", (current) => ({
+          id,
+          type: "ops_events",
+          items: [...storedEvents, ...(current?.items || [])].slice(0, MAX_EVENTS),
+          updatedAt: now,
+        })).catch((err) => {
+          console.warn("[ops] event list failed", err);
+        })
+      )
+    );
   }
 
   if (storedErrors.length) {
-    await prependList<RecentErrorsDoc>(RECENT_ERRORS_ID, "ops_errors", (current) => ({
-      id: RECENT_ERRORS_ID,
-      type: "ops_errors",
-      items: mergeErrors(current?.items || [], storedErrors),
-      updatedAt: now,
-    })).catch((err) => {
-      console.warn("[ops] error list failed", err);
-    });
+    await Promise.all(
+      errorIds.map((id) =>
+        prependList<RecentErrorsDoc>(id, "ops_errors", (current) => ({
+          id,
+          type: "ops_errors",
+          items: mergeErrors(current?.items || [], storedErrors),
+          updatedAt: now,
+        })).catch((err) => {
+          console.warn("[ops] error list failed", err);
+        })
+      )
+    );
   }
 }
 
@@ -263,29 +305,63 @@ export async function recordCronHeartbeat(input: {
   }
 }
 
-export async function getHourBuckets(hours: string[]): Promise<HourBucket[]> {
+function normalizeBucket(hour: string, item: HourBucket | null): HourBucket | null {
+  if (!item) return null;
+  return {
+    ...item,
+    hour,
+    requests: Number(item.requests || 0),
+    errors: Number(item.errors || 0),
+    clientErrors: Number(item.clientErrors || 0),
+    serverErrors: Number(item.serverErrors || 0),
+    slow: Number(item.slow || 0),
+    totalMs: Number(item.totalMs || 0),
+    navCount: Number(item.navCount || 0),
+    navTotalMs: Number(item.navTotalMs || 0),
+    lcpCount: Number(item.lcpCount || 0),
+    lcpTotal: Number(item.lcpTotal || 0),
+  };
+}
+
+function addBuckets(a: HourBucket | null, b: HourBucket | null): HourBucket | null {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    ...a,
+    requests: a.requests + b.requests,
+    errors: a.errors + b.errors,
+    clientErrors: a.clientErrors + b.clientErrors,
+    serverErrors: a.serverErrors + b.serverErrors,
+    slow: a.slow + b.slow,
+    totalMs: a.totalMs + b.totalMs,
+    navCount: a.navCount + b.navCount,
+    navTotalMs: a.navTotalMs + b.navTotalMs,
+    lcpCount: a.lcpCount + b.lcpCount,
+    lcpTotal: a.lcpTotal + b.lcpTotal,
+  };
+}
+
+export async function getHourBuckets(
+  hours: string[],
+  tenantId?: string | null
+): Promise<HourBucket[]> {
+  const scope = tenantId && tenantId !== "all" ? tenantId : "all";
   const out: HourBucket[] = [];
   for (let i = 0; i < hours.length; i += 24) {
     const chunk = hours.slice(i, i + 24);
     const rows = await Promise.all(
       chunk.map(async (hour) => {
         try {
-          const item = await getItem<HourBucket>(table(), { id: hourBucketId(hour) });
-          if (!item) return null;
-          return {
-            ...item,
+          const primary = normalizeBucket(
             hour,
-            requests: Number(item.requests || 0),
-            errors: Number(item.errors || 0),
-            clientErrors: Number(item.clientErrors || 0),
-            serverErrors: Number(item.serverErrors || 0),
-            slow: Number(item.slow || 0),
-            totalMs: Number(item.totalMs || 0),
-            navCount: Number(item.navCount || 0),
-            navTotalMs: Number(item.navTotalMs || 0),
-            lcpCount: Number(item.lcpCount || 0),
-            lcpTotal: Number(item.lcpTotal || 0),
-          } satisfies HourBucket;
+            await getItem<HourBucket>(table(), { id: hourBucketId(hour, scope) })
+          );
+          if (scope !== "all") return primary;
+          const legacy = normalizeBucket(
+            hour,
+            await getItem<HourBucket>(table(), { id: legacyHourBucketId(hour) })
+          );
+          return addBuckets(primary, legacy);
         } catch {
           return null;
         }
@@ -298,22 +374,40 @@ export async function getHourBuckets(hours: string[]): Promise<HourBucket[]> {
   return out;
 }
 
-export async function getRecentEvents(): Promise<StoredEvent[]> {
+async function readEventDoc(id: string): Promise<StoredEvent[]> {
   try {
-    const doc = await getItem<RecentEventsDoc>(table(), { id: RECENT_EVENTS_ID });
+    const doc = await getItem<RecentEventsDoc>(table(), { id });
     return Array.isArray(doc?.items) ? doc.items : [];
   } catch {
     return [];
   }
 }
 
-export async function getRecentErrors(): Promise<StoredError[]> {
+async function readErrorDoc(id: string): Promise<StoredError[]> {
   try {
-    const doc = await getItem<RecentErrorsDoc>(table(), { id: RECENT_ERRORS_ID });
+    const doc = await getItem<RecentErrorsDoc>(table(), { id });
     return Array.isArray(doc?.items) ? doc.items : [];
   } catch {
     return [];
   }
+}
+
+export async function getRecentEvents(tenantId?: string | null): Promise<StoredEvent[]> {
+  const scope = tenantId && tenantId !== "all" ? tenantId : "all";
+  const primary = await readEventDoc(recentEventsId(scope));
+  if (scope !== "all") return primary;
+  const legacy = await readEventDoc(LEGACY_EVENTS_ID);
+  return [...primary, ...legacy]
+    .sort((a, b) => String(b.t).localeCompare(String(a.t)))
+    .slice(0, MAX_EVENTS);
+}
+
+export async function getRecentErrors(tenantId?: string | null): Promise<StoredError[]> {
+  const scope = tenantId && tenantId !== "all" ? tenantId : "all";
+  const primary = await readErrorDoc(recentErrorsId(scope));
+  if (scope !== "all") return primary;
+  const legacy = await readErrorDoc(LEGACY_ERRORS_ID);
+  return mergeErrors(primary, legacy);
 }
 
 export async function getCronHeartbeat(cronId: string): Promise<CronHeartbeat | null> {

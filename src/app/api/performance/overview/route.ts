@@ -17,6 +17,8 @@ import {
   percentile,
 } from "@/lib/observability/insights";
 import { rangeToMs } from "@/lib/observability/links";
+import { getSession } from "@/lib/server-auth";
+import { isSiteAdmin } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -57,12 +59,21 @@ export async function GET(request: NextRequest) {
   const rangeMs = rangeToMs(range);
   const since = Date.now() - rangeMs;
 
+  const session = await getSession();
+  const tenantId =
+    session && isSiteAdmin(session.role)
+      ? session.tenantScope && session.tenantScope !== "all"
+        ? session.tenantScope
+        : null
+      : session?.tenantId || null;
+  const scope = tenantId || "all";
+
   const hourKeys = listHourKeys(rangeMs);
   const [buckets, recentEvents, recentErrors, dependencies, jobs, vercel] =
     await Promise.all([
-      getHourBuckets(hourKeys),
-      getRecentEvents(),
-      getRecentErrors(),
+      getHourBuckets(hourKeys, scope),
+      getRecentEvents(scope),
+      getRecentErrors(scope),
       getDependencyHealth(),
       getJobHealth(),
       getVercelSnapshot(range),
@@ -140,6 +151,7 @@ export async function GET(request: NextRequest) {
   const payload: OpsOverview = {
     generatedAt: new Date().toISOString(),
     range,
+    scope,
     status: status.status,
     statusReason: status.reason,
     kpis: {

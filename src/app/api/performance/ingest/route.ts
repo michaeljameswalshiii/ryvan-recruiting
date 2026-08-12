@@ -3,6 +3,8 @@ import { requireAuthSession } from "@/lib/admin-auth";
 import { recordOpsEvents } from "@/lib/observability/store";
 import type { IngestEvent, OpsEventKind } from "@/lib/observability/types";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getSession } from "@/lib/server-auth";
+import { isSiteAdmin } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -44,7 +46,15 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await recordOpsEvents(events);
+    const session = await getSession();
+    const scoped =
+      session && isSiteAdmin(session.role)
+        ? session.tenantScope && session.tenantScope !== "all"
+          ? session.tenantScope
+          : null
+        : session?.tenantId || null;
+
+    await recordOpsEvents(events, { tenantId: scoped });
     return NextResponse.json({ ok: true, accepted: events.length });
   } catch (err) {
     console.warn("[ops/ingest]", err);
