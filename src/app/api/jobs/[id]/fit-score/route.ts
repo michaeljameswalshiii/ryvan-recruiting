@@ -48,12 +48,14 @@ function jobFitInput(job: {
   description?: string;
   location?: string;
   salaryRange?: string;
+  companyName?: string;
 }) {
   return {
     title: job.title || "",
     description: job.description || "",
     location: job.location || "",
     salaryRange: job.salaryRange || "",
+    companyName: job.companyName || "",
   };
 }
 

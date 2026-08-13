@@ -154,6 +154,7 @@ export interface FitJobInput {
   description?: string;
   location?: string;
   salaryRange?: string;
+  companyName?: string;
 }
 
 /** Common skill aliases → canonical form */
@@ -456,6 +457,7 @@ const RELATED_SKILL_GROUPS: string[][] = [
   ["leadership", "customer service", "training"],
   ["jira", "asana", "monday.com", "project management", "ms project", "primavera"],
   ["procore", "bluebeam", "bim 360", "submittals", "rfis", "change orders"],
+  ["lean", "six sigma", "kaizen", "oee", "pfmea", "dmaic"],
   ["tableau", "power bi", "excel"],
   ["docker", "kubernetes", "devops"],
   ["amazon web services", "microsoft azure", "google cloud"],
@@ -703,6 +705,17 @@ const COMMON_SKILLS: string[] = [
   "rfis",
   "closeout",
   "scheduling",
+  "lean",
+  "six sigma",
+  "kaizen",
+  "oee",
+  "pfmea",
+  "dmaic",
+  "5s",
+  "minitab",
+  "solidworks",
+  "creo",
+  "catia",
   // Roles / domains often used as skill signals
   "full-stack",
   "frontend",
@@ -1200,6 +1213,11 @@ const DOMAIN_SKILL_SET = new Set<string>([
   "compliance",
   "training",
   "project management",
+  "lean",
+  "six sigma",
+  "kaizen",
+  "oee",
+  "manufacturing",
   "change orders",
   "submittals",
   "rfis",
@@ -1392,6 +1410,24 @@ const DOMAIN_KEYWORDS: string[] = [
   "ground-up",
   "tenant improvement",
   "cost control",
+  "manufacturing",
+  "production",
+  "plant operations",
+  "shop floor",
+  "lean",
+  "six sigma",
+  "kaizen",
+  "oee",
+  "as9100",
+  "iso 9001",
+  "cnc",
+  "machining",
+  "stamping",
+  "fabrication",
+  "injection mold",
+  "process validation",
+  "pfmea",
+  "dmaic",
 ];
 
 function domainKeywordOverlap(candText: string, jobText: string): {
@@ -1528,6 +1564,77 @@ function extractStateCodes(loc: string): string[] {
   return Array.from(codes);
 }
 
+/** Cities that count as the same commute market. */
+const LOCATION_METROS: string[][] = [
+  [
+    "weston",
+    "fort lauderdale",
+    "ft lauderdale",
+    "ft. lauderdale",
+    "davie",
+    "plantation",
+    "sunrise",
+    "tamarac",
+    "hollywood",
+    "pembroke pines",
+    "miramar",
+    "coral springs",
+    "coconut creek",
+    "deerfield beach",
+    "pompano",
+    "pompano beach",
+    "dania",
+    "dania beach",
+    "hallandale",
+    "lauderhill",
+    "oakland park",
+    "parkland",
+    "margate",
+    "cooper city",
+    "southwest ranches",
+  ],
+  [
+    "miami",
+    "miami beach",
+    "doral",
+    "hialeah",
+    "coral gables",
+    "kendall",
+    "homestead",
+    "aventura",
+    "miami lakes",
+    "miami gardens",
+  ],
+  ["boca raton", "delray beach", "boynton beach", "deerfield beach", "west palm beach", "palm beach"],
+];
+
+function extractCities(text: string): string[] {
+  const blob = normalizeLocation(text);
+  if (!blob) return [];
+  const found = new Set<string>();
+  for (const metro of LOCATION_METROS) {
+    for (const city of metro) {
+      if (blob.includes(city)) found.add(city);
+    }
+  }
+  return Array.from(found);
+}
+
+function sharedMetro(a: string[], b: string[]): string | null {
+  for (const metro of LOCATION_METROS) {
+    const set = new Set(metro);
+    const aHit = a.find((c) => set.has(c));
+    const bHit = b.find((c) => set.has(c));
+    if (aHit && bHit) return aHit === bHit ? aHit : `${aHit} / ${bHit}`;
+  }
+  return null;
+}
+
+function zip3(text: string): string | null {
+  const m = String(text || "").match(/\b(\d{5})(?:-\d{4})?\b/);
+  return m ? m[1].slice(0, 3) : null;
+}
+
 function locationSoftMatch(
   candidateLoc?: string,
   jobLoc?: string,
@@ -1547,6 +1654,22 @@ function locationSoftMatch(
 
   const jobRemote = /\bremote\b|\bwork from home\b|\bwfh\b/i.test(jobLocBlob);
   const candRemote = /\bremote\b|\bopen to remote\b/i.test(c);
+
+  const candCities = extractCities(c);
+  const jobCities = extractCities(jobLocBlob);
+  const metro = sharedMetro(candCities, jobCities);
+  if (metro) {
+    return {
+      score: 0.98,
+      reason: `Local to the role (${metro})`,
+    };
+  }
+
+  const candZip = zip3(c);
+  const jobZip = zip3(jobLocBlob);
+  if (candZip && jobZip && candZip === jobZip) {
+    return { score: 0.97, reason: `Same local zip area (${candZip})` };
+  }
 
   // Multi-state eligibility first — don't mislabel residency-list roles as plain "remote"
   const jobStates = extractStateCodes(jobLocBlob);
@@ -1574,8 +1697,9 @@ function locationSoftMatch(
   }
   if (jobStates.length === 1 && candStates.length > 0) {
     if (candStates.includes(jobStates[0])) {
+      // Same state is good, but not as strong as a city/metro hit
       return {
-        score: 0.95,
+        score: jobCities.length > 0 && candCities.length === 0 ? 0.8 : 0.88,
         reason: `Location state match (${jobStates[0].toUpperCase()})`,
       };
     }
@@ -1600,7 +1724,7 @@ function locationSoftMatch(
     }
   }
 
-  if (jobStates.length === 0) {
+  if (jobStates.length === 0 && jobCities.length === 0) {
     return { score: 0.5, reason: "Job location not specific enough to score" };
   }
 
@@ -2186,7 +2310,7 @@ export function scoreCandidateJobFitV1(
   const locPart = locationSoftMatch(
     candidate.location,
     job.location,
-    job.description
+    [job.description, job.companyName].filter(Boolean).join("\n")
   );
 
   // --- Seniority / years (10%) ---
@@ -2473,6 +2597,29 @@ export function scoreCandidateJobFitV1(
       keywordCtx.detail
     ),
   ];
+
+  const jobCompany = String(job.companyName || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(inc|llc|ltd|corp|corporation|company|co)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const sameEmployer =
+    jobCompany.length >= 4 &&
+    candText
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .includes(jobCompany);
+  if (sameEmployer) {
+    for (const id of ["industry_domain", "responsibilities"] as const) {
+      const d = dimensions.find((x) => x.id === id);
+      if (!d || !d.applicable) continue;
+      const next = Math.max(d.score, id === "industry_domain" ? 84 : 78);
+      d.score = next;
+      d.grade = gradeFromScore(next);
+      d.detail = `${d.detail} · Already at this company`;
+    }
+  }
 
   const applicableDims = dimensions.filter((d) => d.applicable);
   const score = Math.max(

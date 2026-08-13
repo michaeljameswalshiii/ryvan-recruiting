@@ -67,9 +67,9 @@ const FIELDS: FieldDef[] = [
     id: "manufacturing_ops",
     label: "manufacturing / plant operations",
     title:
-      /\b(plant\s*manager|production\s*manager|manufacturing|process\s*engineer|quality\s*engineer|cnc|machinist|operations\s*manager)\b/i,
+      /\b(plant\s*manager|production\s*manager|manufacturing|process\s*engineer|quality\s*engineer|cnc|machinist|operations\s*manager|director of operations|director of manufacturing|vp of operations|manufacturing engineer)\b/i,
     keywords:
-      /\b(cnc|lean\s*manufactur|six\s*sigma|shop\s*floor|production\s*line|tool(?:\s*and\s*|&)?\s*die|oee|iso\s*9001|machining|fabrication)\b/i,
+      /\b(cnc|lean\s*manufactur|six\s*sigma|shop\s*floor|production\s*line|tool(?:\s*and\s*|&)?\s*die|oee|iso\s*9001|machining|fabrication|as9100|kaizen|stamping|deep\s*draw|swiss\s*machin|wire\s*edm|injection\s*mold)\b/i,
   },
   {
     id: "sales",
