@@ -176,7 +176,9 @@ async function loadResumeTextForLead(lead: any): Promise<string> {
       lead.resumeFileName ||
       s3Key.split("/").pop() ||
       "resume.pdf";
-    const { text } = await extractTextFromResumeBuffer(buffer, String(fileName));
+    const { text } = await extractTextFromResumeBuffer(buffer, String(fileName), {
+      s3Key,
+    });
     return (text || "").trim().slice(0, 20000);
   } catch (err) {
     console.warn("[fit-score] resume text load failed:", err);
