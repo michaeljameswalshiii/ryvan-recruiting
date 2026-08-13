@@ -568,9 +568,14 @@ export async function getLeadByLinkedIn(
   const allLeads = await getAllLeads(tenantId);
   return (
     allLeads.find(
-      (lead) =>
-        lead.linkedin_url?.toLowerCase().includes(normalizedUrl) ||
-        normalizedUrl.includes(lead.linkedin_url?.toLowerCase() || ""),
+      (lead) => {
+        const existingUrl = lead.linkedin_url?.toLowerCase().trim();
+        if (!existingUrl) return false;
+        return (
+          existingUrl.includes(normalizedUrl) ||
+          normalizedUrl.includes(existingUrl)
+        );
+      },
     ) || null
   );
 }
@@ -775,6 +780,21 @@ export async function linkCandidateToJobForApplication(
       ) {
         console.warn("[linkCandidateToJobForApplication] job dual-write:", err);
       }
+    }
+  }
+
+  if (!options?.skipDualWrite) {
+    try {
+      const { scheduleFitScoreOnLink } = await import(
+        "@/lib/ai/schedule-fit-on-link"
+      );
+      scheduleFitScoreOnLink({
+        tenantId,
+        jobId,
+        candidateId: leadId,
+      });
+    } catch (err) {
+      console.warn("[linkCandidateToJobForApplication] schedule fit:", err);
     }
   }
 

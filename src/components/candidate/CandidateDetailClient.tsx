@@ -217,7 +217,7 @@ export function CandidateDetailClient({
   const [avatarBusy, setAvatarBusy] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [noteText, setNoteText] = useState("");
-  const [noteType, setNoteType] = useState("Conversation");
+  const [noteType, setNoteType] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
   const [fitBusy, setFitBusy] = useState(false);
@@ -335,6 +335,20 @@ export function CandidateDetailClient({
   const fitGradeLetter = String(fit.fitGrade || fit.fit_grade || "")
     .trim()
     .toUpperCase();
+  const fitBand = String(fit.fitBand || fit.band || "").trim();
+  const fitHm = String(fit.fitHmReachOut || fit.hmReachOut || "").trim();
+  const fitHmReason = String(fit.fitHmReason || fit.hmReason || "").trim();
+  const fitFactors: Array<{ id?: string; label?: string; points?: number; max?: number; detail?: string }> =
+    Array.isArray(fit.fitFactors)
+      ? fit.fitFactors
+      : Array.isArray(fit.rubric)
+        ? fit.rubric
+        : [];
+  const fitVerify: string[] = Array.isArray(fit.fitVerify)
+    ? fit.fitVerify
+    : Array.isArray(fit.verifyBeforeAdvancing)
+      ? fit.verifyBeforeAdvancing
+      : [];
   const fitStrengthsList: string[] = Array.isArray(fit.fitStrengths)
     ? fit.fitStrengths
     : Array.isArray(fit.strengths)
@@ -345,35 +359,26 @@ export function CandidateDetailClient({
     : Array.isArray(fit.gaps)
       ? fit.gaps
       : [];
-  const fitDomainScore =
-    fit.fitDomainScore ?? fit.fit_domain_score ?? fit.domainScore ?? null;
-  const fitToolScore =
-    fit.fitToolScore ?? fit.fit_tool_score ?? fit.toolScore ?? null;
-  const fitToolsApplicable = fit.fitToolApplicable !== false;
-  const fitGradeColor =
-    fitGradeLetter === "A"
+  const fitBandColor =
+    /strong/i.test(fitBand) || fitGradeLetter === "A"
       ? "text-emerald-700"
-      : fitGradeLetter === "B"
+      : /good/i.test(fitBand) || fitGradeLetter === "B"
         ? "text-sky-700"
-        : fitGradeLetter === "C"
+        : /review/i.test(fitBand) || fitGradeLetter === "C"
           ? "text-amber-700"
-          : fitGradeLetter === "D"
-            ? "text-orange-700"
-            : fitGradeLetter === "F"
-              ? "text-rose-700"
-              : "text-slate-600";
+          : fitScore != null
+            ? "text-rose-700"
+            : "text-slate-600";
   const fitRingColor =
-    fitGradeLetter === "A"
+    /strong/i.test(fitBand) || Number(fitScore) >= 85
       ? "#16a34a"
-      : fitGradeLetter === "B"
+      : /good/i.test(fitBand) || Number(fitScore) >= 70
         ? "#0284c7"
-        : fitGradeLetter === "C"
+        : /review/i.test(fitBand) || Number(fitScore) >= 55
           ? "#d97706"
-          : fitGradeLetter === "D"
-            ? "#ea580c"
-            : fitGradeLetter === "F"
-              ? "#e11d48"
-              : "#64748b";
+          : fitScore != null
+            ? "#e11d48"
+            : "#64748b";
   const runFit = async () => {
     const jobId = currentJob?.jobId || currentJob?.id;
     if (!jobId) {
@@ -422,18 +427,18 @@ export function CandidateDetailClient({
       setFitOverlay({
         fitScore: scored.score,
         fitGrade: scored.grade,
-        fitDomainScore: scored.domainFit?.score ?? scored.domainScore,
-        fitToolScore: scored.toolReadiness?.score ?? scored.toolScore,
-        fitToolApplicable:
-          scored.toolReadiness?.applicable !== false &&
-          scored.fitToolApplicable !== false,
+        fitBand: scored.band,
+        fitHmReachOut: scored.hmReachOut,
+        fitHmReason: scored.hmReason,
+        fitVerify: scored.verifyBeforeAdvancing || scored.fitVerify,
+        fitFactors: scored.rubric || scored.fitFactors,
         fitStrengths: Array.isArray(scored.strengths) ? scored.strengths : [],
         fitGaps: Array.isArray(scored.gaps) ? scored.gaps : [],
         fitSummary: scored.summary || "",
       });
       toast.success(
         `AI Fit updated: ${Math.round(Number(scored.score))}/100` +
-          (scored.grade ? ` (Grade ${scored.grade})` : "")
+          (scored.band ? ` · ${scored.band}` : "")
       );
     } catch (err: any) {
       console.error("[runFit]", err);
@@ -479,7 +484,7 @@ export function CandidateDetailClient({
     }
   };
   const addActivity = async () => {
-    if (!noteText.trim()) return;
+    if (!noteType || !noteText.trim()) return;
     setNoteBusy(true);
     try {
       const response = await fetch(`/api/candidate/${candidate.id}/notes`, {
@@ -499,6 +504,7 @@ export function CandidateDetailClient({
       ).then((r) => r.json());
       setNotes(Array.isArray(events?.events) ? events.events : []);
       setNoteText("");
+      setNoteType("");
     } finally {
       setNoteBusy(false);
     }
@@ -1041,31 +1047,49 @@ export function CandidateDetailClient({
                       <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
                         Overall fit
                       </div>
-                      <div className={`text-base font-semibold ${fitGradeColor}`}>
-                        {fitGradeLetter
-                          ? `Grade ${fitGradeLetter}`
+                      <div className={`text-base font-semibold ${fitBandColor}`}>
+                        {fitBand
+                          ? fitBand
                           : fitScore != null
                             ? "Scored"
                             : "Not scored"}
                       </div>
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-700">
-                          Domain{" "}
-                          {fitDomainScore != null
-                            ? `${Math.round(Number(fitDomainScore))}/100`
-                            : "—"}
-                        </span>
-                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-700">
-                          {!fitToolsApplicable
-                            ? "Tools n/a"
-                            : fitToolScore != null
-                              ? `Tools ${Math.round(Number(fitToolScore))}/100`
-                              : "Tools —"}
-                        </span>
-                      </div>
+                      {fitHm ? (
+                        <div className="mt-1 text-[11px] leading-snug text-slate-600">
+                          Hiring manager reach out: <span className="font-semibold">{fitHm}</span>
+                          {fitHmReason ? ` — ${fitHmReason}` : ""}
+                        </div>
+                      ) : null}
+                      {fitFactors.length > 0 ? (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {fitFactors.map((f) => (
+                            <span
+                              key={f.label || f.id}
+                              className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-700"
+                              title={f.detail}
+                            >
+                              {(f.label || "").replace("Relevant Experience / Can-Do", "Experience").replace("Software / Skills / Certs", "Skills").replace("Location & Logistics", "Location").replace("Industry Alignment", "Industry")}{" "}
+                              {f.points}/{f.max}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
+
+                {fitVerify.length > 0 && (
+                  <div className="mb-3 rounded-lg border border-slate-200 bg-white p-2.5">
+                    <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                      Verify before advancing
+                    </div>
+                    <ul className="space-y-1 text-xs text-slate-700">
+                      {fitVerify.slice(0, 4).map((item) => (
+                        <li key={item}>• {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 <div className="mb-3 grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2 sm:grid-rows-1">
                   <div className="flex h-full min-h-[9rem] min-w-0 flex-col rounded-lg border border-emerald-100 bg-emerald-50/40 p-2.5">
@@ -1144,12 +1168,14 @@ export function CandidateDetailClient({
                 </p>
               </div>
               <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/40 p-2.5">
-                <div className="flex flex-col items-start gap-2 sm:flex-row">
+                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
                   <select
                     value={noteType}
                     onChange={(event) => setNoteType(event.target.value)}
+                    aria-label="Activity type"
                     className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs sm:w-36"
                   >
+                    <option value="">Select type...</option>
                     {ACTIVITY_NOTE_TYPES.map((type) => (
                       <option key={type.value} value={type.value}>
                         {type.label}
@@ -1176,7 +1202,7 @@ export function CandidateDetailClient({
                   />
                   <Button
                     size="sm"
-                    disabled={noteBusy || !noteText.trim()}
+                    disabled={noteBusy || !noteType || !noteText.trim()}
                     onClick={() => void addActivity()}
                     className="h-9 shrink-0 bg-blue-600 text-xs hover:bg-blue-700"
                   >
@@ -1339,6 +1365,9 @@ export function CandidateDetailClient({
         onLinked={(next) => {
           // Merge modal summary with any existing stage metadata we already had.
           // `next` is the full desired set — unlinked jobs are omitted entirely.
+          const prevIds = new Set(
+            linkedJobs.map((j: any) => String(j.jobId || j.id || "")),
+          );
           const byId = new Map(
             linkedJobs.map((j: any) => [String(j.jobId || j.id || ""), j]),
           );
@@ -1358,16 +1387,72 @@ export function CandidateDetailClient({
             };
           });
           setLinkedJobs(merged);
+          const added = next.filter((n) => !prevIds.has(String(n.jobId)));
           const stillSelected = merged.some(
             (j) => String(j.jobId || j.id || "") === String(selectedJobId),
           );
+          const focusJobId = added[0]?.jobId
+            ? String(added[0].jobId)
+            : stillSelected
+              ? String(selectedJobId)
+              : String(merged[0]?.jobId || merged[0]?.id || "");
           if (!merged.length) {
             setSelectedJobId("");
-          } else if (!stillSelected) {
-            setSelectedJobId(String(merged[0].jobId || merged[0].id || ""));
+          } else {
+            setSelectedJobId(focusJobId);
           }
-          // Refresh server props so other panels stay consistent
-          router.refresh();
+          if (added[0]?.jobId && candidate?.id) {
+            const jobId = String(added[0].jobId);
+            setFitBusy(true);
+            void fetch(
+              `/api/jobs/${encodeURIComponent(jobId)}/fit-score`,
+              {
+                method: "POST",
+                credentials: "include",
+                cache: "no-store",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  candidateId: String(candidate.id),
+                  persist: true,
+                }),
+              },
+            )
+              .then(async (response) => {
+                const body = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                  throw new Error(body?.error || "Fit scoring failed");
+                }
+                const row = Array.isArray(body?.scores) ? body.scores[0] : null;
+                const scored =
+                  body?.fit ||
+                  row?.fit ||
+                  (row && typeof row.score === "number" ? row : null) ||
+                  {};
+                if (scored.score == null && scored.grade == null) return;
+                setFitOverlay({
+                  fitScore: scored.score,
+                  fitGrade: scored.grade,
+                  fitBand: scored.band,
+                  fitHmReachOut: scored.hmReachOut,
+                  fitHmReason: scored.hmReason,
+                  fitVerify: scored.verifyBeforeAdvancing || scored.fitVerify,
+                  fitFactors: scored.rubric || scored.fitFactors,
+                  fitStrengths: Array.isArray(scored.strengths)
+                    ? scored.strengths
+                    : [],
+                  fitGaps: Array.isArray(scored.gaps) ? scored.gaps : [],
+                  fitSummary: scored.summary || "",
+                });
+                toast.success(
+                  `AI Fit updated: ${Math.round(Number(scored.score))}/100` +
+                    (scored.band ? ` · ${scored.band}` : ""),
+                );
+              })
+              .catch((err) => {
+                console.warn("[auto-fit after attach]", err);
+              })
+              .finally(() => setFitBusy(false));
+          }
         }}
       />
 

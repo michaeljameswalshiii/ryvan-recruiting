@@ -353,7 +353,7 @@ export function useLinkCandidateToJob() {
       return result;
     },
     onSuccess: async (_, variables) => {
-      toast.success('Candidate linked to job');
+      toast.success('Candidate linked to job — scoring AI Fit…');
       const { refreshCrmUi } = await import('./immediate-ui');
       await refreshCrmUi(queryClient, [
         jobKeys.all,

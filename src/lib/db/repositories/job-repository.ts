@@ -438,6 +438,21 @@ export async function linkCandidateToJob(
     }
   }
 
+  if (!options?.skipDualWrite) {
+    try {
+      const { scheduleFitScoreOnLink } = await import(
+        "@/lib/ai/schedule-fit-on-link"
+      );
+      scheduleFitScoreOnLink({
+        tenantId,
+        jobId,
+        candidateId: data.candidateId,
+      });
+    } catch (err) {
+      console.warn("[linkCandidateToJob] schedule fit:", err);
+    }
+  }
+
   // Return fresh job with candidates array guaranteed
   return (
     updated || {
