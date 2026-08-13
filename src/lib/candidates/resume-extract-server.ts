@@ -19,6 +19,7 @@ import {
   extractResumeTextWithOcr,
   looksLikeScannedPdf,
 } from '@/lib/candidates/resume-ocr';
+import { isSparseParsedResume } from '@/lib/candidates/resume-upload-limits';
 
 function nodeRequire(id: string): any {
   try {
@@ -633,10 +634,70 @@ export async function parseResumeBuffer(
 
   let parsed = parseResumeText(workingText, { filename: fileName });
 
+  // A readable PDF can still have a broken text layer (common with exported
+  // two-column resumes). If the first parse is structurally sparse, give OCR a
+  // chance even when the extracted text is long enough to pass basic checks.
+  if (
+    lowerCasePdf(fileName) &&
+    options?.s3Key &&
+    isSparseParsedResume({
+      rawText: workingText,
+      name: parsed.name,
+      email: parsed.email,
+      phone: parsed.phone,
+      title: parsed.title,
+      skills: parsed.skills,
+      experience: parsed.experience,
+      education: parsed.education,
+      fileName,
+    })
+  ) {
+    try {
+      const ocr = await extractResumeTextWithOcr(buffer, {
+        fileName,
+        s3Key: options.s3Key,
+      });
+      if (ocr?.text && ocr.text.trim().length > workingText.trim().length) {
+        const ocrParsed = parseResumeText(ocr.text, { filename: fileName });
+        const currentSignal =
+          (parsed.skills?.length || 0) +
+          (parsed.experience?.length || 0) +
+          (parsed.education?.length || 0) +
+          (parsed.summary ? 1 : 0);
+        const ocrSignal =
+          (ocrParsed.skills?.length || 0) +
+          (ocrParsed.experience?.length || 0) +
+          (ocrParsed.education?.length || 0) +
+          (ocrParsed.summary ? 1 : 0);
+        if (ocrSignal > currentSignal || isSparseParsedResume({
+          rawText: workingText,
+          name: parsed.name,
+          email: parsed.email,
+          phone: parsed.phone,
+          title: parsed.title,
+          skills: parsed.skills,
+          experience: parsed.experience,
+          education: parsed.education,
+          fileName,
+        })) {
+          workingText = ocr.text;
+          workingMethod = workingMethod ? `${workingMethod}+${ocr.method}` : ocr.method;
+          parsed = ocrParsed;
+        }
+      }
+    } catch (error) {
+      console.warn('[resume-extract] sparse parse OCR retry failed:', error);
+    }
+  }
+
   if (!parsed.name) {
     parsed.name =
       extractNameFromFilename(fileName) ||
       fileName.replace(/\.[^/.]+$/, '');
   }
   return { parsed, text: workingText, method: workingMethod };
+}
+
+function lowerCasePdf(fileName: string): boolean {
+  return String(fileName || '').toLowerCase().endsWith('.pdf');
 }

@@ -46,6 +46,13 @@ export async function POST(
       notes = '',
       linkedin_url = '',
       resume_url = '',
+      resume_file_name = '',
+      summary = '',
+      skills = [],
+      experience = [],
+      education = [],
+      certifications = [],
+      salary_requirements = '',
       tags = [],
     } = body;
 
@@ -60,7 +67,7 @@ export async function POST(
     // Create the lead
     const lead = await createLead(
       tenantId,
-      {
+      ({
         name: name.trim(),
         email: email?.trim() || '',
         phone: phone?.trim() || '',
@@ -71,6 +78,17 @@ export async function POST(
         notes: notes?.trim() || '',
         linkedin_url: linkedin_url?.trim() || '',
         resume_url: resume_url?.trim() || '',
+        resume_file_name: resume_file_name?.trim() || '',
+        summary: summary?.trim() || '',
+        skills: Array.isArray(skills)
+          ? skills.map((skill: unknown) => String(skill).trim()).filter(Boolean).slice(0, 100)
+          : [],
+        experience: Array.isArray(experience) ? experience.slice(0, 30) : [],
+        education: Array.isArray(education) ? education.slice(0, 20) : [],
+        certifications: Array.isArray(certifications)
+          ? certifications.map((certification: unknown) => String(certification).trim()).filter(Boolean).slice(0, 50)
+          : [],
+        salary_requirements: salary_requirements?.trim() || '',
         tags: Array.isArray(tags)
           ? Array.from(
               new Set(
@@ -81,7 +99,7 @@ export async function POST(
               ),
             )
           : [],
-      },
+      } as any),
       { userId, email: userEmail },
     );
 
