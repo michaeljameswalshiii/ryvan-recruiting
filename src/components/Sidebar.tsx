@@ -59,36 +59,37 @@ const menuItems: MenuItem[] = [
   },
 ];
 
-/** Platform / elevated tools — single "System Admin" nav group (was Admin + Site Admin). */
-const systemAdminItems: MenuItem[] = [
-  // Login history is a platform-admin tool (passwords are never stored).
+/** Shipped platform tools. */
+const systemAdminFeatureItems: MenuItem[] = [
   {
     name: 'Login audit',
     href: '/dashboard/login-audit',
     icon: ScrollText,
     permission: 'site_admin_tools',
   },
-  // Work items = ADO/Jira-style tracker (system admin only; replaces old "Issues")
   {
     name: 'Work items',
     href: '/dashboard/issues',
     icon: Bug,
     permission: 'issues',
   },
-  // Inbox is not ready for recruiters yet — keep it in System Admin.
+  { name: 'AI Reliability', href: '/dashboard/ai-reliability', icon: Activity, permission: 'usage' },
+  { name: 'Ops Health', href: '/dashboard/performance', icon: Gauge, permission: 'performance' },
+  { name: 'Usage', href: '/dashboard/usage', icon: BarChart3, permission: 'usage' },
+  { name: 'Tenants', href: '/dashboard/site-admin', icon: Building2, permission: 'site_admin_tools' },
+  { name: 'Dynamo Search Tool', href: '/dashboard/dynamo-search', icon: Database, permission: 'dynamo_search' },
+];
+
+/** Visible to system admins, but not ready for recruiters. */
+const systemAdminInDevItems: MenuItem[] = [
   {
     name: 'Texting',
     href: '/dashboard/texting',
     icon: MessageSquare,
     permission: 'site_admin_tools',
   },
-  // AI Apollo: only when NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true (code kept for re-enable)
+  // Only shown when NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true
   { name: 'AI Apollo', href: '/dashboard/ai-apollo', icon: Bug, permission: 'ai_apollo' },
-  { name: 'AI Reliability', href: '/dashboard/ai-reliability', icon: Activity, permission: 'usage' },
-  { name: 'Ops Health', href: '/dashboard/performance', icon: Gauge, permission: 'performance' },
-  { name: 'Usage', href: '/dashboard/usage', icon: BarChart3, permission: 'usage' },
-  { name: 'Tenants', href: '/dashboard/site-admin', icon: Building2, permission: 'site_admin_tools' },
-  { name: 'Dynamo Search Tool', href: '/dashboard/dynamo-search', icon: Database, permission: 'dynamo_search' },
 ];
 
 interface SidebarProps {
@@ -105,10 +106,17 @@ export default function Sidebar({ role, tenantScope }: SidebarProps) {
   const { theme, setTheme, isDark } = useTheme();
 
   const visibleMain = menuItems.filter((item) => hasPermission(role, item.permission));
-  const visibleSystemAdmin = systemAdminItems.filter((item) => {
-    if (item.href === '/dashboard/ai-apollo' && !isApolloUiEnabled()) return false;
-    return hasPermission(role, item.permission);
-  });
+  const filterAdminItems = (items: MenuItem[]) =>
+    items.filter((item) => {
+      if (item.href === '/dashboard/ai-apollo' && !isApolloUiEnabled()) return false;
+      return hasPermission(role, item.permission);
+    });
+  const visibleSystemAdminFeatures = filterAdminItems(systemAdminFeatureItems);
+  const visibleSystemAdminInDev = filterAdminItems(systemAdminInDevItems);
+  const visibleSystemAdmin = [
+    ...visibleSystemAdminFeatures,
+    ...visibleSystemAdminInDev,
+  ];
   const allTenantsSelected = role === 'site_admin' && tenantScope === 'all';
 
   const checkScroll = () => {
@@ -223,6 +231,25 @@ export default function Sidebar({ role, tenantScope }: SidebarProps) {
     }`;
   };
 
+  const renderAdminLink = (item: MenuItem) => {
+    const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+    const accent =
+      item.permission === 'site_admin_tools' || item.permission === 'dynamo_search'
+        ? 'purple'
+        : 'orange';
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={linkClass(item.href, accent)}
+        aria-current={isActive ? 'page' : undefined}
+      >
+        <item.icon className="h-5 w-5 shrink-0 opacity-95" />
+        {item.name}
+      </Link>
+    );
+  };
+
   return (
     <div
       data-app-sidebar
@@ -288,34 +315,29 @@ export default function Sidebar({ role, tenantScope }: SidebarProps) {
           })}
         </div>
 
-        {visibleSystemAdmin.length > 0 && (
-          <div className="mt-6 pt-4 border-t border-gray-200 dark:border-border">
-            <div className="sidebar-section-label text-xs font-bold text-slate-500 dark:text-white uppercase tracking-wider px-4 mb-2">
-              System Admin
-            </div>
-            <div className="space-y-1">
-              {visibleSystemAdmin.map((item) => {
-                const isActive =
-                  pathname === item.href || pathname.startsWith(item.href + '/');
-                // Platform tools (tenants / dynamo) use purple accent; others orange
-                const accent =
-                  item.permission === 'site_admin_tools' ||
-                  item.permission === 'dynamo_search'
-                    ? 'purple'
-                    : 'orange';
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={linkClass(item.href, accent)}
-                    aria-current={isActive ? 'page' : undefined}
-                  >
-                    <item.icon className="h-5 w-5 shrink-0 opacity-95" />
-                    {item.name}
-                  </Link>
-                );
-              })}
-            </div>
+        {(visibleSystemAdminFeatures.length > 0 ||
+          visibleSystemAdminInDev.length > 0) && (
+          <div className="mt-6 pt-4 border-t border-gray-200 dark:border-border space-y-5">
+            {visibleSystemAdminFeatures.length > 0 && (
+              <div>
+                <div className="sidebar-section-label text-xs font-bold text-slate-500 dark:text-white uppercase tracking-wider px-4 mb-2">
+                  System Admin Features
+                </div>
+                <div className="space-y-1">
+                  {visibleSystemAdminFeatures.map(renderAdminLink)}
+                </div>
+              </div>
+            )}
+            {visibleSystemAdminInDev.length > 0 && (
+              <div>
+                <div className="sidebar-section-label text-xs font-bold text-slate-500 dark:text-white uppercase tracking-wider px-4 mb-2">
+                  System Admin - In Development
+                </div>
+                <div className="space-y-1">
+                  {visibleSystemAdminInDev.map(renderAdminLink)}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </nav>
