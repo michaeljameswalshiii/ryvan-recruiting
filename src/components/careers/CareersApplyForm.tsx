@@ -207,20 +207,31 @@ export function CareersApplyForm({
       <div>
         <label className="block text-sm font-medium text-slate-700">
           Resume *{" "}
-          <span className="font-normal text-slate-400">
+          <span className="font-normal text-slate-500">
             (PDF or Word, max {MAX_MB}MB)
           </span>
         </label>
         <div className="mt-1 flex flex-wrap items-center gap-3">
           <input
             ref={fileRef}
+            id="career-resume"
             type="file"
             required
             accept={ACCEPT}
             onChange={(e) => onPickFile(e.target.files?.[0] || null)}
-            className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-800"
+            className="sr-only"
             aria-required="true"
           />
+          <label
+            htmlFor="career-resume"
+            className="inline-flex cursor-pointer items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium shadow-sm transition hover:bg-slate-800 focus-within:ring-2 focus-within:ring-slate-400 focus-within:ring-offset-2"
+            style={{ color: "#ffffff" }}
+          >
+            Choose File
+          </label>
+          {!resumeFile && (
+            <span className="text-sm text-slate-600">No file chosen</span>
+          )}
         </div>
         {resumeFile ? (
           <p className="mt-1.5 text-xs text-slate-500">

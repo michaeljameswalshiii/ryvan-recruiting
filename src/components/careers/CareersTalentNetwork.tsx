@@ -242,12 +242,25 @@ export function CareersTalentNetwork({
                 </label>
                 <input
                   ref={fileRef}
+                  id="talent-resume"
                   type="file"
                   required
                   accept={ACCEPT}
                   onChange={(e) => onPickFile(e.target.files?.[0] || null)}
-                  className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-800"
+                  className="sr-only"
                 />
+                <div className="mt-1 flex flex-wrap items-center gap-3">
+                  <label
+                    htmlFor="talent-resume"
+                    className="inline-flex cursor-pointer items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium shadow-sm transition hover:bg-slate-800"
+                    style={{ color: "#ffffff" }}
+                  >
+                    Choose File
+                  </label>
+                  {!resumeFile && (
+                    <span className="text-sm text-slate-600">No file chosen</span>
+                  )}
+                </div>
                 {resumeFile ? (
                   <p className="mt-1.5 text-xs text-slate-500">
                     Selected:{" "}
