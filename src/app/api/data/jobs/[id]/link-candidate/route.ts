@@ -58,6 +58,19 @@ export async function POST(
       notes: body.notes,
     });
 
+    try {
+      const { scheduleFitScoreOnLink } = await import(
+        "@/lib/ai/schedule-fit-on-link"
+      );
+      scheduleFitScoreOnLink({
+        tenantId: session.tenantId,
+        jobId,
+        candidateId: body.candidateId,
+      });
+    } catch (err) {
+      console.warn("[JOB-LINK-API] schedule fit after link:", err);
+    }
+
     return NextResponse.json({ job });
   } catch (error: any) {
     console.error('[JOB-LINK-API] POST error:', error);

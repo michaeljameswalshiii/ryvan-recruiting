@@ -45,6 +45,19 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to link job' }, { status: 500 });
     }
 
+    try {
+      const { scheduleFitScoreOnLink } = await import(
+        "@/lib/ai/schedule-fit-on-link"
+      );
+      scheduleFitScoreOnLink({
+        tenantId,
+        jobId,
+        candidateId: leadIdFromPath,
+      });
+    } catch (err) {
+      console.warn("[LinkJob] schedule fit after link:", err);
+    }
+
     return NextResponse.json({ success: true, lead: updated });
   } catch (error: any) {
     console.error('[LinkJob] Error:', error);

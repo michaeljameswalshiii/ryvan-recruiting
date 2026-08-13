@@ -67,6 +67,20 @@ export async function POST(
     // Link the candidate
     const updated = await linkCandidateToJobRepo(tenantId, jobId, validated);
 
+    try {
+      const { scheduleFitScoreOnLink } = await import(
+        "@/lib/ai/schedule-fit-on-link"
+      );
+      scheduleFitScoreOnLink({
+        tenantId,
+        jobId,
+        candidateId: validated.candidateId,
+        createdBy: userEmail,
+      });
+    } catch (err) {
+      console.warn("[JOBS_API] schedule fit after link:", err);
+    }
+
     // Record event
     await recordCandidateLinked(
       jobId,

@@ -783,21 +783,6 @@ export async function linkCandidateToJobForApplication(
     }
   }
 
-  if (!options?.skipDualWrite) {
-    try {
-      const { scheduleFitScoreOnLink } = await import(
-        "@/lib/ai/schedule-fit-on-link"
-      );
-      scheduleFitScoreOnLink({
-        tenantId,
-        jobId,
-        candidateId: leadId,
-      });
-    } catch (err) {
-      console.warn("[linkCandidateToJobForApplication] schedule fit:", err);
-    }
-  }
-
   // Activity log (skip if caller will log — API may also log; use option)
   if (!options?.skipActivityLog) {
     try {

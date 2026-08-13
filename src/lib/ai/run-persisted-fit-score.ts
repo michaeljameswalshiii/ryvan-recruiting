@@ -9,8 +9,6 @@ import {
   type FitScoreResult,
   type FitCandidateInput,
 } from "@/lib/ai/fit-score";
-import { augmentFitScoreV3WithLlm } from "@/lib/ai/fit-score-llm";
-import type { FitScoreV3 } from "@/lib/ai/fit-score-v3";
 import { getItem, updateItem, jobsTable } from "@/lib/db/dynamodb";
 import type { Job } from "@/lib/schemas/job";
 import { recordAiFitAssessed } from "@/lib/events/candidate-events";
@@ -244,10 +242,7 @@ function fitLinkFields(result: FitScoreResult, scoredAt: string) {
     fitGaps: result.gaps.slice(0, 6),
     fitSummary: formatFitSummary(result),
     fitScoredAt: scoredAt,
-    fitScoringVersion: result.scoringVersion || "v3",
-    fitBand: result.band,
-    fitHmReachOut: result.hmReachOut,
-    fitHmReason: result.hmReason,
+    fitScoringVersion: result.scoringVersion || "v2",
     fitVerify: result.verifyBeforeAdvancing,
     fitFactors: result.rubric,
   };
@@ -462,13 +457,10 @@ export async function runPersistedFitScore(
     };
 
     try {
-      const base = scoreCandidateJobFit(candidateInput, jobFitInput(job)) as FitScoreV3;
-      fit = await augmentFitScoreV3WithLlm(base, candidateInput, jobFitInput(job), {
-        tenantId,
-      });
-    } catch (scoreErr) {
-      console.warn("[fit-score] scoring failed, retry base:", scoreErr);
       fit = scoreCandidateJobFit(candidateInput, jobFitInput(job));
+    } catch (scoreErr) {
+      console.warn("[fit-score] scoring failed:", scoreErr);
+      throw scoreErr;
     }
 
     try {
