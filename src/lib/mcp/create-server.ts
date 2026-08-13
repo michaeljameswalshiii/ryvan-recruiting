@@ -22,6 +22,12 @@ import {
   linkCandidateToJob,
 } from "@/lib/db/repositories/job-repository";
 import {
+  addContactToClient,
+  createClient,
+  getAllClients,
+  getClientById,
+} from "@/lib/db/repositories/client-repository";
+import {
   addNoteToCandidate,
   getCandidateEvents,
 } from "@/lib/events/candidate-events";
@@ -145,7 +151,7 @@ function jobOnLead(l: any, jobId: string): boolean {
 export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
   const server = new McpServer({
     name: "trio-recruiting",
-    version: "2.2.0",
+    version: "2.3.0",
   });
 
   const tenantId = auth.tenantId;
@@ -536,8 +542,10 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
   server.tool(
     "create_candidate",
     [
-      "Create a new candidate (person) in the ATS.",
-      "Use when the user wants to add someone new — name is required; email/phone/title optional.",
+      "Create a job-seeker on the Candidates list (talent / applicants).",
+      "Do NOT use this for hiring managers, client contacts, or 'add a company page + primary contact'.",
+      "Those go on Companies + Contacts via create_company and create_contact (or create_company_with_primary_contact).",
+      "Use when the user wants to add a candidate — name is required; email/phone/title optional.",
       "Does not auto-link to a job; call link_candidate_to_job after if needed.",
     ].join(" "),
     {
@@ -874,6 +882,348 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
           jobTitle: (job as any).title || null,
           stage: initialStage,
           message: `Linked ${(lead as any).name || cid} to ${(job as any).title || jid} at ${initialStage}`,
+        });
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  // =========================================================================
+  // COMPANIES + CONTACTS (CRM — not candidates)
+  // =========================================================================
+
+  function summarizeCompany(c: any) {
+    const contacts = Array.isArray(c.contacts) ? c.contacts : [];
+    const primary =
+      contacts.find((x: any) => x.isPrimary) ||
+      contacts.find((x: any) => x.id === c.primaryContactId) ||
+      contacts[0];
+    return {
+      id: c.id,
+      name: c.name || c.companyName || null,
+      domain: c.domain || null,
+      industry: c.industry || null,
+      city: c.city || null,
+      state: c.state || null,
+      status: c.status || null,
+      contactCount: contacts.length,
+      primaryContact: primary
+        ? { id: primary.id, name: primary.name, title: primary.title || null }
+        : null,
+    };
+  }
+
+  function summarizeContact(c: any, company: any) {
+    return {
+      id: c.id,
+      name: c.name || null,
+      title: c.title || null,
+      email: c.email || null,
+      phone: c.phone || c.preferredPhone || null,
+      isPrimary: !!c.isPrimary,
+      companyId: company.id,
+      companyName: company.name || company.companyName || null,
+    };
+  }
+
+  server.tool(
+    "list_companies",
+    [
+      "Find client companies / accounts in Trio (Companies list).",
+      "Use when the user asks about a company page, account, client, or whether a company already exists.",
+      "Returns id, name, domain, location, and primary contact. Trio DOES have company records.",
+    ].join(" "),
+    {
+      query: z
+        .string()
+        .optional()
+        .describe("Search name, domain, industry, city"),
+      limit: z.number().int().min(1).max(50).optional(),
+    },
+    async ({ query, limit }) => {
+      try {
+        const all = await getAllClients(tenantId);
+        const q = String(query || "").trim().toLowerCase();
+        const rows = (all || []).filter((c: any) => {
+          if (!q) return true;
+          const hay = [c.name, c.companyName, c.domain, c.industry, c.city, c.state]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return hay.includes(q);
+        });
+        const max = limit || 25;
+        return textResult({
+          tenantId,
+          count: rows.length,
+          companies: rows.slice(0, max).map(summarizeCompany),
+        });
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "get_company",
+    "Load one Trio company page by id, including contacts. Use after list_companies.",
+    {
+      companyId: z.string().describe("Company UUID from list_companies"),
+    },
+    async ({ companyId }) => {
+      try {
+        const id = companyId.trim();
+        if (!id) return errorResult("companyId is required");
+        const company = await getClientById(tenantId, id);
+        if (!company) return errorResult(`Company not found: ${id}`);
+        const contacts = Array.isArray(company.contacts) ? company.contacts : [];
+        return textResult({
+          tenantId,
+          company: {
+            ...summarizeCompany(company),
+            contacts: contacts.map((c: any) => summarizeContact(c, company)),
+          },
+        });
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "create_company",
+    [
+      "Create a client company page in Trio (Companies list).",
+      "Use when the user wants a company / account / client record.",
+      "This is NOT Apollo. Trio has first-class companies.",
+    ].join(" "),
+    {
+      name: z.string().min(1).max(200).describe("Company name (required)"),
+      domain: z.string().optional().describe("Website domain, e.g. esi-inc.com"),
+      industry: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().optional(),
+      notes: z.string().optional(),
+    },
+    async (input) => {
+      try {
+        const created = await createClient(
+          tenantId,
+          {
+            name: input.name.trim(),
+            domain: input.domain?.trim() || undefined,
+            industry: input.industry?.trim() || undefined,
+            city: input.city?.trim() || undefined,
+            state: input.state?.trim() || undefined,
+            notes: input.notes?.trim() || undefined,
+            status: "identification",
+          },
+          actorUser
+        );
+        return textResult({
+          success: true,
+          tenantId,
+          company: summarizeCompany(created),
+          url: `/dashboard/companies/${created.id}`,
+          message: `Created company ${created.name} (${created.id}) in Trio Companies.`,
+        });
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "create_contact",
+    [
+      "Add a hiring manager or business contact on a Trio company (Contacts list).",
+      "These are NOT candidates. Requires an existing company (companyId or companyName).",
+      "Use after create_company, or create_company_with_primary_contact to do both.",
+    ].join(" "),
+    {
+      name: z.string().min(1).max(100).describe("Contact full name"),
+      companyId: z.string().optional().describe("Existing Trio company id"),
+      companyName: z
+        .string()
+        .optional()
+        .describe("Existing Trio company name if id is unknown"),
+      title: z.string().optional(),
+      email: z.string().optional(),
+      phone: z.string().optional(),
+      isPrimary: z
+        .boolean()
+        .optional()
+        .describe("True if this is the company's primary contact"),
+      notes: z.string().optional(),
+    },
+    async (input) => {
+      try {
+        const all = await getAllClients(tenantId);
+        let company = input.companyId
+          ? await getClientById(tenantId, input.companyId.trim())
+          : null;
+        if (!company && input.companyName) {
+          const needle = input.companyName.toLowerCase().replace(/[^a-z0-9]/g, "");
+          company =
+            (all || []).find((c: any) => {
+              const n = String(c.name || c.companyName || "")
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, "");
+              return n === needle || n.includes(needle);
+            }) || null;
+        }
+        if (!company?.id) {
+          return errorResult(
+            "Company not found. Create it first with create_company, or pass a valid companyId."
+          );
+        }
+        const updated = await addContactToClient(
+          tenantId,
+          company.id,
+          {
+            name: input.name.trim(),
+            title: input.title?.trim() || "",
+            email: input.email?.trim() || "",
+            phone: input.phone?.trim() || "",
+            isPrimary: input.isPrimary !== false,
+            notes: input.notes?.trim() || "",
+          },
+          actorUser
+        );
+        const created = (updated.contacts || []).find(
+          (c: any) =>
+            String(c.name || "").toLowerCase() === input.name.trim().toLowerCase()
+        );
+        return textResult({
+          success: true,
+          tenantId,
+          company: summarizeCompany(updated),
+          contact: created ? summarizeContact(created, updated) : null,
+          url: created?.id
+            ? `/dashboard/contact-info/${created.id}?companyId=${company.id}`
+            : `/dashboard/companies/${company.id}`,
+          message: `Added ${input.name} as a contact on ${company.name} in Trio Contacts.`,
+        });
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "create_company_with_primary_contact",
+    [
+      "Create a Trio company page AND its primary contact in one step.",
+      "Use this when the user says: add a company and a primary contact, create an account + hiring manager,",
+      "or paste a LinkedIn URL for a client-side person (HR / hiring manager), not a job-seeker.",
+      "Do NOT create a candidate instead.",
+    ].join(" "),
+    {
+      company_name: z.string().min(1).describe("Company / employer name"),
+      contact_name: z.string().min(1).describe("Primary contact full name"),
+      domain: z.string().optional(),
+      industry: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().optional(),
+      contact_title: z.string().optional(),
+      contact_email: z.string().optional(),
+      contact_phone: z.string().optional(),
+      notes: z.string().optional(),
+    },
+    async (input) => {
+      try {
+        const existing = (await getAllClients(tenantId)).find((c: any) => {
+          const n = String(c.name || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, "");
+          const want = input.company_name.toLowerCase().replace(/[^a-z0-9]/g, "");
+          return n === want || n.includes(want);
+        });
+        const company =
+          existing ||
+          (await createClient(
+            tenantId,
+            {
+              name: input.company_name.trim(),
+              domain: input.domain?.trim() || undefined,
+              industry: input.industry?.trim() || undefined,
+              city: input.city?.trim() || undefined,
+              state: input.state?.trim() || undefined,
+              notes: input.notes?.trim() || undefined,
+              status: "identification",
+            },
+            actorUser
+          ));
+        const updated = await addContactToClient(
+          tenantId,
+          String(company.id),
+          {
+            name: input.contact_name.trim(),
+            title: input.contact_title?.trim() || "",
+            email: input.contact_email?.trim() || "",
+            phone: input.contact_phone?.trim() || "",
+            isPrimary: true,
+            notes: input.notes?.trim() || "",
+          },
+          actorUser
+        );
+        const contact = (updated.contacts || []).find(
+          (c: any) =>
+            String(c.name || "").toLowerCase() ===
+            input.contact_name.trim().toLowerCase()
+        );
+        return textResult({
+          success: true,
+          tenantId,
+          company: summarizeCompany(updated),
+          contact: contact ? summarizeContact(contact, updated) : null,
+          urls: {
+            company: `/dashboard/companies/${company.id}`,
+            contact: contact?.id
+              ? `/dashboard/contact-info/${contact.id}?companyId=${company.id}`
+              : null,
+          },
+          message: `Created ${updated.name} in Trio Companies and added ${input.contact_name} as primary contact.`,
+        });
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "list_contacts",
+    "Find hiring managers and business contacts across Trio companies (Contacts list, not Candidates).",
+    {
+      query: z.string().optional().describe("Search name, title, email, company"),
+      limit: z.number().int().min(1).max(50).optional(),
+    },
+    async ({ query, limit }) => {
+      try {
+        const companies = await getAllClients(tenantId);
+        const q = String(query || "").trim().toLowerCase();
+        const rows: ReturnType<typeof summarizeContact>[] = [];
+        for (const company of companies || []) {
+          for (const c of company.contacts || []) {
+            if (!c?.name && !c?.id) continue;
+            const row = summarizeContact(c, company);
+            if (!q) {
+              rows.push(row);
+              continue;
+            }
+            const hay = [row.name, row.title, row.email, row.phone, row.companyName]
+              .filter(Boolean)
+              .join(" ")
+              .toLowerCase();
+            if (hay.includes(q)) rows.push(row);
+          }
+        }
+        const max = limit || 25;
+        return textResult({
+          tenantId,
+          count: rows.length,
+          contacts: rows.slice(0, max),
         });
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));

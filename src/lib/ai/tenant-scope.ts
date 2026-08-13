@@ -214,6 +214,7 @@ export function prepareToolExecution(
   const tenantRequiredTools = new Set([
     'internal_data',
     'create_company',
+    'create_company_with_primary_contact',
     'update_company',
     'create_contact',
     'update_contact',

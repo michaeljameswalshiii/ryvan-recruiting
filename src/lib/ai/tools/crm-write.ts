@@ -138,8 +138,9 @@ function normalizeCandidateStage(raw?: string): string | undefined {
 
 export const CREATE_CANDIDATE_TOOL = "create_candidate";
 export const CREATE_CANDIDATE_DESCRIPTION =
-  "Create a new candidate/lead in the recruiting pipeline (Candidates list). " +
-  "NOT for company contacts/hiring managers — use create_contact for Contacts. " +
+  "Create a job-seeker on the Candidates list. " +
+  "NOT for hiring managers, client contacts, or 'add a company page + primary contact'. " +
+  "Use create_company_with_primary_contact (or create_company then create_contact) for those. " +
   "ALWAYS call once without confirmed to preview, show the user, then call again with " +
   "confirmed:true after they agree. Requires name. Optional company is only a note, " +
   "it does NOT add them under Contacts.";
@@ -392,6 +393,99 @@ export const CREATE_COMPANY_DESCRIPTION =
   "If fetch fails, only name+domain are allowed (set website_fetch_failed:true). " +
   "Never invent Brazil/São Paulo from letters \"br\" in a domain brand (structuralbr.com ≠ Brazil); " +
   "set page_supports_brazil:true only if page text confirms Brazil.";
+
+export const CREATE_COMPANY_WITH_PRIMARY_CONTACT_TOOL =
+  "create_company_with_primary_contact";
+export const CREATE_COMPANY_WITH_PRIMARY_CONTACT_DESCRIPTION =
+  "Create a client company and its primary company contact in Trio. Use for a complete company + primary contact workflow. Preview first, then confirmed:true.";
+
+export async function executeCreateCompanyWithPrimaryContact(
+  params: unknown,
+  context: ToolContext,
+): Promise<ToolResult> {
+  const deny = needTenant(context);
+  if (deny) return deny;
+  const p = (params || {}) as Record<string, unknown>;
+  const companyName = str(p.company_name) || str(p.company);
+  const contactName = str(p.contact_name) || str(p.contact);
+  if (!companyName) return { success: false, error: "company_name is required" };
+  if (!contactName) return { success: false, error: "contact_name is required" };
+
+  if (!isConfirmed(p)) {
+    return {
+      success: true,
+      data: {
+        status: "needs_confirmation",
+        action: CREATE_COMPANY_WITH_PRIMARY_CONTACT_TOOL,
+        message:
+          "Do NOT claim these records were saved. Show this preview and ask the user to confirm. Then call this same tool with confirmed:true.",
+        preview: {
+          company: {
+            name: companyName,
+            domain: str(p.domain) || str(p.website) || "",
+            industry: str(p.industry) || "",
+            city: str(p.city) || "",
+            state: str(p.state) || "",
+          },
+          primary_contact: {
+            name: contactName,
+            title: str(p.contact_title) || str(p.title) || "",
+            email: str(p.contact_email) || str(p.email) || "",
+            phone: str(p.contact_phone) || str(p.phone) || "",
+          },
+        },
+      },
+      metadata: {
+        needs_confirmation: true,
+        action: CREATE_COMPANY_WITH_PRIMARY_CONTACT_TOOL,
+      },
+    };
+  }
+
+  const companyResult = await executeCreateCompany(
+    { ...p, name: companyName, confirmed: true },
+    context,
+  );
+  if (!companyResult.success) return companyResult;
+  const company = (companyResult.data as any)?.company;
+  if (!company?.id) return { success: false, error: "Company was created without an id" };
+
+  const contactResult = await executeCreateContact(
+    {
+      name: contactName,
+      company_id: company.id,
+      title: str(p.contact_title) || str(p.title),
+      email: str(p.contact_email) || str(p.email),
+      phone: str(p.contact_phone) || str(p.phone),
+      work_phone: str(p.work_phone),
+      mobile_phone: str(p.mobile_phone),
+      notes: str(p.contact_notes) || str(p.notes),
+      is_primary: true,
+      confirmed: true,
+    },
+    context,
+  );
+  if (!contactResult.success) {
+    return {
+      success: false,
+      error: `Company ${company.name} was created, but the primary contact failed: ${contactResult.error || "unknown error"}`,
+      metadata: { company_created: true, company_id: company.id },
+    };
+  }
+  return {
+    success: true,
+    data: {
+      status: "created",
+      company: companyResult.data,
+      primary_contact: contactResult.data,
+      message: `Created ${company.name} and added ${contactName} as its primary contact in Trio.`,
+    },
+    metadata: {
+      action: CREATE_COMPANY_WITH_PRIMARY_CONTACT_TOOL,
+      company_id: company.id,
+    },
+  };
+}
 
 export async function executeCreateCompany(
   params: unknown,
@@ -1352,6 +1446,30 @@ export const CRM_WRITE_TOOLS: Array<{
         confirmed: { type: "boolean", description: "true to apply after user confirms" },
       },
       required: ["candidate_id", "stage"],
+    },
+  },
+  {
+    name: CREATE_COMPANY_WITH_PRIMARY_CONTACT_TOOL,
+    description: CREATE_COMPANY_WITH_PRIMARY_CONTACT_DESCRIPTION,
+    execute: executeCreateCompanyWithPrimaryContact,
+    schema: {
+      type: "object",
+      properties: {
+        company_name: { type: "string", description: "Client/company name" },
+        domain: { type: "string", description: "Company website/domain" },
+        industry: { type: "string", description: "Industry, only if grounded" },
+        city: { type: "string", description: "City, only if grounded" },
+        state: { type: "string", description: "State, only if grounded" },
+        contact_name: { type: "string", description: "Primary contact full name" },
+        contact_title: { type: "string", description: "Primary contact title" },
+        contact_email: { type: "string", description: "Primary contact email" },
+        contact_phone: { type: "string", description: "Primary contact phone" },
+        work_phone: { type: "string", description: "Primary contact work phone" },
+        mobile_phone: { type: "string", description: "Primary contact mobile phone" },
+        contact_notes: { type: "string", description: "Primary contact notes" },
+        confirmed: { type: "boolean", description: "true to create after preview" },
+      },
+      required: ["company_name", "contact_name"],
     },
   },
   {
