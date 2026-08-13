@@ -22,6 +22,7 @@ import {
   Users,
   Paperclip,
   Copy,
+  Percent,
 } from "lucide-react";
 import {
   useJob,
@@ -56,7 +57,6 @@ import { toast } from "sonner";
 import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
 import { hasPermission } from "@/lib/roles";
 import { EntityFilesPanel } from "@/components/shared/EntityFilesPanel";
-import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
 
 type FitScoreClient = {
   score: number;
@@ -519,11 +519,26 @@ export default function JobDetailPage() {
         })
       : null;
 
+  const hiringManagerName = String(
+    (job as any).hiringManagerName || ""
+  ).trim();
+  const feeLabel = (() => {
+    const pct = (job as any).fee_percent ?? (job as any).feePercent;
+    if (pct != null && pct !== "") return `${pct}%`;
+    const raw =
+      (job as any).fee_agreement ||
+      (job as any).feeAgreement ||
+      (job as any).feeType ||
+      "";
+    return raw ? String(raw) : "—";
+  })();
+  const isPosted = isShownOnWebsite && isOpenStatus;
+
   return (
     <div className="space-y-5 max-w-7xl -mt-1">
-      {/* Page header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+      {/* Page header — title, badges, actions */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
           <Link
             href="/dashboard/jobs"
             className="inline-flex items-center text-sm text-blue-600 hover:underline mb-1"
@@ -539,7 +554,7 @@ export default function JobDetailPage() {
             >
               {formatStatusLabel(job.status)}
             </span>
-            {isShownOnWebsite && isOpenStatus ? (
+            {isPosted ? (
               <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
                 <Globe className="h-3 w-3" />
                 On website
@@ -551,23 +566,49 @@ export default function JobDetailPage() {
               </span>
             )}
           </div>
+          <p className="mt-1 text-sm text-slate-500">
+            <span className="font-mono text-xs text-slate-400">
+              {shortJobId(job.id)}
+            </span>
+            {job.companyName ? (
+              <>
+                <span className="mx-1.5">•</span>
+                {job.companyName}
+              </>
+            ) : null}
+            {postedLabel ? (
+              <>
+                <span className="mx-1.5">•</span>
+                Posted {postedLabel}
+              </>
+            ) : null}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={currentJobStatus}
-            onChange={(e) => onChangeJobStatus(e.target.value)}
-            disabled={updateJob.isPending}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
-            aria-label="Job status"
-          >
-            {JOB_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-
+          <JobCopyButton jobId={String(job.id || jobId)} jobTitle={job.title || "Job"} />
+          {isPosted && job.id ? (
+            <a
+              href={`/careers/${process.env.NEXT_PUBLIC_CAREERS_DEFAULT_SLUG || "ryvan"}/${job.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
+            >
+              <ExternalLink className="h-4 w-4" />
+              View public page
+            </a>
+          ) : null}
+          <FillReqPlaybookButton jobId={job.id} jobTitle={job.title} />
+          {canInvoice && (
+            <Button
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => setInvoiceOpen(true)}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Create invoice
+            </Button>
+          )}
           <label
             className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm cursor-pointer select-none ${
               isShownOnWebsite
@@ -583,47 +624,107 @@ export default function JobDetailPage() {
               disabled={updateJob.isPending}
               onChange={(e) => void onToggleShowOnWebsite(e.target.checked)}
             />
-            <Globe className="h-4 w-4 shrink-0" />
             <span className="font-medium">Show on website</span>
           </label>
-
-          {isShownOnWebsite && isOpenStatus && job.id && (
-            <a
-              href={`/careers/${process.env.NEXT_PUBLIC_CAREERS_DEFAULT_SLUG || "ryvan"}/${job.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
-            >
-              <ExternalLink className="h-4 w-4" />
-              View public page
-            </a>
-          )}
-
-          <FillReqPlaybookButton jobId={job.id} jobTitle={job.title} />
-          {canInvoice && (
-            <Button
-              size="sm"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => setInvoiceOpen(true)}
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Create invoice
-            </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-            <Pencil className="h-4 w-4 mr-2" />
-            Edit Job
-          </Button>
-          <JobCopyButton jobId={String(job.id || jobId)} jobTitle={job.title || "Job"} />
           <Button size="sm" onClick={openAddCandidate} className="bg-blue-600 hover:bg-blue-700">
             <UserPlus className="h-4 w-4 mr-2" />
             Add Candidate
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            <Pencil className="h-4 w-4 mr-2" />
+            Edit
+          </Button>
+          <select
+            value={currentJobStatus}
+            onChange={(e) => onChangeJobStatus(e.target.value)}
+            disabled={updateJob.isPending}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
+            aria-label="Job pipeline status"
+          >
+            {JOB_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
           <JobDeleteButton jobId={job.id} jobTitle={job.title} />
         </div>
       </div>
 
-      <ObjectAssignments objectType="job" objectId={String(job.id || jobId)} />
+      {/* Meta strip — matches the job header mockup */}
+      <section
+        data-ink-on-light
+        className="bg-white border border-gray-200 rounded-2xl shadow-sm px-5 py-4"
+      >
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-4">
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
+              Status
+            </div>
+            <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  isPosted ? "bg-emerald-500" : "bg-slate-300"
+                }`}
+              />
+              {isPosted ? "Posted" : "Not posted"}
+            </div>
+          </div>
+          <MetaField
+            label="Company"
+            value={job.companyName || "—"}
+            icon={<Building2 className="h-4 w-4" />}
+          />
+          <MetaField
+            label="Location"
+            value={job.location || "—"}
+            icon={<MapPin className="h-3.5 w-3.5" />}
+          />
+          <MetaField
+            label="Job Type"
+            value={job.employmentType || "Full-time"}
+            icon={<Briefcase className="h-3.5 w-3.5" />}
+          />
+          <MetaField
+            label="Pipeline"
+            value={formatStatusLabel(job.status)}
+          />
+          <MetaField
+            label="Fee %"
+            value={feeLabel}
+            icon={<Percent className="h-3.5 w-3.5" />}
+          />
+          <MetaField
+            label="Compensation"
+            value={job.salaryRange || "—"}
+            icon={<DollarSign className="h-3.5 w-3.5" />}
+          />
+          <MetaField
+            label="Posted"
+            value={postedLabel || "—"}
+            icon={<Calendar className="h-3.5 w-3.5" />}
+          />
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
+              Hiring Manager
+            </div>
+            {hiringManagerName ? (
+              <div className="inline-flex items-center gap-2 min-w-0">
+                <span
+                  className={`h-7 w-7 shrink-0 rounded-full ${avatarColor(hiringManagerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
+                >
+                  {getInitials(hiringManagerName)}
+                </span>
+                <span className="truncate text-sm font-medium text-slate-900">
+                  {hiringManagerName}
+                </span>
+              </div>
+            ) : (
+              <span className="text-sm text-gray-400">—</span>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* Job detail tabs */}
       <div className="border-b border-gray-200">
@@ -662,70 +763,6 @@ export default function JobDetailPage() {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
         {/* ─── Main column ─── */}
         <div className="xl:col-span-8 space-y-5">
-          {/* Hero / job summary card */}
-          <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-            <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 tracking-tight">
-                  {job.title}
-                </h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  <span className="font-mono text-xs text-gray-400 mr-2">
-                    {shortJobId(job.id)}
-                  </span>
-                  {job.companyName || "Unknown Company"}
-                  {postedLabel ? ` · Posted ${postedLabel}` : null}
-                </p>
-              </div>
-            </div>
-
-            {postedLabel ? (
-              <p className="text-sm text-slate-700 mb-4">{postedLabel}</p>
-            ) : null}
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-              <div className="min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
-                  Status
-                </div>
-                <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      isShownOnWebsite && isOpenStatus
-                        ? "bg-emerald-500"
-                        : "bg-slate-300"
-                    }`}
-                  />
-                  {isShownOnWebsite && isOpenStatus ? "Posted" : "Not posted"}
-                </div>
-              </div>
-              <MetaField
-                label="Company"
-                value={job.companyName || "—"}
-                icon={<Building2 className="h-4 w-4" />}
-              />
-              <MetaField
-                label="Location"
-                value={job.location || "—"}
-                icon={<MapPin className="h-3.5 w-3.5" />}
-              />
-              <MetaField
-                label="Compensation"
-                value={job.salaryRange || "—"}
-                icon={<DollarSign className="h-3.5 w-3.5" />}
-              />
-              <MetaField
-                label="Job Type"
-                value={job.employmentType || "Full-Time"}
-                icon={<Briefcase className="h-3.5 w-3.5" />}
-              />
-              <MetaField
-                label="Pipeline"
-                value={formatStatusLabel(job.status)}
-              />
-            </div>
-          </section>
-
           {/* Candidate pipeline — WIP tracker → dedicated pipeline page */}
           <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
