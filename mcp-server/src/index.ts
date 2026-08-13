@@ -11,7 +11,7 @@
  * Legacy direct DynamoDB mode (no app URL):
  *   TRIO_MCP_API_KEY + TRIO_TENANT_ID + AWS credentials
  *
- * Tools: search_candidates, get_candidate, add_note, list_jobs
+ * Tools: companies/contacts + candidates/jobs
  * Do not write logs to stdout — it is the MCP transport.
  */
 
@@ -71,8 +71,177 @@ async function main() {
 
   const server = new McpServer({
     name: "trio-recruiting",
-    version: "1.1.0",
+    version: "2.4.0",
   });
+
+  server.tool(
+    "trio_help",
+    "Call first. Trio has Companies + Contacts (CRM) and Candidates + Jobs (ATS). Hiring managers use create_company_with_primary_contact, never create_candidate.",
+    {},
+    async () =>
+      textResult({
+        version: "2.4.0",
+        routing: {
+          "company page + primary contact": "create_company_with_primary_contact",
+          "hiring manager": "create_contact",
+          "job seeker": "create_candidate",
+        },
+        tools: [
+          "trio_help",
+          "create_company_with_primary_contact",
+          "create_company",
+          "create_contact",
+          "list_companies",
+          "list_contacts",
+          "search_candidates",
+          "get_candidate",
+          "create_candidate",
+          "add_note",
+          "list_jobs",
+        ],
+      })
+  );
+
+  server.tool(
+    "create_company_with_primary_contact",
+    "Create a Trio company page AND its primary contact. Use for hiring managers / client contacts. Do NOT create a candidate.",
+    {
+      company_name: z.string(),
+      contact_name: z.string(),
+      domain: z.string().optional(),
+      industry: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().optional(),
+      contact_title: z.string().optional(),
+      contact_email: z.string().optional(),
+      contact_phone: z.string().optional(),
+    },
+    async (input) => {
+      try {
+        if (!http) {
+          return errorResult(
+            "Company/contact create requires HTTP mode (TRIO_APP_URL + API key)."
+          );
+        }
+        const data = await mcpFetch(http, "/api/mcp/v1/companies", {
+          method: "POST",
+          body: JSON.stringify({
+            ...input,
+            with_primary_contact: true,
+          }),
+        });
+        return textResult(data);
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "create_company",
+    "Create a client company page in Trio Companies.",
+    {
+      name: z.string(),
+      domain: z.string().optional(),
+      industry: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().optional(),
+    },
+    async (input) => {
+      try {
+        if (!http) {
+          return errorResult(
+            "Company create requires HTTP mode (TRIO_APP_URL + API key)."
+          );
+        }
+        const data = await mcpFetch(http, "/api/mcp/v1/companies", {
+          method: "POST",
+          body: JSON.stringify(input),
+        });
+        return textResult(data);
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "create_contact",
+    "Add a hiring manager / business contact on a Trio company (Contacts, not Candidates).",
+    {
+      name: z.string(),
+      companyId: z.string().optional(),
+      companyName: z.string().optional(),
+      title: z.string().optional(),
+      email: z.string().optional(),
+      phone: z.string().optional(),
+      isPrimary: z.boolean().optional(),
+    },
+    async (input) => {
+      try {
+        if (!http) {
+          return errorResult(
+            "Contact create requires HTTP mode (TRIO_APP_URL + API key)."
+          );
+        }
+        const data = await mcpFetch(http, "/api/mcp/v1/contacts", {
+          method: "POST",
+          body: JSON.stringify(input),
+        });
+        return textResult(data);
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "list_companies",
+    "Find Trio company pages / accounts.",
+    {
+      query: z.string().optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+    },
+    async ({ query, limit }) => {
+      try {
+        if (!http) return errorResult("list_companies requires HTTP mode.");
+        const params = new URLSearchParams();
+        if (query) params.set("q", query);
+        params.set("limit", String(limit ?? 25));
+        const data = await mcpFetch(
+          http,
+          `/api/mcp/v1/companies?${params.toString()}`
+        );
+        return textResult(data);
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+
+  server.tool(
+    "list_contacts",
+    "Find Trio Contacts (hiring managers), not Candidates.",
+    {
+      query: z.string().optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+    },
+    async ({ query, limit }) => {
+      try {
+        if (!http) return errorResult("list_contacts requires HTTP mode.");
+        const params = new URLSearchParams();
+        if (query) params.set("q", query);
+        params.set("limit", String(limit ?? 25));
+        const data = await mcpFetch(
+          http,
+          `/api/mcp/v1/contacts?${params.toString()}`
+        );
+        return textResult(data);
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
 
   server.tool(
     "search_candidates",

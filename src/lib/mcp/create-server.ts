@@ -151,12 +151,59 @@ function jobOnLead(l: any, jobId: string): boolean {
 export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
   const server = new McpServer({
     name: "trio-recruiting",
-    version: "2.3.0",
+    version: "2.4.0",
   });
 
   const tenantId = auth.tenantId;
   const actor = `mcp:${auth.keyName}`;
   const actorUser = { userId: auth.keyId || "mcp", email: actor };
+
+  server.tool(
+    "trio_help",
+    [
+      "Call this first. Lists every Trio MCP tool and when to use it.",
+      "Trio has Companies and Contacts (client CRM) PLUS Candidates and Jobs (ATS).",
+      "Hiring managers / primary contacts: create_company_with_primary_contact.",
+      "Job-seekers only: create_candidate. Never say Trio lacks company pages.",
+    ].join(" "),
+    {},
+    async () =>
+      textResult({
+        version: "2.4.0",
+        tenantId,
+        important:
+          "Trio is an ATS + CRM. Companies and Contacts are first-class. Do not create a candidate when the user wants a company page or primary/hiring-manager contact.",
+        tools: {
+          companies_and_contacts: [
+            "trio_help",
+            "list_companies",
+            "get_company",
+            "create_company",
+            "list_contacts",
+            "create_contact",
+            "create_company_with_primary_contact",
+          ],
+          candidates: [
+            "list_candidates",
+            "search_candidates",
+            "get_candidate",
+            "create_candidate",
+            "update_candidate",
+            "update_candidate_stage",
+            "list_candidate_activity",
+            "add_note",
+            "link_candidate_to_job",
+          ],
+          jobs: ["list_jobs", "get_job"],
+        },
+        routing: {
+          "company page + primary contact": "create_company_with_primary_contact",
+          "hiring manager / client contact": "create_contact (company must exist)",
+          "new employer / client company": "create_company",
+          "job seeker / applicant": "create_candidate",
+        },
+      })
+  );
 
   // =========================================================================
   // READ

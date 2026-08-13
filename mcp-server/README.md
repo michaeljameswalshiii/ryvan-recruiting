@@ -46,10 +46,19 @@ Settings → Integrations shows the exact values for your org after you create a
 
 | Tool | Description |
 |------|-------------|
+| `trio_help` | Capability map — call this first |
+| `create_company_with_primary_contact` | Company page + primary contact |
+| `create_company` | Create a Trio company |
+| `create_contact` | Hiring manager / Contacts (not a candidate) |
+| `list_companies` | Search company pages |
+| `list_contacts` | Search Contacts |
 | `search_candidates` | Search candidates |
 | `get_candidate` | Get one candidate |
+| `create_candidate` | Job-seeker only |
 | `add_note` | Activity note |
 | `list_jobs` | List jobs |
+
+After changing tools, **disconnect and reconnect** the Trio connector so Claude reloads the tool list.
 
 ## Server endpoints
 

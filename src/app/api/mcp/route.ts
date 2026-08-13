@@ -5,8 +5,9 @@
  * Auth: Authorization: Bearer <trio_mcp_...>  (required by middleware)
  *       X-Trio-Tenant-Id optional — resolved from key when omitted
  *
- * Tools: list/get candidates & jobs, pipeline, activity;
- *        create/update candidate, stage, note, link to job
+ * Tools: companies + contacts (CRM) and candidates + jobs (ATS);
+ *        trio_help, create_company_with_primary_contact, create_company,
+ *        create_contact, list_companies, list_contacts, plus candidate/job tools
  *
  * Stateless + JSON responses — safe on Vercel serverless.
  *
