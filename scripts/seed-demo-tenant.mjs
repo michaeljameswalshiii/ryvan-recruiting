@@ -34,9 +34,9 @@ const TABLES = {
 };
 
 const COUNTS = {
-  companies: 40,
-  jobs: 30,
-  candidates: 50,
+  companies: 200,
+  jobs: 200,
+  candidates: 200,
 };
 
 const execute = process.argv.includes('--execute');
