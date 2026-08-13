@@ -31,6 +31,8 @@ import { getDisplayPhone } from '@/lib/contacts/phone';
 import { useListColumns } from '@/lib/ui/use-list-columns';
 import {
   DataListTable,
+  LIST_PAGE_CLASS,
+  LIST_TABLE_CLASS,
   ListColumnPicker,
   listTd,
   listTdActions,
@@ -386,7 +388,7 @@ export default function ContactInfoPage() {
   }
 
   return (
-    <div className="min-w-0 max-w-full space-y-5">
+    <div className={LIST_PAGE_CLASS}>
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
@@ -557,8 +559,8 @@ export default function ContactInfoPage() {
           </div>
         </div>
       ) : (
-        <DataListTable minWidth={860}>
-            <table className="w-full min-w-[860px] border-separate border-spacing-0">
+        <DataListTable>
+            <table className={LIST_TABLE_CLASS}>
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
                   <th className={listThNameFlush}>

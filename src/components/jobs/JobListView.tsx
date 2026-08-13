@@ -33,6 +33,8 @@ import { useTheme } from '@/components/ThemeProvider';
 import { useListColumns } from '@/lib/ui/use-list-columns';
 import {
   DataListTable,
+  LIST_PAGE_CLASS,
+  LIST_TABLE_CLASS,
   ListColumnPicker,
   listTd,
   listTdActions,
@@ -362,7 +364,7 @@ export function JobListView({ jobs }: JobListViewProps) {
   ];
 
   return (
-    <div className="space-y-5">
+    <div className={LIST_PAGE_CLASS}>
       <FilterStatCards
         cards={statCards}
         activeKey={bucket}
@@ -464,8 +466,8 @@ export function JobListView({ jobs }: JobListViewProps) {
           )}
         </div>
       ) : (
-        <DataListTable minWidth={920}>
-            <table className="w-full min-w-[920px] border-separate border-spacing-0">
+        <DataListTable>
+            <table className={LIST_TABLE_CLASS}>
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
                   <th className={listThNameFlush}>

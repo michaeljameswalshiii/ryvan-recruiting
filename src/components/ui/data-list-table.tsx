@@ -11,15 +11,21 @@ import { ChevronDown, ChevronUp, Columns3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ListColumnDef } from "@/lib/ui/use-list-columns";
 
+/** Same page shell for companies / candidates / contacts / jobs. */
+export const LIST_PAGE_CLASS = "w-full min-w-0 max-w-none space-y-5";
+
+export const LIST_TABLE_CLASS =
+  "w-full table-fixed border-separate border-spacing-0";
+
+export const LIST_ACTIONS_WIDTH_PX = 88;
+
 type DataListTableProps = {
-  minWidth?: number;
   children: ReactNode;
   className?: string;
 };
 
-/** Shared ATS list chrome: top scrollbar + vertical pane so Actions stay reachable. */
+/** Shared ATS list chrome: one full-width pane, Actions lane reserved. */
 export function DataListTable({
-  minWidth = 960,
   children,
   className = "",
 }: DataListTableProps) {
@@ -27,20 +33,26 @@ export function DataListTable({
   const bodyRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const syncing = useRef(false);
-  const [scrollWidth, setScrollWidth] = useState(minWidth);
+  const [scrollWidth, setScrollWidth] = useState(0);
+  const [overflowX, setOverflowX] = useState(false);
 
   const measure = useCallback(() => {
+    const body = bodyRef.current;
     const table = innerRef.current?.querySelector("table");
-    const w = Math.max(minWidth, table?.scrollWidth || minWidth);
-    setScrollWidth(w);
-  }, [minWidth]);
+    if (!body || !table) return;
+    const sw = table.scrollWidth;
+    setScrollWidth(sw);
+    setOverflowX(sw > body.clientWidth + 1);
+  }, []);
 
   useEffect(() => {
     measure();
     const table = innerRef.current?.querySelector("table");
-    if (!table || typeof ResizeObserver === "undefined") return;
+    const body = bodyRef.current;
+    if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => measure());
-    ro.observe(table);
+    if (table) ro.observe(table);
+    if (body) ro.observe(body);
     return () => ro.disconnect();
   }, [measure, children]);
 
@@ -60,22 +72,24 @@ export function DataListTable({
 
   return (
     <div
-      className={`bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden ${className}`}
+      className={`w-full bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden ${className}`}
     >
-      <div
-        ref={topRef}
-        onScroll={onTopScroll}
-        className="overflow-x-auto overflow-y-hidden border-b border-gray-100 bg-gray-50/80 [scrollbar-gutter:stable]"
-        aria-label="Horizontal table scroll"
-      >
-        <div style={{ width: scrollWidth, height: 12 }} />
-      </div>
+      {overflowX ? (
+        <div
+          ref={topRef}
+          onScroll={onTopScroll}
+          className="overflow-x-auto overflow-y-hidden border-b border-gray-100 bg-gray-50/80"
+          aria-label="Horizontal table scroll"
+        >
+          <div style={{ width: scrollWidth, height: 12 }} />
+        </div>
+      ) : null}
       <div
         ref={bodyRef}
         onScroll={onBodyScroll}
-        className="overflow-auto max-h-[min(70vh,760px)]"
+        className="w-full overflow-auto max-h-[min(70vh,760px)] [scrollbar-gutter:stable]"
       >
-        <div ref={innerRef} style={{ minWidth }}>
+        <div ref={innerRef} className="w-full">
           {children}
         </div>
       </div>
@@ -84,43 +98,43 @@ export function DataListTable({
 }
 
 export const listTh =
-  "text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 sticky top-0 z-[8]";
+  "text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 sticky top-0 z-[8] overflow-hidden";
 
 export const listThRight =
-  "text-right px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 sticky top-0 right-0 z-[12] shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)] min-w-[5.5rem]";
+  "text-right px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 sticky top-0 right-0 z-[12] shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)] w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem]";
 
 export const listThCheck =
-  "sticky top-0 left-0 z-[12] bg-gray-50 text-left px-3 py-3 w-10";
+  "sticky top-0 left-0 z-[12] bg-gray-50 text-left px-3 py-3 w-10 min-w-10 max-w-10";
 
 export const listThName =
-  "sticky top-0 left-10 z-[11] bg-gray-50 text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 min-w-[13rem]";
+  "sticky top-0 left-10 z-[11] bg-gray-50 text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[13rem] min-w-[13rem] overflow-hidden";
 
 /** Frozen identity header when the table has no checkbox column. */
 export const listThNameFlush =
-  "sticky top-0 left-0 z-[11] bg-gray-50 text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 min-w-[13rem]";
+  "sticky top-0 left-0 z-[11] bg-gray-50 text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[13rem] min-w-[13rem] overflow-hidden";
 
-export const listTd = "px-4 py-3.5";
+export const listTd = "px-4 py-3.5 overflow-hidden";
 
 export function listTdCheck(selected: boolean) {
-  return `sticky left-0 z-[5] px-3 py-3.5 align-middle ${
+  return `sticky left-0 z-[5] px-3 py-3.5 align-middle w-10 min-w-10 max-w-10 ${
     selected ? "bg-blue-50/90" : "bg-white group-hover:bg-gray-50"
   }`;
 }
 
 export function listTdName(selected: boolean) {
-  return `sticky left-10 z-[5] px-4 py-3.5 min-w-[13rem] ${
+  return `sticky left-10 z-[5] px-4 py-3.5 w-[13rem] min-w-[13rem] overflow-hidden ${
     selected ? "bg-blue-50/90" : "bg-white group-hover:bg-gray-50"
   }`;
 }
 
 export function listTdNameFlush(selected = false) {
-  return `sticky left-0 z-[5] px-4 py-3.5 min-w-[13rem] ${
+  return `sticky left-0 z-[5] px-4 py-3.5 w-[13rem] min-w-[13rem] overflow-hidden ${
     selected ? "bg-blue-50/90" : "bg-white group-hover:bg-gray-50"
   }`;
 }
 
 export function listTdActions(selected: boolean) {
-  return `sticky right-0 z-10 px-3 py-3.5 text-right shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)] ${
+  return `sticky right-0 z-10 px-3 py-3.5 text-right w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)] ${
     selected ? "bg-blue-50/90" : "bg-white group-hover:bg-gray-50"
   }`;
 }

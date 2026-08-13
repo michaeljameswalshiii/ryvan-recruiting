@@ -42,6 +42,8 @@ import { useListColumns } from '@/lib/ui/use-list-columns';
 import { toWebsiteHref, websiteLabel } from '@/lib/ui/website-href';
 import {
   DataListTable,
+  LIST_PAGE_CLASS,
+  LIST_TABLE_CLASS,
   ListColumnPicker,
   listTd,
   listTdActions,
@@ -594,7 +596,7 @@ export function CompaniesClient() {
   }
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className={LIST_PAGE_CLASS}>
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -810,8 +812,8 @@ export function CompaniesClient() {
           </div>
         </div>
       ) : (
-        <DataListTable minWidth={880}>
-            <table className="w-full min-w-[880px] border-separate border-spacing-0">
+        <DataListTable>
+            <table className={LIST_TABLE_CLASS}>
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
                   <th className={listThCheck}>
@@ -962,7 +964,11 @@ export function CompaniesClient() {
                           );
                         case 'industry':
                           return (
-                            <td key={colId} className={`${listTd} text-sm text-gray-700`}>
+                            <td
+                              key={colId}
+                              className={`${listTd} text-sm text-gray-700 truncate`}
+                              title={c.industry || undefined}
+                            >
                               {c.industry || '—'}
                             </td>
                           );
@@ -984,7 +990,7 @@ export function CompaniesClient() {
                         case 'stage':
                           return (
                             <td key={colId} className={listTd}>
-                              <div className="space-y-1.5 min-w-[160px]">
+                              <div className="space-y-1.5 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <div className="relative inline-flex items-center">
                                     <select

@@ -20,6 +20,8 @@ import {
 import { useListColumns } from '@/lib/ui/use-list-columns';
 import {
   DataListTable,
+  LIST_PAGE_CLASS,
+  LIST_TABLE_CLASS,
   ListColumnPicker,
   listTd,
   listTdActions,
@@ -717,7 +719,7 @@ export function CandidatesClient() {
   }
 
   return (
-    <div className="space-y-5 w-full max-w-none pb-10">
+    <div className={`${LIST_PAGE_CLASS} pb-10`}>
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -893,8 +895,8 @@ export function CandidatesClient() {
           </div>
         </div>
       ) : (
-        <DataListTable minWidth={960}>
-            <table className="w-full min-w-[960px] border-separate border-spacing-0">
+        <DataListTable>
+            <table className={LIST_TABLE_CLASS}>
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
                   <th className={listThCheck}>
@@ -1036,7 +1038,7 @@ export function CandidatesClient() {
                           case 'stage':
                             return (
                               <td key={colId} className={listTd}>
-                                <div className="space-y-1.5 min-w-[160px]">
+                                <div className="space-y-1.5 min-w-0">
                                   <div className="flex items-center gap-2">
                                     <div className="relative inline-flex items-center min-w-0">
                                       <select
