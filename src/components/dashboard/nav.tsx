@@ -41,7 +41,6 @@ const allNavItems = [
   { href: "/dashboard/companies", label: "Companies", icon: Building2 },
   { href: "/dashboard/contact-info", label: "Contacts", icon: Contact },
   { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
-  { href: "/dashboard/texting", label: "Texting", icon: MessageSquare },
   { href: "/dashboard/talent-graph", label: "Talent Graph", icon: Network },
   { href: "/dashboard/sequences", label: "Sequences", icon: ListOrdered },
   { href: "/dashboard/scheduling", label: "Scheduling", icon: CalendarClock },

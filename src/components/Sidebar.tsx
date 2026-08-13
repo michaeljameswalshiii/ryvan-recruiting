@@ -45,7 +45,6 @@ const menuItems: MenuItem[] = [
   { name: 'Companies', href: '/dashboard/companies', icon: Building2, permission: 'core_ats' },
   { name: 'Contacts', href: '/dashboard/contact-info', icon: Contact, permission: 'core_ats' },
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase, permission: 'core_ats' },
-  { name: 'Texting', href: '/dashboard/texting', icon: MessageSquare, permission: 'core_ats' },
   { name: 'Talent Graph', href: '/dashboard/talent-graph', icon: Network, permission: 'core_ats' },
   { name: 'Sequences', href: '/dashboard/sequences', icon: ListOrdered, permission: 'core_ats' },
   { name: 'AI', href: '/dashboard/general-ai-usage', icon: MessageSquare, permission: 'core_ats' },
@@ -75,6 +74,13 @@ const systemAdminItems: MenuItem[] = [
     href: '/dashboard/issues',
     icon: Bug,
     permission: 'issues',
+  },
+  // Inbox is not ready for recruiters yet — keep it in System Admin.
+  {
+    name: 'Texting',
+    href: '/dashboard/texting',
+    icon: MessageSquare,
+    permission: 'site_admin_tools',
   },
   // AI Apollo: only when NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true (code kept for re-enable)
   { name: 'AI Apollo', href: '/dashboard/ai-apollo', icon: Bug, permission: 'ai_apollo' },
