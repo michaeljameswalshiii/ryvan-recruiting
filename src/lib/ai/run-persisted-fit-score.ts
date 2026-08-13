@@ -187,7 +187,7 @@ async function loadResumeTextForLead(lead: any): Promise<string> {
 /** Don't let S3/pdf parsing block the whole fit request past this budget. */
 // Text-layer extraction should be quick; OCR-backed PDF extraction can require
 // Textract's async path and needs enough room to finish during a fit refresh.
-const RESUME_LOAD_TIMEOUT_MS = 30000;
+const RESUME_LOAD_TIMEOUT_MS = 45000;
 
 async function withTimeout<T>(
   promise: Promise<T>,

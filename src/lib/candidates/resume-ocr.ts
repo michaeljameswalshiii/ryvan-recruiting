@@ -8,6 +8,8 @@
 
 import {
   DetectDocumentTextCommand,
+  GetDocumentTextDetectionCommand,
+  StartDocumentTextDetectionCommand,
   TextractClient,
   type Block,
 } from "@aws-sdk/client-textract";
@@ -15,6 +17,10 @@ import { PDFDocument } from "pdf-lib";
 
 const MAX_SYNC_BYTES = 5 * 1024 * 1024;
 const MAX_PAGES = 2;
+const ASYNC_POLL_MS = 1500;
+// Large PDFs can take several seconds to enter SUCCEEDED. Keep this below the
+// route's 60-second budget while allowing the S3 async path to finish.
+const ASYNC_MAX_POLLS = 30;
 
 function awsRegion() {
   return process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || "us-east-1";
@@ -42,6 +48,82 @@ function linesFromBlocks(blocks?: Block[]): string {
     .map((block) => String(block.Text).trim())
     .filter(Boolean)
     .join("\n");
+}
+
+function ocrBucket() {
+  return (
+    process.env.AWS_S3_BUCKET_NAME ||
+    process.env.NEXT_PUBLIC_AWS_S3_BUCKET_NAME ||
+    ""
+  ).trim();
+}
+
+/**
+ * PDFs must use Textract's asynchronous S3 document API. The synchronous API
+ * accepts image bytes, but commonly rejects PDF bytes (including one-page PDFs
+ * extracted from a larger scanned document).
+ */
+async function detectPdfTextFromS3(
+  s3Key: string,
+): Promise<{ text: string; method: string } | null> {
+  const bucket = ocrBucket();
+  if (!bucket || !s3Key) return null;
+
+  const started = Date.now();
+  try {
+    const start = await textractClient().send(
+      new StartDocumentTextDetectionCommand({
+        DocumentLocation: { S3Object: { Bucket: bucket, Name: s3Key } },
+      }),
+    );
+    const jobId = start.JobId;
+    if (!jobId) return null;
+
+    let nextToken: string | undefined;
+    const lines: string[] = [];
+    for (let poll = 0; poll < ASYNC_MAX_POLLS; poll++) {
+      await new Promise((resolve) => setTimeout(resolve, ASYNC_POLL_MS));
+      const result = await textractClient().send(
+        new GetDocumentTextDetectionCommand({
+          JobId: jobId,
+          NextToken: nextToken,
+        }),
+      );
+      if (result.JobStatus === "FAILED") {
+        throw new Error(result.StatusMessage || "Textract PDF job failed");
+      }
+      if (result.JobStatus === "SUCCEEDED") {
+        lines.push(linesFromBlocks(result.Blocks));
+        nextToken = result.NextToken;
+        while (nextToken) {
+          const page = await textractClient().send(
+            new GetDocumentTextDetectionCommand({
+              JobId: jobId,
+              NextToken: nextToken,
+            }),
+          );
+          lines.push(linesFromBlocks(page.Blocks));
+          nextToken = page.NextToken;
+        }
+        const text = lines.filter(Boolean).join("\n");
+        if (text.trim().length > 20) {
+          console.log(
+            "[resume-ocr] async PDF",
+            text.length,
+            "chars in",
+            Date.now() - started,
+            "ms",
+          );
+          return { text, method: "textract-pdf" };
+        }
+        return null;
+      }
+    }
+    throw new Error("Textract PDF job timed out");
+  } catch (error) {
+    console.warn("[resume-ocr] async PDF failed:", error);
+    return null;
+  }
 }
 
 async function detectDocumentTextSync(buffer: Buffer): Promise<string> {
@@ -82,12 +164,17 @@ export function looksLikeScannedPdf(buffer: Buffer): boolean {
 
 export async function extractResumeTextWithOcr(
   buffer: Buffer,
-  _opts?: { fileName?: string; s3Key?: string }
+  opts?: { fileName?: string; s3Key?: string }
 ): Promise<{ text: string; method: string } | null> {
   if (!buffer?.length) return null;
   const started = Date.now();
 
   try {
+    if (opts?.s3Key && opts.fileName?.toLowerCase().endsWith(".pdf")) {
+      const pdfText = await detectPdfTextFromS3(opts.s3Key);
+      if (pdfText) return pdfText;
+    }
+
     // One-page scans succeed here in ~1–3s.
     if (buffer.length <= MAX_SYNC_BYTES) {
       try {
@@ -116,7 +203,10 @@ export async function extractResumeTextWithOcr(
       }
     }
 
-    // Multi-page: OCR the first two pages in parallel via sync API.
+    // Multi-page: OCR the first two pages in parallel via sync API. Large PDF
+    // pages can retain embedded image resources above Textract's sync limit;
+    // in that case async S3 OCR was already attempted and there is no useful
+    // local fallback to run here.
     const pagePdfs = await firstPagesAsSinglePdfs(buffer, MAX_PAGES);
     if (!pagePdfs.length) return null;
 
@@ -142,6 +232,7 @@ export async function extractResumeTextWithOcr(
       );
       return { text, method: "textract-pages" };
     }
+    if (buffer.length > MAX_SYNC_BYTES) return null;
   } catch (error) {
     console.warn("[resume-ocr] OCR unavailable:", error);
   }

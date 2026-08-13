@@ -1,20 +1,15 @@
 /**
- * Trio Fit Score — Version 2 (live).
+ * Trio Fit Score — Version 3 is live (capability-first 4-factor rubric).
+ * V1/V2 remain callable for comparison only.
  *
- * Composite = 50% Version 1 dimension average + 50% review rubric
- * (experience 35 / industry 25 / skills 25 / location 15), then field-fit
- * multiplier on both halves, then hard-gate caps.
- *
- * Version 1 is frozen in src/lib/ai/archived/fit-score-v1.ts and still
- * callable here as scoreCandidateJobFitV1.
- *
- * Pure functions — no DynamoDB / server deps.
+ * Pure functions — no DynamoDB / server deps (LLM augment is a separate module).
  */
 
 import {
   assessFieldFit,
   type FieldFitResult,
 } from "@/lib/ai/occupation-fields";
+import { scoreCandidateJobFitV3 } from "@/lib/ai/fit-score-v3";
 
 export type FitGrade = "A" | "B" | "C" | "D" | "F";
 
@@ -50,7 +45,7 @@ export interface FitDimensionScore {
   applicable: boolean;
 }
 
-export type ScoringVersion = "v1" | "v2";
+export type ScoringVersion = "v1" | "v2" | "v3";
 
 export type FitRubricFactorId =
   | "experience"
@@ -111,6 +106,11 @@ export interface FitScoreResult {
   rubric?: FitRubricFactor[];
   gates?: FitHardGate[];
   verifyBeforeAdvancing?: string[];
+  band?: string;
+  hmReachOut?: "Yes" | "Maybe" | "No";
+  hmReason?: string;
+  llmUsed?: boolean;
+  llmModel?: string;
 }
 
 export interface FitReviewAssessment {
@@ -2914,21 +2914,32 @@ export function buildReviewerAssessment(
  * Human-readable fit summary for activity notes + expandable UI.
  */
 export function formatFitSummary(result: FitScoreResult): string {
+  if (result.scoringVersion === "v3" || result.band || result.hmReachOut) {
+    const band = result.band || (result.score >= 85 ? "Strong fit" : result.score >= 70 ? "Good fit" : result.score >= 55 ? "Review" : "Weak fit");
+    const lines: string[] = [
+      `COMPOSITE SCORE: ${result.score}/100 — ${band}`,
+    ];
+    for (const f of result.rubric || []) {
+      lines.push(`${f.label}: ${f.points}/${f.max} — ${f.detail}`);
+    }
+    if (result.hmReachOut) {
+      lines.push("");
+      lines.push(`WOULD A HIRING MANAGER REACH OUT? ${result.hmReachOut} — ${result.hmReason || ""}`);
+    }
+    const failed = (result.gates || []).filter((g) => !g.passed);
+    lines.push("");
+    lines.push(`GATE FLAGS: ${failed.length ? failed.map((g) => g.detail).join("; ") : "none"}`);
+    if (result.verifyBeforeAdvancing?.length) {
+      lines.push("");
+      lines.push("VERIFY BEFORE ADVANCING:");
+      for (const q of result.verifyBeforeAdvancing) lines.push(`- ${q}`);
+    }
+    return lines.join("\n").slice(0, 3900);
+  }
+
   const assessment = buildReviewerAssessment(result);
-  const versionLabel =
-    assessment.scoringVersion === "v2"
-      ? "Version 2 · 50% V1 + 50% review rubric"
-      : assessment.scoringVersion === "v1"
-        ? "Version 1 · dimension average"
-        : "Fit score";
   const lines: string[] = [
-    `Overall ${assessment.score}/100 · Grade ${assessment.grade} · ${versionLabel}`,
-    `Domain rollup ${assessment.domainFit.score}/100 · Grade ${assessment.domainFit.grade}`,
-    assessment.toolReadiness.applicable === false
-      ? `Tool readiness n/a · No tool stack called out on JD`
-      : `Tool readiness ${assessment.toolReadiness.score}/100 · Grade ${assessment.toolReadiness.grade}`,
-    assessment.headline,
-    "",
+    `Overall ${assessment.score}/100 · ${assessment.headline}`,
     assessment.summary,
   ];
 
@@ -3383,12 +3394,11 @@ function applyFitScoreV2(
 }
 
 /**
- * Live scorer (Version 2): 50% V1 + 50% review rubric, field-fit on both, then gates.
+ * Live scorer (Version 3): capability-first 4-factor rubric.
  */
 export function scoreCandidateJobFit(
   candidate: FitCandidateInput,
   job: FitJobInput
 ): FitScoreResult {
-  const v1 = scoreCandidateJobFitV1(candidate, job);
-  return applyFitScoreV2(v1, candidate, job);
+  return scoreCandidateJobFitV3(candidate, job);
 }
