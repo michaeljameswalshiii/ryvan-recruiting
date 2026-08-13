@@ -6,6 +6,8 @@ export type ListColumnDef<Id extends string> = {
   id: Id;
   label: string;
   defaultOn: boolean;
+  /** Show a "New" pill in the column picker. */
+  isNew?: boolean;
 };
 
 export function useListColumns<Id extends string>(
@@ -97,6 +99,21 @@ export function useListColumns<Id extends string>(
     [persist, visibility]
   );
 
+  const reorder = useCallback(
+    (ids: Id[]) => {
+      setOrder((prev) => {
+        const known = new Set(prev);
+        const next = ids.filter((id) => known.has(id));
+        for (const id of prev) {
+          if (!next.includes(id)) next.push(id);
+        }
+        persist(visibility, next);
+        return next;
+      });
+    },
+    [persist, visibility]
+  );
+
   const reset = useCallback(() => {
     setVisibility(defaultVisibility);
     setOrder(defaultOrder);
@@ -116,6 +133,7 @@ export function useListColumns<Id extends string>(
     col,
     toggle,
     move,
+    reorder,
     reset,
     open,
     setOpen,

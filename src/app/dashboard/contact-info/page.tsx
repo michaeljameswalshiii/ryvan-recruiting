@@ -16,6 +16,7 @@ import {
   Building2,
   Star,
   UserRound,
+  MapPin,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +30,7 @@ import { useClients } from '@/lib/hooks/query-client';
 import { useAddContact, useRemoveContact } from '@/lib/hooks/contact-mutations';
 import { getDisplayPhone } from '@/lib/contacts/phone';
 import { useListColumns } from '@/lib/ui/use-list-columns';
+import { useAssignmentOwners } from '@/lib/hooks/use-assignment-owners';
 import {
   DataListTable,
   LIST_PAGE_CLASS,
@@ -52,21 +54,31 @@ type ContactBucket =
   | 'missing_email'
   | 'missing_phone';
 
-type ContactColumnId = 'company' | 'email' | 'phone' | 'added' | 'last_activity';
+type ContactColumnId =
+  | 'company'
+  | 'email'
+  | 'phone'
+  | 'added'
+  | 'last_activity'
+  | 'owner'
+  | 'location';
 
 const CONTACT_COLUMN_DEFS: {
   id: ContactColumnId;
   label: string;
   defaultOn: boolean;
+  isNew?: boolean;
 }[] = [
   { id: 'company', label: 'Company', defaultOn: true },
+  { id: 'owner', label: 'Owner', defaultOn: true, isNew: true },
+  { id: 'location', label: 'Location', defaultOn: true, isNew: true },
   { id: 'email', label: 'Email', defaultOn: true },
   { id: 'phone', label: 'Phone', defaultOn: true },
   { id: 'added', label: 'Added', defaultOn: false },
   { id: 'last_activity', label: 'Last Activity', defaultOn: true },
 ];
 
-const CONTACT_COLUMNS_KEY = 'trio.contacts.tableColumns.v2';
+const CONTACT_COLUMNS_KEY = 'trio.contacts.tableColumns.v3';
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -140,6 +152,7 @@ export default function ContactInfoPage() {
     clientId: '',
   });
   const columns = useListColumns(CONTACT_COLUMNS_KEY, CONTACT_COLUMN_DEFS);
+  const { data: ownerMap = {} } = useAssignmentOwners('contact');
 
   const companies = useMemo(() => {
     if (Array.isArray(clientsData)) return clientsData;
@@ -161,6 +174,8 @@ export default function ContactInfoPage() {
       isPrimary: boolean;
       added?: string;
       lastActivity?: string;
+      location: string;
+      ownerName: string;
       raw: any;
     }> = [];
 
@@ -183,12 +198,21 @@ export default function ContactInfoPage() {
           isPrimary: !!contact.isPrimary,
           added,
           lastActivity,
+          location:
+            [contact.city, contact.state].filter(Boolean).join(', ') ||
+            [company.city, company.state].filter(Boolean).join(', '),
+          ownerName:
+            ownerMap[String(contact.id)]?.name ||
+            contact.ownerName ||
+            contact.accountOwner ||
+            contact.createdByName ||
+            '',
           raw: contact,
         });
       }
     }
     return rows;
-  }, [companies]);
+  }, [companies, ownerMap]);
 
   const stats = useMemo(() => {
     const counts = {
@@ -232,7 +256,7 @@ export default function ContactInfoPage() {
           break;
       }
       if (!q) return true;
-      const hay = [c.name, c.title, c.email, c.phone, c.companyName]
+      const hay = [c.name, c.title, c.email, c.phone, c.companyName, c.ownerName, c.location]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -505,6 +529,7 @@ export default function ContactInfoPage() {
             col={columns.col}
             toggle={columns.toggle}
             move={columns.move}
+            reorder={columns.reorder}
             reset={columns.reset}
             open={columns.open}
             setOpen={(next) => {
@@ -679,6 +704,38 @@ export default function ContactInfoPage() {
                                 className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
                               >
                                 {formatRelativeActivity(c.lastActivity)}
+                              </td>
+                            );
+                          case 'owner':
+                            return (
+                              <td key={colId} className={listTd}>
+                                {c.ownerName ? (
+                                  <span className="inline-flex items-center gap-2 min-w-0">
+                                    <span
+                                      className={`h-7 w-7 shrink-0 rounded-full ${avatarColor(c.ownerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
+                                    >
+                                      {getInitials(c.ownerName)}
+                                    </span>
+                                    <span className="truncate text-sm text-gray-800">
+                                      {c.ownerName}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-gray-400">—</span>
+                                )}
+                              </td>
+                            );
+                          case 'location':
+                            return (
+                              <td key={colId} className={`${listTd} text-sm text-gray-700`}>
+                                {c.location ? (
+                                  <span className="inline-flex items-center gap-1 min-w-0">
+                                    <MapPin className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                                    <span className="truncate">{c.location}</span>
+                                  </span>
+                                ) : (
+                                  '—'
+                                )}
                               </td>
                             );
                           default:

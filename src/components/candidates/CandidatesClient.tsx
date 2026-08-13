@@ -18,6 +18,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { useListColumns } from '@/lib/ui/use-list-columns';
+import { useAssignmentOwners } from '@/lib/hooks/use-assignment-owners';
 import {
   DataListTable,
   LIST_PAGE_CLASS,
@@ -342,14 +343,17 @@ type CandidateColumnId =
   | 'stage'
   | 'added'
   | 'last_activity'
-  | 'location';
+  | 'location'
+  | 'owner';
 
 const CANDIDATE_COLUMN_DEFS: {
   id: CandidateColumnId;
   label: string;
   defaultOn: boolean;
+  isNew?: boolean;
 }[] = [
   { id: 'linked_job', label: 'Linked Job', defaultOn: true },
+  { id: 'owner', label: 'Owner', defaultOn: true, isNew: true },
   { id: 'source', label: 'Source', defaultOn: true },
   { id: 'stage', label: 'Stage & Progress', defaultOn: true },
   { id: 'added', label: 'Added', defaultOn: true },
@@ -357,7 +361,7 @@ const CANDIDATE_COLUMN_DEFS: {
   { id: 'location', label: 'Location', defaultOn: false },
 ];
 
-const CANDIDATE_COLUMNS_KEY = 'trio.candidates.tableColumns.v2';
+const CANDIDATE_COLUMNS_KEY = 'trio.candidates.tableColumns.v3';
 
 export function CandidatesClient() {
   const router = useRouter();
@@ -392,6 +396,7 @@ export function CandidatesClient() {
   const [page, setPage] = useState(1);
   const columns = useListColumns(CANDIDATE_COLUMNS_KEY, CANDIDATE_COLUMN_DEFS);
   const col = columns.col;
+  const { data: ownerMap = {} } = useAssignmentOwners('candidate');
 
   const candidates = useMemo(() => (Array.isArray(leads) ? leads : []), [leads]);
 
@@ -403,6 +408,7 @@ export function CandidatesClient() {
       const added = c.created_at || c.createdAt;
       const lastActivity = c.modified_at || c.modifiedAt || c.updated_at || added;
       const location = candidateLocation(c);
+      const assigned = ownerMap[String(c.id)];
       return {
         raw: c,
         id: c.id,
@@ -416,9 +422,15 @@ export function CandidatesClient() {
         location,
         added,
         lastActivity,
+        ownerName:
+          assigned?.name ||
+          c.ownerName ||
+          c.accountOwner ||
+          c.createdByName ||
+          '',
       };
     });
-  }, [candidates]);
+  }, [candidates, ownerMap]);
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -583,6 +595,7 @@ export function CandidatesClient() {
         c.linked?.title,
         c.linked?.company,
         c.location,
+        c.ownerName,
       ]
         .filter(Boolean)
         .join(' ')
@@ -796,6 +809,7 @@ export function CandidatesClient() {
             col={columns.col}
             toggle={columns.toggle}
             move={columns.move}
+            reorder={columns.reorder}
             reset={columns.reset}
             open={columns.open}
             setOpen={(next) => {
@@ -1123,6 +1137,25 @@ export function CandidatesClient() {
                                   </span>
                                 ) : (
                                   '—'
+                                )}
+                              </td>
+                            );
+                          case 'owner':
+                            return (
+                              <td key={colId} className={listTd}>
+                                {c.ownerName ? (
+                                  <span className="inline-flex items-center gap-2 min-w-0">
+                                    <span
+                                      className={`h-7 w-7 shrink-0 rounded-full ${avatarColor(c.ownerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
+                                    >
+                                      {getInitials(c.ownerName)}
+                                    </span>
+                                    <span className="truncate text-sm text-gray-800">
+                                      {c.ownerName}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-gray-400">—</span>
                                 )}
                               </td>
                             );

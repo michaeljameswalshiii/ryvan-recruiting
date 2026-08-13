@@ -415,6 +415,7 @@ export function JobListView({ jobs }: JobListViewProps) {
             col={columns.col}
             toggle={columns.toggle}
             move={columns.move}
+            reorder={columns.reorder}
             reset={columns.reset}
             open={columns.open}
             setOpen={(next) => {

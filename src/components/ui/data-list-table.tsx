@@ -7,7 +7,22 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ChevronDown, ChevronUp, Columns3 } from "lucide-react";
+import { Columns3, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import type { ListColumnDef } from "@/lib/ui/use-list-columns";
 
@@ -144,28 +159,114 @@ type PickerProps<Id extends string> = {
   order: Id[];
   col: (id: Id) => boolean;
   toggle: (id: Id) => void;
-  move: (id: Id, dir: -1 | 1) => void;
+  move?: (id: Id, dir: -1 | 1) => void;
+  reorder?: (ids: Id[]) => void;
   reset: () => void;
   open: boolean;
   setOpen: (open: boolean) => void;
   alwaysOnNote?: string;
 };
 
+function SortableColumnRow<Id extends string>({
+  id,
+  label,
+  checked,
+  isNew,
+  onToggle,
+}: {
+  id: Id;
+  label: string;
+  checked: boolean;
+  isNew?: boolean;
+  onToggle: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+  return (
+    <li
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${
+        isDragging
+          ? "z-10 border-blue-200 bg-blue-50 shadow-sm"
+          : checked
+            ? "border-transparent bg-white hover:bg-slate-50"
+            : "border-transparent bg-slate-50/80 hover:bg-slate-50"
+      }`}
+    >
+      <button
+        type="button"
+        className="cursor-grab touch-none rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+        aria-label={`Drag ${label} to reorder`}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 py-0.5 text-sm">
+        <input
+          type="checkbox"
+          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          checked={checked}
+          onChange={onToggle}
+        />
+        <span
+          className={`truncate ${checked ? "text-slate-800" : "text-slate-400 line-through"}`}
+        >
+          {label}
+        </span>
+      </label>
+      {isNew && checked ? (
+        <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+          New
+        </span>
+      ) : null}
+      {!checked ? (
+        <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600">
+          Hidden
+        </span>
+      ) : null}
+    </li>
+  );
+}
+
 export function ListColumnPicker<Id extends string>({
   defs,
   order,
   col,
   toggle,
-  move,
+  reorder,
   reset,
   open,
   setOpen,
-  alwaysOnNote = "Name and Actions always stay on.",
+  alwaysOnNote = "Name and Actions always stay on. Drag the handle to change order.",
 }: PickerProps<Id>) {
   const byId = Object.fromEntries(defs.map((d) => [d.id, d])) as Record<
     Id,
     ListColumnDef<Id>
   >;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
+
+  const onDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !reorder) return;
+    const oldIndex = order.indexOf(active.id as Id);
+    const newIndex = order.indexOf(over.id as Id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    reorder(arrayMove(order, oldIndex, newIndex));
+  };
+
   return (
     <div className="relative">
       <Button
@@ -191,12 +292,10 @@ export function ListColumnPicker<Id extends string>({
           />
           <div
             role="menu"
-            className="absolute right-0 top-10 z-40 w-72 rounded-xl border border-gray-200 bg-white p-3 shadow-xl text-slate-900"
+            className="absolute right-0 top-10 z-40 w-80 rounded-xl border border-gray-200 bg-white p-3 shadow-xl text-slate-900"
           >
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                Columns
-              </p>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-slate-900">Edit columns</p>
               <button
                 type="button"
                 onClick={reset}
@@ -205,47 +304,33 @@ export function ListColumnPicker<Id extends string>({
                 Reset
               </button>
             </div>
-            <p className="mb-2 text-[11px] text-slate-500">{alwaysOnNote}</p>
-            <ul className="space-y-1">
-              {order.map((id, index) => {
-                const def = byId[id];
-                if (!def) return null;
-                return (
-                  <li
-                    key={id}
-                    className="flex items-center gap-1 rounded-lg px-1 py-0.5 hover:bg-slate-50"
-                  >
-                    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-1 py-1 text-sm">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            <p className="mb-3 text-[11px] text-slate-500">
+              Drag to reorder columns. {alwaysOnNote}
+            </p>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={onDragEnd}
+            >
+              <SortableContext items={order} strategy={verticalListSortingStrategy}>
+                <ul className="space-y-1">
+                  {order.map((id) => {
+                    const def = byId[id];
+                    if (!def) return null;
+                    return (
+                      <SortableColumnRow
+                        key={id}
+                        id={id}
+                        label={def.label}
                         checked={col(id)}
-                        onChange={() => toggle(id)}
+                        isNew={def.isNew}
+                        onToggle={() => toggle(id)}
                       />
-                      <span className="truncate text-slate-800">{def.label}</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
-                      disabled={index === 0}
-                      onClick={() => move(id, -1)}
-                      aria-label={`Move ${def.label} earlier`}
-                    >
-                      <ChevronUp className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
-                      disabled={index === order.length - 1}
-                      onClick={() => move(id, 1)}
-                      aria-label={`Move ${def.label} later`}
-                    >
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+                    );
+                  })}
+                </ul>
+              </SortableContext>
+            </DndContext>
           </div>
         </>
       )}

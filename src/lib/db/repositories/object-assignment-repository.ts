@@ -5,7 +5,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import {
   eventsTable,
   getDocClient,
@@ -54,6 +54,42 @@ function objectPK(
 
 function assignmentSK(userId: string) {
   return `ASSIGNMENT#${userId}`;
+}
+
+/** All assignments of one object type for a tenant (list Owner columns). */
+export async function listObjectAssignmentsForType(
+  tenantId: string,
+  objectType: AssignableObjectType,
+): Promise<ObjectAssignment[]> {
+  const items: ObjectAssignment[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  try {
+    do {
+      const response = await getDocClient().send(
+        new QueryCommand({
+          TableName: eventsTable,
+          IndexName: "GSI1",
+          KeyConditionExpression: "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)",
+          ExpressionAttributeValues: {
+            ":pk": `TENANT#${tenantId}`,
+            ":prefix": "ASSIGNMENT#",
+          },
+          ExclusiveStartKey: startKey,
+        }),
+      );
+      for (const item of response.Items || []) {
+        const row = item as ObjectAssignment;
+        if (row.tenantId === tenantId && row.objectType === objectType) {
+          items.push(row);
+        }
+      }
+      startKey = response.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (startKey);
+  } catch (err) {
+    console.warn("[listObjectAssignmentsForType]", err);
+    return [];
+  }
+  return items;
 }
 
 export async function listObjectAssignments(

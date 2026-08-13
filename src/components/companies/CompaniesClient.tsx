@@ -39,6 +39,9 @@ import {
 import { FilterStatCards } from '@/components/ui/filter-stat-cards';
 import { useTheme } from '@/components/ThemeProvider';
 import { useListColumns } from '@/lib/ui/use-list-columns';
+import { useAssignmentOwners } from '@/lib/hooks/use-assignment-owners';
+import { useJobs } from '@/lib/hooks/query-job';
+import { normalizeJobStatus } from '@/lib/jobs/status';
 import { toWebsiteHref, websiteLabel } from '@/lib/ui/website-href';
 import {
   DataListTable,
@@ -246,6 +249,43 @@ function locationLine(company: any): string {
   return parts.join(', ');
 }
 
+function ownerNameFromRecord(record: any, assigned?: { name?: string }): string {
+  return (
+    assigned?.name ||
+    record?.ownerName ||
+    record?.accountOwner ||
+    record?.owner ||
+    record?.createdByName ||
+    ''
+  );
+}
+
+function feeAgreementLabel(company: any): string {
+  const raw =
+    company.fee_agreement ||
+    company.feeAgreement ||
+    company.agreementType ||
+    company.feeType ||
+    '';
+  if (raw) return String(raw);
+  const pct = company.fee_percent ?? company.feePercent;
+  const kind = company.fee_type || company.agreement || '';
+  if (pct != null && pct !== '' && kind) return `${pct}% ${kind}`;
+  if (kind) return String(kind);
+  return '';
+}
+
+function nextFollowUpValue(company: any): string {
+  return (
+    company.next_follow_up ||
+    company.nextFollowUp ||
+    company.nextFollowUpAt ||
+    company.follow_up_at ||
+    company.followUpAt ||
+    ''
+  );
+}
+
 /** Optional / toggleable table columns (company + actions always shown). */
 type CompanyColumnId =
   | 'primary_contact'
@@ -254,23 +294,32 @@ type CompanyColumnId =
   | 'stage'
   | 'contacts'
   | 'added'
-  | 'last_activity';
+  | 'last_activity'
+  | 'account_owner'
+  | 'open_jobs'
+  | 'fee_agreement'
+  | 'next_follow_up';
 
 const COMPANY_COLUMN_DEFS: {
   id: CompanyColumnId;
   label: string;
   defaultOn: boolean;
+  isNew?: boolean;
 }[] = [
   { id: 'primary_contact', label: 'Primary Contact', defaultOn: true },
-  { id: 'industry', label: 'Industry', defaultOn: true },
   { id: 'stage', label: 'Stage & Progress', defaultOn: true },
+  { id: 'account_owner', label: 'Account Owner', defaultOn: true, isNew: true },
+  { id: 'open_jobs', label: 'Open Jobs #', defaultOn: true, isNew: true },
+  { id: 'fee_agreement', label: 'Fee Agreement', defaultOn: true, isNew: true },
+  { id: 'industry', label: 'Industry', defaultOn: false },
   { id: 'contacts', label: 'Contacts', defaultOn: true },
-  { id: 'added', label: 'Added', defaultOn: true },
+  { id: 'added', label: 'Added', defaultOn: false },
   { id: 'last_activity', label: 'Last Activity', defaultOn: true },
   { id: 'location', label: 'Location', defaultOn: false },
+  { id: 'next_follow_up', label: 'Next Follow-up', defaultOn: true, isNew: true },
 ];
 
-const COLUMNS_STORAGE_KEY = 'trio.companies.tableColumns.v2';
+const COLUMNS_STORAGE_KEY = 'trio.companies.tableColumns.v3';
 
 export function CompaniesClient() {
   const router = useRouter();
@@ -295,6 +344,8 @@ export function CompaniesClient() {
   const [page, setPage] = useState(1);
   const columns = useListColumns(COLUMNS_STORAGE_KEY, COMPANY_COLUMN_DEFS);
   const col = columns.col;
+  const { data: ownerMap = {} } = useAssignmentOwners('company');
+  const { data: jobsData } = useJobs();
   const setColumnsOpen = columns.setOpen;
 
   /**
@@ -378,6 +429,22 @@ export function CompaniesClient() {
     return [];
   }, [data]);
 
+  const openJobsByCompany = useMemo(() => {
+    const raw = Array.isArray(jobsData)
+      ? jobsData
+      : Array.isArray((jobsData as any)?.jobs)
+        ? (jobsData as any).jobs
+        : [];
+    const counts: Record<string, number> = {};
+    for (const job of raw) {
+      const companyId = String(job?.companyId || job?.company_id || '');
+      if (!companyId) continue;
+      if (normalizeJobStatus(job?.status) !== 'Open') continue;
+      counts[companyId] = (counts[companyId] || 0) + 1;
+    }
+    return counts;
+  }, [jobsData]);
+
   const enriched = useMemo(() => {
     return companies.map((c: any) => {
       const stage = normalizeStage(c.status || c.stage || 'identification');
@@ -386,6 +453,7 @@ export function CompaniesClient() {
       const primary = getPrimaryContact(c);
       const added = c.created_at || c.createdAt;
       const lastActivity = c.modified_at || c.modifiedAt || c.updated_at || c.updatedAt || added;
+      const assigned = ownerMap[String(c.id)] || ownerMap[String(c.PK)];
       return {
         raw: c,
         id: c.id,
@@ -399,9 +467,15 @@ export function CompaniesClient() {
         primary,
         added,
         lastActivity,
+        ownerName: ownerNameFromRecord(c, assigned),
+        openJobs:
+          openJobsByCompany[String(c.id)] ??
+          (typeof c.open_jobs_posted === 'number' ? c.open_jobs_posted : 0),
+        feeAgreement: feeAgreementLabel(c),
+        nextFollowUp: nextFollowUpValue(c),
       };
     });
-  }, [companies]);
+  }, [companies, ownerMap, openJobsByCompany]);
 
   const stats = useMemo(() => {
     const counts = {
@@ -437,6 +511,8 @@ export function CompaniesClient() {
         c.stage,
         c.primary?.name,
         c.primary?.email,
+        c.ownerName,
+        c.feeAgreement,
       ]
         .filter(Boolean)
         .join(' ')
@@ -704,6 +780,7 @@ export function CompaniesClient() {
             col={columns.col}
             toggle={columns.toggle}
             move={columns.move}
+            reorder={columns.reorder}
             reset={columns.reset}
             open={columns.open}
             setOpen={(next) => {
@@ -1078,6 +1155,46 @@ export function CompaniesClient() {
                               className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
                             >
                               {formatRelativeActivity(c.lastActivity)}
+                            </td>
+                          );
+                        case 'account_owner':
+                          return (
+                            <td key={colId} className={listTd}>
+                              {c.ownerName ? (
+                                <span className="inline-flex items-center gap-2 min-w-0">
+                                  <span
+                                    className={`h-7 w-7 shrink-0 rounded-full ${avatarColor(c.ownerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
+                                  >
+                                    {getInitials(c.ownerName)}
+                                  </span>
+                                  <span className="truncate text-sm text-gray-800">
+                                    {c.ownerName}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="text-sm text-gray-400">—</span>
+                              )}
+                            </td>
+                          );
+                        case 'open_jobs':
+                          return (
+                            <td key={colId} className={`${listTd} text-sm text-gray-800 tabular-nums`}>
+                              {c.openJobs}
+                            </td>
+                          );
+                        case 'fee_agreement':
+                          return (
+                            <td key={colId} className={`${listTd} text-sm text-gray-700 truncate`}>
+                              {c.feeAgreement || '—'}
+                            </td>
+                          );
+                        case 'next_follow_up':
+                          return (
+                            <td
+                              key={colId}
+                              className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
+                            >
+                              {formatShortDate(c.nextFollowUp)}
                             </td>
                           );
                         default:
