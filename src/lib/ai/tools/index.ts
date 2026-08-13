@@ -11,10 +11,6 @@ import { ToolResult, ToolContext, ToolParams } from "./types";
 import { executeApolloSearch, APOLLO_TOOL_NAME, APOLLO_TOOL_DESCRIPTION } from "./apollo";
 import { formatApolloCandidate } from "./apollo";
 import { executeApolloCompanySearch, APOLLO_COMPANY_TOOL_NAME, APOLLO_COMPANY_TOOL_DESCRIPTION } from "./apollo-company";
-import {
-  APOLLO_LOOKUP_TOOL_NAME,
-  APOLLO_LOOKUP_TOOL_DESCRIPTION,
-} from "./apollo-lookup";
 import { formatApolloCompany } from "./apollo-company";
 import { executeTavilySearch, TAVILY_TOOL_NAME, TAVILY_TOOL_DESCRIPTION } from "./tavily";
 import { formatTavilyResult } from "./tavily";
@@ -32,14 +28,6 @@ import {
   GENERATE_FILE_TOOL_NAME,
   GENERATE_FILE_TOOL_DESCRIPTION,
 } from "./generate-file";
-import {
-  executeGeneratePresentation,
-  executeGenerateImage,
-  GENERATE_PRESENTATION_TOOL_NAME,
-  GENERATE_PRESENTATION_TOOL_DESCRIPTION,
-  GENERATE_IMAGE_TOOL_NAME,
-  GENERATE_IMAGE_TOOL_DESCRIPTION,
-} from "./visual";
 import { executeTool, getTools, getTool, hasTool, getToolDescription, TOOL_NAMES } from "./registry";
 import {
   filterEnabledToolNames,
@@ -57,11 +45,6 @@ export type { ToolParams, ToolContext, ToolResult } from "./types";
 
 // Apollo (People)
 export { executeApolloSearch, APOLLO_TOOL_NAME, APOLLO_TOOL_DESCRIPTION } from "./apollo";
-export {
-  executeApolloLookup,
-  APOLLO_LOOKUP_TOOL_NAME,
-  APOLLO_LOOKUP_TOOL_DESCRIPTION,
-} from "./apollo-lookup";
 export type { ApolloSearchParams, ApolloSearchResultData, ApolloCandidate } from "./apollo";
 
 // Apollo Company Search
@@ -107,14 +90,6 @@ export {
   extractGeneratedFileFromToolData,
 } from "./generate-file";
 export type { GeneratedFilePayload } from "./generate-file";
-export {
-  executeGeneratePresentation,
-  executeGenerateImage,
-  GENERATE_PRESENTATION_TOOL_NAME,
-  GENERATE_PRESENTATION_TOOL_DESCRIPTION,
-  GENERATE_IMAGE_TOOL_NAME,
-  GENERATE_IMAGE_TOOL_DESCRIPTION,
-} from "./visual";
 
 // Registry
 export { executeTool, getTools, getTool, hasTool, getToolDescription, TOOL_NAMES };
@@ -178,7 +153,7 @@ export function getToolSchemas(): Array<{
   }> = [
     {
       name: "apollo",
-      description: "Search for a list of people in Apollo (title, company, location). For one named person or a LinkedIn URL, use apollo_lookup.",
+      description: "Search for people, candidates, companies, or contacts. Use to find emails, phone numbers, LinkedIn profiles for recruiting or sales leads.",
       input_schema: {
         type: "object",
         properties: {
@@ -187,28 +162,6 @@ export function getToolSchemas(): Array<{
           per_page: { type: "number", description: "Number of results (default 10)" },
         },
         required: ["query"],
-      },
-    },
-    {
-      name: APOLLO_LOOKUP_TOOL_NAME,
-      description: APOLLO_LOOKUP_TOOL_DESCRIPTION,
-      input_schema: {
-        type: "object",
-        properties: {
-          linkedin_url: {
-            type: "string",
-            description: "LinkedIn profile URL if the user provided one",
-          },
-          email: { type: "string", description: "Work or personal email to match" },
-          name: { type: "string", description: "Full name of the person" },
-          company: { type: "string", description: "Current or last company name" },
-          domain: { type: "string", description: "Company domain, e.g. acme.com" },
-          reveal_contact: {
-            type: "boolean",
-            description: "true only if the user asked for email or phone",
-          },
-        },
-        required: [],
       },
     },
     {
@@ -285,13 +238,13 @@ export function getToolSchemas(): Array<{
     {
       name: "generate_file",
       description:
-        "Create a downloadable file (docx, xlsx, csv, md, txt, json, html, or svg). Use when the user wants a document, spreadsheet, visual, export, or attachment. The app shows a Download button — never say you cannot create files.",
+        "Create a downloadable file (docx, xlsx, csv, md, txt, json, html). Use when the user wants a document, spreadsheet, export, or attachment. The app shows a Download button — never say you cannot create files.",
       input_schema: {
         type: "object",
         properties: {
           format: {
             type: "string",
-            description: "docx | xlsx | csv | md | txt | json | html | svg",
+            description: "docx | xlsx | csv | md | txt | json | html",
           },
           file_name: {
             type: "string",
@@ -308,34 +261,6 @@ export function getToolSchemas(): Array<{
           },
         },
         required: ["format", "content"],
-      },
-    },
-    {
-      name: GENERATE_PRESENTATION_TOOL_NAME,
-      description: GENERATE_PRESENTATION_TOOL_DESCRIPTION,
-      input_schema: {
-        type: "object",
-        properties: {
-          slides: { type: "string", description: "JSON slide array or markdown outline with # slide headings" },
-          file_name: { type: "string", description: "Optional .pptx file name" },
-          title: { type: "string", description: "Presentation title" },
-        },
-        required: ["slides"],
-      },
-    },
-    {
-      name: GENERATE_IMAGE_TOOL_NAME,
-      description: GENERATE_IMAGE_TOOL_DESCRIPTION,
-      input_schema: {
-        type: "object",
-        properties: {
-          prompt: { type: "string", description: "Detailed image description or edit instruction" },
-          image_base64: { type: "string", description: "Optional base64 source image for editing" },
-          mime_type: { type: "string", description: "Source image MIME type when editing" },
-          size: { type: "string", description: "1024x1024, 1536x1024, or 1024x1536" },
-          file_name: { type: "string", description: "Optional PNG file name" },
-        },
-        required: ["prompt"],
       },
     },
     {
@@ -565,14 +490,6 @@ export function selectTools(query: string): string[] {
   // Add people search tool (recruiting)
   if (isApolloToolEnabled() && candidateKeywords.some(kw => q.includes(kw))) {
     tools.push(APOLLO_TOOL_NAME);
-  }
-  if (
-    isApolloToolEnabled() &&
-    (/\blinkedin\.com\/in\//i.test(query) ||
-      /\bwho is\b/.test(q) ||
-      /\b(linkedin|email|phone)\s+(for|of)\b/.test(q))
-  ) {
-    tools.push(APOLLO_LOOKUP_TOOL_NAME);
   }
 
   // Direct website fetch when a URL or site is mentioned
