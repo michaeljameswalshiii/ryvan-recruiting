@@ -96,6 +96,7 @@ export default function NewJobPage() {
     status: (item.status as Job["status"]) || "Open",
     candidates: item.candidates || [],
     createdAt: item.created_at || new Date().toISOString(),
+    showOnWebsite: item.showOnWebsite,
   }));
 
   // Filter active jobs

@@ -31,6 +31,8 @@ import {
 import { FilterStatCards } from '@/components/ui/filter-stat-cards';
 import { useTheme } from '@/components/ThemeProvider';
 import { useListColumns } from '@/lib/ui/use-list-columns';
+import { useAssignmentOwners } from '@/lib/hooks/use-assignment-owners';
+import { isJobOpenForCareers } from '@/lib/jobs/status';
 import {
   DataListTable,
   LIST_PAGE_CLASS,
@@ -56,6 +58,7 @@ export type JobListItem = {
   modifiedAt?: string;
   location?: string;
   salaryRange?: string;
+  showOnWebsite?: boolean;
 };
 
 type SortKey = 'last_activity' | 'title' | 'added' | 'candidates' | 'status';
@@ -144,6 +147,9 @@ type JobColumnId =
   | 'company'
   | 'type'
   | 'status'
+  | 'posted_status'
+  | 'posted'
+  | 'owner'
   | 'candidates'
   | 'added'
   | 'last_activity'
@@ -153,17 +159,21 @@ const JOB_COLUMN_DEFS: {
   id: JobColumnId;
   label: string;
   defaultOn: boolean;
+  isNew?: boolean;
 }[] = [
   { id: 'company', label: 'Company', defaultOn: true },
-  { id: 'type', label: 'Type', defaultOn: true },
+  { id: 'posted_status', label: 'Posted', defaultOn: true, isNew: true },
+  { id: 'posted', label: 'Posted Date', defaultOn: true, isNew: true },
   { id: 'status', label: 'Status', defaultOn: true },
+  { id: 'owner', label: 'Owner', defaultOn: true, isNew: true },
+  { id: 'type', label: 'Type', defaultOn: true },
   { id: 'candidates', label: 'Candidates', defaultOn: true },
-  { id: 'added', label: 'Added', defaultOn: true },
+  { id: 'added', label: 'Added', defaultOn: false },
   { id: 'last_activity', label: 'Last Action', defaultOn: true },
   { id: 'location', label: 'Location', defaultOn: false },
 ];
 
-const JOB_COLUMNS_KEY = 'trio.jobs.tableColumns.v2';
+const JOB_COLUMNS_KEY = 'trio.jobs.tableColumns.v3';
 
 export function JobListView({ jobs }: JobListViewProps) {
   const router = useRouter();
@@ -177,6 +187,7 @@ export function JobListView({ jobs }: JobListViewProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const columns = useListColumns(JOB_COLUMNS_KEY, JOB_COLUMN_DEFS);
   const col = columns.col;
+  const { data: ownerMap = {} } = useAssignmentOwners('job');
 
   const enriched = useMemo(() => {
     return (Array.isArray(jobs) ? jobs : []).map((j) => {
@@ -184,15 +195,25 @@ export function JobListView({ jobs }: JobListViewProps) {
       const candidates = Array.isArray(j.candidates) ? j.candidates : [];
       const added = j.createdAt;
       const lastActivity = j.modifiedAt || j.createdAt;
+      const posted = j.createdAt;
+      const isPosted = j.showOnWebsite !== false && isJobOpenForCareers(status);
+      const assigned = ownerMap[String(j.id)];
       return {
         ...j,
         status,
         candidateCount: candidates.length,
         added,
         lastActivity,
+        posted,
+        isPosted,
+        ownerName:
+          assigned?.name ||
+          (j as any).ownerName ||
+          (j as any).createdByName ||
+          '',
       };
     });
-  }, [jobs]);
+  }, [jobs, ownerMap]);
 
   const stats = useMemo(() => {
     const counts = {
@@ -253,6 +274,8 @@ export function JobListView({ jobs }: JobListViewProps) {
         j.status,
         j.location,
         j.salaryRange,
+        j.ownerName,
+        j.isPosted ? 'posted' : 'not posted',
       ]
         .filter(Boolean)
         .join(' ')
@@ -513,18 +536,23 @@ export function JobListView({ jobs }: JobListViewProps) {
                         case 'company':
                           return (
                             <td key={colId} className={listTd}>
-                              {j.companyId ? (
-                                <Link
-                                  href={`/dashboard/companies/${j.companyId}`}
-                                  className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline min-w-0"
-                                >
-                                  <Building2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                                  <span className="truncate">{j.companyName || 'Company'}</span>
-                                </Link>
+                              {j.companyName || j.companyId ? (
+                                j.companyId ? (
+                                  <Link
+                                    href={`/dashboard/companies/${j.companyId}`}
+                                    className="inline-flex items-center gap-2 min-w-0 text-sm font-medium text-slate-800 hover:text-blue-600"
+                                  >
+                                    <Building2 className="h-4 w-4 text-slate-500 shrink-0" />
+                                    <span className="truncate">{j.companyName || 'Company'}</span>
+                                  </Link>
+                                ) : (
+                                  <span className="inline-flex items-center gap-2 min-w-0 text-sm font-medium text-slate-800">
+                                    <Building2 className="h-4 w-4 text-slate-500 shrink-0" />
+                                    <span className="truncate">{j.companyName}</span>
+                                  </span>
+                                )
                               ) : (
-                                <span className="text-sm text-gray-600">
-                                  {j.companyName || '—'}
-                                </span>
+                                <span className="text-sm text-gray-400">—</span>
                               )}
                             </td>
                           );
@@ -586,6 +614,47 @@ export function JobListView({ jobs }: JobListViewProps) {
                                 </span>
                               ) : (
                                 '—'
+                              )}
+                            </td>
+                          );
+                        case 'posted_status':
+                          return (
+                            <td key={colId} className={listTd}>
+                              <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                                <span
+                                  className={`h-2 w-2 rounded-full ${
+                                    j.isPosted ? 'bg-emerald-500' : 'bg-slate-300'
+                                  }`}
+                                />
+                                {j.isPosted ? 'Posted' : 'Not posted'}
+                              </span>
+                            </td>
+                          );
+                        case 'posted':
+                          return (
+                            <td
+                              key={colId}
+                              className={`${listTd} text-sm text-slate-800 whitespace-nowrap`}
+                            >
+                              {formatShortDate(j.posted)}
+                            </td>
+                          );
+                        case 'owner':
+                          return (
+                            <td key={colId} className={listTd}>
+                              {j.ownerName ? (
+                                <span className="inline-flex items-center gap-2 min-w-0">
+                                  <span
+                                    className={`h-7 w-7 shrink-0 rounded-full ${avatarColor(j.ownerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
+                                  >
+                                    {getInitials(j.ownerName)}
+                                  </span>
+                                  <span className="truncate text-sm text-gray-800">
+                                    {j.ownerName}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="text-sm text-gray-400">—</span>
                               )}
                             </td>
                           );

@@ -679,7 +679,31 @@ export default function JobDetailPage() {
               </div>
             </div>
 
+            {postedLabel ? (
+              <p className="text-sm text-slate-700 mb-4">{postedLabel}</p>
+            ) : null}
+
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
+                  Status
+                </div>
+                <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      isShownOnWebsite && isOpenStatus
+                        ? "bg-emerald-500"
+                        : "bg-slate-300"
+                    }`}
+                  />
+                  {isShownOnWebsite && isOpenStatus ? "Posted" : "Not posted"}
+                </div>
+              </div>
+              <MetaField
+                label="Company"
+                value={job.companyName || "—"}
+                icon={<Building2 className="h-4 w-4" />}
+              />
               <MetaField
                 label="Location"
                 value={job.location || "—"}
@@ -696,23 +720,8 @@ export default function JobDetailPage() {
                 icon={<Briefcase className="h-3.5 w-3.5" />}
               />
               <MetaField
-                label="Status"
+                label="Pipeline"
                 value={formatStatusLabel(job.status)}
-                accent={
-                  String(job.status || "").toLowerCase().includes("open")
-                    ? "text-rose-600 font-semibold"
-                    : undefined
-                }
-              />
-              <MetaField
-                label="Company"
-                value={job.companyName || "—"}
-                icon={<Building2 className="h-3.5 w-3.5" />}
-              />
-              <MetaField
-                label="Posted"
-                value={postedLabel || "—"}
-                icon={<Calendar className="h-3.5 w-3.5" />}
               />
             </div>
           </section>

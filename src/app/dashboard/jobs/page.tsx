@@ -68,6 +68,7 @@ export default function JobsPage() {
       modifiedAt: item.modified_at || item.modifiedAt || item.updated_at,
       location: item.location,
       salaryRange: item.salaryRange || item.salary_range,
+      showOnWebsite: item.showOnWebsite,
     }));
   }, [jobsDataRaw]);
 
