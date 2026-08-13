@@ -29,6 +29,34 @@ import {
 
 export const maxDuration = 60;
 
+const FIT_FIELDS = [
+  "fitScore",
+  "fitGrade",
+  "fitDomainScore",
+  "fitDomainGrade",
+  "fitToolScore",
+  "fitToolGrade",
+  "fitToolApplicable",
+  "fitReasons",
+  "fitStrengths",
+  "fitGaps",
+  "fitSummary",
+  "fitScoredAt",
+  "fitScoringVersion",
+  "fitVerify",
+  "fitFactors",
+];
+
+function clearFitFields(linkedJobs: unknown): unknown[] | undefined {
+  if (!Array.isArray(linkedJobs)) return undefined;
+  return linkedJobs.map((linkedJob) => {
+    if (!linkedJob || typeof linkedJob !== "object") return linkedJob;
+    const next = { ...(linkedJob as Record<string, unknown>) };
+    for (const field of FIT_FIELDS) delete next[field];
+    return next;
+  });
+}
+
 function getS3Client() {
   const region =
     process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || "us-east-1";
@@ -375,6 +403,12 @@ export async function POST(
           "Resume was saved, but automatic field extraction failed. You can edit the profile manually.";
       }
     }
+
+    // A new resume changes the evidence used by fit scoring. Remove the old
+    // assessment so the UI cannot display a stale score while extraction or a
+    // manual refresh is still in progress.
+    const clearedFitJobs = clearFitFields(c.linkedJobs);
+    if (clearedFitJobs) updatePayload.linkedJobs = clearedFitJobs;
 
     await updateLead(tenantId, id, updatePayload as any);
 
