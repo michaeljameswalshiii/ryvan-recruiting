@@ -12,6 +12,7 @@ import {
   Briefcase,
   Users,
   Building2,
+  MapPin,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +30,17 @@ import {
 } from '@/components/ui/pagination-bar';
 import { FilterStatCards } from '@/components/ui/filter-stat-cards';
 import { useTheme } from '@/components/ThemeProvider';
+import { useListColumns } from '@/lib/ui/use-list-columns';
+import {
+  DataListTable,
+  ListColumnPicker,
+  listTd,
+  listTdActions,
+  listTdNameFlush,
+  listTh,
+  listThNameFlush,
+  listThRight,
+} from '@/components/ui/data-list-table';
 
 export type JobListItem = {
   id: string;
@@ -126,6 +138,31 @@ function statusSortRank(status: string) {
   return jobStatusSortRank(status);
 }
 
+type JobColumnId =
+  | 'company'
+  | 'type'
+  | 'status'
+  | 'candidates'
+  | 'added'
+  | 'last_activity'
+  | 'location';
+
+const JOB_COLUMN_DEFS: {
+  id: JobColumnId;
+  label: string;
+  defaultOn: boolean;
+}[] = [
+  { id: 'company', label: 'Company', defaultOn: true },
+  { id: 'type', label: 'Type', defaultOn: true },
+  { id: 'status', label: 'Status', defaultOn: true },
+  { id: 'candidates', label: 'Candidates', defaultOn: true },
+  { id: 'added', label: 'Added', defaultOn: true },
+  { id: 'last_activity', label: 'Last Action', defaultOn: true },
+  { id: 'location', label: 'Location', defaultOn: false },
+];
+
+const JOB_COLUMNS_KEY = 'trio.jobs.tableColumns.v2';
+
 export function JobListView({ jobs }: JobListViewProps) {
   const router = useRouter();
   const deleteJob = useDeleteJob();
@@ -136,6 +173,8 @@ export function JobListView({ jobs }: JobListViewProps) {
   const [sortKey, setSortKey] = useState<SortKey>('last_activity');
   const [page, setPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const columns = useListColumns(JOB_COLUMNS_KEY, JOB_COLUMN_DEFS);
+  const col = columns.col;
 
   const enriched = useMemo(() => {
     return (Array.isArray(jobs) ? jobs : []).map((j) => {
@@ -350,7 +389,7 @@ export function JobListView({ jobs }: JobListViewProps) {
             style={isDark ? { color: '#ffffff', backgroundColor: '#1e293b' } : undefined}
           />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <select
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as SortKey)}
@@ -368,6 +407,20 @@ export function JobListView({ jobs }: JobListViewProps) {
             <option value="candidates">Sort: Candidates</option>
             <option value="status">Sort: Status</option>
           </select>
+          <ListColumnPicker
+            defs={JOB_COLUMN_DEFS}
+            order={columns.order}
+            col={columns.col}
+            toggle={columns.toggle}
+            move={columns.move}
+            reset={columns.reset}
+            open={columns.open}
+            setOpen={(next) => {
+              setOpenMenuId(null);
+              columns.setOpen(next);
+            }}
+            alwaysOnNote="Job title and Actions always stay on. Use the arrows to change order."
+          />
           <span
             className="text-xs font-medium whitespace-nowrap"
             style={{ color: isDark ? '#ffffff' : undefined }}
@@ -411,41 +464,27 @@ export function JobListView({ jobs }: JobListViewProps) {
           )}
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px]">
+        <DataListTable minWidth={920}>
+            <table className="w-full min-w-[920px] border-separate border-spacing-0">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className={listThNameFlush}>
                     Job
                   </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Company
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Type
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Status
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Candidates
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 hidden lg:table-cell">
-                    Added
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Last Action
-                  </th>
-                  <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  {columns.visibleIds.map((id) => (
+                    <th key={id} className={listTh}>
+                      {JOB_COLUMN_DEFS.find((d) => d.id === id)?.label}
+                    </th>
+                  ))}
+                  <th className={listThRight}>
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {paged.slice.map((j) => (
-                  <tr key={j.id} className="hover:bg-gray-50/80 transition-colors">
-                    <td className="px-4 py-3.5">
+                  <tr key={j.id} className="group hover:bg-gray-50/80 transition-colors">
+                    <td className={listTdNameFlush()}>
                       <div className="flex items-center gap-3 min-w-0">
                         <div
                           className={`h-9 w-9 shrink-0 rounded-full ${avatarColor(j.title)} text-white flex items-center justify-center text-xs font-semibold`}
@@ -460,61 +499,99 @@ export function JobListView({ jobs }: JobListViewProps) {
                             {j.title}
                           </Link>
                           <div className="text-xs text-gray-500 truncate">
-                            {j.location || j.salaryRange || '—'}
+                            {(!col('location') && j.location) || j.salaryRange || '—'}
                           </div>
                         </div>
                       </div>
                     </td>
 
-                    <td className="px-4 py-3.5">
-                      {j.companyId ? (
-                        <Link
-                          href={`/dashboard/companies/${j.companyId}`}
-                          className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline min-w-0"
-                        >
-                          <Building2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                          <span className="truncate">{j.companyName || 'Company'}</span>
-                        </Link>
-                      ) : (
-                        <span className="text-sm text-gray-600">
-                          {j.companyName || '—'}
-                        </span>
-                      )}
-                    </td>
+                    {columns.visibleIds.map((colId) => {
+                      switch (colId) {
+                        case 'company':
+                          return (
+                            <td key={colId} className={listTd}>
+                              {j.companyId ? (
+                                <Link
+                                  href={`/dashboard/companies/${j.companyId}`}
+                                  className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline min-w-0"
+                                >
+                                  <Building2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                                  <span className="truncate">{j.companyName || 'Company'}</span>
+                                </Link>
+                              ) : (
+                                <span className="text-sm text-gray-600">
+                                  {j.companyName || '—'}
+                                </span>
+                              )}
+                            </td>
+                          );
+                        case 'type':
+                          return (
+                            <td key={colId} className={listTd}>
+                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                                {j.employmentType || 'Full-time'}
+                              </span>
+                            </td>
+                          );
+                        case 'status':
+                          return (
+                            <td key={colId} className={listTd}>
+                              <span
+                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusBadgeClasses(j.status)}`}
+                              >
+                                {j.status}
+                              </span>
+                            </td>
+                          );
+                        case 'candidates':
+                          return (
+                            <td key={colId} className={listTd}>
+                              <Link
+                                href={`/dashboard/jobs/${j.id}`}
+                                className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600"
+                              >
+                                <Users className="h-3.5 w-3.5 text-gray-400" />
+                                <span className="tabular-nums font-medium">{j.candidateCount}</span>
+                              </Link>
+                            </td>
+                          );
+                        case 'added':
+                          return (
+                            <td
+                              key={colId}
+                              className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
+                            >
+                              {formatShortDate(j.added)}
+                            </td>
+                          );
+                        case 'last_activity':
+                          return (
+                            <td
+                              key={colId}
+                              className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
+                            >
+                              {formatRelativeActivity(j.lastActivity)}
+                            </td>
+                          );
+                        case 'location':
+                          return (
+                            <td key={colId} className={`${listTd} text-sm text-gray-700`}>
+                              {j.location ? (
+                                <span className="inline-flex items-center gap-1 min-w-0">
+                                  <MapPin className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                                  <span className="truncate">{j.location}</span>
+                                </span>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
+                          );
+                        default:
+                          return null;
+                      }
+                    })}
 
-                    <td className="px-4 py-3.5">
-                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700">
-                        {j.employmentType || 'Full-time'}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3.5">
-                      <span
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusBadgeClasses(j.status)}`}
-                      >
-                        {j.status}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3.5">
-                      <Link
-                        href={`/dashboard/jobs/${j.id}`}
-                        className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600"
-                      >
-                        <Users className="h-3.5 w-3.5 text-gray-400" />
-                        <span className="tabular-nums font-medium">{j.candidateCount}</span>
-                      </Link>
-                    </td>
-
-                    <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap hidden lg:table-cell">
-                      {formatShortDate(j.added)}
-                    </td>
-
-                    <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
-                      {formatRelativeActivity(j.lastActivity)}
-                    </td>
-
-                    <td className="px-4 py-3.5 text-right">
+                    <td className={listTdActions(false)}>
                       <div className="relative inline-flex items-center gap-1 justify-end">
                         <Button
                           variant="ghost"
@@ -529,9 +606,10 @@ export function JobListView({ jobs }: JobListViewProps) {
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0"
-                          onClick={() =>
-                            setOpenMenuId((id) => (id === j.id ? null : j.id))
-                          }
+                          onClick={() => {
+                            columns.setOpen(false);
+                            setOpenMenuId((id) => (id === j.id ? null : j.id));
+                          }}
                           title="More actions"
                         >
                           <MoreHorizontal className="h-4 w-4 text-gray-500" />
@@ -574,8 +652,7 @@ export function JobListView({ jobs }: JobListViewProps) {
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
+        </DataListTable>
       )}
     </div>
   );

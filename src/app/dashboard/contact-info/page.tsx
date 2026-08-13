@@ -28,6 +28,17 @@ import { FilterStatCards } from '@/components/ui/filter-stat-cards';
 import { useClients } from '@/lib/hooks/query-client';
 import { useAddContact, useRemoveContact } from '@/lib/hooks/contact-mutations';
 import { getDisplayPhone } from '@/lib/contacts/phone';
+import { useListColumns } from '@/lib/ui/use-list-columns';
+import {
+  DataListTable,
+  ListColumnPicker,
+  listTd,
+  listTdActions,
+  listTdNameFlush,
+  listTh,
+  listThNameFlush,
+  listThRight,
+} from '@/components/ui/data-list-table';
 
 type SortKey = 'name' | 'company' | 'added' | 'last_activity';
 
@@ -38,6 +49,22 @@ type ContactBucket =
   | 'with_phone'
   | 'missing_email'
   | 'missing_phone';
+
+type ContactColumnId = 'company' | 'email' | 'phone' | 'added' | 'last_activity';
+
+const CONTACT_COLUMN_DEFS: {
+  id: ContactColumnId;
+  label: string;
+  defaultOn: boolean;
+}[] = [
+  { id: 'company', label: 'Company', defaultOn: true },
+  { id: 'email', label: 'Email', defaultOn: true },
+  { id: 'phone', label: 'Phone', defaultOn: true },
+  { id: 'added', label: 'Added', defaultOn: false },
+  { id: 'last_activity', label: 'Last Activity', defaultOn: true },
+];
+
+const CONTACT_COLUMNS_KEY = 'trio.contacts.tableColumns.v2';
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -110,6 +137,7 @@ export default function ContactInfoPage() {
     phone: '',
     clientId: '',
   });
+  const columns = useListColumns(CONTACT_COLUMNS_KEY, CONTACT_COLUMN_DEFS);
 
   const companies = useMemo(() => {
     if (Array.isArray(clientsData)) return clientsData;
@@ -457,7 +485,7 @@ export default function ContactInfoPage() {
             className="pl-9 bg-white"
           />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <select
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as SortKey)}
@@ -469,6 +497,20 @@ export default function ContactInfoPage() {
             <option value="added">Sort: Date Added</option>
             <option value="last_activity">Sort: Last Activity</option>
           </select>
+          <ListColumnPicker
+            defs={CONTACT_COLUMN_DEFS}
+            order={columns.order}
+            col={columns.col}
+            toggle={columns.toggle}
+            move={columns.move}
+            reset={columns.reset}
+            open={columns.open}
+            setOpen={(next) => {
+              setOpenMenuId(null);
+              columns.setOpen(next);
+            }}
+            alwaysOnNote="Contact name and Actions always stay on. Use the arrows to change order."
+          />
           <span className="text-xs text-gray-500 whitespace-nowrap">
             {filtered.length} contact{filtered.length === 1 ? '' : 's'}
             {filtered.length > DEFAULT_PAGE_SIZE
@@ -515,30 +557,19 @@ export default function ContactInfoPage() {
           </div>
         </div>
       ) : (
-        <div className="min-w-0 max-w-full bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto max-w-full">
-            <table className="w-full table-fixed min-w-[720px]">
+        <DataListTable minWidth={860}>
+            <table className="w-full min-w-[860px] border-separate border-spacing-0">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
-                  <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[22%]">
+                  <th className={listThNameFlush}>
                     Contact
                   </th>
-                  <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[16%]">
-                    Company
-                  </th>
-                  <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[18%]">
-                    Email
-                  </th>
-                  <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[14%]">
-                    Phone
-                  </th>
-                  <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[10%] hidden lg:table-cell">
-                    Added
-                  </th>
-                  <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[12%] hidden xl:table-cell">
-                    Last Activity
-                  </th>
-                  <th className="text-right px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[8%]">
+                  {columns.visibleIds.map((id) => (
+                    <th key={id} className={listTh}>
+                      {CONTACT_COLUMN_DEFS.find((d) => d.id === id)?.label}
+                    </th>
+                  ))}
+                  <th className={listThRight}>
                     Actions
                   </th>
                 </tr>
@@ -547,8 +578,8 @@ export default function ContactInfoPage() {
                 {paged.slice.map((c) => {
                   const rowKey = `${c.clientId}-${c.id}`;
                   return (
-                    <tr key={rowKey} className="hover:bg-gray-50/80 transition-colors">
-                      <td className="px-3 py-3.5 max-w-0">
+                    <tr key={rowKey} className="group hover:bg-gray-50/80 transition-colors">
+                      <td className={listTdNameFlush()}>
                         <div className="flex items-center gap-3 min-w-0">
                           <div
                             className={`h-9 w-9 shrink-0 rounded-full ${avatarColor(c.name)} text-white flex items-center justify-center text-xs font-semibold`}
@@ -577,58 +608,83 @@ export default function ContactInfoPage() {
                         </div>
                       </td>
 
-                      <td className="px-3 py-3.5 max-w-0">
-                        {c.clientId ? (
-                          <Link
-                            href={`/dashboard/companies/${c.clientId}`}
-                            className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline min-w-0 max-w-full"
-                          >
-                            <Building2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                            <span className="truncate">{c.companyName}</span>
-                          </Link>
-                        ) : (
-                          <span className="text-sm text-gray-600 truncate block">{c.companyName}</span>
-                        )}
-                      </td>
+                      {columns.visibleIds.map((colId) => {
+                        switch (colId) {
+                          case 'company':
+                            return (
+                              <td key={colId} className={listTd}>
+                                {c.clientId ? (
+                                  <Link
+                                    href={`/dashboard/companies/${c.clientId}`}
+                                    className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline min-w-0 max-w-full"
+                                  >
+                                    <Building2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                                    <span className="truncate">{c.companyName}</span>
+                                  </Link>
+                                ) : (
+                                  <span className="text-sm text-gray-600 truncate block">
+                                    {c.companyName}
+                                  </span>
+                                )}
+                              </td>
+                            );
+                          case 'email':
+                            return (
+                              <td key={colId} className={listTd}>
+                                {c.email ? (
+                                  <a
+                                    href={`mailto:${c.email}`}
+                                    className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600 min-w-0 max-w-full"
+                                  >
+                                    <Mail className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                                    <span className="truncate">{c.email}</span>
+                                  </a>
+                                ) : (
+                                  <span className="text-sm text-gray-400 italic">—</span>
+                                )}
+                              </td>
+                            );
+                          case 'phone':
+                            return (
+                              <td key={colId} className={listTd}>
+                                {c.phone ? (
+                                  <a
+                                    href={`tel:${c.phone}`}
+                                    className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600 min-w-0 max-w-full"
+                                    title={c.phone}
+                                  >
+                                    <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                                    <span className="truncate">{c.phone}</span>
+                                  </a>
+                                ) : (
+                                  <span className="text-sm text-gray-400 italic">—</span>
+                                )}
+                              </td>
+                            );
+                          case 'added':
+                            return (
+                              <td
+                                key={colId}
+                                className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
+                              >
+                                {formatShortDate(c.added)}
+                              </td>
+                            );
+                          case 'last_activity':
+                            return (
+                              <td
+                                key={colId}
+                                className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
+                              >
+                                {formatRelativeActivity(c.lastActivity)}
+                              </td>
+                            );
+                          default:
+                            return null;
+                        }
+                      })}
 
-                      <td className="px-3 py-3.5 max-w-0">
-                        {c.email ? (
-                          <a
-                            href={`mailto:${c.email}`}
-                            className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600 min-w-0 max-w-full"
-                          >
-                            <Mail className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                            <span className="truncate">{c.email}</span>
-                          </a>
-                        ) : (
-                          <span className="text-sm text-gray-400 italic">—</span>
-                        )}
-                      </td>
-
-                      <td className="px-3 py-3.5 max-w-0">
-                        {c.phone ? (
-                          <a
-                            href={`tel:${c.phone}`}
-                            className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600 min-w-0 max-w-full"
-                            title={c.phone}
-                          >
-                            <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                            <span className="truncate">{c.phone}</span>
-                          </a>
-                        ) : (
-                          <span className="text-sm text-gray-400 italic">—</span>
-                        )}
-                      </td>
-
-                      <td className="px-3 py-3.5 text-sm text-gray-600 whitespace-nowrap hidden lg:table-cell">
-                        {formatShortDate(c.added)}
-                      </td>
-
-                      <td className="px-3 py-3.5 text-sm text-gray-600 whitespace-nowrap hidden xl:table-cell">
-                        {formatRelativeActivity(c.lastActivity)}
-                      </td>
-
-                      <td className="px-3 py-3.5 text-right">
+                      <td className={listTdActions(false)}>
                         <div className="relative inline-flex items-center gap-1 justify-end">
                           <Button
                             variant="ghost"
@@ -643,9 +699,10 @@ export default function ContactInfoPage() {
                             variant="ghost"
                             size="sm"
                             className="h-8 w-8 p-0"
-                            onClick={() =>
-                              setOpenMenuId((id) => (id === rowKey ? null : rowKey))
-                            }
+                            onClick={() => {
+                              columns.setOpen(false);
+                              setOpenMenuId((id) => (id === rowKey ? null : rowKey));
+                            }}
                             title="More actions"
                           >
                             <MoreHorizontal className="h-4 w-4 text-gray-500" />
@@ -690,8 +747,7 @@ export default function ContactInfoPage() {
                 })}
               </tbody>
             </table>
-          </div>
-        </div>
+        </DataListTable>
       )}
     </div>
   );

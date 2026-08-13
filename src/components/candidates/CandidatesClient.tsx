@@ -15,7 +15,21 @@ import {
   Combine,
   ChevronDown,
   Loader2,
+  MapPin,
 } from 'lucide-react';
+import { useListColumns } from '@/lib/ui/use-list-columns';
+import {
+  DataListTable,
+  ListColumnPicker,
+  listTd,
+  listTdActions,
+  listTdCheck,
+  listTdName,
+  listTh,
+  listThCheck,
+  listThName,
+  listThRight,
+} from '@/components/ui/data-list-table';
 import { Button } from '@/components/ui/button';
 import { FilterStatCards } from '@/components/ui/filter-stat-cards';
 import { Input } from '@/components/ui/input';
@@ -313,6 +327,36 @@ function getLinkedJob(candidate: any): { title: string; company?: string; jobId?
   return null;
 }
 
+function candidateLocation(candidate: any): string {
+  const direct = String(candidate.location || '').trim();
+  if (direct) return direct;
+  const parts = [candidate.city, candidate.state].filter(Boolean);
+  return parts.join(', ');
+}
+
+type CandidateColumnId =
+  | 'linked_job'
+  | 'source'
+  | 'stage'
+  | 'added'
+  | 'last_activity'
+  | 'location';
+
+const CANDIDATE_COLUMN_DEFS: {
+  id: CandidateColumnId;
+  label: string;
+  defaultOn: boolean;
+}[] = [
+  { id: 'linked_job', label: 'Linked Job', defaultOn: true },
+  { id: 'source', label: 'Source', defaultOn: true },
+  { id: 'stage', label: 'Stage & Progress', defaultOn: true },
+  { id: 'added', label: 'Added', defaultOn: true },
+  { id: 'last_activity', label: 'Last Activity', defaultOn: true },
+  { id: 'location', label: 'Location', defaultOn: false },
+];
+
+const CANDIDATE_COLUMNS_KEY = 'trio.candidates.tableColumns.v2';
+
 export function CandidatesClient() {
   const router = useRouter();
   const { data: leads = [], isLoading, error, refetch, isFetching } = useLeads();
@@ -344,6 +388,8 @@ export function CandidatesClient() {
   const [bulkStage, setBulkStage] = useState('');
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [page, setPage] = useState(1);
+  const columns = useListColumns(CANDIDATE_COLUMNS_KEY, CANDIDATE_COLUMN_DEFS);
+  const col = columns.col;
 
   const candidates = useMemo(() => (Array.isArray(leads) ? leads : []), [leads]);
 
@@ -354,6 +400,7 @@ export function CandidatesClient() {
       const linked = getLinkedJob(c);
       const added = c.created_at || c.createdAt;
       const lastActivity = c.modified_at || c.modifiedAt || c.updated_at || added;
+      const location = candidateLocation(c);
       return {
         raw: c,
         id: c.id,
@@ -364,6 +411,7 @@ export function CandidatesClient() {
         stage,
         progress,
         linked,
+        location,
         added,
         lastActivity,
       };
@@ -532,6 +580,7 @@ export function CandidatesClient() {
         c.stage,
         c.linked?.title,
         c.linked?.company,
+        c.location,
       ]
         .filter(Boolean)
         .join(' ')
@@ -727,7 +776,7 @@ export function CandidatesClient() {
             className="pl-9 bg-white"
           />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <select
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as SortKey)}
@@ -739,6 +788,20 @@ export function CandidatesClient() {
             <option value="name">Sort: Name</option>
             <option value="stage">Sort: Stage</option>
           </select>
+          <ListColumnPicker
+            defs={CANDIDATE_COLUMN_DEFS}
+            order={columns.order}
+            col={columns.col}
+            toggle={columns.toggle}
+            move={columns.move}
+            reset={columns.reset}
+            open={columns.open}
+            setOpen={(next) => {
+              setOpenMenuId(null);
+              columns.setOpen(next);
+            }}
+            alwaysOnNote="Candidate name and Actions always stay on. Use the arrows to change order."
+          />
           <span className="text-xs text-gray-500 whitespace-nowrap">
             {filtered.length} candidate{filtered.length === 1 ? '' : 's'}
             {filtered.length > DEFAULT_PAGE_SIZE
@@ -830,23 +893,11 @@ export function CandidatesClient() {
           </div>
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm">
-          {/* Horizontal scroll so Last Activity / Actions are not clipped */}
-          <div className="overflow-x-auto pb-1">
-            <table className="w-full min-w-[1140px] table-fixed">
-              <colgroup>
-                <col className="w-[40px]" />
-                <col className="w-[20%]" />
-                <col className="w-[16%]" />
-                <col className="w-[9%]" />
-                <col className="w-[19%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
-              </colgroup>
+        <DataListTable minWidth={960}>
+            <table className="w-full min-w-[960px] border-separate border-spacing-0">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
-                  <th className="text-left px-3 py-3 w-10">
+                  <th className={listThCheck}>
                     <input
                       type="checkbox"
                       className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -882,25 +933,15 @@ export function CandidatesClient() {
                       }}
                     />
                   </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className={listThName}>
                     Candidate
                   </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Linked Job
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Source
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Stage &amp; Progress
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Added
-                  </th>
-                  <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Last Activity
-                  </th>
-                  <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  {columns.visibleIds.map((id) => (
+                    <th key={id} className={listTh}>
+                      {CANDIDATE_COLUMN_DEFS.find((d) => d.id === id)?.label}
+                    </th>
+                  ))}
+                  <th className={listThRight}>
                     Actions
                   </th>
                 </tr>
@@ -915,11 +956,11 @@ export function CandidatesClient() {
                   return (
                     <tr
                       key={c.id}
-                      className={`hover:bg-gray-50/80 transition-colors ${
+                      className={`group hover:bg-gray-50/80 transition-colors ${
                         selectedIds.has(c.id) ? 'bg-blue-50/40' : ''
                       }`}
                     >
-                      <td className="px-3 py-3.5 align-middle">
+                      <td className={listTdCheck(selectedIds.has(c.id))}>
                         <input
                           type="checkbox"
                           className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -929,7 +970,7 @@ export function CandidatesClient() {
                           onClick={(e) => e.stopPropagation()}
                         />
                       </td>
-                      <td className="px-4 py-3.5">
+                      <td className={listTdName(selectedIds.has(c.id))}>
                         <div className="flex items-center gap-3 min-w-0">
                           <div
                             className={`h-9 w-9 shrink-0 rounded-full ${avatarColor(c.name)} text-white flex items-center justify-center text-xs font-semibold`}
@@ -946,107 +987,149 @@ export function CandidatesClient() {
                             <div className="text-xs text-gray-500 truncate">
                               {c.title || c.email || '—'}
                             </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        {c.linked ? (
-                          <div className="min-w-0">
-                            {c.linked.jobId ? (
-                              <Link
-                                href={`/dashboard/jobs/${c.linked.jobId}`}
-                                className="text-sm text-blue-600 hover:underline font-medium block truncate"
-                              >
-                                {c.linked.title}
-                              </Link>
-                            ) : (
-                              <span className="text-sm text-gray-800 font-medium block truncate">
-                                {c.linked.title}
-                              </span>
-                            )}
-                            {c.linked.company ? (
-                              <span className="text-xs text-gray-500 block truncate">
-                                {c.linked.company}
-                              </span>
+                            {!col('location') && c.location ? (
+                              <div className="text-xs text-gray-400 truncate flex items-center gap-1">
+                                <MapPin className="h-3 w-3 shrink-0" />
+                                {c.location}
+                              </div>
                             ) : null}
                           </div>
-                        ) : (
-                          <span className="text-sm text-gray-400 italic">No job linked</span>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3.5 text-sm text-gray-700 truncate">
-                        {c.source || 'Manual'}
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        <div className="space-y-1.5 min-w-[160px]">
-                          <div className="flex items-center gap-2">
-                            <div className="relative inline-flex items-center min-w-0">
-                              <select
-                                value={
-                                  LIST_STAGE_OPTIONS.some((o) => o.id === c.stage)
-                                    ? c.stage
-                                    : stageValue
-                                }
-                                disabled={isUpdating || stageApplying}
-                                onChange={(e) => {
-                                  e.stopPropagation();
-                                  const next = e.target.value;
-                                  if (!next || next === c.stage) return;
-                                  onStageSelect(c, next);
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                title="Change candidate pipeline stage (optional note after)"
-                                aria-label={`Pipeline stage for ${c.name}`}
-                                className={`appearance-none cursor-pointer pr-6 pl-2 py-0.5 rounded-full border text-[11px] font-medium max-w-[10.5rem] truncate disabled:opacity-60 disabled:cursor-wait focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${stageBadgeClasses(c.stage)}`}
-                              >
-                                {!LIST_STAGE_OPTIONS.some((o) => o.id === c.stage) && (
-                                  <option value={c.stage}>{stageLabel(c.stage)}</option>
-                                )}
-                                {LIST_STAGE_OPTIONS.map((opt) => (
-                                  <option key={opt.id} value={opt.id}>
-                                    {opt.label}
-                                  </option>
-                                ))}
-                              </select>
-                              <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-current opacity-60">
-                                {isUpdating ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <ChevronDown className="h-3 w-3" />
-                                )}
-                              </span>
-                            </div>
-                            <span className="text-[11px] text-gray-400 tabular-nums shrink-0">
-                              {Math.min(c.progress, 5)} of 5
-                            </span>
-                          </div>
-                          <div className="flex gap-0.5">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                              <div
-                                key={i}
-                                className={`h-1.5 flex-1 rounded-full ${
-                                  i < c.progress
-                                    ? getProgressColor(c.progress)
-                                    : 'bg-gray-200'
-                                }`}
-                              />
-                            ))}
-                          </div>
                         </div>
                       </td>
 
-                      <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
-                        {formatShortDate(c.added)}
-                      </td>
+                      {columns.visibleIds.map((colId) => {
+                        switch (colId) {
+                          case 'linked_job':
+                            return (
+                              <td key={colId} className={listTd}>
+                                {c.linked ? (
+                                  <div className="min-w-0">
+                                    {c.linked.jobId ? (
+                                      <Link
+                                        href={`/dashboard/jobs/${c.linked.jobId}`}
+                                        className="text-sm text-blue-600 hover:underline font-medium block truncate"
+                                      >
+                                        {c.linked.title}
+                                      </Link>
+                                    ) : (
+                                      <span className="text-sm text-gray-800 font-medium block truncate">
+                                        {c.linked.title}
+                                      </span>
+                                    )}
+                                    {c.linked.company ? (
+                                      <span className="text-xs text-gray-500 block truncate">
+                                        {c.linked.company}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : (
+                                  <span className="text-sm text-gray-400 italic">No job linked</span>
+                                )}
+                              </td>
+                            );
+                          case 'source':
+                            return (
+                              <td key={colId} className={`${listTd} text-sm text-gray-700 truncate`}>
+                                {c.source || 'Manual'}
+                              </td>
+                            );
+                          case 'stage':
+                            return (
+                              <td key={colId} className={listTd}>
+                                <div className="space-y-1.5 min-w-[160px]">
+                                  <div className="flex items-center gap-2">
+                                    <div className="relative inline-flex items-center min-w-0">
+                                      <select
+                                        value={
+                                          LIST_STAGE_OPTIONS.some((o) => o.id === c.stage)
+                                            ? c.stage
+                                            : stageValue
+                                        }
+                                        disabled={isUpdating || stageApplying}
+                                        onChange={(e) => {
+                                          e.stopPropagation();
+                                          const next = e.target.value;
+                                          if (!next || next === c.stage) return;
+                                          onStageSelect(c, next);
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        title="Change candidate pipeline stage (optional note after)"
+                                        aria-label={`Pipeline stage for ${c.name}`}
+                                        className={`appearance-none cursor-pointer pr-6 pl-2 py-0.5 rounded-full border text-[11px] font-medium max-w-[10.5rem] truncate disabled:opacity-60 disabled:cursor-wait focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${stageBadgeClasses(c.stage)}`}
+                                      >
+                                        {!LIST_STAGE_OPTIONS.some((o) => o.id === c.stage) && (
+                                          <option value={c.stage}>{stageLabel(c.stage)}</option>
+                                        )}
+                                        {LIST_STAGE_OPTIONS.map((opt) => (
+                                          <option key={opt.id} value={opt.id}>
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-current opacity-60">
+                                        {isUpdating ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <ChevronDown className="h-3 w-3" />
+                                        )}
+                                      </span>
+                                    </div>
+                                    <span className="text-[11px] text-gray-400 tabular-nums shrink-0">
+                                      {Math.min(c.progress, 5)} of 5
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-0.5">
+                                    {Array.from({ length: 5 }).map((_, i) => (
+                                      <div
+                                        key={i}
+                                        className={`h-1.5 flex-1 rounded-full ${
+                                          i < c.progress
+                                            ? getProgressColor(c.progress)
+                                            : 'bg-gray-200'
+                                        }`}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                              </td>
+                            );
+                          case 'added':
+                            return (
+                              <td
+                                key={colId}
+                                className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
+                              >
+                                {formatShortDate(c.added)}
+                              </td>
+                            );
+                          case 'last_activity':
+                            return (
+                              <td
+                                key={colId}
+                                className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
+                              >
+                                {formatRelativeActivity(c.lastActivity)}
+                              </td>
+                            );
+                          case 'location':
+                            return (
+                              <td key={colId} className={`${listTd} text-sm text-gray-700`}>
+                                {c.location ? (
+                                  <span className="inline-flex items-center gap-1 min-w-0">
+                                    <MapPin className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                                    <span className="truncate">{c.location}</span>
+                                  </span>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                            );
+                          default:
+                            return null;
+                        }
+                      })}
 
-                      <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
-                        {formatRelativeActivity(c.lastActivity)}
-                      </td>
-
-                      <td className="px-4 py-3.5 text-right">
+                      <td className={listTdActions(selectedIds.has(c.id))}>
                         <div className="relative inline-flex items-center gap-1 justify-end">
                           <Button
                             variant="ghost"
@@ -1061,9 +1144,10 @@ export function CandidatesClient() {
                             variant="ghost"
                             size="sm"
                             className="h-8 w-8 p-0"
-                            onClick={() =>
-                              setOpenMenuId((id) => (id === c.id ? null : c.id))
-                            }
+                            onClick={() => {
+                              columns.setOpen(false);
+                              setOpenMenuId((id) => (id === c.id ? null : c.id));
+                            }}
                             title="More actions"
                           >
                             <MoreHorizontal className="h-4 w-4 text-gray-500" />
@@ -1121,8 +1205,7 @@ export function CandidatesClient() {
                 })}
               </tbody>
             </table>
-          </div>
-        </div>
+        </DataListTable>
       )}
 
       {mergeCandidate && (
