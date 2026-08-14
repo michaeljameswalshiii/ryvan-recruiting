@@ -549,6 +549,13 @@ export default function JobDetailPage() {
     ""
   ).trim();
   const isPosted = isShownOnWebsite && isOpenStatus;
+  const companyId = String(
+    job.companyId || (job as any).company_id || (jobCompany as any)?.id || ""
+  ).trim();
+  const companyHref = companyId
+    ? `/dashboard/companies/${encodeURIComponent(companyId)}`
+    : "";
+  const companyName = String(job.companyName || (job as any).company_name || "").trim();
 
   return (
     <div className="space-y-5 max-w-7xl -mt-1">
@@ -586,10 +593,20 @@ export default function JobDetailPage() {
             <span className="font-mono text-xs text-slate-400">
               {shortJobId(job.id)}
             </span>
-            {job.companyName ? (
+            {companyName ? (
               <>
                 <span className="mx-1.5">•</span>
-                {job.companyName}
+                {companyHref ? (
+                  <Link
+                    href={companyHref}
+                    className="text-blue-600 hover:underline"
+                    title={`Open ${companyName}`}
+                  >
+                    {companyName}
+                  </Link>
+                ) : (
+                  companyName
+                )}
               </>
             ) : null}
             {postedLabel ? (
@@ -686,7 +703,8 @@ export default function JobDetailPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-4">
           <MetaField
             label="Company"
-            value={job.companyName || "—"}
+            value={companyName || "—"}
+            href={companyHref || undefined}
             icon={<Building2 className="h-4 w-4" />}
           />
           <MetaField
@@ -1262,12 +1280,19 @@ function MetaField({
   value,
   icon,
   accent,
+  href,
 }: {
   label: string;
   value: string;
   icon?: ReactNode;
   accent?: string;
+  href?: string;
 }) {
+  const text = (
+    <span className={`truncate ${href ? "text-blue-600 hover:underline" : ""}`}>
+      {value}
+    </span>
+  );
   return (
     <div className="min-w-0">
       <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
@@ -1278,7 +1303,13 @@ function MetaField({
         title={value}
       >
         {icon ? <span className="text-gray-400 mt-0.5 shrink-0">{icon}</span> : null}
-        <span className="truncate">{value}</span>
+        {href ? (
+          <Link href={href} className="min-w-0 truncate">
+            {text}
+          </Link>
+        ) : (
+          text
+        )}
       </div>
     </div>
   );
