@@ -23,7 +23,7 @@ import {
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { LinkJobModal } from "@/components/candidate/LinkJobModal";
 import { SendEmailModal } from "@/components/email/send-email-modal";
-import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
+import { AccountRepPill } from "@/components/shared/AccountRepPill";
 import { CopyTextButton } from "@/components/shared/CopyTextButton";
 import { FormatActivityNoteButton } from "@/components/shared/FormatActivityNoteButton";
 import { Button } from "@/components/ui/button";
@@ -636,14 +636,13 @@ export function CandidateDetailClient({
         </div>
 
         {/*
-          Layout (xl):
-            [ header (2 cols)     ][ resume ]
-            [ apps | AI eval      ][ resume ]
-            [ timeline (2 cols)   ][ resume ]
-          Apps + AI share one explicit 2-col grid so they always align/stretch.
+          Layout:
+            [ full-width header + contact + account-rep pill ]
+            [ applications | AI evaluation | resume ]
+            [ full-width timeline ]
         */}
-        <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(440px,1.25fr)] xl:grid-rows-[auto_auto_1fr]">
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 xl:col-span-2 xl:col-start-1 xl:row-start-1">
+        <div className="space-y-3">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <button
@@ -758,10 +757,9 @@ export function CandidateDetailClient({
                 >
                   Edit
                 </Link>
-                <ObjectAssignments
+                <AccountRepPill
                   objectType="candidate"
                   objectId={String(candidate.id)}
-                  compact
                   label="Account Rep"
                   assignmentRole="account_manager"
                 />
@@ -854,95 +852,10 @@ export function CandidateDetailClient({
                 Add Note
               </button>
             </div>
-            {false && (
-              <div className="hidden space-y-4">
-                <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div className="border-b border-slate-200 px-4 py-3">
-                    <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                      Resume
-                    </h2>
-                  </div>
-                  <div className="h-[min(68vh,720px)] min-h-[420px]">
-                    <ResumeViewer
-                      url={resumeUrl}
-                      fileName={resumeName}
-                      fileKey={resumeKey}
-                      candidateId={candidate.id}
-                      className="h-full"
-                      onUrlUpdated={setResumeUrl}
-                      onResumeChanged={(info) => {
-                        if (!info) return;
-                        setResumeUrl(info.resumeUrl || "");
-                        setResumeName(info.fileName || "");
-                        setResumeKey(info.fileKey || info.resumeUrl || "");
-                      }}
-                    />
-                  </div>
-                </section>
-                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
-                    <Sparkles className="h-4 w-4 text-violet-600" /> AI
-                    Evaluation
-                  </h2>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div>
-                      <div className="text-xs text-slate-500">Overall fit</div>
-                      <div
-                        className="mt-2 flex h-16 w-16 items-center justify-center rounded-full"
-                        style={{
-                          background: `conic-gradient(#16a34a ${Math.max(0, Math.min(100, Number(fitScore) || 0)) * 3.6}deg, #d1d5db 0deg)`,
-                        }}
-                      >
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-sm font-semibold">
-                          {fitScore != null
-                            ? Math.round(Number(fitScore))
-                            : "—"}
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold text-slate-600">
-                        Key strengths
-                      </div>
-                      <ul className="mt-1 space-y-1 text-xs text-slate-700">
-                        {(fit.fitStrengths || [])
-                          .slice(0, 3)
-                          .map((item: string) => (
-                            <li key={item}>✓ {item}</li>
-                          ))}
-                      </ul>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold text-slate-600">
-                        Potential concerns
-                      </div>
-                      <ul className="mt-1 space-y-1 text-xs text-slate-700">
-                        {(fit.fitGaps || []).slice(0, 3).map((item: string) => (
-                          <li key={item}>• {item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="mt-3 w-full text-xs"
-                    disabled={fitBusy || !currentJob}
-                    onClick={() => void runFit()}
-                  >
-                    {fitBusy
-                      ? "Scoring application..."
-                      : fitScore != null
-                        ? "Refresh AI Fit"
-                        : "Run AI Fit"}
-                  </Button>
-                </section>
-              </div>
-            )}
           </section>
 
-          {/* Apps + AI Evaluation: one shared row, equal stretch */}
-          <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2 xl:col-span-2 xl:col-start-1 xl:row-start-2">
+          {/* Applications + AI + Resume share one row and the same top edge */}
+          <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2 xl:grid-cols-3">
               <section className="flex h-full min-h-[280px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
@@ -1274,11 +1187,35 @@ export function CandidateDetailClient({
                       : "Run AI Fit"}
                 </Button>
               </section>
+
+          <section className="flex h-full min-h-[280px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:col-span-2 xl:col-span-1">
+            <div className="border-b border-slate-200 px-4 py-3">
+              <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                Resume
+              </h2>
+            </div>
+            <div className="min-h-[420px] flex-1">
+              <ResumeViewer
+                url={resumeUrl}
+                fileName={resumeName}
+                fileKey={resumeKey}
+                candidateId={candidate.id}
+                className="h-full min-h-[420px]"
+                onUrlUpdated={setResumeUrl}
+                onResumeChanged={(info) => {
+                  if (!info) return;
+                  setResumeUrl(info.resumeUrl || "");
+                  setResumeName(info.fileName || "");
+                  setResumeKey(info.fileKey || info.resumeUrl || "");
+                }}
+              />
+            </div>
+          </section>
           </div>
 
             <section
               id="candidate-activity-log"
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2 xl:col-start-1 xl:row-start-3"
+              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
             >
               <div className="mb-3">
                 <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
@@ -1444,30 +1381,6 @@ export function CandidateDetailClient({
                 )}
               </div>
             </section>
-
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm xl:col-start-3 xl:row-span-3 xl:row-start-1">
-            <div className="border-b border-slate-200 px-4 py-3">
-              <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                Resume
-              </h2>
-            </div>
-            <div className="h-[min(68vh,720px)] min-h-[420px]">
-              <ResumeViewer
-                url={resumeUrl}
-                fileName={resumeName}
-                fileKey={resumeKey}
-                candidateId={candidate.id}
-                className="h-full"
-                onUrlUpdated={setResumeUrl}
-                onResumeChanged={(info) => {
-                  if (!info) return;
-                  setResumeUrl(info.resumeUrl || "");
-                  setResumeName(info.fileName || "");
-                  setResumeKey(info.fileKey || info.resumeUrl || "");
-                }}
-              />
-            </div>
-          </section>
         </div>
       </div>
 

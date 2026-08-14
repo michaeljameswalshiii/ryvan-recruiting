@@ -23,7 +23,7 @@ import { companyStageLabel } from "@/lib/schemas/client";
 import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
 import { hasPermission } from "@/lib/roles";
 import { EntityFilesPanel } from "@/components/shared/EntityFilesPanel";
-import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
+import { AccountRepPill } from "@/components/shared/AccountRepPill";
 import {
   actionBarBlue,
   actionBarBtn,
@@ -370,6 +370,13 @@ export default function CompanyDetailPage() {
             )}
           </div>
         </div>
+        {company.id ? (
+          <AccountRepPill
+            objectType="company"
+            objectId={String(company.id)}
+            label="Account Rep"
+          />
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -761,12 +768,6 @@ function OverviewTab({
       </div>
 
       <div className="space-y-5 xl:col-span-5">
-        <ObjectAssignments
-          objectType="company"
-          objectId={String(company.id)}
-          label="Account rep"
-        />
-
         <section
           data-ink-on-light
           className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm text-slate-900"

@@ -54,6 +54,7 @@ import {
   actionBarBtn,
 } from '@/components/shared/EntityActionBar';
 import { CopyTextButton } from '@/components/shared/CopyTextButton';
+import { AccountRepPill } from '@/components/shared/AccountRepPill';
 import {
   ACTIVITY_BADGE_BASE_CLASS,
   activityBadgeStyle,
@@ -714,7 +715,13 @@ export default function ContactDetailClient({
               </div>
             </div>
           </div>
-
+          {contact?.id ? (
+            <AccountRepPill
+              objectType="contact"
+              objectId={String(contact.id)}
+              label="Account Rep"
+            />
+          ) : null}
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
