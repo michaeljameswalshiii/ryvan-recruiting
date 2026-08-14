@@ -36,6 +36,7 @@ interface ParsedResumeData {
   experience?: any[];
   education?: any[];
   certifications?: string[];
+  tags?: string[];
 }
 
 export function ResumeUpload({ candidateId, buttonText, className, onSuccess, onError }: ResumeUploadProps) {
@@ -153,6 +154,7 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
         if (parsed.salaryRequirements) updatePayload.salary_requirements = parsed.salaryRequirements;
         if (parsed.summary) updatePayload.summary = parsed.summary;
         if (parsed.skills && parsed.skills.length > 0) updatePayload.skills = parsed.skills;
+        if (parsed.tags && parsed.tags.length > 0) updatePayload.tags = parsed.tags;
         if (parsed.experience && parsed.experience.length > 0) updatePayload.experience = parsed.experience;
         if (parsed.education && parsed.education.length > 0) updatePayload.education = parsed.education;
         if (parsed.certifications && parsed.certifications.length > 0) updatePayload.certifications = parsed.certifications;
@@ -314,6 +316,7 @@ export function ResumeUpload({ candidateId, buttonText, className, onSuccess, on
       fillIfEmpty("salary_requirements", parsedData.salaryRequirements);
       fillIfEmpty("summary", parsedData.summary);
       fillIfEmpty("skills", parsedData.skills);
+      fillIfEmpty("tags", parsedData.tags);
       fillIfEmpty("experience", parsedData.experience);
       fillIfEmpty("education", parsedData.education);
       fillIfEmpty("certifications", parsedData.certifications);

@@ -6,7 +6,10 @@ import {
   resumeFileTooLargeMessage,
   validateResumeFileClient,
 } from '@/lib/candidates/resume-upload-limits';
-import { sanitizeCandidateLocation } from '@/lib/candidates/resume-text-parser';
+import {
+  inferCandidateTags,
+  sanitizeCandidateLocation,
+} from '@/lib/candidates/resume-text-parser';
 
 export type ParsedResumeFields = {
   name?: string;
@@ -19,6 +22,7 @@ export type ParsedResumeFields = {
   linkedin_url?: string;
   summary?: string;
   skills?: string[] | string;
+  tags?: string[] | string;
   notes?: string;
   resume_url?: string;
   resume_file_name?: string;
@@ -54,7 +58,7 @@ export function skillsToString(skills: unknown): string {
   return '';
 }
 
-const ATS_SUMMARY_MAX_WORDS = 20;
+const ATS_SUMMARY_MAX_WORDS = 40;
 
 function wordCount(s: string): number {
   return (s || '').trim().split(/\s+/).filter(Boolean).length;
@@ -67,9 +71,33 @@ function ensureSentenceEnd(s: string): string {
   return `${t}.`;
 }
 
+function titleCaseIfShouting(s: string): string {
+  const t = (s || '').trim();
+  if (!t || t.length < 4) return t;
+  const letters = t.replace(/[^A-Za-z]/g, '');
+  if (!letters || letters !== letters.toUpperCase()) return t;
+  return t
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
+}
+
+function isUsefulSummarySkill(skill: string): boolean {
+  const key = skill.trim().toLowerCase();
+  if (key.length < 3 || key.length > 40) return false;
+  if (
+    /^(spring|summer|fall|autumn|winter|go|rust|rails|spark|rest|express|less|node|api|git)$/i.test(
+      key
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /**
- * Build a short ATS-friendly professional summary (target ≤20 words).
- * Prefer objective/summary text; otherwise title + top skills.
+ * Build a short ATS-friendly professional summary.
+ * Prefer objective/summary prose; otherwise title + real skills — never a lone
+ * false-positive keyword like "spring".
  */
 export function buildAtsFriendlySummary(parsed: {
   summary?: string;
@@ -87,27 +115,32 @@ export function buildAtsFriendlySummary(parsed: {
     .replace(/\s+/g, ' ')
     .trim();
 
-  const title = (
-    parsed.title ||
-    parsed.experience?.[0]?.title ||
-    ''
-  ).trim();
+  const title = titleCaseIfShouting(
+    (
+      parsed.title ||
+      parsed.experience?.[0]?.title ||
+      ''
+    ).trim()
+  );
 
-  const skillsArr = Array.isArray(parsed.skills)
-    ? parsed.skills.map(String).filter(Boolean)
-    : skillsToString(parsed.skills)
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
+  const skillsArr = (
+    Array.isArray(parsed.skills)
+      ? parsed.skills.map(String).filter(Boolean)
+      : skillsToString(parsed.skills)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+  ).filter(isUsefulSummarySkill);
 
   // Already short enough — keep as-is
   if (raw && wordCount(raw) <= ATS_SUMMARY_MAX_WORDS) {
     return ensureSentenceEnd(raw);
   }
 
-  // First sentence, capped at 20 words
+  // First 1–2 sentences, capped
   if (raw) {
-    const first = (raw.split(/(?<=[.!?])\s+/)[0] || raw).replace(/[.!?]+$/, '');
+    const sentences = raw.split(/(?<=[.!?])\s+/).filter(Boolean);
+    const first = (sentences.slice(0, 2).join(' ') || raw).replace(/[.!?]+$/, '');
     const words = first.split(/\s+/).filter(Boolean);
     if (words.length > 0) {
       const clipped = words.slice(0, ATS_SUMMARY_MAX_WORDS).join(' ');
@@ -130,20 +163,20 @@ export function buildAtsFriendlySummary(parsed: {
     .filter((s) => s.length >= 2 && s.length <= 32);
 
   const parts: string[] = [];
-  if (years && title) {
-    parts.push(`${years} as ${title}`);
+  if (years && title && skillBits.length) {
+    parts.push(
+      `${title} with ${years} of experience in ${skillBits.join(', ')}`
+    );
+  } else if (years && title) {
+    parts.push(`${title} with ${years} of experience`);
+  } else if (title && skillBits.length) {
+    parts.push(`${title} with experience in ${skillBits.join(', ')}`);
   } else if (title) {
     parts.push(title);
   } else if (years) {
     parts.push(`${years} professional experience`);
-  }
-
-  if (skillBits.length) {
-    parts.push(
-      parts.length
-        ? `with expertise in ${skillBits.join(', ')}`
-        : skillBits.join(', ')
-    );
+  } else if (skillBits.length) {
+    parts.push(skillBits.join(', '));
   }
 
   let built = parts.join(' ').replace(/\s+/g, ' ').trim();
@@ -158,7 +191,7 @@ export function buildAtsFriendlySummary(parsed: {
 
 /**
  * Map API parse-resume result into candidate create/edit form fields.
- * Summary is kept short (ATS-friendly, ~20 words). Notes are not filled.
+ * Summary is kept short (ATS-friendly). Notes are not filled.
  */
 export function mapParsedResumeToForm(
   parsed: any,
@@ -186,6 +219,24 @@ export function mapParsedResumeToForm(
   const name = parsed?.name || parsed?.fullName || '';
   const linkedin =
     parsed?.linkedin || parsed?.linkedin_url || parsed?.linkedinUrl || '';
+  const parsedTags = Array.isArray(parsed?.tags)
+    ? parsed.tags.map(String).filter(Boolean)
+    : typeof parsed?.tags === 'string'
+      ? parsed.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
+      : [];
+  const tags = (
+    parsedTags.length
+      ? parsedTags
+      : inferCandidateTags({
+          title: parsed?.title || '',
+          summary,
+          skills: skills
+            .split(/[,;\n]/)
+            .map((s) => s.trim())
+            .filter(Boolean),
+          experience,
+        })
+  ).join(', ');
 
   // Robust title: headline field, then most recent / current experience role
   let title = String(parsed?.title || parsed?.currentTitle || '').trim();
@@ -216,6 +267,7 @@ export function mapParsedResumeToForm(
     linkedin_url: linkedin,
     summary,
     skills,
+    tags,
     // Do not auto-fill notes from resume dump
     notes: '',
     salary_requirements:
@@ -254,6 +306,7 @@ export function mergeFormWithParsed(
     linkedin_url: pick('linkedin_url'),
     summary: pick('summary'),
     skills: pick('skills'),
+    tags: pick('tags'),
     // Keep prior notes only if user already typed something; never force resume dump
     notes: prev.notes || '',
     salary_requirements: pick('salary_requirements'),

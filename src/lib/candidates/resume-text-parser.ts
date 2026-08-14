@@ -29,6 +29,7 @@ export type StructuredParsedResume = {
   summary: string;
   salaryRequirements: string;
   skills: string[];
+  tags: string[];
   experience: ParsedExperience[];
   education: ParsedEducation[];
   certifications: string[];
@@ -45,6 +46,7 @@ const EMPTY: StructuredParsedResume = {
   summary: '',
   salaryRequirements: '',
   skills: [],
+  tags: [],
   experience: [],
   education: [],
   certifications: [],
@@ -106,7 +108,7 @@ const SECTION_HEADERS: Record<string, string[]> = {
 const COMMON_SKILLS = [
   'javascript', 'typescript', 'python', 'java', 'c#', 'c++', 'go', 'golang', 'rust', 'ruby', 'php', 'swift', 'kotlin',
   'react', 'react.js', 'reactjs', 'next.js', 'nextjs', 'vue', 'vue.js', 'angular', 'node', 'node.js', 'nodejs',
-  'express', 'django', 'flask', 'spring', 'rails', '.net', 'dotnet',
+  'express', 'django', 'flask', 'spring boot', 'spring framework', 'ruby on rails', 'rails', '.net', 'dotnet',
   'aws', 'azure', 'gcp', 'google cloud', 'docker', 'kubernetes', 'k8s', 'terraform', 'ansible',
   'sql', 'nosql', 'mongodb', 'postgresql', 'postgres', 'mysql', 'redis', 'dynamodb', 'elasticsearch',
   'graphql', 'rest', 'api', 'microservices', 'ci/cd', 'jenkins', 'github actions', 'gitlab',
@@ -156,20 +158,74 @@ const CURATED_SKILL_PATTERNS: Array<[string, RegExp]> = [
   ['Program Management', /\bprogram management\b/i],
   ['Preconstruction', /\bpre[- ]?construction\b/i],
   ['Construction Management', /\bconstruction management\b/i],
+  ['Commercial Construction', /\bcommercial construction\b/i],
+  ['Residential Construction', /\bresidential construction\b/i],
   ['Construction', /\bconstruction (?:industry|projects?|sites?|operations?)\b/i],
   ['Civil Engineering', /\bcivil engineering\b/i],
+  ['Contract Management', /\bcontract management\b/i],
+  ['Subcontractor Management', /\bsubcontract(?:or|ing)? (?:management|coordination|oversight)\b/i],
+  ['Change Orders', /\bchange orders?\b/i],
+  ['RFI', /\brfis?\b/i],
+  ['OSHA', /\bosha(?:\s*\d+)?\b/i],
+  ['PMP', /\bpmp\b/i],
+  ['Procore', /\bprocore\b/i],
+  ['Primavera', /\bprimavera(?:\s*p6)?\b/i],
+  ['Microsoft Project', /\b(?:microsoft|ms)\s+project\b/i],
   ['Bluebeam', /\bbluebeam\b/i],
   ['AutoCAD', /\bautocad\b/i],
+  ['Revit', /\brevit\b/i],
+  ['PlanGrid', /\bplangrid\b/i],
+  ['BIM', /\bbim\b/i],
+  ['MEP', /\bmep\b/i],
   ['FabTrol', /\bfabtrol\b/i],
   ['Sage 300', /\bsage\s*300\b/i],
   ['Estimating', /\bestimat(?:e|ing|ion)\b/i],
   ['Scheduling', /\bschedul(?:e|ing)\b/i],
   ['Budgeting', /\bbudget(?:ing|s)?\b/i],
+  ['Cost Control', /\bcost control\b/i],
+  ['Procurement', /\bprocurement\b/i],
+  ['Quality Control', /\bquality (?:control|assurance)\b/i],
   ['Steel Fabrication', /\bsteel fabrication\b/i],
   ['Fabrication', /\bfabrication shops?\b/i],
   ['Job Site Operations', /\b(?:active\s+)?job sites?\b/i],
   ['Spanish', /\b(?:conversational(?:ly)?\s+)?spanish\b/i],
   ['Microsoft Excel', /\bmicrosoft excel\b/i],
+];
+
+/** Single tokens that are real tech skills but also common English / trade words. */
+const AMBIGUOUS_TECH_SKILLS = new Set([
+  'spring',
+  'go',
+  'rust',
+  'rails',
+  'spark',
+  'rest',
+  'express',
+  'less',
+  'node',
+  'api',
+  'git',
+]);
+
+const SEASON_OR_MONTH_SKILL =
+  /^(spring|summer|fall|autumn|winter|january|february|march|april|may|june|july|august|september|october|november|december)$/i;
+
+const INDUSTRY_TAG_RULES: Array<[string, RegExp]> = [
+  [
+    'Construction',
+    /\b(construction|preconstruction|pre-construction|general contractor|\bgc\b|job sites?|superintendent|osha|procore|bluebeam|change orders?)\b/i,
+  ],
+  ['Healthcare', /\b(registered nurse|\brn\b|hospital|healthcare|physician|cna|lpn|clinical)\b/i],
+  [
+    'Software',
+    /\b(software engineer|software developer|full[- ]?stack|front[- ]?end|back[- ]?end|javascript|react|node\.?js)\b/i,
+  ],
+  ['Finance', /\b(\bcpa\b|controller|staff accountant|bookkeeper|accounts payable|accounts receivable)\b/i],
+  ['Sales', /\b(account executive|sales manager|business development|outside sales)\b/i],
+  ['Recruiting', /\b(recruiter|talent acquisition|sourcer|staffing)\b/i],
+  ['Manufacturing', /\b(manufacturing|plant manager|cnc|production supervisor)\b/i],
+  ['Hospitality', /\b(hotel|restaurant manager|hospitality|food and beverage|f&b)\b/i],
+  ['Logistics', /\b(logistics|supply chain|warehouse manager|freight|dispatcher)\b/i],
 ];
 
 /**
@@ -926,7 +982,8 @@ function extractSkillsFromSection(skillsText: string): string[] {
     .map((s) => s.replace(/^[-–—*]\s*/, ''))
     .filter((s) => s.length >= 2 && s.length <= 40)
     .filter((s) => !isSectionHeaderLine(s))
-    .filter((s) => !/^(and|or|with|using)$/i.test(s));
+    .filter((s) => !/^(and|or|with|using)$/i.test(s))
+    .filter((s) => !SEASON_OR_MONTH_SKILL.test(s));
 
   const seen = new Set<string>();
   const out: string[] = [];
@@ -940,6 +997,44 @@ function extractSkillsFromSection(skillsText: string): string[] {
   return out;
 }
 
+function looksLikeTechnicalResume(
+  title: string,
+  skillsSection: string,
+  text: string
+): boolean {
+  const blob = `${title}\n${skillsSection}\n${text.slice(0, 1200)}`;
+  return /\b(software|developer|programmer|devops|sre\b|full[- ]?stack|front[- ]?end|back[- ]?end|javascript|typescript|python|react|node\.?js|kubernetes|spring boot|golang|machine learning)\b/i.test(
+    blob
+  );
+}
+
+function isAmbiguousTechToken(skill: string, text: string): boolean {
+  const key = skill.trim().toLowerCase();
+  if (!AMBIGUOUS_TECH_SKILLS.has(key)) return false;
+  if (key === 'spring') {
+    return !/\bspring\s+(?:boot|framework|mvc|cloud|security)\b/i.test(text);
+  }
+  if (key === 'rails') {
+    return !/\bruby on rails\b/i.test(text);
+  }
+  if (key === 'go') {
+    return !/\b(?:golang|go lang)\b/i.test(text);
+  }
+  if (key === 'spark') {
+    return !/\b(?:apache spark|pyspark)\b/i.test(text);
+  }
+  if (key === 'express') {
+    return !/\bexpress(?:\.?js|js)\b/i.test(text);
+  }
+  if (key === 'node') {
+    return !/\bnode(?:\.?js|js)\b/i.test(text);
+  }
+  if (key === 'rest') {
+    return !/\brest(?:ful)?\s+api/i.test(text);
+  }
+  return true;
+}
+
 function extractSkillsKeywordFallback(text: string): string[] {
   const lower = text.toLowerCase();
   const found: string[] = [];
@@ -947,13 +1042,13 @@ function extractSkillsKeywordFallback(text: string): string[] {
   // Longer skills first to prefer "node.js" over "node"
   const sorted = [...COMMON_SKILLS].sort((a, b) => b.length - a.length);
   for (const skill of sorted) {
+    if (isAmbiguousTechToken(skill, text)) continue;
     const re = new RegExp(
       `(?:^|[^a-z0-9.])${skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[^a-z0-9.]|$)`,
       'i'
     );
     if (re.test(lower) && !seen.has(skill.toLowerCase())) {
       seen.add(skill.toLowerCase());
-      // Prefer display casing for known multi-word / branded skills
       found.push(skill.includes('.') || skill.includes(' ') ? skill : skill);
     }
   }
@@ -972,17 +1067,27 @@ function rankAndCleanSkills(
   fullText: string,
   identity: { name: string; title: string; location: string }
 ): string[] {
-  const summarySkills = extractCuratedSkills(summaryText);
-  const fallbackSkills = extractSkillsKeywordFallback(fullText);
-  const candidates = [...summarySkills, ...sectionSkills, ...fallbackSkills];
+  const curatedSkills = [
+    ...extractCuratedSkills(summaryText),
+    ...extractCuratedSkills(fullText),
+  ];
+  const domainSkills = [...curatedSkills, ...sectionSkills];
+  const hasDomainSkills =
+    curatedSkills.filter(
+      (skill) => !GENERIC_PRODUCTIVITY_SKILLS.has(skill.toLowerCase())
+    ).length >= 2;
+  const useTechFallback =
+    looksLikeTechnicalResume(identity.title, sectionSkills.join(' '), fullText) ||
+    !hasDomainSkills;
+  const fallbackSkills = useTechFallback
+    ? extractSkillsKeywordFallback(fullText)
+    : [];
+  const candidates = [...domainSkills, ...fallbackSkills];
   const identityValues = new Set(
     [identity.name, identity.title, identity.location]
       .filter(Boolean)
       .map((value) => value.toLowerCase())
   );
-  const hasDomainSkills = summarySkills.filter(
-    (skill) => !GENERIC_PRODUCTIVITY_SKILLS.has(skill.toLowerCase())
-  ).length >= 3;
   const seen = new Set<string>();
   const cleaned: string[] = [];
 
@@ -990,6 +1095,8 @@ function rankAndCleanSkills(
     const skill = rawSkill.trim();
     const key = skill.toLowerCase() === 'excel' ? 'microsoft excel' : skill.toLowerCase();
     if (!skill || seen.has(key) || identityValues.has(key)) continue;
+    if (SEASON_OR_MONTH_SKILL.test(skill)) continue;
+    if (isAmbiguousTechToken(skill, fullText)) continue;
     if (looksLikeLocation(skill) || COMPANY_MARKERS.test(skill)) continue;
     if (/\b(?:manager|director|engineer|developer|analyst)\s+at\s+/i.test(skill)) continue;
     if (hasDomainSkills && GENERIC_PRODUCTIVITY_SKILLS.has(key)) continue;
@@ -998,6 +1105,58 @@ function rankAndCleanSkills(
   }
 
   return cleaned.slice(0, 30);
+}
+
+/**
+ * Recruiter-facing tags from title + resume signals (industry + function).
+ * Kept short so the create form can edit them before save.
+ */
+export function inferCandidateTags(input: {
+  title?: string;
+  summary?: string;
+  skills?: string[];
+  experience?: Array<{ title?: string; company?: string; description?: string }>;
+  text?: string;
+}): string[] {
+  const title = (input.title || '').trim();
+  const blob = [
+    title,
+    input.summary || '',
+    ...(input.skills || []),
+    ...(input.experience || []).flatMap((item) => [
+      item.title || '',
+      item.company || '',
+      item.description || '',
+    ]),
+    (input.text || '').slice(0, 4000),
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const tags: string[] = [];
+  const seen = new Set<string>();
+  const add = (tag: string) => {
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) return;
+    seen.add(key);
+    tags.push(tag);
+  };
+
+  if (/\bproject managers?\b/i.test(title)) add('Project Manager');
+  else if (/\bprogram managers?\b/i.test(title)) add('Program Manager');
+  else if (/\bsuperintendent/i.test(title)) add('Superintendent');
+  else if (/\bestimator/i.test(title)) add('Estimator');
+  else if (/\bproject engineer/i.test(title)) add('Project Engineer');
+  else if (/\bsoftware (?:engineer|developer)/i.test(title)) add('Software');
+  else if (/\baccountant|controller|bookkeeper/i.test(title)) add('Accounting');
+  else if (/\brecruiter|talent acquisition/i.test(title)) add('Recruiting');
+  else if (/\bsales\b/i.test(title)) add('Sales');
+
+  for (const [tag, pattern] of INDUSTRY_TAG_RULES) {
+    if (pattern.test(blob)) add(tag);
+  }
+
+  return tags.slice(0, 5);
 }
 
 function extractCertifications(certText: string): string[] {
@@ -1388,8 +1547,21 @@ function extractSummary(summaryText: string, fullText: string): string {
   }
   // First paragraph after header contact info, before experience
   const sections = splitIntoSections(fullText);
-  if (sections.summary) {
+  if (sections.summary && sections.summary.length > 20) {
     return sections.summary.replace(/\s+/g, ' ').trim().slice(0, 1500);
+  }
+  const header = sections.header || '';
+  const paras = header
+    .split(/\n{2,}/)
+    .map((p) => p.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  for (const para of paras) {
+    if (para.length < 40 || para.length > 800) continue;
+    if (looksLikeEmail(para) || looksLikePhone(para) || looksLikeUrl(para)) continue;
+    if (TITLE_WORDS.test(para) && para.length < 80) continue;
+    if (/\b(?:with|and|the|in|of|for|who|years?|experience)\b/i.test(para)) {
+      return para.slice(0, 1500);
+    }
   }
   return '';
 }
@@ -1426,12 +1598,6 @@ export function parseResumeText(
   const education = parseEducationSection(sections.education || '');
   const certifications = extractCertifications(sections.certifications || '');
   const summary = extractSummary(sections.summary || '', text);
-  const skills = rankAndCleanSkills(
-    extractSkillsFromSection(sections.skills || ''),
-    sections.summary || summary,
-    text,
-    { name, title: linkedInIdentity.title, location }
-  );
 
   let title = linkedInIdentity.title || extractTitle(text, sections, name);
   // Fall back to most recent / current experience title
@@ -1451,6 +1617,13 @@ export function parseResumeText(
     }
   }
 
+  const skills = rankAndCleanSkills(
+    extractSkillsFromSection(sections.skills || ''),
+    sections.summary || summary,
+    text,
+    { name, title, location }
+  );
+
   // Location: experience location is a strong secondary signal
   let finalLocation = location;
   if (!finalLocation) {
@@ -1465,6 +1638,14 @@ export function parseResumeText(
     finalName = extractNameFromFilename(options.filename);
   }
 
+  const tags = inferCandidateTags({
+    title,
+    summary,
+    skills,
+    experience,
+    text,
+  });
+
   return {
     name: finalName,
     title,
@@ -1476,6 +1657,7 @@ export function parseResumeText(
     summary,
     salaryRequirements,
     skills,
+    tags,
     experience,
     education,
     certifications,
@@ -1517,6 +1699,9 @@ export function mergeParsedIntoEmptyFields(
 
   if (parsed.skills?.length && isEmpty(existing.skills)) {
     out.skills = parsed.skills;
+  }
+  if (parsed.tags?.length && isEmpty(existing.tags)) {
+    out.tags = parsed.tags;
   }
   if (parsed.experience?.length && isEmpty(existing.experience)) {
     out.experience = parsed.experience;

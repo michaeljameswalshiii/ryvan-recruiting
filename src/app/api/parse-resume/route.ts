@@ -137,6 +137,7 @@ function toApiResume(parsed: StructuredParsedResume) {
     summary: parsed.summary || "",
     salaryRequirements: parsed.salaryRequirements || "",
     skills: parsed.skills || [],
+    tags: parsed.tags || [],
     experience: (parsed.experience || []).map((e) => ({
       company: e.company || "",
       title: e.title || "",
@@ -499,6 +500,7 @@ export async function POST(req: NextRequest) {
           title: "",
           summary: "",
           skills: [],
+          tags: [],
           experience: [],
           education: [],
           certifications: [],

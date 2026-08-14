@@ -386,6 +386,7 @@ export async function POST(
             updatePayload.salary_requirements = parsed.salaryRequirements;
           }
           if (parsed.skills?.length) updatePayload.skills = parsed.skills;
+          if (parsed.tags?.length) updatePayload.tags = parsed.tags;
           if (parsed.experience?.length) updatePayload.experience = parsed.experience;
           if (parsed.education?.length) updatePayload.education = parsed.education;
           if (parsed.certifications?.length) {

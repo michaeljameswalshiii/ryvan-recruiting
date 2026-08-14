@@ -85,7 +85,7 @@ export default function NewCandidatePage() {
         ...draft.form,
         status: prev.status,
         source: draft.form.source || 'resume',
-        tags: prev.tags,
+        tags: draft.form.tags || prev.tags,
       }));
       setResumeFileName(draft.fileName || draft.form.resume_file_name || '');
       setParsedFromResume(true);
@@ -640,7 +640,7 @@ export default function NewCandidatePage() {
                   rows={3}
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  Prioritized from the resume summary. Add, remove, or reorder before creating.
+                  Pulled from the resume skills section plus role tools (not a generic tech keyword scan).
                 </p>
               </div>
               <div>
@@ -650,8 +650,11 @@ export default function NewCandidatePage() {
                   value={formData.tags}
                   onChange={(e) => handleChange('tags', e.target.value)}
                   className={fieldInputClass}
-                  placeholder="e.g., Industrial, Local, Top prospect"
+                  placeholder="e.g., Construction, Project Manager"
                 />
+                <p className="mt-1 text-xs text-slate-500">
+                  Auto-generated from title and industry signals. Edit before creating.
+                </p>
               </div>
               <div>
                 <Label htmlFor="summary" className={fieldLabelClass}>Summary</Label>
