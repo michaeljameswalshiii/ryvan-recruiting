@@ -24,6 +24,7 @@ import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { LinkJobModal } from "@/components/candidate/LinkJobModal";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
+import { CopyTextButton } from "@/components/shared/CopyTextButton";
 import { FormatActivityNoteButton } from "@/components/shared/FormatActivityNoteButton";
 import { Button } from "@/components/ui/button";
 import {
@@ -675,9 +676,12 @@ export function CandidateDetailClient({
                   }
                 />
                 <div className="min-w-0">
-                  <h1 className="truncate text-2xl font-semibold tracking-tight">
-                    {name}
-                  </h1>
+                  <div className="flex min-w-0 items-center gap-1">
+                    <h1 className="truncate text-2xl font-semibold tracking-tight">
+                      {name}
+                    </h1>
+                    <CopyTextButton value={name} label="name" />
+                  </div>
                   <p className="truncate text-sm text-slate-600">
                     {candidate?.title || currentJobTitle || "Candidate"}
                     {candidate?.company || currentCompany
@@ -686,29 +690,41 @@ export function CandidateDetailClient({
                   </p>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
                     {candidateEmail && (
-                      <button
-                        type="button"
-                        onClick={handleEmailClick}
-                        className="inline-flex items-center gap-1 hover:text-blue-700"
-                        title="Compose email"
-                      >
-                        <Mail className="h-3.5 w-3.5" />
-                        {candidateEmail}
-                      </button>
+                      <span className="inline-flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={handleEmailClick}
+                          className="inline-flex items-center gap-1 hover:text-blue-700"
+                          title="Compose email"
+                        >
+                          <Mail className="h-3.5 w-3.5" />
+                          {candidateEmail}
+                        </button>
+                        <CopyTextButton value={candidateEmail} label="email" />
+                      </span>
                     )}
                     {candidate?.phone && (
-                      <a
-                        className="inline-flex items-center gap-1 hover:text-blue-700"
-                        href={`tel:${candidate.phone}`}
-                      >
-                        <Phone className="h-3.5 w-3.5" />
-                        {candidate.phone}
-                      </a>
+                      <span className="inline-flex items-center gap-0.5">
+                        <a
+                          className="inline-flex items-center gap-1 hover:text-blue-700"
+                          href={`tel:${candidate.phone}`}
+                        >
+                          <Phone className="h-3.5 w-3.5" />
+                          {candidate.phone}
+                        </a>
+                        <CopyTextButton value={candidate.phone} label="phone" />
+                      </span>
                     )}
                     {(candidate?.location || currentJob?.location) && (
-                      <span className="inline-flex items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5" />
-                        {candidate?.location || currentJob.location}
+                      <span className="inline-flex items-center gap-0.5">
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5" />
+                          {candidate?.location || currentJob.location}
+                        </span>
+                        <CopyTextButton
+                          value={candidate?.location || currentJob.location}
+                          label="location"
+                        />
                       </span>
                     )}
                   </div>

@@ -53,6 +53,7 @@ import {
   actionBarBlue,
   actionBarBtn,
 } from '@/components/shared/EntityActionBar';
+import { CopyTextButton } from '@/components/shared/CopyTextButton';
 import {
   ACTIVITY_BADGE_BASE_CLASS,
   activityBadgeStyle,
@@ -529,6 +530,10 @@ export default function ContactDetailClient({
                 <h1 className="text-2xl font-semibold tracking-tight text-gray-900 truncate">
                   {form.name || contact.name || 'Unknown'}
                 </h1>
+                <CopyTextButton
+                  value={form.name || contact.name}
+                  label="name"
+                />
                 {(form.isPrimary || contact.isPrimary) && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
                     <Star className="h-3 w-3" /> Primary
@@ -556,47 +561,59 @@ export default function ContactDetailClient({
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
                 {email && (
-                  <a
-                    href={`mailto:${email}`}
-                    className="inline-flex items-center gap-1.5 text-blue-600 hover:underline"
-                  >
-                    <Mail className="h-3.5 w-3.5" />
-                    {email}
-                  </a>
+                  <span className="inline-flex items-center gap-0.5">
+                    <a
+                      href={`mailto:${email}`}
+                      className="inline-flex items-center gap-1.5 text-blue-600 hover:underline"
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      {email}
+                    </a>
+                    <CopyTextButton value={email} label="email" />
+                  </span>
                 )}
                 {workPhone && (
-                  <a
-                    href={`tel:${workPhone}`}
-                    className="inline-flex items-center gap-1.5"
-                  >
-                    <Phone className="h-3.5 w-3.5 text-gray-400" />
-                    {workPhone}
-                    <span className="text-xs text-gray-400">Work</span>
-                  </a>
+                  <span className="inline-flex items-center gap-0.5">
+                    <a
+                      href={`tel:${workPhone}`}
+                      className="inline-flex items-center gap-1.5"
+                    >
+                      <Phone className="h-3.5 w-3.5 text-gray-400" />
+                      {workPhone}
+                      <span className="text-xs text-gray-400">Work</span>
+                    </a>
+                    <CopyTextButton value={workPhone} label="work phone" />
+                  </span>
                 )}
                 {mobilePhone && (
-                  <a
-                    href={`tel:${mobilePhone}`}
-                    className="inline-flex items-center gap-1.5"
-                  >
-                    <Phone className="h-3.5 w-3.5 text-gray-400" />
-                    {mobilePhone}
-                    <span className="text-xs text-gray-400">Cell</span>
-                  </a>
+                  <span className="inline-flex items-center gap-0.5">
+                    <a
+                      href={`tel:${mobilePhone}`}
+                      className="inline-flex items-center gap-1.5"
+                    >
+                      <Phone className="h-3.5 w-3.5 text-gray-400" />
+                      {mobilePhone}
+                      <span className="text-xs text-gray-400">Cell</span>
+                    </a>
+                    <CopyTextButton value={mobilePhone} label="cell phone" />
+                  </span>
                 )}
                 {!workPhone && !mobilePhone && phone && (
-                  <a
-                    href={`tel:${phone}`}
-                    className="inline-flex items-center gap-1.5"
-                  >
-                    <Phone className="h-3.5 w-3.5 text-gray-400" />
-                    {phone}
-                    {displayPhoneType ? (
-                      <span className="text-xs text-gray-400 capitalize">
-                        ({displayPhoneType})
-                      </span>
-                    ) : null}
-                  </a>
+                  <span className="inline-flex items-center gap-0.5">
+                    <a
+                      href={`tel:${phone}`}
+                      className="inline-flex items-center gap-1.5"
+                    >
+                      <Phone className="h-3.5 w-3.5 text-gray-400" />
+                      {phone}
+                      {displayPhoneType ? (
+                        <span className="text-xs text-gray-400 capitalize">
+                          ({displayPhoneType})
+                        </span>
+                      ) : null}
+                    </a>
+                    <CopyTextButton value={phone} label="phone" />
+                  </span>
                 )}
                 {editingLinkedIn ? (
                   <form

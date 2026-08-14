@@ -65,6 +65,7 @@ import { toast } from "sonner";
 import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
 import { hasPermission } from "@/lib/roles";
 import { EntityFilesPanel } from "@/components/shared/EntityFilesPanel";
+import { CopyTextButton } from "@/components/shared/CopyTextButton";
 
 type FitScoreClient = {
   score: number;
@@ -572,6 +573,7 @@ export default function JobDetailPage() {
             <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
               {job.title}
             </h1>
+            <CopyTextButton value={job.title} label="job title" />
             <span
               className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusBadgeClasses(job.status)}`}
             >
@@ -607,6 +609,7 @@ export default function JobDetailPage() {
                 ) : (
                   companyName
                 )}
+                <CopyTextButton value={companyName} label="company name" />
               </>
             ) : null}
             {postedLabel ? (

@@ -29,6 +29,7 @@ import {
   actionBarBtn,
   actionBarPrimary,
 } from "@/components/shared/EntityActionBar";
+import { CopyTextButton } from "@/components/shared/CopyTextButton";
 import { websiteLabel as formatWebsiteLabel } from "@/lib/ui/website-href";
 import { FEE_TYPE_OPTIONS } from "@/lib/fees/placement-fee";
 import {
@@ -278,7 +279,10 @@ export default function CompanyDetailPage() {
             <Building2 className="h-7 w-7 text-primary" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold truncate">{company.name}</h1>
+            <div className="flex min-w-0 items-center gap-1">
+              <h1 className="truncate text-2xl font-bold">{company.name}</h1>
+              <CopyTextButton value={company.name} label="company name" />
+            </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-muted-foreground">
               {company.status && (
                 <Badge
@@ -327,23 +331,29 @@ export default function CompanyDetailPage() {
                 )}
                 {company.email &&
                   !String(company.email).includes("@placeholder.com") && (
-                  <a
-                    href={`mailto:${company.email}`}
-                    className="inline-flex items-center gap-1.5 text-primary hover:underline"
-                    title="Company-wide email"
-                  >
-                    <Mail className="h-3.5 w-3.5 shrink-0" />
-                    {company.email}
-                  </a>
+                  <span className="inline-flex items-center gap-0.5">
+                    <a
+                      href={`mailto:${company.email}`}
+                      className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                      title="Company-wide email"
+                    >
+                      <Mail className="h-3.5 w-3.5 shrink-0" />
+                      {company.email}
+                    </a>
+                    <CopyTextButton value={company.email} label="email" />
+                  </span>
                 )}
                 {company.phone && (
-                  <a
-                    href={`tel:${String(company.phone).replace(/[^\d+]/g, "")}`}
-                    className="inline-flex items-center gap-1.5 text-primary hover:underline"
-                  >
-                    <Phone className="h-3.5 w-3.5 shrink-0" />
-                    {company.phone}
-                  </a>
+                  <span className="inline-flex items-center gap-0.5">
+                    <a
+                      href={`tel:${String(company.phone).replace(/[^\d+]/g, "")}`}
+                      className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                    >
+                      <Phone className="h-3.5 w-3.5 shrink-0" />
+                      {company.phone}
+                    </a>
+                    <CopyTextButton value={company.phone} label="phone" />
+                  </span>
                 )}
                 {company.linkedin_url && (
                   <a
