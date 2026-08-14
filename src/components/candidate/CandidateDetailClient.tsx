@@ -19,6 +19,7 @@ import {
   Sparkles,
   Tag,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { ResumeViewer } from "@/components/candidate/ResumeViewer";
 import { LinkJobModal } from "@/components/candidate/LinkJobModal";
@@ -83,6 +84,31 @@ function eventKind(note: any) {
   if (value.includes("call") || value.includes("phone")) return "call";
   if (value.includes("stage") || value.includes("status")) return "stage";
   return "note";
+}
+
+function stageTransition(note: any) {
+  const metadata = note?.metadata || {};
+  const previousStage = String(
+    metadata.previousStage || metadata.oldStage || "",
+  ).trim();
+  const newStage = String(metadata.newStage || metadata.stage || "").trim();
+  const jobId = String(
+    metadata.jobId || metadata.job_id || note?.jobId || note?.job_id || "",
+  ).trim();
+
+  return {
+    previousStage,
+    newStage,
+    jobId,
+    changedStage:
+      Boolean(previousStage && newStage && jobId) &&
+      previousStage !== newStage &&
+      (metadata.stageUpdated === true ||
+        metadata.autoStageSync === true ||
+        metadata.systemKind === "job_stage_change" ||
+        (note?.eventType === "JOB_STAGE_CHANGED" &&
+          metadata.systemKind !== "stage_undo")),
+  };
 }
 
 function noteLabel(note: any) {
@@ -297,6 +323,7 @@ export function CandidateDetailClient({
   const [noteType, setNoteType] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
+  const [undoingEventId, setUndoingEventId] = useState<string | null>(null);
   const [fitBusy, setFitBusy] = useState(false);
   const [fitOverlay, setFitOverlay] = useState<any>(null);
   const [tags, setTags] = useState<string[]>(
@@ -392,6 +419,25 @@ export function CandidateDetailClient({
   }, [candidate.id]);
 
   const visibleNotes = notes;
+  const undoneStageEventIds = new Set(
+    visibleNotes
+      .map((note: any) => String(note?.metadata?.undoneEventId || "").trim())
+      .filter(Boolean),
+  );
+  const latestUndoableStageEventByJob = new Map<string, string>();
+  for (const note of visibleNotes) {
+    const eventId = String(note?.id || note?.timestamp || "");
+    const transition = stageTransition(note);
+    if (
+      !eventId ||
+      !transition.changedStage ||
+      undoneStageEventIds.has(eventId) ||
+      latestUndoableStageEventByJob.has(transition.jobId)
+    ) {
+      continue;
+    }
+    latestUndoableStageEventByJob.set(transition.jobId, eventId);
+  }
 
   const currentJob =
     orderedJobs.find(
@@ -673,6 +719,64 @@ export function CandidateDetailClient({
     }
   };
 
+  const undoStageActivity = async (note: any) => {
+    const eventId = String(note?.id || note?.timestamp || "");
+    const transition = stageTransition(note);
+    if (!eventId || !transition.changedStage || undoingEventId) return;
+
+    const jobTitle = String(note?.metadata?.jobTitle || "this job");
+    if (
+      !window.confirm(
+        `Move ${jobTitle} from ${stageLabel(transition.newStage)} back to ${stageLabel(transition.previousStage)}?`,
+      )
+    ) {
+      return;
+    }
+
+    setUndoingEventId(eventId);
+    try {
+      const response = await fetch(
+        `/api/candidate/${candidate.id}/events/undo-stage`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId }),
+        },
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.error || "Unable to undo stage change");
+      }
+
+      setLinkedJobs((current) =>
+        current.map((job) =>
+          String(job.jobId || job.id) === transition.jobId
+            ? {
+                ...job,
+                stage: body.stage || transition.previousStage,
+                stageUpdatedAt: new Date().toISOString(),
+              }
+            : job,
+        ),
+      );
+      const events = await fetch(
+        `/api/candidate/${candidate.id}/events?limit=100`,
+        { credentials: "include", cache: "no-store" },
+      ).then((result) => result.json());
+      setNotes(Array.isArray(events?.events) ? events.events : []);
+      toast.success(
+        `Stage restored to ${stageLabel(body.stage || transition.previousStage)}`,
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Unable to undo stage change",
+      );
+    } finally {
+      setUndoingEventId(null);
+    }
+  };
+
   const saveTags = async (nextTags: string[]) => {
     const normalized = Array.from(
       new Map(
@@ -938,7 +1042,7 @@ export function CandidateDetailClient({
           </section>
 
           <div className="grid items-stretch gap-3 min-[1400px]:grid-cols-[minmax(0,1.75fr)_minmax(480px,1fr)]">
-            <div className="grid min-w-0 content-start gap-3">
+            <div className="grid min-w-0 gap-3 min-[1400px]:h-full min-[1400px]:grid-rows-[auto_minmax(0,1fr)]">
               <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2">
               <section className="flex h-full min-h-0 flex-col rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-2">
@@ -1301,7 +1405,7 @@ export function CandidateDetailClient({
 
             <section
               id="candidate-activity-log"
-              className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+              className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
             >
               <div className="mb-3">
                 <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
@@ -1354,7 +1458,7 @@ export function CandidateDetailClient({
                   </Button>
                 </div>
               </div>
-              <div className="max-h-[520px] divide-y divide-slate-100 overflow-y-auto pr-1">
+              <div className="min-h-0 max-h-[520px] flex-1 divide-y divide-slate-100 overflow-y-auto pr-1 min-[1400px]:max-h-none">
                 {notesLoading ? (
                   <p className="py-10 text-center text-sm text-slate-500">
                     Loading activity…
@@ -1372,6 +1476,19 @@ export function CandidateDetailClient({
                     const activityCompanyName = String(
                       activityJob.companyName || "",
                     );
+                    const eventId = String(note.id || note.timestamp || "");
+                    const transition = stageTransition(note);
+                    const transitionApplication = linkedJobs.find(
+                      (job) =>
+                        String(job.jobId || job.id) === transition.jobId,
+                    );
+                    const canUndoStage =
+                      Boolean(transitionApplication) &&
+                      transition.changedStage &&
+                      latestUndoableStageEventByJob.get(transition.jobId) ===
+                        eventId &&
+                      normalizedStage(transitionApplication?.stage) ===
+                        normalizedStage(transition.newStage);
                     const EventIcon =
                       kind === "interview"
                         ? Calendar
@@ -1401,6 +1518,18 @@ export function CandidateDetailClient({
                             <span className="text-[11px] text-slate-500">
                               {date(note.createdAt || note.timestamp)}
                             </span>
+                            {canUndoStage && (
+                              <button
+                                type="button"
+                                onClick={() => void undoStageActivity(note)}
+                                disabled={undoingEventId === eventId}
+                                title={`Undo stage change to ${stageLabel(transition.previousStage)}`}
+                                aria-label={`Undo stage change to ${stageLabel(transition.previousStage)}`}
+                                className="rounded-md p-1 text-blue-700 hover:bg-blue-50 hover:text-blue-900 disabled:cursor-wait disabled:opacity-40"
+                              >
+                                <Undo2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
                             {canDeleteActivity && (note.id || note.timestamp) && (
                               <button
                                 type="button"
