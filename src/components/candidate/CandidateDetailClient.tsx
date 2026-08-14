@@ -35,7 +35,9 @@ import {
 import {
   ACTIVITY_NOTE_TYPES,
   normalizeNoteTypeLabel,
+  stageFromNoteType,
 } from "@/lib/candidates/note-type-stage";
+import { resolveActivityJobTagInTimeline } from "@/lib/candidates/activity-focus";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -120,17 +122,84 @@ const PIPELINE = [
   "accepted",
 ];
 
+const TERMINAL_OUTCOMES = new Set([
+  "rejected",
+  "not_interested",
+  "dnu",
+  "do_not_use",
+]);
+
 function normalizedStage(value?: string) {
   return String(value || "sourced").toLowerCase().replace(/\s+/g, "_");
 }
 
-function isRejectedApplication(job: any) {
-  return normalizedStage(job?.stage) === "rejected";
+function terminalOutcome(value?: string) {
+  const stage = normalizedStage(value);
+  if (!TERMINAL_OUTCOMES.has(stage)) return "";
+  return stage === "do_not_use" ? "dnu" : stage;
+}
+
+function isTerminalApplication(job: any) {
+  return Boolean(terminalOutcome(job?.stage));
+}
+
+function canonicalProgressStage(value?: string | null) {
+  const stage = normalizedStage(value || "");
+  if (["sourced", "identification", "left_message", "contacted"].includes(stage)) {
+    return "sourced";
+  }
+  if (stage === "applied") return "applied";
+  if (stage === "interested") return "interested";
+  if (["submitted", "presented", "pre_screened"].includes(stage)) {
+    return "submitted";
+  }
+  if (["interviewing", "interview", "second_interview", "third_interview"].includes(stage)) {
+    return "interviewing";
+  }
+  if (["offer_out", "offered"].includes(stage)) return "offer_out";
+  if (["accepted", "converted", "placed", "offer_accepted"].includes(stage)) {
+    return "accepted";
+  }
+  return "";
+}
+
+function lastProgressStage(job: any, activity: any[]) {
+  const jobId = String(job?.jobId || job?.id || "");
+  let bestIndex = 0;
+
+  for (const note of activity) {
+    const metadata = note?.metadata || {};
+    const noteJobId = String(
+      metadata.jobId || metadata.job_id || note?.jobId || note?.job_id || "",
+    );
+    if (jobId && noteJobId !== jobId) continue;
+
+    const candidates = [
+      metadata.previousStage,
+      metadata.oldStage,
+      metadata.stage,
+      metadata.newStage,
+      stageFromNoteType(metadata.noteType || metadata.noteTypeLabel),
+    ];
+    for (const candidateStage of candidates) {
+      const canonical = canonicalProgressStage(candidateStage);
+      const index = PIPELINE.indexOf(canonical);
+      if (index > bestIndex) bestIndex = index;
+    }
+  }
+
+  const stored = canonicalProgressStage(job?.lastProgressStage);
+  const storedIndex = PIPELINE.indexOf(stored);
+  if (storedIndex > bestIndex) bestIndex = storedIndex;
+  return PIPELINE[bestIndex];
 }
 
 function applicationRank(job: any) {
-  if (isRejectedApplication(job)) return -1;
-  return Math.max(0, PIPELINE.indexOf(normalizedStage(job?.stage)));
+  if (isTerminalApplication(job)) return -1;
+  return Math.max(
+    0,
+    PIPELINE.indexOf(canonicalProgressStage(job?.stage) || "sourced"),
+  );
 }
 
 function ActivityNoteText({ text }: { text: string }) {
@@ -208,9 +277,9 @@ export function CandidateDetailClient({
     (job: any) => String(job?.jobId || job?.id) === String(initialJobId),
   );
   const defaultJob =
-    (requestedJob && !isRejectedApplication(requestedJob)
+    (requestedJob && !isTerminalApplication(requestedJob)
       ? requestedJob
-      : orderedJobs.find((job: any) => !isRejectedApplication(job))) ||
+      : orderedJobs.find((job: any) => !isTerminalApplication(job))) ||
     orderedJobs[0];
   const [selectedJobId, setSelectedJobId] = useState(
     String(defaultJob?.jobId || defaultJob?.id || ""),
@@ -341,7 +410,7 @@ export function CandidateDetailClient({
     setStageBusy(true);
     try {
       const res = await fetch(
-        `/api/jobs/${encodeURIComponent(currentJobId)}/stage`,
+        `/api/data/leads/${encodeURIComponent(String(candidate.id))}/job/${encodeURIComponent(currentJobId)}/stage`,
         {
           method: "PUT",
           credentials: "include",
@@ -545,7 +614,23 @@ export function CandidateDetailClient({
           companyName: currentCompany,
         }),
       });
-      if (!response.ok) throw new Error("Unable to add activity");
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result?.error || "Unable to add activity");
+      }
+      if (result?.applicationStage && currentJobId) {
+        setLinkedJobs((current) =>
+          current.map((job) =>
+            String(job.jobId || job.id) === currentJobId
+              ? {
+                  ...job,
+                  stage: result.applicationStage,
+                  stageUpdatedAt: new Date().toISOString(),
+                }
+              : job,
+          ),
+        );
+      }
       const events = await fetch(
         `/api/candidate/${candidate.id}/events?limit=100`,
       ).then((r) => r.json());
@@ -804,7 +889,11 @@ export function CandidateDetailClient({
               <select
                 className={`${candidateActionBtn} pr-8`}
                 disabled={!currentJob || stageBusy}
-                value={normalizedStage(currentJob?.stage)}
+                value={
+                  terminalOutcome(currentJob?.stage) ||
+                  canonicalProgressStage(currentJob?.stage) ||
+                  "sourced"
+                }
                 onChange={(e) => void changeApplicationStage(e.target.value)}
                 aria-label="Move stage"
               >
@@ -817,6 +906,8 @@ export function CandidateDetailClient({
                   </option>
                 ))}
                 <option value="rejected">Rejected</option>
+                <option value="not_interested">Not Interested</option>
+                <option value="dnu">DNU</option>
               </select>
               <button
                 type="button"
@@ -846,7 +937,7 @@ export function CandidateDetailClient({
             </div>
           </section>
 
-          <div className="grid items-start gap-3 min-[1400px]:grid-cols-[minmax(0,1.75fr)_minmax(480px,1fr)]">
+          <div className="grid items-stretch gap-3 min-[1400px]:grid-cols-[minmax(0,1.75fr)_minmax(480px,1fr)]">
             <div className="grid min-w-0 content-start gap-3">
               <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2">
               <section className="flex h-full min-h-0 flex-col rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -883,7 +974,9 @@ export function CandidateDetailClient({
                           {job.companyName || job.company_name || job.company
                             ? ` - ${job.companyName || job.company_name || job.company}`
                             : ""}
-                          {isRejectedApplication(job) ? " (Rejected)" : ""}
+                          {isTerminalApplication(job)
+                            ? ` (${stageLabel(terminalOutcome(job.stage))})`
+                            : ""}
                         </option>
                       );
                     })}
@@ -894,24 +987,22 @@ export function CandidateDetailClient({
                     const jobId = String(job.jobId || job.id || "");
                     const id = jobId || `application-${index}`;
                     const active = id === String(selectedJobId);
-                    const rejected = isRejectedApplication(job);
-                    const track = rejected
-                      ? [
-                          "sourced",
-                          "applied",
-                          "interested",
-                          "submitted",
-                          "interviewing",
-                          "rejected",
-                        ]
+                    const outcome = terminalOutcome(job.stage);
+                    const terminal = Boolean(outcome);
+                    const progressStage = terminal
+                      ? lastProgressStage(job, visibleNotes)
+                      : canonicalProgressStage(job.stage) || "sourced";
+                    const progressIndex = Math.max(
+                      0,
+                      PIPELINE.indexOf(progressStage),
+                    );
+                    const track = terminal
+                      ? [...PIPELINE, outcome]
                       : PIPELINE;
-                    const activeStageIndex = rejected
-                      ? track.length - 1
-                      : Math.max(0, track.indexOf(normalizedStage(job.stage)));
                     return (
                       <div
                         key={id}
-                        className={`relative w-full rounded-lg border p-3 text-left transition ${rejected ? "border-red-200 bg-red-50/30" : active ? "border-blue-500 bg-blue-50/40 ring-1 ring-blue-100" : "border-slate-200 hover:border-blue-300"}`}
+                        className={`relative w-full rounded-lg border p-3 text-left transition ${terminal ? "border-red-200 bg-red-50/30" : active ? "border-blue-500 bg-blue-50/40 ring-1 ring-blue-100" : "border-slate-200 hover:border-blue-300"}`}
                       >
                         <button
                           type="button"
@@ -942,31 +1033,58 @@ export function CandidateDetailClient({
                             </div>
                           </div>
                           <span
-                            className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${rejected ? "bg-red-100 text-red-700" : "bg-blue-50 text-blue-700"}`}
+                            className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${terminal ? "bg-red-100 text-red-700" : "bg-blue-50 text-blue-700"}`}
                           >
                             {stageLabel(job.stage)}
                           </span>
                         </div>
                         <div className="pointer-events-none relative mt-4 flex w-full items-start">
                           {track.map((item, stageIndex) => {
-                            const reached = stageIndex <= activeStageIndex;
-                            const rejectedStep = item === "rejected";
+                            const terminalStep = Boolean(terminalOutcome(item));
+                            const reachedProgress =
+                              !terminalStep && stageIndex <= progressIndex;
+                            const afterLastProgress =
+                              terminal && stageIndex > progressIndex;
+                            const connectorRed =
+                              terminal && stageIndex > progressIndex;
+                            const connectorGreen =
+                              !connectorRed && stageIndex - 1 <= progressIndex;
                             return (
                               <div
-                                key={item}
+                                key={`${id}-${item}`}
                                 className="relative flex min-w-0 flex-1 flex-col items-center"
                               >
                                 {stageIndex > 0 && (
                                   <span
-                                    className={`absolute right-1/2 top-1.5 h-0.5 w-full ${reached ? rejectedStep ? "bg-red-400" : "bg-emerald-500" : "bg-slate-200"}`}
+                                    className={`absolute right-1/2 top-1.5 h-0.5 w-full ${
+                                      connectorRed
+                                        ? "bg-red-500"
+                                        : connectorGreen
+                                          ? "bg-emerald-500"
+                                          : "bg-slate-200"
+                                    }`}
                                   />
                                 )}
                                 <span
-                                  className={`relative z-10 flex h-3 w-3 items-center justify-center rounded-full border text-[7px] ${reached ? rejectedStep ? "border-red-500 bg-red-500 text-white" : "border-emerald-600 bg-emerald-600 text-white" : "border-slate-300 bg-white text-transparent"}`}
+                                  className={`relative z-10 flex h-3 w-3 items-center justify-center rounded-full border text-[7px] ${
+                                    terminalStep
+                                      ? "border-red-600 bg-red-600 text-white"
+                                      : reachedProgress
+                                        ? "border-emerald-600 bg-emerald-600 text-white"
+                                        : afterLastProgress
+                                          ? "border-slate-300 bg-white text-transparent"
+                                          : "border-slate-300 bg-white text-transparent"
+                                  }`}
                                 >
-                                  {reached ? "✓" : ""}
+                                  {reachedProgress ? "✓" : ""}
                                 </span>
-                                <span className="mt-1 w-full truncate text-center text-[8px] text-slate-500">
+                                <span
+                                  className={`mt-1 w-full truncate text-center text-[8px] ${
+                                    terminalStep
+                                      ? "font-semibold text-red-600"
+                                      : "text-slate-500"
+                                  }`}
+                                >
                                   {stageLabel(item)}
                                 </span>
                               </div>
@@ -978,7 +1096,7 @@ export function CandidateDetailClient({
                             Applied {date(job.appliedAt || job.applied_at || job.createdAt || candidate?.createdAt)}
                           </span>
                           <span>
-                            {rejected ? "Rejected" : "Last Updated"}{" "}
+                            {terminal ? stageLabel(outcome) : "Last Updated"}{" "}
                             {date(job.stageUpdatedAt || job.modifiedAt || job.fitScoredAt)}
                           </span>
                         </div>
@@ -1000,6 +1118,21 @@ export function CandidateDetailClient({
                         Attach to Job
                       </Button>
                     </div>
+                  )}
+                </div>
+                <div className="mt-3 border-t border-slate-100 pt-3">
+                  <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                    <Tag className="h-3.5 w-3.5 text-violet-600" /> Tags
+                  </div>
+                  <TagEditor
+                    value={tags}
+                    onChange={(next) => void saveTags(next)}
+                    objectType="candidate"
+                    disabled={tagBusy}
+                    placeholder="+ Add tag"
+                  />
+                  {tagError && (
+                    <p className="mt-2 text-xs text-red-600">{tagError}</p>
                   )}
                 </div>
               </section>
@@ -1229,23 +1362,15 @@ export function CandidateDetailClient({
                 ) : visibleNotes.length ? (
                   visibleNotes.map((note: any, index: number) => {
                     const kind = eventKind(note);
-                    const activityJobTitle =
-                      note.metadata?.jobTitle || note.jobTitle || "";
-                    const matchingJob = orderedJobs.find((job: any) => {
-                      const title = job.jobTitle || job.title || "";
-                      return (
-                        activityJobTitle &&
-                        title.toLowerCase() === activityJobTitle.toLowerCase()
-                      );
-                    });
-                    const activityJobId = String(
-                      note.metadata?.jobId ||
-                        note.metadata?.job_id ||
-                        note.jobId ||
-                        note.job_id ||
-                        matchingJob?.jobId ||
-                        matchingJob?.id ||
-                        "",
+                    const activityJob = resolveActivityJobTagInTimeline(
+                      note,
+                      orderedJobs,
+                      visibleNotes,
+                    );
+                    const activityJobId = String(activityJob.jobId || "");
+                    const activityJobTitle = String(activityJob.jobTitle || "");
+                    const activityCompanyName = String(
+                      activityJob.companyName || "",
                     );
                     const EventIcon =
                       kind === "interview"
@@ -1301,23 +1426,33 @@ export function CandidateDetailClient({
                               "Activity recorded.",
                           )}
                         />
-                        {(note.metadata?.jobTitle ||
-                          note.jobTitle ||
-                          note.metadata?.companyName ||
+                        {(activityJobTitle ||
                           note.createdByName ||
                           note.createdBy) && (
-                          <div className="mt-2 text-[11px] text-slate-500">
+                          <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-slate-500">
                             {activityJobTitle && activityJobId ? (
                               <Link
                                 href={`/dashboard/jobs/${encodeURIComponent(activityJobId)}`}
-                                className="font-medium text-blue-700 hover:underline"
+                                className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline"
                               >
-                                {activityJobTitle}
+                                <Briefcase className="h-3 w-3" />
+                                <span className="text-slate-500">Job:</span>
+                                <span>{activityJobTitle}</span>
+                                {activityCompanyName
+                                  ? ` @ ${activityCompanyName}`
+                                  : ""}
                               </Link>
                             ) : (
-                              activityJobTitle ||
-                              note.metadata?.companyName ||
-                              ""
+                              activityJobTitle && (
+                                <span className="inline-flex items-center gap-1 font-medium text-slate-700">
+                                  <Briefcase className="h-3 w-3" />
+                                  <span className="text-slate-500">Job:</span>
+                                  <span>{activityJobTitle}</span>
+                                  {activityCompanyName
+                                    ? ` @ ${activityCompanyName}`
+                                    : ""}
+                                </span>
+                              )
                             )}
                             {note.createdByName || note.createdBy
                               ? ` · Added by ${note.createdByName || note.createdBy}`
@@ -1336,8 +1471,7 @@ export function CandidateDetailClient({
             </section>
             </div>
 
-          <div className="grid min-w-0 content-start gap-3">
-          <section className="flex h-[560px] min-h-[480px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <section className="flex min-h-[480px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm min-[1400px]:h-full min-[1400px]:min-h-[640px]">
             <div className="border-b border-slate-200 px-4 py-3">
               <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
                 Resume
@@ -1360,22 +1494,6 @@ export function CandidateDetailClient({
               />
             </div>
           </section>
-          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-700">
-                <Tag className="h-3.5 w-3.5 text-violet-600" /> Tags
-              </h2>
-            </div>
-            <TagEditor
-              value={tags}
-              onChange={(next) => void saveTags(next)}
-              objectType="candidate"
-              disabled={tagBusy}
-              placeholder="+ Add tag"
-            />
-            {tagError && <p className="mt-2 text-xs text-red-600">{tagError}</p>}
-          </section>
-          </div>
           </div>
         </div>
       </div>
