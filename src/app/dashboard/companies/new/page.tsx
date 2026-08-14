@@ -18,6 +18,12 @@ import {
   Loader2,
   UserPlus,
 } from "lucide-react";
+import {
+  PlacementFeeFields,
+  appendPlacementFeeToFormData,
+  emptyPlacementFeeForm,
+  type PlacementFeeForm,
+} from "@/components/company/PlacementFeeFields";
 
 const pipelineStages = companyStageOptions.map((s) => ({
   id: s.id,
@@ -52,6 +58,7 @@ export default function NewCompanyPage() {
     linkedin_url: "",
     status: "identification",
   });
+  const [fee, setFee] = useState<PlacementFeeForm>(emptyPlacementFeeForm());
 
   const [contactForm, setContactForm] = useState({
     name: "",
@@ -105,6 +112,7 @@ export default function NewCompanyPage() {
       payload.set("description", formData.description.trim());
       payload.set("linkedin_url", formData.linkedin_url.trim());
       payload.set("status", formData.status);
+      appendPlacementFeeToFormData(payload, fee);
 
       const client = await createClient.mutateAsync(payload);
       const id = client?.id || client?.client?.id;
@@ -388,6 +396,15 @@ export default function NewCompanyPage() {
                     className="h-11"
                   />
                 </div>
+              </section>
+
+              <div className="border-t border-slate-100" />
+
+              <section className="space-y-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                  Placement fee
+                </h2>
+                <PlacementFeeFields value={fee} onChange={setFee} />
               </section>
 
               <div className="border-t border-slate-100" />

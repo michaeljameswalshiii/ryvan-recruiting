@@ -13,6 +13,13 @@ import {
 } from "@/lib/schemas/client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import {
+  PlacementFeeFields,
+  appendPlacementFeeToFormData,
+  emptyPlacementFeeForm,
+  placementFeeFormFromRecord,
+  type PlacementFeeForm,
+} from "@/components/company/PlacementFeeFields";
 
 interface Company {
   id: string;
@@ -35,6 +42,12 @@ interface Company {
   contactName?: string;
   contactEmail?: string;
   contactPhone?: string;
+  fee_percent?: number;
+  feePercent?: number;
+  fee_type?: string;
+  feeType?: string;
+  fee_guarantee?: string;
+  feeGuarantee?: string;
 }
 
 interface CompanyEditModalProps {
@@ -87,6 +100,7 @@ export default function CompanyEditModal({
     contactEmail: "",
     contactPhone: "",
   });
+  const [fee, setFee] = useState<PlacementFeeForm>(emptyPlacementFeeForm());
 
   // Mutations
   const createClientMutation = useCreateClient();
@@ -117,6 +131,7 @@ export default function CompanyEditModal({
         contactEmail: company.contactEmail || "",
         contactPhone: company.contactPhone || "",
       });
+      setFee(placementFeeFormFromRecord(company));
     }
   }, [open, company]);
 
@@ -146,6 +161,7 @@ export default function CompanyEditModal({
       formDataToSend.set("description", formData.description);
       formDataToSend.set("linkedin_url", formData.linkedin_url);
       formDataToSend.set("status", formData.status);
+      appendPlacementFeeToFormData(formDataToSend, fee);
 
       if (company?.id) {
         await updateClientMutation.mutateAsync({
@@ -193,6 +209,7 @@ export default function CompanyEditModal({
         contactEmail: company.contactEmail || "",
         contactPhone: company.contactPhone || "",
       });
+      setFee(placementFeeFormFromRecord(company));
     } else if (!isOpen) {
       // Reset for new company
       setFormData({
@@ -214,6 +231,7 @@ export default function CompanyEditModal({
         contactEmail: "",
         contactPhone: "",
       });
+      setFee(emptyPlacementFeeForm());
     }
     setOpen(isOpen);
   };
@@ -422,6 +440,8 @@ export default function CompanyEditModal({
               ))}
             </select>
           </div>
+
+          <PlacementFeeFields value={fee} onChange={setFee} />
 
           {/* Description / Notes */}
           <div className="grid gap-2">

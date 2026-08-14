@@ -117,6 +117,18 @@ export const jobSchema = z.object({
   hiringManagerTitle: z.string().max(100).optional().or(z.literal('')),
   hiringManagerEmail: z.string().max(200).optional().or(z.literal('')),
   hiringManagerPhone: z.string().max(50).optional().or(z.literal('')),
+
+  /** Placement fee for this req. Inherited from the company when a new job is created. */
+  fee_percent: z.preprocess(
+    (val) => {
+      if (val === '' || val === null || val === undefined) return undefined;
+      const n = typeof val === 'number' ? val : Number(val);
+      return Number.isFinite(n) ? n : undefined;
+    },
+    z.number().min(0).max(100).optional()
+  ),
+  fee_type: z.string().max(40).optional().or(z.literal('')),
+  fee_guarantee: z.string().max(80).optional().or(z.literal('')),
   
   // Job status (legacy values normalized)
   status: jobStatusField.default('Open'),

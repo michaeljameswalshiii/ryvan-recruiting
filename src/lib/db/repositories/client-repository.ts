@@ -187,6 +187,9 @@ export async function createClient(
 
   // Avoid empty-string GSI keys
   if (item.email === '') delete item.email;
+  if ((item as any).fee_percent == null) delete (item as any).fee_percent;
+  if ((item as any).fee_type === '') delete (item as any).fee_type;
+  if ((item as any).fee_guarantee === '') delete (item as any).fee_guarantee;
 
   await doc.send(
     new PutCommand({
@@ -234,6 +237,12 @@ export async function updateClient(
   }) as ClientRecord;
 
   if (merged.email === '') delete merged.email;
+  if (safeUpdates.fee_percent === null) {
+    delete (merged as any).fee_percent;
+    delete (merged as any).feePercent;
+  }
+  if (safeUpdates.fee_type === '') delete (merged as any).fee_type;
+  if (safeUpdates.fee_guarantee === '') delete (merged as any).fee_guarantee;
 
   const doc = getDocClient();
   await doc.send(

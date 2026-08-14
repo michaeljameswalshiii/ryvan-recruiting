@@ -111,6 +111,18 @@ export const clientSchema = z.object({
   description: z.string().max(500).optional().or(z.literal('')),
   linkedin_url: z.string().max(200).optional().or(z.literal('')),
   notes: z.string().max(2000).optional().or(z.literal('')),
+  /** Default placement fee copied onto new jobs for this company. */
+  fee_percent: z.preprocess(
+    (val) => {
+      if (val === '' || val === null) return null;
+      if (val === undefined) return undefined;
+      const n = typeof val === 'number' ? val : Number(val);
+      return Number.isFinite(n) ? n : undefined;
+    },
+    z.number().min(0).max(100).nullable().optional()
+  ),
+  fee_type: z.string().max(40).optional().or(z.literal('')),
+  fee_guarantee: z.string().max(80).optional().or(z.literal('')),
   // Pipeline status field
   status: z.enum(companyStageValues).optional(),
   // Multiple contacts support

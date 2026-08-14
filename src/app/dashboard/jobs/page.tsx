@@ -28,6 +28,7 @@ import {
 } from '@/lib/careers/sanitize-job-html';
 import { normalizeJobDescriptionPaste } from '@/lib/careers/format-description';
 import { toast } from 'sonner';
+import { formatFeePercentLabel } from '@/lib/fees/placement-fee';
 import {
   SearchableSelect,
   companyOptionsFromList,
@@ -307,6 +308,22 @@ export default function JobsPage() {
                     first, then create the job.
                   </div>
                 )}
+                {formData.companyId
+                  ? (() => {
+                      const selected = companies.find(
+                        (c: any) =>
+                          String(c.id) === String(formData.companyId) ||
+                          String(c.PK) === String(formData.companyId)
+                      );
+                      const fee = formatFeePercentLabel(selected);
+                      return fee ? (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          This company&apos;s default fee ({fee}) will show on
+                          the job header.
+                        </p>
+                      ) : null;
+                    })()
+                  : null}
               </div>
 
               <div>

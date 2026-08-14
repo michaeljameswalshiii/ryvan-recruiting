@@ -32,6 +32,8 @@ import {
   useUpdateJob,
 } from "@/lib/hooks/query-job";
 import { useLeads } from "@/lib/hooks/query-lead";
+import { useClient } from "@/lib/hooks/query-client";
+import { formatFeePercentLabel } from "@/lib/fees/placement-fee";
 import JobEditModal from "@/components/job/JobEditModal";
 import { JobActivityNotes } from "@/components/job/JobActivityNotes";
 import { FitScoreBadge, type FitGrade } from "@/components/job/FitScoreBadge";
@@ -114,6 +116,7 @@ export default function JobDetailPage() {
   const jobId = params?.id || "";
 
   const { data: job, isLoading, isError, error } = useJob(jobId);
+  const { data: jobCompany } = useClient(String((job as any)?.companyId || ""));
   const { data: allCandidates = [], isLoading: loadingCandidates } = useLeads();
   const updateJob = useUpdateJob();
   const linkCandidate = useLinkCandidateToJob();
@@ -522,16 +525,10 @@ export default function JobDetailPage() {
   const hiringManagerName = String(
     (job as any).hiringManagerName || ""
   ).trim();
-  const feeLabel = (() => {
-    const pct = (job as any).fee_percent ?? (job as any).feePercent;
-    if (pct != null && pct !== "") return `${pct}%`;
-    const raw =
-      (job as any).fee_agreement ||
-      (job as any).feeAgreement ||
-      (job as any).feeType ||
-      "";
-    return raw ? String(raw) : "—";
-  })();
+  const feeLabel =
+    formatFeePercentLabel(job as any) ||
+    formatFeePercentLabel(jobCompany as any) ||
+    "—";
   const isPosted = isShownOnWebsite && isOpenStatus;
 
   return (

@@ -954,6 +954,7 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
       city: c.city || null,
       state: c.state || null,
       status: c.status || null,
+      fee_percent: c.fee_percent ?? c.feePercent ?? null,
       contactCount: contacts.length,
       primaryContact: primary
         ? { id: primary.id, name: primary.name, title: primary.title || null }
@@ -1052,6 +1053,16 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
       city: z.string().optional(),
       state: z.string().optional(),
       notes: z.string().optional(),
+      fee_percent: z
+        .number()
+        .min(0)
+        .max(100)
+        .optional()
+        .describe("Default placement fee percent for future jobs, e.g. 20"),
+      fee_type: z
+        .string()
+        .optional()
+        .describe("contingency | retained | engaged | flat"),
     },
     async (input) => {
       try {
@@ -1064,6 +1075,8 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
             city: input.city?.trim() || undefined,
             state: input.state?.trim() || undefined,
             notes: input.notes?.trim() || undefined,
+            fee_percent: input.fee_percent,
+            fee_type: input.fee_type?.trim() || undefined,
             status: "identification",
           },
           actorUser

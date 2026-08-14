@@ -280,6 +280,11 @@ export default function CompanyDetailPage() {
               {company.industry && (
                 <Badge variant="secondary">{company.industry}</Badge>
               )}
+              {(company.fee_percent != null || company.feePercent != null) && (
+                <Badge variant="outline">
+                  Fee {company.fee_percent ?? company.feePercent}%
+                </Badge>
+              )}
               {locationLabel && (
                 <span className="inline-flex items-center gap-1 text-sm">
                   <MapPin className="h-3.5 w-3.5 shrink-0" />

@@ -94,6 +94,13 @@ function formDataToObject(formData: FormData): Record<string, any> {
     const n = Number(obj.open_jobs_posted);
     if (!Number.isNaN(n) && n >= 0) obj.open_jobs_posted = n;
   }
+  if (obj.fee_percent != null && obj.fee_percent !== '') {
+    const n = Number(obj.fee_percent);
+    if (!Number.isNaN(n) && n >= 0 && n <= 100) obj.fee_percent = n;
+    else delete obj.fee_percent;
+  } else if (obj.fee_percent === '') {
+    obj.fee_percent = null;
+  }
   return obj;
 }
 
@@ -133,6 +140,12 @@ export function useCreateClient() {
           ? String(payload.linkedin_url)
           : undefined,
         status: payload.status ? String(payload.status) : undefined,
+        fee_percent:
+          typeof payload.fee_percent === 'number' ? payload.fee_percent : undefined,
+        fee_type: payload.fee_type ? String(payload.fee_type) : undefined,
+        fee_guarantee: payload.fee_guarantee
+          ? String(payload.fee_guarantee)
+          : undefined,
       });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: clientKeys.all }),

@@ -27,6 +27,14 @@ import {
   normalizeJobStatus,
 } from '../../schemas/job';
 import { assignDefaultOwnerOnCreate } from '@/lib/ownership/default-owner';
+import { getClientById } from './client-repository';
+import {
+  feeFromRecord,
+  parseFeeGuarantee,
+  parseFeePercent,
+  parseFeeType,
+  pickPlacementFee,
+} from '@/lib/fees/placement-fee';
 
 // Cache TTL: 5 minutes
 
@@ -162,6 +170,21 @@ export async function createJob(
     job.preScreenQuestions = data.preScreenQuestions;
   }
 
+  const explicitFee = feeFromRecord(data as unknown as Record<string, unknown>);
+  let companyFee = {};
+  if (data.companyId) {
+    try {
+      const company = await getClientById(tenantId, data.companyId);
+      companyFee = feeFromRecord(company as unknown as Record<string, unknown>);
+    } catch (err) {
+      console.warn('[createJob] company fee lookup failed', err);
+    }
+  }
+  const fee = pickPlacementFee(explicitFee, companyFee);
+  if (fee.fee_percent != null) (job as any).fee_percent = fee.fee_percent;
+  if (fee.fee_type) (job as any).fee_type = fee.fee_type;
+  if (fee.fee_guarantee) (job as any).fee_guarantee = fee.fee_guarantee;
+
   // Save to DynamoDB
   await putItem(jobsTable, job);
 
@@ -225,6 +248,9 @@ export async function duplicateJob(
     hiringManagerTitle: String(src.hiringManagerTitle || "") || undefined,
     hiringManagerEmail: String(src.hiringManagerEmail || "") || undefined,
     hiringManagerPhone: String(src.hiringManagerPhone || "") || undefined,
+    fee_percent: parseFeePercent(src.fee_percent ?? src.feePercent),
+    fee_type: parseFeeType(src.fee_type ?? src.feeType) || undefined,
+    fee_guarantee: parseFeeGuarantee(src.fee_guarantee ?? src.feeGuarantee) || undefined,
   };
 
   if (Array.isArray(source.preScreenQuestions) && source.preScreenQuestions.length) {
@@ -321,6 +347,24 @@ export async function updateJob(
     updates.push('#hiringManagerPhone = :hiringManagerPhone');
     values[':hiringManagerPhone'] = data.hiringManagerPhone || '';
     names['#hiringManagerPhone'] = 'hiringManagerPhone';
+  }
+  if (data.fee_percent !== undefined) {
+    const pct = parseFeePercent(data.fee_percent);
+    if (pct != null) {
+      updates.push('#fee_percent = :fee_percent');
+      values[':fee_percent'] = pct;
+      names['#fee_percent'] = 'fee_percent';
+    }
+  }
+  if (data.fee_type !== undefined) {
+    updates.push('#fee_type = :fee_type');
+    values[':fee_type'] = data.fee_type || '';
+    names['#fee_type'] = 'fee_type';
+  }
+  if (data.fee_guarantee !== undefined) {
+    updates.push('#fee_guarantee = :fee_guarantee');
+    values[':fee_guarantee'] = data.fee_guarantee || '';
+    names['#fee_guarantee'] = 'fee_guarantee';
   }
 
   if (updates.length === 0) {
