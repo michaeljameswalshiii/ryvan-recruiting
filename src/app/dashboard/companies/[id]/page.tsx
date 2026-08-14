@@ -24,6 +24,11 @@ import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
 import { hasPermission } from "@/lib/roles";
 import { EntityFilesPanel } from "@/components/shared/EntityFilesPanel";
 import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
+import {
+  actionBarBlue,
+  actionBarBtn,
+  actionBarPrimary,
+} from "@/components/shared/EntityActionBar";
 import { websiteLabel as formatWebsiteLabel } from "@/lib/ui/website-href";
 import { FEE_TYPE_OPTIONS } from "@/lib/fees/placement-fee";
 import {
@@ -355,34 +360,72 @@ export default function CompanyDetailPage() {
             )}
           </div>
         </div>
+      </div>
 
-        <div className="flex flex-wrap gap-2 shrink-0 sm:justify-end">
-          {canInvoice && (
-            <Button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => setInvoiceOpen(true)}
-            >
-              <FileText className="mr-2 h-4 w-4" />
-              Create invoice
-            </Button>
-          )}
-          <Button asChild>
-            <Link href={`/dashboard/companies/${company.id}/edit`}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href={`/dashboard/jobs/new?companyId=${company.id}`}>
-              <Briefcase className="mr-2 h-4 w-4" />
-              New Job
-            </Link>
-          </Button>
-          <CompanyDeleteButton
-            companyId={company.id}
-            companyName={company.name}
-          />
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {websiteHref ? (
+          <a
+            href={websiteHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={actionBarBtn}
+          >
+            <Globe className="h-3.5 w-3.5" />
+            Website
+          </a>
+        ) : null}
+        {company.email &&
+        !String(company.email).includes("@placeholder.com") ? (
+          <a href={`mailto:${company.email}`} className={actionBarBtn}>
+            <Mail className="h-3.5 w-3.5" />
+            Email
+          </a>
+        ) : null}
+        {company.phone ? (
+          <a
+            href={`tel:${String(company.phone).replace(/[^\d+]/g, "")}`}
+            className={actionBarBtn}
+          >
+            <Phone className="h-3.5 w-3.5" />
+            Call
+          </a>
+        ) : null}
+        {canInvoice ? (
+          <button
+            type="button"
+            className={actionBarPrimary}
+            onClick={() => setInvoiceOpen(true)}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Create invoice
+          </button>
+        ) : null}
+        <Link
+          href={`/dashboard/companies/${company.id}/edit`}
+          className={actionBarBtn}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          Edit
+        </Link>
+        <Link
+          href={`/dashboard/jobs/new?companyId=${company.id}`}
+          className={actionBarBlue}
+        >
+          <Briefcase className="h-3.5 w-3.5" />
+          New Job
+        </Link>
+        <button
+          type="button"
+          className={actionBarBtn}
+          onClick={() => handleTabChange("contacts")}
+        >
+          <User className="h-3.5 w-3.5" />
+          Add contact
+        </button>
+        <CompanyDeleteButton
+          companyId={company.id}
+          companyName={company.name}
+        />
       </div>
 
       {/* Tabs */}
@@ -1311,10 +1354,14 @@ function CompanyDeleteButton({ companyId, companyName }: { companyId: string; co
   }
 
   return (
-    <Button variant="outline" size="sm" onClick={() => setShowConfirm(true)} className="text-destructive hover:text-destructive">
-      <Trash2 className="mr-2 h-4 w-4" />
+    <button
+      type="button"
+      onClick={() => setShowConfirm(true)}
+      className={`${actionBarBtn} text-red-600`}
+    >
+      <Trash2 className="h-3.5 w-3.5" />
       Delete
-    </Button>
+    </button>
   );
 }
 

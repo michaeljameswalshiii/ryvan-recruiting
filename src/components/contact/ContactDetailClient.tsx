@@ -50,6 +50,10 @@ import { FormatActivityNoteButton } from '@/components/shared/FormatActivityNote
 import { EntitySmsPanel } from '@/components/shared/EntitySmsPanel';
 import { EntityFilesPanel } from '@/components/shared/EntityFilesPanel';
 import {
+  actionBarBlue,
+  actionBarBtn,
+} from '@/components/shared/EntityActionBar';
+import {
   ACTIVITY_BADGE_BASE_CLASS,
   activityBadgeStyle,
 } from '@/lib/ui/activity-badge-colors';
@@ -694,93 +698,119 @@ export default function ContactDetailClient({
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 shrink-0">
-            {form.linkedin_url ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-[#0A66C2]/30 text-[#0A66C2] hover:bg-[#0A66C2]/5"
-                asChild
-              >
-                <a
-                  href={
-                    /^https?:\/\//i.test(form.linkedin_url)
-                      ? form.linkedin_url
-                      : `https://${form.linkedin_url}`
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Linkedin className="h-3.5 w-3.5 mr-1.5" />
-                  LinkedIn
-                </a>
-              </Button>
-            ) : null}
-            <Button
-              variant="outline"
-              size="sm"
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
+          <button
+            type="button"
+            className={actionBarBlue}
+            onClick={() => setEmailOpen(true)}
+            disabled={!email}
+          >
+            <Mail className="h-3.5 w-3.5" />
+            Email
+          </button>
+          <button
+            type="button"
+            className={actionBarBtn}
+            disabled={!phone}
+            onClick={() => {
+              if (!phone) return;
+              window.location.href = `tel:${phone}`;
+            }}
+          >
+            <Phone className="h-3.5 w-3.5" />
+            Call
+          </button>
+          <a
+            href={smsPhone ? `sms:${smsPhone}` : undefined}
+            className={`${actionBarBtn} ${!smsPhone ? 'pointer-events-none opacity-50' : ''}`}
+          >
+            Text
+          </a>
+          {form.linkedin_url ? (
+            <a
+              href={
+                /^https?:\/\//i.test(form.linkedin_url)
+                  ? form.linkedin_url
+                  : `https://${form.linkedin_url}`
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              className={actionBarBtn}
+            >
+              <Linkedin className="h-3.5 w-3.5" />
+              LinkedIn
+            </a>
+          ) : (
+            <button
+              type="button"
+              className={actionBarBtn}
               onClick={() => {
-                if (!phone) {
-                  toast.error('No phone on file');
-                  return;
-                }
-                window.location.href = `tel:${phone}`;
+                setLinkedinDraft('');
+                setEditingLinkedIn(true);
               }}
-              disabled={!phone}
             >
-              <Phone className="h-3.5 w-3.5 mr-1.5" />
-              Call
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowEditModal(true)}
-            >
-              <Pencil className="h-3.5 w-3.5 mr-1.5" />
-              Edit
-            </Button>
-            <Button
-              size="sm"
-              className="bg-blue-600 hover:bg-blue-700"
-              onClick={() => setEmailOpen(true)}
-              disabled={!email}
-            >
-              <Mail className="h-3.5 w-3.5 mr-1.5" />
-              Send Email
-            </Button>
-            {showDeleteConfirm ? (
-              <>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleDelete}
-                  disabled={removeContact.isPending}
-                >
-                  {removeContact.isPending ? 'Deleting…' : 'Confirm'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowDeleteConfirm(false)}
-                >
-                  Cancel
-                </Button>
-              </>
-            ) : (
+              <Linkedin className="h-3.5 w-3.5" />
+              Add LinkedIn
+            </button>
+          )}
+          <button
+            type="button"
+            className={actionBarBtn}
+            onClick={() => {
+              setActiveTab('overview');
+              window.setTimeout(() => {
+                document
+                  .querySelector<HTMLTextAreaElement>(
+                    'textarea[placeholder="Optional note detail..."]'
+                  )
+                  ?.focus();
+              }, 50);
+            }}
+          >
+            Add Note
+          </button>
+          <button
+            type="button"
+            className={actionBarBtn}
+            onClick={() => setShowEditModal(true)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Edit
+          </button>
+          {showDeleteConfirm ? (
+            <>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleDelete}
+                disabled={removeContact.isPending}
+              >
+                {removeContact.isPending ? 'Deleting…' : 'Confirm'}
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
-                className="text-red-600"
-                onClick={() => setShowDeleteConfirm(true)}
+                onClick={() => setShowDeleteConfirm(false)}
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                Cancel
               </Button>
-            )}
-          </div>
+            </>
+          ) : (
+            <button
+              type="button"
+              className={`${actionBarBtn} text-red-600`}
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </button>
+          )}
         </div>
 
         {/* Tabs */}
-        <div className="mt-5 border-b border-gray-100">
+        <div className="mt-4 border-b border-gray-100">
           <nav className="flex gap-1 overflow-x-auto">
             {tabs.map((t) => (
               <button
@@ -1106,7 +1136,7 @@ export default function ContactDetailClient({
                     className="flex items-center gap-3 rounded-xl border border-gray-100 px-3 py-2.5 hover:bg-gray-50 text-sm font-medium text-gray-800"
                   >
                     <Building2 className="h-4 w-4 text-blue-600" />
-                    Open company page
+                    Open company record
                   </Link>
                 ) : null}
                 <Link

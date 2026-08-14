@@ -13,6 +13,7 @@ import {
   MapPin,
   Phone,
   PhoneCall,
+  MessageSquare,
   Plus,
   Sparkles,
   Tag,
@@ -35,6 +36,10 @@ import {
 } from "@/lib/candidates/note-type-stage";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import {
+  actionBarBtn,
+  actionBarPrimary,
+} from "@/components/shared/EntityActionBar";
 
 function date(value?: string) {
   if (!value) return "—";
@@ -228,6 +233,7 @@ export function CandidateDetailClient({
   const [tagDraft, setTagDraft] = useState("");
   const [tagBusy, setTagBusy] = useState(false);
   const [tagError, setTagError] = useState("");
+  const [stageBusy, setStageBusy] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailConfigured, setEmailConfigured] = useState<boolean | null>(null);
   const [emailFromLabel, setEmailFromLabel] = useState("");
@@ -325,6 +331,47 @@ export function CandidateDetailClient({
         String(job.jobId || job.id) === String(selectedJobId),
     ) || defaultJob;
   const currentJobTitle = currentJob?.jobTitle || currentJob?.title || "";
+  const currentJobId = String(currentJob?.jobId || currentJob?.id || "");
+
+  const changeApplicationStage = async (stage: string) => {
+    if (!currentJobId || !candidate?.id) {
+      toast.error("Attach a job first");
+      return;
+    }
+    setStageBusy(true);
+    try {
+      const res = await fetch(
+        `/api/jobs/${encodeURIComponent(currentJobId)}/stage`,
+        {
+          method: "PUT",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            candidateId: candidate.id,
+            stage,
+          }),
+        }
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "Could not update stage");
+      setLinkedJobs((prev) =>
+        prev.map((job) =>
+          String(job.jobId || job.id) === currentJobId
+            ? { ...job, stage, stageUpdatedAt: new Date().toISOString() }
+            : job
+        )
+      );
+      if (stage === "submitted") {
+        toast.success("Submitted to client");
+      } else {
+        toast.success(`Stage set to ${stageLabel(stage)}`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Could not update stage");
+    } finally {
+      setStageBusy(false);
+    }
+  };
   const currentCompany =
     currentJob?.companyName ||
     currentJob?.company_name ||
@@ -681,51 +728,19 @@ export function CandidateDetailClient({
                           rel="noreferrer"
                         >
                           <Linkedin className="h-3.5 w-3.5" />
-                          LinkedIn profile
+                          LinkedIn
                         </a>
                       )}
                     </div>
                   )}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {candidateEmail && (
-                      <button
-                        type="button"
-                        onClick={handleEmailClick}
-                        className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100"
-                        title={
-                          emailConfigured
-                            ? "Send via your connected email"
-                            : "Compose email (Gmail web or connect in Settings)"
-                        }
-                      >
-                        Email
-                      </button>
-                    )}
-                    {candidate?.phone && (
-                      <a
-                        href={`tel:${candidate.phone}`}
-                        className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
-                      >
-                        Call
-                      </a>
-                    )}
-                    {candidate?.phone && (
-                      <a
-                        href={`sms:${candidate.phone}`}
-                        className="rounded-md border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-100"
-                      >
-                        Text
-                      </a>
-                    )}
-                  </div>
                 </div>
               </div>
-              <div className="flex shrink-0 flex-col items-stretch gap-3 sm:flex-row lg:flex-col lg:items-end">
+              <div className="flex shrink-0 flex-wrap items-center gap-3">
                 <Link
                   href={`/dashboard/candidates/${candidate.id}/edit`}
-                  className="self-start rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700 lg:self-end"
+                  className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-blue-300 hover:text-blue-700"
                 >
-                  Edit Candidate
+                  Edit
                 </Link>
                 <ObjectAssignments
                   objectType="candidate"
@@ -735,6 +750,93 @@ export function CandidateDetailClient({
                   assignmentRole="account_manager"
                 />
               </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={handleEmailClick}
+                disabled={!candidateEmail}
+                className={actionBarBtn}
+              >
+                <Mail className="h-3.5 w-3.5" />
+                Email
+              </button>
+              <a
+                href={candidate?.phone ? `tel:${candidate.phone}` : undefined}
+                className={`${actionBarBtn} ${!candidate?.phone ? "pointer-events-none opacity-50" : ""}`}
+              >
+                <Phone className="h-3.5 w-3.5" />
+                Call
+              </a>
+              <a
+                href={candidate?.phone ? `sms:${candidate.phone}` : undefined}
+                className={`${actionBarBtn} ${!candidate?.phone ? "pointer-events-none opacity-50" : ""}`}
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                Text
+              </a>
+              {linkedinUrl ? (
+                <a
+                  href={linkedinUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={actionBarBtn}
+                >
+                  <Linkedin className="h-3.5 w-3.5" />
+                  LinkedIn
+                </a>
+              ) : (
+                <Link
+                  href={`/dashboard/candidates/${candidate.id}/edit`}
+                  className={actionBarBtn}
+                >
+                  <Linkedin className="h-3.5 w-3.5" />
+                  Add LinkedIn
+                </Link>
+              )}
+              <button
+                type="button"
+                className={actionBarPrimary}
+                disabled={!currentJob || stageBusy}
+                onClick={() => void changeApplicationStage("submitted")}
+              >
+                Submit to Client
+              </button>
+              <select
+                className={`${actionBarBtn} pr-8`}
+                disabled={!currentJob || stageBusy}
+                value={normalizedStage(currentJob?.stage)}
+                onChange={(e) => void changeApplicationStage(e.target.value)}
+                aria-label="Move stage"
+              >
+                <option value="" disabled>
+                  Move Stage
+                </option>
+                {PIPELINE.map((stage) => (
+                  <option key={stage} value={stage}>
+                    {stageLabel(stage)}
+                  </option>
+                ))}
+                <option value="rejected">Rejected</option>
+              </select>
+              <button
+                type="button"
+                className={actionBarBtn}
+                onClick={() => {
+                  document
+                    .getElementById("candidate-activity-log")
+                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  window.setTimeout(() => {
+                    document
+                      .querySelector<HTMLTextAreaElement>(
+                        "#candidate-activity-log textarea"
+                      )
+                      ?.focus();
+                  }, 250);
+                }}
+              >
+                Add Note
+              </button>
             </div>
             {false && (
               <div className="hidden space-y-4">
@@ -1158,7 +1260,10 @@ export function CandidateDetailClient({
               </section>
           </div>
 
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2 xl:col-start-1 xl:row-start-3">
+            <section
+              id="candidate-activity-log"
+              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2 xl:col-start-1 xl:row-start-3"
+            >
               <div className="mb-3">
                 <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
                   Candidate Activity Timeline
