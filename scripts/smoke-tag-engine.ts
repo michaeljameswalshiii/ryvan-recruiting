@@ -61,4 +61,24 @@ check(
   "PM synonym"
 );
 
+check(
+  "and_requires_both",
+  !recordMatchesQuery({
+    query: "Construction AND Project Management",
+    tags: ["Construction", "Superintendent"],
+    fields: ["Superintendent"],
+  }),
+  "superintendent-only must fail AND"
+);
+
+check(
+  "and_both_hit",
+  recordMatchesQuery({
+    query: "Construction AND Project Management",
+    tags: ["Construction", "Project Management"],
+    fields: ["Senior Project Manager"],
+  }),
+  "both tags pass AND"
+);
+
 process.exit(failed ? 1 : 0);

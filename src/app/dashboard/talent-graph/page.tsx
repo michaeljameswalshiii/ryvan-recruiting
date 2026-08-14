@@ -21,6 +21,11 @@ import type {
   SkillNode,
   TalentTagNode,
 } from "@/lib/ai/skills-graph";
+import {
+  getTaxonomyEntry,
+  labelToId,
+  splitAndClauses,
+} from "@/lib/tags";
 
 type CandidateSearchResult = {
   id: string;
@@ -104,9 +109,25 @@ export default function TalentGraphPage() {
       setSearching(true);
       setSearchError(null);
       try {
+        const clauses = splitAndClauses(trimmed);
+        const parsedTags = clauses
+          .map((clause) => {
+            const id = labelToId(clause);
+            return id ? getTaxonomyEntry(id)?.label || clause : "";
+          })
+          .filter(Boolean);
+        let nextTags = selectedTags;
+        let nextQuery = trimmed;
+        if (clauses.length >= 2 && parsedTags.length === clauses.length) {
+          nextTags = Array.from(new Set([...selectedTags, ...parsedTags]));
+          nextQuery = "";
+          setSelectedTags(nextTags);
+          setQuery("");
+        }
+
         const params = new URLSearchParams();
-        if (trimmed) params.set("q", trimmed);
-        selectedTags.forEach((tag) => params.append("tag", tag));
+        if (nextQuery) params.set("q", nextQuery);
+        nextTags.forEach((tag) => params.append("tag", tag));
         params.set("limit", "50");
         const res = await fetch(`/api/talent-graph?${params.toString()}`, {
           credentials: "include",

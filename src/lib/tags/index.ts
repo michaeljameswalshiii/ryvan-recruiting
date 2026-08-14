@@ -12,4 +12,4 @@ export {
   mergeManualAndGenerated,
 } from "./engine";
 export { matchControlledTags } from "./match";
-export { recordMatchesQuery } from "./search";
+export { recordMatchesQuery, splitAndClauses } from "./search";
