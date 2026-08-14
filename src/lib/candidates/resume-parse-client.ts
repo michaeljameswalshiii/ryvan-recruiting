@@ -6,6 +6,7 @@ import {
   resumeFileTooLargeMessage,
   validateResumeFileClient,
 } from '@/lib/candidates/resume-upload-limits';
+import { sanitizeCandidateLocation } from '@/lib/candidates/resume-text-parser';
 
 export type ParsedResumeFields = {
   name?: string;
@@ -195,13 +196,15 @@ export function mapParsedResumeToForm(
     title = String(current?.title || experience[0]?.title || '').trim();
   }
 
-  // Robust location: profile location, full address, then experience location
-  let location = String(
+  // Robust location: profile location only. Never keep "Company - City, ST".
+  let location = sanitizeCandidateLocation(
     parsed?.location || parsed?.fullAddress || parsed?.full_address || ''
-  ).trim();
+  );
   if (!location && experience.length) {
-    const withLoc = experience.find((e: any) => e?.location);
-    location = String(withLoc?.location || '').trim();
+    const withLoc = experience.find((e: any) =>
+      sanitizeCandidateLocation(e?.location)
+    );
+    location = sanitizeCandidateLocation(withLoc?.location || '');
   }
 
   return {
@@ -247,7 +250,7 @@ export function mergeFormWithParsed(
     title: pick('title'),
     email: pick('email'),
     phone: pick('phone'),
-    location: pick('location'),
+    location: sanitizeCandidateLocation(pick('location')) || prev.location,
     linkedin_url: pick('linkedin_url'),
     summary: pick('summary'),
     skills: pick('skills'),
@@ -265,6 +268,16 @@ export type ParseResumeResult = {
   fileKey?: string | null;
   code?: string;
 };
+
+function partialParseResult(data: any, fallbackKey?: string): ParseResumeResult | null {
+  if (data?.code !== 'NO_EXTRACTABLE_TEXT' || !data?.resume) return null;
+  return {
+    resume: data.resume,
+    resumeUrl: data.resumeUrl || null,
+    fileKey: data.fileKey || fallbackKey || null,
+    code: data.code,
+  };
+}
 
 /**
  * Upload resume directly to S3 (presigned PUT), then parse from the S3 key.
@@ -370,6 +383,9 @@ export async function parseResumeFile(
     });
     const data = await res.json().catch(() => ({}));
 
+    const partial = partialParseResult(data, s3Key);
+    if (partial) return partial;
+
     if (!res.ok || data.error) {
       const err = new Error(
         data.error || `Failed to parse resume (${res.status})`
@@ -428,6 +444,9 @@ async function parseResumeFileMultipart(
   });
 
   const data = await res.json().catch(() => ({}));
+
+  const partial = partialParseResult(data);
+  if (partial) return partial;
 
   if (!res.ok || data.error) {
     const err = new Error(

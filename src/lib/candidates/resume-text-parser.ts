@@ -140,6 +140,38 @@ const DATE_RANGE_RE = new RegExp(
 const US_STATES =
   'AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC';
 
+const COMPANY_MARKERS =
+  /\b(?:llc|l\.l\.c\.?|inc\.?|incorporated|corp\.?|corporation|ltd\.?|company|co\.?|group|holdings|partners|services|solutions|technologies|consulting)\b/i;
+
+const GENERIC_PRODUCTIVITY_SKILLS = new Set([
+  'microsoft office',
+  'microsoft word',
+  'microsoft powerpoint',
+  'powerpoint',
+  'windows',
+]);
+
+const CURATED_SKILL_PATTERNS: Array<[string, RegExp]> = [
+  ['Project Management', /\bproject management\b/i],
+  ['Program Management', /\bprogram management\b/i],
+  ['Preconstruction', /\bpre[- ]?construction\b/i],
+  ['Construction Management', /\bconstruction management\b/i],
+  ['Construction', /\bconstruction (?:industry|projects?|sites?|operations?)\b/i],
+  ['Civil Engineering', /\bcivil engineering\b/i],
+  ['Bluebeam', /\bbluebeam\b/i],
+  ['AutoCAD', /\bautocad\b/i],
+  ['FabTrol', /\bfabtrol\b/i],
+  ['Sage 300', /\bsage\s*300\b/i],
+  ['Estimating', /\bestimat(?:e|ing|ion)\b/i],
+  ['Scheduling', /\bschedul(?:e|ing)\b/i],
+  ['Budgeting', /\bbudget(?:ing|s)?\b/i],
+  ['Steel Fabrication', /\bsteel fabrication\b/i],
+  ['Fabrication', /\bfabrication shops?\b/i],
+  ['Job Site Operations', /\b(?:active\s+)?job sites?\b/i],
+  ['Spanish', /\b(?:conversational(?:ly)?\s+)?spanish\b/i],
+  ['Microsoft Excel', /\bmicrosoft excel\b/i],
+];
+
 /**
  * Many designer resumes (Canva, etc.) place each glyph with large tracking so
  * pdf.js emits "J e f f e r s o n" / "7 8 6 - 6 9 6 - 0 2 4 8". Collapse those
@@ -359,17 +391,95 @@ function looksLikeUrl(s: string): boolean {
   return /https?:\/\/|www\.|linkedin\.com|github\.com/i.test(s);
 }
 
-function looksLikeLocation(s: string): boolean {
-  if (!s || s.length > 80) return false;
-  if (new RegExp(`\\b(?:${US_STATES})\\b`, 'i').test(s) && /,/.test(s)) return true;
-  if (/,\s*[A-Z]{2}\b/.test(s)) return true;
-  // "Miami FL" / "Boca Raton FL" without comma
-  if (new RegExp(`\\b[A-Z][a-zA-Z .'-]{1,28}\\s+(?:${US_STATES})\\b`).test(s)) {
+/** City token: Winston-Salem ok, "BuildCore - Atlanta" not. */
+const CITY_NAME =
+  "[A-Z][A-Za-z'.]+(?:[-'][A-Za-z'.]+)*(?:\\s+[A-Z][A-Za-z'.]+(?:[-'][A-Za-z'.]+)*){0,3}";
+
+const FULL_STATES =
+  "United States|USA|US|Canada|UK|United Kingdom|California|Texas|Florida|New York|Washington|Massachusetts|Illinois|Georgia|Colorado|Arizona|Oregon|Nevada|New Jersey|North Carolina|South Carolina|Pennsylvania|Virginia|Maryland|Michigan|Ohio|Indiana|Tennessee|Missouri|Wisconsin|Minnesota|Louisiana|Alabama|Kentucky|Oklahoma|Connecticut|Iowa|Arkansas|Kansas|Utah|New Mexico|Nebraska|Idaho|Hawaii|Maine|New Hampshire|Rhode Island|Montana|Delaware|South Dakota|North Dakota|Alaska|Vermont|Wyoming|West Virginia";
+
+function isStateOrCountry(value: string): boolean {
+  const v = value.replace(/\./g, "").trim();
+  if (new RegExp(`^(?:${US_STATES})$`, "i").test(v)) return true;
+  if (new RegExp(`^(?:${FULL_STATES})$`, "i").test(v)) return true;
+  return false;
+}
+
+function isPureLocation(s: string): boolean {
+  if (!s || s.length > 60) return false;
+  const value = s.replace(/\s+/g, " ").trim();
+  if (!value) return false;
+  if (looksLikeEmail(value) || looksLikePhone(value) || looksLikeUrl(value)) {
+    return false;
+  }
+  if (COMPANY_MARKERS.test(value) || TITLE_WORDS.test(value)) return false;
+  if (/\s[-–—|•·]\s/.test(value)) return false;
+  if (/^(?:Greater\s+)?[A-Z][A-Za-z .'-]+\s+(?:Metropolitan|Metro)\s+Area$/.test(value)) {
     return true;
   }
-  // "City, Florida" / "City, Texas"
-  if (/^[A-Z][a-zA-Z .'-]+,\s*[A-Z][a-zA-Z .'-]+$/.test(s.trim())) return true;
+  if (new RegExp(`^${CITY_NAME},\\s*(?:${US_STATES})(?:\\s+\\d{5}(?:-\\d{4})?)?$`, "i").test(value)) {
+    return true;
+  }
+  if (new RegExp(`^${CITY_NAME}\\s+(?:${US_STATES})$`, "i").test(value)) {
+    return true;
+  }
+  if (new RegExp(`^${CITY_NAME},\\s*(?:${FULL_STATES})$`, "i").test(value)) {
+    return true;
+  }
   return false;
+}
+
+/** Pull "Atlanta, GA" out of "BuildCore - Atlanta, Ga" / "Title | City, ST". */
+function isolateLocationFragment(raw: string): string {
+  const value = String(raw || "").replace(/\s+/g, " ").trim();
+  if (!value) return "";
+  if (isPureLocation(value)) return value;
+
+  const seps = value.split(/\s*[-–—|•·]\s+/).map((p) => p.trim()).filter(Boolean);
+  if (seps.length >= 2) {
+    for (let i = seps.length - 1; i >= 0; i -= 1) {
+      if (isPureLocation(seps[i])) return seps[i];
+    }
+  }
+
+  const commas = value.split(",").map((p) => p.trim()).filter(Boolean);
+  if (commas.length >= 2) {
+    const last = commas[commas.length - 1].replace(/\./g, "");
+    const prev = commas[commas.length - 2];
+    const zip = last.match(/^([A-Za-z]{2}|[A-Za-z .']+)\s+\d{5}(?:-\d{4})?$/);
+    const region = zip ? zip[1] : last;
+    if (isStateOrCountry(region) && prev && !TITLE_WORDS.test(prev) && !COMPANY_MARKERS.test(prev)) {
+      const city = prev.split(/\s*[-–—|•·]\s+/).pop() || prev;
+      const candidate = zip ? `${city}, ${last}` : `${city}, ${last}`;
+      if (isPureLocation(candidate) || isPureLocation(`${city}, ${region}`)) {
+        return normalizeLocationString(`${city}, ${region}`);
+      }
+    }
+  }
+
+  const cityState = value.match(
+    new RegExp(`\\b(${CITY_NAME},\\s*(?:${US_STATES})(?:\\s+\\d{5}(?:-\\d{4})?)?)\\b`, "i")
+  );
+  if (cityState && isPureLocation(cityState[1])) return cityState[1];
+
+  const cityRegion = value.match(
+    new RegExp(`\\b(${CITY_NAME},\\s*(?:${FULL_STATES}))\\b`, "i")
+  );
+  if (cityRegion && isPureLocation(cityRegion[1])) return cityRegion[1];
+
+  return "";
+}
+
+function looksLikeLocation(s: string): boolean {
+  if (!s || s.length > 80) return false;
+  return Boolean(isolateLocationFragment(s));
+}
+
+/** Public: keep only City, ST (or metro). Drop employer/title prefixes. */
+export function sanitizeCandidateLocation(raw?: string | null): string {
+  const isolated = isolateLocationFragment(String(raw || ""));
+  if (!isolated) return "";
+  return normalizeLocationString(isolated).slice(0, 60);
 }
 
 function titleCaseName(raw: string): string {
@@ -558,7 +668,12 @@ function extractPhone(text: string): string {
 }
 
 function extractLinkedIn(text: string): string {
-  const m = text.match(
+  // LinkedIn PDF exports frequently wrap a profile slug across two lines.
+  const normalized = text.replace(
+    /(linkedin\.com\/in\/[A-Za-z0-9_-]*-)\s*\n\s*([A-Za-z0-9_-]+)(?:\s*\(LinkedIn\))?/gi,
+    '$1$2'
+  );
+  const m = normalized.match(
     /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[A-Za-z0-9_-]+\/?/i
   );
   if (!m) return '';
@@ -570,6 +685,44 @@ function extractLinkedIn(text: string): string {
   return url;
 }
 
+type LinkedInProfileIdentity = {
+  name: string;
+  title: string;
+  location: string;
+};
+
+function extractLinkedInProfileIdentity(text: string): LinkedInProfileIdentity {
+  const empty = { name: '', title: '', location: '' };
+  if (!/\bTop Skills\b/i.test(text) || !/linkedin\.com\/in\//i.test(text)) {
+    return empty;
+  }
+
+  const lines = linesOf(text);
+  const summaryIndex = lines.findIndex((line) => /^summary\s*:?$/i.test(line));
+  if (summaryIndex < 3) return empty;
+
+  // LinkedIn exports place Name, Headline, and Area directly before Summary.
+  const start = Math.max(0, summaryIndex - 8);
+  for (let i = summaryIndex - 3; i >= start; i -= 1) {
+    const candidateName = lines[i];
+    const headline = lines[i + 1] || '';
+    const candidateLocation = lines[i + 2] || '';
+    if (
+      isPlausibleName(candidateName) &&
+      TITLE_WORDS.test(headline) &&
+      looksLikeLocation(candidateLocation)
+    ) {
+      return {
+        name: titleCaseName(candidateName),
+        title: cleanTitle(headline.replace(/\s+at\s+.+$/i, '')),
+        location: sanitizeCandidateLocation(candidateLocation),
+      };
+    }
+  }
+
+  return empty;
+}
+
 function normalizeLocationString(loc: string): string {
   let s = loc.replace(/\s+/g, ' ').replace(/^[,|•·\-\s]+|[,|•·\-\s]+$/g, '').trim();
   // "Miami FL" → "Miami, FL"
@@ -579,7 +732,11 @@ function normalizeLocationString(loc: string): string {
   if (noComma) {
     s = `${noComma[1].trim()}, ${noComma[2].toUpperCase()}`;
   }
-  return s.slice(0, 80);
+  const citySt = s.match(new RegExp(`^(${CITY_NAME}),\\s*(${US_STATES})$`, 'i'));
+  if (citySt) {
+    s = `${citySt[1].trim()}, ${citySt[2].toUpperCase()}`;
+  }
+  return s.slice(0, 60);
 }
 
 function extractLocation(text: string, headerText: string): string {
@@ -594,37 +751,43 @@ function extractLocation(text: string, headerText: string): string {
 
   const tryMatch = (area: string): string => {
     if (!area) return '';
+    const isolated = isolateLocationFragment(area);
+    if (isolated) return normalizeLocationString(isolated);
+    for (const line of linesOf(area)) {
+      const hit = isolateLocationFragment(line);
+      if (hit) return normalizeLocationString(hit);
+    }
+    const metroArea = area.match(
+      /\b((?:Greater\s+)?[A-Z][A-Za-z .'-]+\s+(?:Metropolitan|Metro)\s+Area)\b/
+    );
+    if (metroArea) return normalizeLocationString(metroArea[1]);
     // City, ST (+ optional ZIP)
     const cityState = area.match(
       new RegExp(
-        `\\b([A-Z][a-zA-Z .'-]{1,30},\\s*(?:${US_STATES})(?:\\s+\\d{5}(?:-\\d{4})?)?)\\b`
+        `\\b(${CITY_NAME},\\s*(?:${US_STATES})(?:\\s+\\d{5}(?:-\\d{4})?)?)\\b`
       )
     );
     if (cityState) {
-      const loc = normalizeLocationString(cityState[1]);
-      if (loc.length < 60 && !looksLikeEmail(loc) && !TITLE_WORDS.test(loc)) {
-        return loc;
-      }
+      const loc = sanitizeCandidateLocation(cityState[1]);
+      if (loc) return loc;
     }
     // City ST (no comma) — common on one-line PDF headers
     const cityStNoComma = area.match(
       new RegExp(
-        `\\b([A-Z][a-zA-Z .'-]{1,28}\\s+(?:${US_STATES}))(?:\\b|\\s|[,|•])`
+        `\\b(${CITY_NAME}\\s+(?:${US_STATES}))(?:\\b|\\s|[,|•])`
       )
     );
     if (cityStNoComma) {
-      const loc = normalizeLocationString(cityStNoComma[1]);
-      if (loc.length < 60 && !looksLikeEmail(loc) && !TITLE_WORDS.test(loc)) {
-        return loc;
-      }
+      const loc = sanitizeCandidateLocation(cityStNoComma[1]);
+      if (loc) return loc;
     }
     // City, full state / country name
     const cityRegion = area.match(
-      /\b([A-Z][a-zA-Z .'-]{1,30},\s*(?:United States|USA|US|Canada|UK|United Kingdom|California|Texas|Florida|New York|Washington|Massachusetts|Illinois|Georgia|Colorado|Arizona|Oregon|Nevada|New Jersey|North Carolina|South Carolina|Pennsylvania|Virginia|Maryland|Michigan|Ohio|Indiana|Tennessee|Missouri|Wisconsin|Minnesota|Louisiana|Alabama|Kentucky|Oklahoma|Connecticut|Iowa|Arkansas|Kansas|Utah|Nevada|New Mexico|Nebraska|Idaho|Hawaii|Maine|New Hampshire|Rhode Island|Montana|Delaware|South Dakota|North Dakota|Alaska|Vermont|Wyoming|West Virginia))\b/
+      new RegExp(`\\b(${CITY_NAME},\\s*(?:${FULL_STATES}))\\b`)
     );
     if (cityRegion) {
-      const loc = normalizeLocationString(cityRegion[1]);
-      if (loc.length < 70) return loc;
+      const loc = sanitizeCandidateLocation(cityRegion[1]);
+      if (loc) return loc;
     }
     // "based in Miami, FL" / "located in Tampa FL"
     const based = area.match(
@@ -634,8 +797,8 @@ function extractLocation(text: string, headerText: string): string {
       )
     );
     if (based) {
-      const loc = normalizeLocationString(based[1]);
-      if (loc.length >= 4 && loc.length < 60) return loc;
+      const loc = sanitizeCandidateLocation(based[1]);
+      if (loc) return loc;
     }
     return '';
   };
@@ -797,6 +960,46 @@ function extractSkillsKeywordFallback(text: string): string[] {
   return found.slice(0, 25);
 }
 
+function extractCuratedSkills(text: string): string[] {
+  return CURATED_SKILL_PATTERNS.filter(([, pattern]) => pattern.test(text)).map(
+    ([skill]) => skill
+  );
+}
+
+function rankAndCleanSkills(
+  sectionSkills: string[],
+  summaryText: string,
+  fullText: string,
+  identity: { name: string; title: string; location: string }
+): string[] {
+  const summarySkills = extractCuratedSkills(summaryText);
+  const fallbackSkills = extractSkillsKeywordFallback(fullText);
+  const candidates = [...summarySkills, ...sectionSkills, ...fallbackSkills];
+  const identityValues = new Set(
+    [identity.name, identity.title, identity.location]
+      .filter(Boolean)
+      .map((value) => value.toLowerCase())
+  );
+  const hasDomainSkills = summarySkills.filter(
+    (skill) => !GENERIC_PRODUCTIVITY_SKILLS.has(skill.toLowerCase())
+  ).length >= 3;
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+
+  for (const rawSkill of candidates) {
+    const skill = rawSkill.trim();
+    const key = skill.toLowerCase() === 'excel' ? 'microsoft excel' : skill.toLowerCase();
+    if (!skill || seen.has(key) || identityValues.has(key)) continue;
+    if (looksLikeLocation(skill) || COMPANY_MARKERS.test(skill)) continue;
+    if (/\b(?:manager|director|engineer|developer|analyst)\s+at\s+/i.test(skill)) continue;
+    if (hasDomainSkills && GENERIC_PRODUCTIVITY_SKILLS.has(key)) continue;
+    seen.add(key);
+    cleaned.push(skill);
+  }
+
+  return cleaned.slice(0, 30);
+}
+
 function extractCertifications(certText: string): string[] {
   if (!certText) return [];
   return certText
@@ -832,12 +1035,7 @@ function isLikelyJobHeader(line: string): boolean {
 }
 
 function looksLikeJobLocation(s: string): boolean {
-  if (!s || s.length > 60) return false;
-  if (TITLE_WORDS.test(s)) return false;
-  // "Boca Raton, Florida" / "East Rutherford, New Jersey" / "City, ST"
-  if (looksLikeLocation(s)) return true;
-  if (/^[A-Z][a-zA-Z .'-]+,\s*[A-Z][a-zA-Z .'-]+$/.test(s)) return true;
-  return false;
+  return isPureLocation(String(s || "").trim());
 }
 
 function parseExperienceSection(expText: string): ParsedExperience[] {
@@ -864,7 +1062,7 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
       current.length > 0 &&
       (bulletsSeen || datesSeen || companyLocHeader) &&
       !bullet &&
-      (isLikelyJobHeader(line) || companyLocHeader)
+      ((isLikelyJobHeader(line) && !looksLikeJobLocation(line)) || companyLocHeader)
     ) {
       blocks.push(current);
       current = [line];
@@ -927,7 +1125,9 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
             title: title.slice(0, 100),
             dates: dates.slice(0, 60),
             description: descLines.join('\n').trim().slice(0, 1500),
-            ...(location ? { location: location.slice(0, 80) } : {}),
+            ...(sanitizeCandidateLocation(location)
+              ? { location: sanitizeCandidateLocation(location) }
+              : {}),
           });
           company = '';
           title = '';
@@ -953,8 +1153,10 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
           .filter(Boolean);
         for (const part of rest) {
           if (part.length < 2 || part.length > 80) continue;
-          if (looksLikeJobLocation(part) && !location) {
-            location = part;
+          if (/^\(?\d+\s+years?(?:\s+\d+\s+months?)?\)?$/i.test(part)) continue;
+          const partLoc = isolateLocationFragment(part);
+          if (partLoc && !location) {
+            location = partLoc;
             continue;
           }
           if (TITLE_WORDS.test(part) && !title) title = cleanTitle(part);
@@ -985,15 +1187,16 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
         if (nonDates.length >= 2) {
           if (TITLE_WORDS.test(nonDates[0]) && !TITLE_WORDS.test(nonDates[1])) {
             title = cleanTitle(nonDates[0]);
-            if (looksLikeJobLocation(nonDates[1])) location = nonDates[1];
+            const loc = isolateLocationFragment(nonDates[1]);
+            if (loc) location = loc;
             else company = nonDates[1];
           } else if (TITLE_WORDS.test(nonDates[1])) {
             company = nonDates[0];
             title = cleanTitle(nonDates[1]);
-          } else if (looksLikeJobLocation(nonDates[1])) {
+          } else if (looksLikeJobLocation(nonDates[1]) || isolateLocationFragment(nonDates[1])) {
             // "FitonU Alterations | Boca Raton, Florida"
             company = nonDates[0];
-            location = nonDates[1];
+            location = isolateLocationFragment(nonDates[1]) || nonDates[1];
           } else {
             company = nonDates[0];
             title = cleanTitle(nonDates[1]);
@@ -1030,8 +1233,18 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
         company = working;
         continue;
       }
-      if (looksLikeJobLocation(working) && !location) {
-        location = working;
+      const lineLoc = isolateLocationFragment(working);
+      if (lineLoc && !location) {
+        location = lineLoc;
+        if (!company && lineLoc !== working) {
+          const prefix = working
+            .replace(lineLoc, "")
+            .replace(/[\s\-–—|•·,]+$/g, "")
+            .trim();
+          if (prefix && !TITLE_WORDS.test(prefix) && prefix.length < 80) {
+            company = prefix;
+          }
+        }
         continue;
       }
       if (!title && working.length > 1 && working.length < 80) {
@@ -1058,7 +1271,9 @@ function parseExperienceSection(expText: string): ParsedExperience[] {
       title: title.slice(0, 100),
       dates: dates.slice(0, 60),
       description: descLines.join('\n').trim().slice(0, 1500),
-      ...(location ? { location: location.slice(0, 80) } : {}),
+      ...(sanitizeCandidateLocation(location)
+        ? { location: sanitizeCandidateLocation(location) }
+        : {}),
     });
   }
 
@@ -1196,33 +1411,29 @@ export function parseResumeText(
 
   const sections = splitIntoSections(text);
   const header = sections.header || text.slice(0, 800);
+  const linkedInIdentity = extractLinkedInProfileIdentity(text);
 
-  const name = extractName(text, options?.filename);
+  const name = linkedInIdentity.name || extractName(text, options?.filename);
   const email = extractEmail(text);
   const phone = extractPhone(text);
   const linkedin = extractLinkedIn(text);
-  const location = extractLocation(text, header);
+  const location = sanitizeCandidateLocation(
+    linkedInIdentity.location || extractLocation(text, header)
+  );
   const salaryRequirements = extractSalary(text);
-
-  let skills = extractSkillsFromSection(sections.skills || '');
-  if (skills.length < 3) {
-    const fallback = extractSkillsKeywordFallback(text);
-    const seen = new Set(skills.map((s) => s.toLowerCase()));
-    for (const s of fallback) {
-      if (!seen.has(s.toLowerCase())) {
-        skills.push(s);
-        seen.add(s.toLowerCase());
-      }
-    }
-  }
-  skills = skills.slice(0, 30);
 
   const experience = parseExperienceSection(sections.experience || '');
   const education = parseEducationSection(sections.education || '');
   const certifications = extractCertifications(sections.certifications || '');
   const summary = extractSummary(sections.summary || '', text);
+  const skills = rankAndCleanSkills(
+    extractSkillsFromSection(sections.skills || ''),
+    sections.summary || summary,
+    text,
+    { name, title: linkedInIdentity.title, location }
+  );
 
-  let title = extractTitle(text, sections, name);
+  let title = linkedInIdentity.title || extractTitle(text, sections, name);
   // Fall back to most recent / current experience title
   if (!title && experience.length) {
     const current = experience.find((e) =>
@@ -1244,9 +1455,8 @@ export function parseResumeText(
   let finalLocation = location;
   if (!finalLocation) {
     const expLoc = experience.find((e) => e.location)?.location;
-    if (expLoc && looksLikeLocation(expLoc)) {
-      finalLocation = normalizeLocationString(expLoc);
-    }
+    const cleaned = sanitizeCandidateLocation(expLoc);
+    if (cleaned) finalLocation = cleaned;
   }
 
   // Prefer filename name only if text name empty
