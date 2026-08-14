@@ -1,4 +1,4 @@
-import Sidebar from "@/components/Sidebar";
+import { DashboardChrome } from "@/components/dashboard/DashboardChrome";
 import { getSession } from "@/lib/server-auth";
 import { resolveLayoutRole } from "@/lib/admin-auth";
 import { redirect } from "next/navigation";
@@ -25,10 +25,9 @@ export default async function CandidatesLayout({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Sidebar role={role} />
-      <div className="ml-72">
-        <main className="p-6">{children}</main>
-      </div>
+      <DashboardChrome role={role}>
+        {children}
+      </DashboardChrome>
     </div>
   );
 }

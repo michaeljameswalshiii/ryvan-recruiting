@@ -38,10 +38,11 @@ import {
 } from "@/lib/candidates/note-type-stage";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import {
-  actionBarBtn,
-  actionBarPrimary,
-} from "@/components/shared/EntityActionBar";
+
+const candidateActionBtn =
+  "inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+const candidateActionPrimary =
+  "inline-flex h-8 items-center gap-1.5 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50";
 
 function date(value?: string) {
   if (!value) return "—";
@@ -214,7 +215,7 @@ export function CandidateDetailClient({
   const [selectedJobId, setSelectedJobId] = useState(
     String(defaultJob?.jobId || defaultJob?.id || ""),
   );
-  const [showAllApplications, setShowAllApplications] = useState(false);
+  const [evaluationExpanded, setEvaluationExpanded] = useState(false);
   const [notes, setNotes] = useState<any[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [resumeUrl, setResumeUrl] = useState(candidate?.resumeUrl || "");
@@ -322,9 +323,6 @@ export function CandidateDetailClient({
   }, [candidate.id]);
 
   const visibleNotes = notes;
-  const visibleApplications = showAllApplications
-    ? orderedJobs
-    : orderedJobs.filter((job: any) => !isRejectedApplication(job));
 
   const currentJob =
     orderedJobs.find(
@@ -333,6 +331,7 @@ export function CandidateDetailClient({
     ) || defaultJob;
   const currentJobTitle = currentJob?.jobTitle || currentJob?.title || "";
   const currentJobId = String(currentJob?.jobId || currentJob?.id || "");
+  const displayedApplications = currentJob ? [currentJob] : [];
 
   const changeApplicationStage = async (stage: string) => {
     if (!currentJobId || !candidate?.id) {
@@ -618,12 +617,12 @@ export function CandidateDetailClient({
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f8fa] px-2 py-3 text-slate-900 sm:px-3 lg:px-4">
+    <div className="min-w-0 bg-[#f7f8fa] text-slate-900">
       <div className="mx-auto w-full max-w-none space-y-3">
-        <div className="flex items-center">
+        <div className="flex items-center px-1">
           <Link
             href="/dashboard/candidates"
-            className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-blue-700"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-blue-700"
           >
             <ArrowLeft className="h-4 w-4" /> Back to Candidates
           </Link>
@@ -636,14 +635,14 @@ export function CandidateDetailClient({
             [ activity (same width as apps+AI) ] [ resume continues ]
         */}
         <div className="space-y-3">
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <button
                   type="button"
                   onClick={() => avatarInputRef.current?.click()}
                   disabled={avatarBusy}
-                  className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-slate-900 text-sm font-semibold text-white"
+                  className="group relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-slate-900 text-xs font-semibold text-white"
                   title="Upload candidate picture"
                 >
                   {avatarUrl ? (
@@ -670,18 +669,18 @@ export function CandidateDetailClient({
                 />
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-1">
-                    <h1 className="truncate text-2xl font-semibold tracking-tight">
+                    <h1 className="truncate text-xl font-semibold tracking-tight">
                       {name}
                     </h1>
                     <CopyTextButton value={name} label="name" />
                   </div>
-                  <p className="truncate text-sm text-slate-600">
+                  <p className="truncate text-xs text-slate-600">
                     {candidate?.title || currentJobTitle || "Candidate"}
                     {candidate?.company || currentCompany
                       ? ` · ${candidate?.company || currentCompany}`
                       : ""}
                   </p>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
                     {candidateEmail && (
                       <span className="inline-flex items-center gap-0.5">
                         <button
@@ -722,7 +721,7 @@ export function CandidateDetailClient({
                     )}
                   </div>
                   {(salaryRequirement || linkedinUrl) && (
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-1.5 flex flex-wrap gap-2">
                       {salaryRequirement && (
                         <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">
                           <DollarSign className="h-3.5 w-3.5" />
@@ -751,26 +750,26 @@ export function CandidateDetailClient({
                 assignmentRole="account_manager"
               />
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={handleEmailClick}
                 disabled={!candidateEmail}
-                className={actionBarBtn}
+                className={candidateActionBtn}
               >
                 <Mail className="h-3.5 w-3.5" />
                 Email
               </button>
               <a
                 href={candidate?.phone ? `tel:${candidate.phone}` : undefined}
-                className={`${actionBarBtn} ${!candidate?.phone ? "pointer-events-none opacity-50" : ""}`}
+                className={`${candidateActionBtn} ${!candidate?.phone ? "pointer-events-none opacity-50" : ""}`}
               >
                 <Phone className="h-3.5 w-3.5" />
                 Call
               </a>
               <a
                 href={candidate?.phone ? `sms:${candidate.phone}` : undefined}
-                className={`${actionBarBtn} ${!candidate?.phone ? "pointer-events-none opacity-50" : ""}`}
+                className={`${candidateActionBtn} ${!candidate?.phone ? "pointer-events-none opacity-50" : ""}`}
               >
                 <MessageSquare className="h-3.5 w-3.5" />
                 Text
@@ -780,7 +779,7 @@ export function CandidateDetailClient({
                   href={linkedinUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className={actionBarBtn}
+                  className={candidateActionBtn}
                 >
                   <Linkedin className="h-3.5 w-3.5" />
                   LinkedIn
@@ -788,7 +787,7 @@ export function CandidateDetailClient({
               ) : (
                 <Link
                   href={`/dashboard/candidates/${candidate.id}/edit`}
-                  className={actionBarBtn}
+                  className={candidateActionBtn}
                 >
                   <Linkedin className="h-3.5 w-3.5" />
                   Add LinkedIn
@@ -796,14 +795,14 @@ export function CandidateDetailClient({
               )}
               <button
                 type="button"
-                className={actionBarPrimary}
+                className={candidateActionPrimary}
                 disabled={!currentJob || stageBusy}
                 onClick={() => void changeApplicationStage("submitted")}
               >
                 Submit to Client
               </button>
               <select
-                className={`${actionBarBtn} pr-8`}
+                className={`${candidateActionBtn} pr-8`}
                 disabled={!currentJob || stageBusy}
                 value={normalizedStage(currentJob?.stage)}
                 onChange={(e) => void changeApplicationStage(e.target.value)}
@@ -821,7 +820,7 @@ export function CandidateDetailClient({
               </select>
               <button
                 type="button"
-                className={actionBarBtn}
+                className={candidateActionBtn}
                 onClick={() => {
                   document
                     .getElementById("candidate-activity-log")
@@ -839,7 +838,7 @@ export function CandidateDetailClient({
               </button>
               <Link
                 href={`/dashboard/candidates/${candidate.id}/edit`}
-                className={actionBarBtn}
+                className={candidateActionBtn}
               >
                 <Pencil className="h-3.5 w-3.5" />
                 Edit
@@ -847,10 +846,10 @@ export function CandidateDetailClient({
             </div>
           </section>
 
-          <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(0,0.9fr)_minmax(520px,1.45fr)]">
+          <div className="grid items-start gap-3 min-[1400px]:grid-cols-[minmax(0,1.75fr)_minmax(480px,1fr)]">
             <div className="grid min-w-0 content-start gap-3">
               <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2">
-              <section className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <section className="flex h-full min-h-0 flex-col rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
                     Applications ({jobs.length})
@@ -866,8 +865,32 @@ export function CandidateDetailClient({
                     Attach to Job
                   </Button>
                 </div>
+                {orderedJobs.length > 0 && (
+                  <select
+                    value={currentJobId}
+                    onChange={(event) => {
+                      setSelectedJobId(event.target.value);
+                      setEvaluationExpanded(false);
+                    }}
+                    className="mb-3 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    aria-label="Select application history"
+                  >
+                    {orderedJobs.map((job: any, index: number) => {
+                      const id = String(job.jobId || job.id || `application-${index}`);
+                      return (
+                        <option key={id} value={id}>
+                          {job.jobTitle || job.title || "Untitled job"}
+                          {job.companyName || job.company_name || job.company
+                            ? ` - ${job.companyName || job.company_name || job.company}`
+                            : ""}
+                          {isRejectedApplication(job) ? " (Rejected)" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
                 <div className="min-h-0 flex-1 space-y-3">
-                  {visibleApplications.map((job: any, index: number) => {
+                  {displayedApplications.map((job: any, index: number) => {
                     const jobId = String(job.jobId || job.id || "");
                     const id = jobId || `application-${index}`;
                     const active = id === String(selectedJobId);
@@ -962,7 +985,7 @@ export function CandidateDetailClient({
                       </div>
                     );
                   })}
-                  {!visibleApplications.length && (
+                  {!displayedApplications.length && (
                     <div className="flex flex-col items-center gap-2 py-6 text-center">
                       <p className="text-sm text-slate-500">
                         No active applications.
@@ -978,45 +1001,21 @@ export function CandidateDetailClient({
                       </Button>
                     </div>
                   )}
-                  {jobs.some((job: any) => isRejectedApplication(job)) && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllApplications((value) => !value)}
-                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"
-                    >
-                      {showAllApplications
-                        ? "Hide Rejected Applications"
-                        : "View All Applications"}
-                    </button>
-                  )}
-                </div>
-                <div className="mt-auto border-t border-slate-100 pt-4">
-                  <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                    <Tag className="h-3.5 w-3.5 text-violet-600" /> Tags
-                  </div>
-                  <TagEditor
-                    value={tags}
-                    onChange={(next) => void saveTags(next)}
-                    objectType="candidate"
-                    disabled={tagBusy}
-                    placeholder="+ Add tag"
-                  />
-                  {tagError && <p className="mt-1 text-xs text-red-600">{tagError}</p>}
                 </div>
               </section>
 
               <section
                 data-ai-evaluation
-                className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+                className="flex h-full min-h-0 flex-col rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
               >
                 <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
                   <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
                 </h2>
 
-                <div className="mb-3 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
+                <div className="mb-3 rounded-md border border-slate-100 bg-slate-50/80 p-2.5">
                   <div className="flex items-center gap-3">
                     <div
-                      className="relative flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center rounded-full"
+                      className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full"
                       style={{
                         background: `conic-gradient(${fitRingColor} ${Math.max(0, Math.min(100, Number(fitScore) || 0)) * 3.6}deg, #e2e8f0 0deg)`,
                       }}
@@ -1026,7 +1025,7 @@ export function CandidateDetailClient({
                           : "Not scored"
                       }
                     >
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-lg font-bold text-slate-900">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-sm font-bold text-slate-900">
                         {fitScore != null ? Math.round(Number(fitScore)) : "—"}
                       </div>
                     </div>
@@ -1034,7 +1033,7 @@ export function CandidateDetailClient({
                       <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
                         Overall fit
                       </div>
-                      <div className={`text-base font-semibold ${fitBandColor}`}>
+                      <div className={`text-sm font-semibold ${fitBandColor}`}>
                         {fitBand
                           ? fitBand
                           : fitScore != null
@@ -1065,6 +1064,8 @@ export function CandidateDetailClient({
                   </div>
                 </div>
 
+                {evaluationExpanded && (
+                  <>
                 {fitVerify.length > 0 && (
                   <div className="mb-3 rounded-lg border border-slate-200 bg-white p-2.5">
                     <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">
@@ -1132,7 +1133,7 @@ export function CandidateDetailClient({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="mt-auto w-full shrink-0 text-xs"
+                  className="mb-2 w-full shrink-0 text-xs"
                   disabled={fitBusy || !currentJob}
                   onClick={() => void runFit()}
                 >
@@ -1142,12 +1143,32 @@ export function CandidateDetailClient({
                       ? "Refresh AI Fit"
                       : "Run AI Fit"}
                 </Button>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  className="mt-auto h-8 w-full shrink-0 rounded-md border border-slate-200 bg-white text-xs font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                  disabled={!currentJob || fitBusy}
+                  onClick={() => {
+                    if (fitScore == null) void runFit();
+                    else setEvaluationExpanded((value) => !value);
+                  }}
+                >
+                  {fitBusy
+                    ? "Scoring application..."
+                    : fitScore == null
+                      ? "Run AI Fit"
+                      : evaluationExpanded
+                        ? "Collapse evaluation details"
+                        : "Expand evaluation details"}
+                </button>
               </section>
               </div>
 
             <section
               id="candidate-activity-log"
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+              className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
             >
               <div className="mb-3">
                 <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
@@ -1157,7 +1178,7 @@ export function CandidateDetailClient({
                   All activity for this candidate is shown.
                 </p>
               </div>
-              <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/40 p-2.5">
+              <div className="mb-3">
                 <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
                   <select
                     value={noteType}
@@ -1182,8 +1203,8 @@ export function CandidateDetailClient({
                       }
                     }}
                     placeholder="Add activity details..."
-                    rows={3}
-                    className="min-h-[76px] min-w-0 flex-1 resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                    rows={2}
+                    className="min-h-12 min-w-0 flex-1 resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
                   />
                   <FormatActivityNoteButton
                     value={noteText}
@@ -1200,7 +1221,7 @@ export function CandidateDetailClient({
                   </Button>
                 </div>
               </div>
-              <div className="max-h-[680px] space-y-2 overflow-y-auto pr-1">
+              <div className="max-h-[520px] divide-y divide-slate-100 overflow-y-auto pr-1">
                 {notesLoading ? (
                   <p className="py-10 text-center text-sm text-slate-500">
                     Loading activity…
@@ -1239,9 +1260,9 @@ export function CandidateDetailClient({
                     return (
                       <div
                         key={note.id || index}
-                        className="relative rounded-lg border border-slate-200 p-3 pl-11"
+                        className="relative py-3 pl-10 pr-1"
                       >
-                        <div className="absolute left-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                        <div className="absolute left-1 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600">
                           <EventIcon className="h-3.5 w-3.5" />
                         </div>
                         <div className="flex items-start justify-between gap-2">
@@ -1315,19 +1336,20 @@ export function CandidateDetailClient({
             </section>
             </div>
 
-          <section className="flex min-h-[560px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm xl:min-h-full">
+          <div className="grid min-w-0 content-start gap-3">
+          <section className="flex h-[560px] min-h-[480px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-4 py-3">
               <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
                 Resume
               </h2>
             </div>
-            <div className="min-h-[560px] flex-1 xl:min-h-0">
+            <div className="min-h-0 flex-1">
               <ResumeViewer
                 url={resumeUrl}
                 fileName={resumeName}
                 fileKey={resumeKey}
                 candidateId={candidate.id}
-                className="h-full min-h-[560px]"
+                className="h-full min-h-0"
                 onUrlUpdated={setResumeUrl}
                 onResumeChanged={(info) => {
                   if (!info) return;
@@ -1338,6 +1360,22 @@ export function CandidateDetailClient({
               />
             </div>
           </section>
+          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-700">
+                <Tag className="h-3.5 w-3.5 text-violet-600" /> Tags
+              </h2>
+            </div>
+            <TagEditor
+              value={tags}
+              onChange={(next) => void saveTags(next)}
+              objectType="candidate"
+              disabled={tagBusy}
+              placeholder="+ Add tag"
+            />
+            {tagError && <p className="mt-2 text-xs text-red-600">{tagError}</p>}
+          </section>
+          </div>
           </div>
         </div>
       </div>

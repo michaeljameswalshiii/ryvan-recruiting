@@ -95,9 +95,16 @@ const systemAdminInDevItems: MenuItem[] = [
 interface SidebarProps {
   role?: string | null;
   tenantScope?: string;
+  mobileOpen?: boolean;
+  onNavigate?: () => void;
 }
 
-export default function Sidebar({ role, tenantScope }: SidebarProps) {
+export default function Sidebar({
+  role,
+  tenantScope,
+  mobileOpen = false,
+  onNavigate,
+}: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const navRef = useRef<HTMLDivElement>(null);
@@ -241,6 +248,7 @@ export default function Sidebar({ role, tenantScope }: SidebarProps) {
       <Link
         key={item.href}
         href={item.href}
+        onClick={() => onNavigate?.()}
         className={linkClass(item.href, accent)}
         aria-current={isActive ? 'page' : undefined}
       >
@@ -253,18 +261,20 @@ export default function Sidebar({ role, tenantScope }: SidebarProps) {
   return (
     <div
       data-app-sidebar
-      className="w-72 min-w-[280px] bg-white dark:bg-sidebar border-r border-gray-200 dark:border-border h-screen flex flex-col fixed left-0 top-0 shadow-sm z-50 text-foreground"
+      className={`fixed left-0 top-0 z-50 flex h-screen w-72 max-w-[88vw] flex-col border-r border-gray-200 bg-white text-foreground shadow-sm transition-transform duration-200 dark:border-border dark:bg-sidebar xl:translate-x-0 ${
+        mobileOpen ? "translate-x-0" : "-translate-x-full xl:translate-x-0"
+      }`}
     >
       <div className="px-3 pt-3 pb-3 border-b border-gray-200 dark:border-border">
         <Link
           href="/dashboard"
-          className="flex items-center justify-center rounded-lg bg-white px-1 py-2 shadow-sm border border-gray-100 hover:bg-gray-50 transition-colors min-h-[8.25rem]"
+          className="flex items-center justify-center rounded-lg border border-gray-100 bg-white px-1 py-2 shadow-sm transition-colors min-h-[4.5rem] xl:min-h-[8.25rem]"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/branding/trio-sourcing-logo.png?v=20260804"
             alt="TRIO — Connecting GREAT Companies with GREAT Candidates through GREAT Recruiters"
-            className="w-full h-auto max-h-[8.75rem] object-contain object-center mx-auto"
+            className="mx-auto h-auto w-full max-h-16 object-contain object-center xl:max-h-[8.75rem]"
           />
         </Link>
       </div>
@@ -305,6 +315,7 @@ export default function Sidebar({ role, tenantScope }: SidebarProps) {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => onNavigate?.()}
                 className={linkClass(item.href, 'blue')}
                 aria-current={isActive ? 'page' : undefined}
               >

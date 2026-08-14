@@ -7,6 +7,7 @@ import {
   Bell,
   User,
   Zap,
+  Menu,
   ChevronDown,
   UserPlus,
   Building2,
@@ -58,7 +59,10 @@ const QUICK_ACTIONS = [
   },
 ] as const;
 
-export function DashboardHeader({ user }: DashboardHeaderProps) {
+export function DashboardHeader({
+  user,
+  onOpenNav,
+}: DashboardHeaderProps & { onOpenNav?: () => void }) {
   const router = useRouter();
   const displayName = user?.full_name || user?.fullName || user?.email || "User";
   const subtitle = user?.role
@@ -121,8 +125,18 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
   const isAllTenants = user?.role === "site_admin" && user?.tenantScope === "all";
 
   return (
-    <header className="sticky top-0 z-50 h-16 border-b border-border flex items-center justify-between gap-4 px-6 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <div className="flex items-center gap-4 flex-1 min-w-0">
+    <header className="sticky top-0 z-50 flex h-14 items-center justify-between gap-2 border-b border-border bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:h-16 sm:gap-4 sm:px-6">
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
+        {onOpenNav ? (
+          <button
+            type="button"
+            onClick={onOpenNav}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-foreground xl:hidden"
+            aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        ) : null}
         <GlobalSearch />
       </div>
 
