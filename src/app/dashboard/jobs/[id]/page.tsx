@@ -33,7 +33,13 @@ import {
 } from "@/lib/hooks/query-job";
 import { useLeads } from "@/lib/hooks/query-lead";
 import { useClient } from "@/lib/hooks/query-client";
-import { formatFeePercentLabel } from "@/lib/fees/placement-fee";
+import { useAssignmentOwners } from "@/lib/hooks/use-assignment-owners";
+import {
+  commissionFromFee,
+  formatCommission,
+  formatSalaryToolbar,
+  parseFeePercent,
+} from "@/lib/fees/placement-fee";
 import JobEditModal from "@/components/job/JobEditModal";
 import { JobActivityNotes } from "@/components/job/JobActivityNotes";
 import { FitScoreBadge, type FitGrade } from "@/components/job/FitScoreBadge";
@@ -117,6 +123,7 @@ export default function JobDetailPage() {
 
   const { data: job, isLoading, isError, error } = useJob(jobId);
   const { data: jobCompany } = useClient(String((job as any)?.companyId || ""));
+  const { data: ownerMap = {} } = useAssignmentOwners("job");
   const { data: allCandidates = [], isLoading: loadingCandidates } = useLeads();
   const updateJob = useUpdateJob();
   const linkCandidate = useLinkCandidateToJob();
@@ -522,19 +529,31 @@ export default function JobDetailPage() {
         })
       : null;
 
-  const hiringManagerName = String(
-    (job as any).hiringManagerName || ""
+  const feePercent =
+    parseFeePercent((job as any).fee_percent ?? (job as any).feePercent) ??
+    parseFeePercent(
+      (jobCompany as any)?.fee_percent ?? (jobCompany as any)?.feePercent
+    );
+  const feeLabel = feePercent != null ? `${feePercent}%` : "—";
+  const salaryLabel =
+    formatSalaryToolbar(job.salaryRange || (job as any).salary_range) || "—";
+  const commissionAmount = commissionFromFee(
+    job.salaryRange || (job as any).salary_range,
+    feePercent
+  );
+  const commissionLabel = formatCommission(commissionAmount) || "—";
+  const ownerName = (
+    ownerMap[String(job.id)]?.name ||
+    (job as any).ownerName ||
+    (job as any).createdByName ||
+    ""
   ).trim();
-  const feeLabel =
-    formatFeePercentLabel(job as any) ||
-    formatFeePercentLabel(jobCompany as any) ||
-    "—";
   const isPosted = isShownOnWebsite && isOpenStatus;
 
   return (
     <div className="space-y-5 max-w-7xl -mt-1">
-      {/* Page header — title, badges, actions */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      {/* Page header — title left, actions in two rows */}
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <Link
             href="/dashboard/jobs"
@@ -582,78 +601,118 @@ export default function JobDetailPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <JobCopyButton jobId={String(job.id || jobId)} jobTitle={job.title || "Job"} />
-          {isPosted && job.id ? (
-            <a
-              href={`/careers/${process.env.NEXT_PUBLIC_CAREERS_DEFAULT_SLUG || "ryvan"}/${job.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
-            >
-              <ExternalLink className="h-4 w-4" />
-              View public page
-            </a>
-          ) : null}
-          <FillReqPlaybookButton jobId={job.id} jobTitle={job.title} />
-          {canInvoice && (
-            <Button
-              size="sm"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => setInvoiceOpen(true)}
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Create invoice
+        <div className="flex flex-col gap-2 xl:items-end shrink-0">
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <Button size="sm" onClick={openAddCandidate} className="bg-blue-600 hover:bg-blue-700">
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add Candidate
             </Button>
-          )}
-          <label
-            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm cursor-pointer select-none ${
-              isShownOnWebsite
-                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                : "border-gray-200 bg-white text-gray-700"
-            } ${updateJob.isPending ? "opacity-60 pointer-events-none" : ""}`}
-            title="Open jobs with this on appear on /careers and Squarespace embeds"
-          >
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-gray-300"
-              checked={isShownOnWebsite}
-              disabled={updateJob.isPending}
-              onChange={(e) => void onToggleShowOnWebsite(e.target.checked)}
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
+            <div className="relative">
+              <select
+                value={currentJobStatus}
+                onChange={(e) => onChangeJobStatus(e.target.value)}
+                disabled={updateJob.isPending}
+                className="appearance-none border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm bg-white shadow-sm font-medium text-gray-800"
+                aria-label="Job pipeline status"
+              >
+                {JOB_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            </div>
+            <FillReqPlaybookButton
+              jobId={job.id}
+              jobTitle={job.title}
+              className="border-gray-200 bg-white text-gray-800 hover:bg-gray-50"
             />
-            <span className="font-medium">Show on website</span>
-          </label>
-          <Button size="sm" onClick={openAddCandidate} className="bg-blue-600 hover:bg-blue-700">
-            <UserPlus className="h-4 w-4 mr-2" />
-            Add Candidate
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-            <Pencil className="h-4 w-4 mr-2" />
-            Edit
-          </Button>
-          <select
-            value={currentJobStatus}
-            onChange={(e) => onChangeJobStatus(e.target.value)}
-            disabled={updateJob.isPending}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
-            aria-label="Job pipeline status"
-          >
-            {JOB_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-          <JobDeleteButton jobId={job.id} jobTitle={job.title} />
+          </div>
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <JobCopyButton jobId={String(job.id || jobId)} jobTitle={job.title || "Job"} />
+            {isPosted && job.id ? (
+              <a
+                href={`/careers/${process.env.NEXT_PUBLIC_CAREERS_DEFAULT_SLUG || "ryvan"}/${job.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
+              >
+                <ExternalLink className="h-4 w-4" />
+                View public page
+              </a>
+            ) : null}
+            <label
+              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm cursor-pointer select-none ${
+                isShownOnWebsite
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                  : "border-gray-200 bg-white text-gray-700"
+              } ${updateJob.isPending ? "opacity-60 pointer-events-none" : ""}`}
+              title="Open jobs with this on appear on /careers and Squarespace embeds"
+            >
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-gray-300"
+                checked={isShownOnWebsite}
+                disabled={updateJob.isPending}
+                onChange={(e) => void onToggleShowOnWebsite(e.target.checked)}
+              />
+              <span className="font-medium">Show on website</span>
+            </label>
+            {canInvoice && (
+              <Button
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => setInvoiceOpen(true)}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Create Invoice
+              </Button>
+            )}
+            <JobDeleteButton jobId={job.id} jobTitle={job.title} />
+          </div>
         </div>
       </div>
 
-      {/* Meta strip — matches the job header mockup */}
+      {/* Meta strip — company through owner, with fee + commission */}
       <section
         data-ink-on-light
         className="bg-white border border-gray-200 rounded-2xl shadow-sm px-5 py-4"
       >
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-4">
+          <MetaField
+            label="Company"
+            value={job.companyName || "—"}
+            icon={<Building2 className="h-4 w-4" />}
+          />
+          <MetaField
+            label="Location"
+            value={job.location || "—"}
+            icon={<MapPin className="h-3.5 w-3.5" />}
+          />
+          <MetaField
+            label="Salary"
+            value={salaryLabel}
+            icon={<DollarSign className="h-3.5 w-3.5" />}
+          />
+          <MetaField
+            label="Fee %"
+            value={feeLabel}
+            icon={<Percent className="h-3.5 w-3.5" />}
+          />
+          <MetaField
+            label="Commission"
+            value={commissionLabel}
+            icon={<DollarSign className="h-3.5 w-3.5" />}
+          />
+          <MetaField
+            label="Pipeline"
+            value={formatStatusLabel(job.status)}
+          />
           <div className="min-w-0">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
               Status
@@ -668,52 +727,23 @@ export default function JobDetailPage() {
             </div>
           </div>
           <MetaField
-            label="Company"
-            value={job.companyName || "—"}
-            icon={<Building2 className="h-4 w-4" />}
-          />
-          <MetaField
-            label="Location"
-            value={job.location || "—"}
-            icon={<MapPin className="h-3.5 w-3.5" />}
-          />
-          <MetaField
-            label="Job Type"
-            value={job.employmentType || "Full-time"}
-            icon={<Briefcase className="h-3.5 w-3.5" />}
-          />
-          <MetaField
-            label="Pipeline"
-            value={formatStatusLabel(job.status)}
-          />
-          <MetaField
-            label="Fee %"
-            value={feeLabel}
-            icon={<Percent className="h-3.5 w-3.5" />}
-          />
-          <MetaField
-            label="Compensation"
-            value={job.salaryRange || "—"}
-            icon={<DollarSign className="h-3.5 w-3.5" />}
-          />
-          <MetaField
             label="Posted"
             value={postedLabel || "—"}
             icon={<Calendar className="h-3.5 w-3.5" />}
           />
           <div className="min-w-0">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
-              Hiring Manager
+              Owner
             </div>
-            {hiringManagerName ? (
+            {ownerName ? (
               <div className="inline-flex items-center gap-2 min-w-0">
                 <span
-                  className={`h-7 w-7 shrink-0 rounded-full ${avatarColor(hiringManagerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
+                  className={`h-7 w-7 shrink-0 rounded-full ${avatarColor(ownerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
                 >
-                  {getInitials(hiringManagerName)}
+                  {getInitials(ownerName)}
                 </span>
                 <span className="truncate text-sm font-medium text-slate-900">
-                  {hiringManagerName}
+                  {ownerName}
                 </span>
               </div>
             ) : (

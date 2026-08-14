@@ -83,3 +83,71 @@ export function pickPlacementFee(
     fee_guarantee: preferred.fee_guarantee || fallback.fee_guarantee,
   };
 }
+
+function toSalaryNumber(raw: string): number | null {
+  const t = raw.trim().toLowerCase();
+  const k = t.match(/^(\d+(?:\.\d+)?)\s*k$/i);
+  if (k) return Math.round(parseFloat(k[1]) * 1000);
+  const n = parseFloat(t.replace(/[^\d.]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Low / high from strings like "$70,000 – $85,000" or "70k-90k". */
+export function parseSalaryBounds(salaryRange?: string | null): {
+  low: number | null;
+  high: number | null;
+} {
+  const raw = (salaryRange || "").trim();
+  if (!raw) return { low: null, high: null };
+  const normalized = raw.replace(/,/g, "").replace(/\$/g, "").replace(/\s+/g, " ");
+  const range = normalized.match(
+    /(\d+(?:\.\d+)?\s*k?)\s*(?:[-–—]|to)\s*(\d+(?:\.\d+)?\s*k?)/i
+  );
+  if (range) {
+    const a = toSalaryNumber(range[1]);
+    const b = toSalaryNumber(range[2]);
+    if (a != null && b != null) {
+      return { low: Math.min(a, b), high: Math.max(a, b) };
+    }
+  }
+  const single = toSalaryNumber(normalized);
+  return { low: single, high: single };
+}
+
+function formatDollars(n: number): string {
+  return `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+}
+
+/** Compact salary for the job toolbar, e.g. "$70,000–$85,000". */
+export function formatSalaryToolbar(salaryRange?: string | null): string {
+  const { low, high } = parseSalaryBounds(salaryRange);
+  if (low == null && high == null) {
+    return String(salaryRange || "").trim();
+  }
+  if (low != null && high != null && low !== high) {
+    return `${formatDollars(low)}–${formatDollars(high)}`;
+  }
+  return formatDollars((high ?? low) as number);
+}
+
+export function formatCommission(amount: number | null | undefined): string {
+  if (amount == null || !Number.isFinite(amount) || amount <= 0) return "";
+  return formatDollars(Math.round(amount));
+}
+
+/**
+ * Estimated placement commission: fee % of the high end of the salary range
+ * (or the single number if there is no range).
+ */
+export function commissionFromFee(
+  salaryRange?: string | null,
+  feePercent?: number | null
+): number | null {
+  if (feePercent == null || !Number.isFinite(feePercent) || feePercent <= 0) {
+    return null;
+  }
+  const { high, low } = parseSalaryBounds(salaryRange);
+  const basis = high ?? low;
+  if (basis == null) return null;
+  return Math.round(basis * (feePercent / 100));
+}
