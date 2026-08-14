@@ -56,6 +56,9 @@ export const contactSchema = z.object({
   notes: z.string().max(500).optional().or(z.literal('')),
   /** Personal LinkedIn profile URL (same idea as candidates) */
   linkedin_url: z.string().max(300).optional().or(z.literal('')),
+  /** Next scheduled follow-up (YYYY-MM-DD). Manual override wins over note inference. */
+  next_follow_up: z.string().max(40).optional().or(z.literal('')),
+  next_follow_up_manual: z.boolean().optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
 });

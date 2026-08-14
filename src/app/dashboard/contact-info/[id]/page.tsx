@@ -28,7 +28,7 @@ export default function ContactInfoDetailPage() {
     return [];
   }, [clientsData]);
 
-  const { contact, companyName, companyId } = useMemo(() => {
+  const { contact, companyName, companyId, companyWebsite } = useMemo(() => {
     let foundContact: any = null;
     let foundCompany: any = null;
 
@@ -66,19 +66,24 @@ export default function ContactInfoDetailPage() {
     }
 
     if (!foundContact) {
-      return { contact: null, companyName: '', companyId: '' };
+      return { contact: null, companyName: '', companyId: '', companyWebsite: '' };
     }
 
     const cid = foundCompany?.id || foundCompany?.PK || companyIdParam || '';
+    const website =
+      foundCompany?.domain || foundCompany?.website || foundCompany?.url || '';
     return {
       contact: {
         ...foundContact,
         companyName: foundCompany?.name || foundCompany?.companyName || '—',
         clientId: cid,
         companyId: cid,
+        companyDomain: foundCompany?.domain || '',
+        companyWebsite: website,
       },
       companyName: foundCompany?.name || foundCompany?.companyName || '—',
       companyId: cid,
+      companyWebsite: website,
     };
   }, [companies, id, companyIdParam]);
 
@@ -149,6 +154,7 @@ export default function ContactInfoDetailPage() {
       contact={contact}
       companyJobs={companyJobs}
       companyName={companyName}
+      companyWebsite={companyWebsite}
     />
   );
 }

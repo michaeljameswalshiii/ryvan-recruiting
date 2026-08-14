@@ -114,6 +114,9 @@ export default async function ContactDetailPage({ params }: Props) {
       contact={contactData} 
       companyJobs={companyJobs} 
       companyName={companyName}
+      companyWebsite={
+        clientData?.domain || clientData?.website || clientData?.url || ""
+      }
     />
   );
 }

@@ -53,6 +53,15 @@ import {
   ACTIVITY_BADGE_BASE_CLASS,
   activityBadgeStyle,
 } from '@/lib/ui/activity-badge-colors';
+import { toWebsiteHref } from '@/lib/ui/website-href';
+import {
+  formatFollowUpDate,
+  inferLastBooked,
+  inferLastContacted,
+  inferNextFollowUp,
+  isFollowUpOverdue,
+  toDateInputValue,
+} from '@/lib/contacts/follow-up';
 
 /** Contact activity types (canonical order) */
 const NOTE_TYPES = [...CONTACT_ACTIVITY_TYPES];
@@ -102,12 +111,14 @@ interface ContactDetailClientProps {
   contact: any;
   companyJobs?: any[];
   companyName?: string;
+  companyWebsite?: string;
 }
 
 export default function ContactDetailClient({
   contact: rawContact,
   companyJobs: rawJobs = [],
   companyName: propCompanyName,
+  companyWebsite: propCompanyWebsite,
 }: ContactDetailClientProps) {
   const router = useRouter();
   const contact = rawContact || {};
@@ -159,6 +170,13 @@ export default function ContactDetailClient({
   const [editingLinkedIn, setEditingLinkedIn] = useState(false);
   const [linkedinDraft, setLinkedinDraft] = useState('');
   const [savingLinkedIn, setSavingLinkedIn] = useState(false);
+  const [followUpDraft, setFollowUpDraft] = useState(
+    toDateInputValue(contact.next_follow_up || contact.nextFollowUp)
+  );
+  const [followUpManual, setFollowUpManual] = useState(
+    contact.next_follow_up_manual === true || contact.nextFollowUpManual === true
+  );
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
 
   const removeContact = useRemoveContact();
   const updateContact = useUpdateContact();
@@ -420,6 +438,56 @@ export default function ContactDetailClient({
   const companyHref = companyId
     ? `/dashboard/companies/${companyId}`
     : null;
+  const companyWebsiteHref = toWebsiteHref(
+    propCompanyWebsite ||
+      contact.companyWebsite ||
+      contact.companyDomain ||
+      contact.company_url ||
+      contact.domain
+  );
+
+  const lastContacted = useMemo(
+    () => inferLastContacted(activities),
+    [activities]
+  );
+  const lastBooked = useMemo(() => inferLastBooked(activities), [activities]);
+  const inferredFollowUp = useMemo(
+    () => inferNextFollowUp(activities),
+    [activities]
+  );
+  const nextFollowUp = followUpManual ? followUpDraft : followUpDraft || inferredFollowUp;
+  const followUpOverdue = isFollowUpOverdue(nextFollowUp);
+
+  useEffect(() => {
+    if (followUpManual) return;
+    setFollowUpDraft(inferredFollowUp);
+  }, [inferredFollowUp, followUpManual]);
+
+  const saveFollowUp = async (value: string, manual: boolean) => {
+    if (!companyId || !contactId) {
+      toast.error('Missing company or contact ID');
+      return;
+    }
+    setSavingFollowUp(true);
+    try {
+      await updateContact.mutateAsync({
+        clientId: companyId,
+        contactId,
+        contactData: {
+          next_follow_up: value || '',
+          next_follow_up_manual: manual,
+        },
+      });
+      contact.next_follow_up = value || '';
+      contact.next_follow_up_manual = manual;
+      setFollowUpDraft(value);
+      setFollowUpManual(manual);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save follow-up');
+    } finally {
+      setSavingFollowUp(false);
+    }
+  };
 
   const tabs = [
     { id: 'overview' as const, label: 'Overview' },
@@ -931,6 +999,53 @@ export default function ContactDetailClient({
                     </span>
                   </div>
                 )}
+                <div className="flex justify-between gap-3">
+                  <span className="text-gray-500">Last contacted</span>
+                  <span className="font-medium">
+                    {formatFollowUpDate(lastContacted)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-gray-500 shrink-0">Next follow-up</span>
+                  <div className="flex min-w-0 items-center justify-end gap-2">
+                    <input
+                      type="date"
+                      value={nextFollowUp}
+                      disabled={savingFollowUp}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        void saveFollowUp(value, !!value);
+                      }}
+                      className="h-8 max-w-[10.5rem] rounded-md border border-gray-200 bg-white px-2 text-xs font-medium text-gray-900"
+                      title={
+                        followUpManual
+                          ? 'Manual date — clear to use notes again'
+                          : 'Filled from notes (last activity + 7 days, or a date in the note). Edit to override.'
+                      }
+                    />
+                    {followUpOverdue ? (
+                      <span className="text-[11px] font-semibold text-rose-600">
+                        Overdue
+                      </span>
+                    ) : null}
+                    {followUpManual ? (
+                      <button
+                        type="button"
+                        className="text-[11px] font-medium text-blue-600 hover:underline"
+                        disabled={savingFollowUp}
+                        onClick={() => void saveFollowUp('', false)}
+                      >
+                        Auto
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-gray-500">Last booked</span>
+                  <span className="font-medium">
+                    {formatFollowUpDate(lastBooked)}
+                  </span>
+                </div>
               </div>
             </section>
 
@@ -975,7 +1090,17 @@ export default function ContactDetailClient({
                 Quick links
               </h2>
               <div className="space-y-2">
-                {companyHref && (
+                {companyWebsiteHref ? (
+                  <a
+                    href={companyWebsiteHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-xl border border-gray-100 px-3 py-2.5 hover:bg-gray-50 text-sm font-medium text-gray-800"
+                  >
+                    <ExternalLink className="h-4 w-4 text-blue-600" />
+                    Open company page
+                  </a>
+                ) : companyHref ? (
                   <Link
                     href={companyHref}
                     className="flex items-center gap-3 rounded-xl border border-gray-100 px-3 py-2.5 hover:bg-gray-50 text-sm font-medium text-gray-800"
@@ -983,7 +1108,7 @@ export default function ContactDetailClient({
                     <Building2 className="h-4 w-4 text-blue-600" />
                     Open company page
                   </Link>
-                )}
+                ) : null}
                 <Link
                   href="/dashboard/contact-info"
                   className="flex items-center gap-3 rounded-xl border border-gray-100 px-3 py-2.5 hover:bg-gray-50 text-sm font-medium text-gray-800"
