@@ -133,16 +133,44 @@ export async function assignDefaultOwnerOnCreate(input: {
   actorUserId: string;
   actorEmail?: string | null;
   role?: AssignmentRole;
+  /** When set, this teammate is assigned instead of the tenant default / creator. */
+  overrideUserId?: string;
 }): Promise<void> {
   const objectId = String(input.objectId || "").trim();
   const actorUserId = String(input.actorUserId || "").trim();
   if (!input.tenantId || !objectId || !actorUserId) return;
 
   try {
-    const owner = await resolveDefaultOwnerUser({
-      tenantId: input.tenantId,
-      actorUserId,
-    });
+    const overrideId = String(input.overrideUserId || "").trim();
+    let owner: {
+      userId: string;
+      userName: string;
+      userEmail: string;
+      source: "fixed" | "creator";
+    } | null = null;
+
+    if (overrideId) {
+      const profile = await getProfileById(overrideId);
+      if (
+        profile &&
+        profile.tenant_id === input.tenantId &&
+        (!profile.status || profile.status === "active")
+      ) {
+        owner = {
+          userId: profile.id,
+          userName: profile.full_name || profile.email || profile.id,
+          userEmail: profile.email || "",
+          source: "fixed",
+        };
+      }
+    }
+
+    if (!owner) {
+      owner = await resolveDefaultOwnerUser({
+        tenantId: input.tenantId,
+        actorUserId,
+      });
+    }
     if (!owner) return;
 
     const actorEmail =

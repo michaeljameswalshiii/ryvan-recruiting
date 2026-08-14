@@ -131,6 +131,7 @@ export async function createJob(
   actor?: { userId: string; email?: string | null },
 ): Promise<Job> {
   const now = new Date().toISOString();
+  const ownerUserId = String((data as { ownerUserId?: string }).ownerUserId || '').trim();
 
   const job: Job = {
     id: generateId(),
@@ -191,13 +192,14 @@ export async function createJob(
   // Invalidate cache
   await invalidateTenantCache(tenantId);
 
-  if (actor?.userId && job.id) {
+  if (job.id && (actor?.userId || ownerUserId)) {
     await assignDefaultOwnerOnCreate({
       tenantId,
       objectType: 'job',
       objectId: String(job.id),
-      actorUserId: actor.userId,
-      actorEmail: actor.email,
+      actorUserId: actor?.userId || ownerUserId,
+      actorEmail: actor?.email,
+      overrideUserId: ownerUserId || undefined,
     });
   }
 

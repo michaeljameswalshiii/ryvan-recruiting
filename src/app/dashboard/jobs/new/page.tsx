@@ -20,6 +20,7 @@ import {
   HiringManagerSelect,
   type HiringManagerFields,
 } from '@/components/job/JobHiringManagerCard';
+import { OwnerSelect } from '@/components/shared/OwnerSelect';
 import { JobDescriptionEditor } from '@/components/job/JobDescriptionEditor';
 import {
   looksLikeHtml,
@@ -80,6 +81,7 @@ export default function NewJobPage() {
   const [newJobCompanyId, setNewJobCompanyId] = useState(prefilledCompanyId || "");
   const [newJobCompanyName, setNewJobCompanyName] = useState(prefilledCompanyName);
   const [hiringManager, setHiringManager] = useState<HiringManagerFields>({});
+  const [ownerUserId, setOwnerUserId] = useState('');
 
   // Convert data to Job interface
   const jobsData: { jobs?: any[]; stats?: any } = jobsDataRaw && typeof jobsDataRaw === 'object' ? jobsDataRaw : { jobs: [] };
@@ -145,6 +147,7 @@ export default function NewJobPage() {
         companyName,
         status: "Open",
         ...hiringManager,
+        ...(ownerUserId ? { ownerUserId } : {}),
       });
 
       // Reset and go back
@@ -156,6 +159,7 @@ export default function NewJobPage() {
       setNewJobCompanyId("");
       setNewJobCompanyName("");
       setHiringManager({});
+      setOwnerUserId("");
 
       router.push('/dashboard/jobs');
     } catch (err: any) {
@@ -273,6 +277,12 @@ export default function NewJobPage() {
             select a company.
           </p>
         </div>
+
+        <OwnerSelect
+          value={ownerUserId}
+          onChange={setOwnerUserId}
+          hint="Trio teammate who owns this req — not the hiring manager."
+        />
 
         <div className="grid gap-2">
           <Label htmlFor="location">Location</Label>

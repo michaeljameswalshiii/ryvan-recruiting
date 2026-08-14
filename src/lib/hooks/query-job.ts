@@ -102,6 +102,7 @@ return useMutation({
       hiringManagerTitle?: string;
       hiringManagerEmail?: string;
       hiringManagerPhone?: string;
+      ownerUserId?: string;
     }) => {
       const formData = new FormData();
       formData.set('title', jobData.title);
@@ -127,6 +128,8 @@ return useMutation({
         formData.set('hiringManagerEmail', jobData.hiringManagerEmail);
       if (jobData.hiringManagerPhone)
         formData.set('hiringManagerPhone', jobData.hiringManagerPhone);
+      if (jobData.ownerUserId)
+        formData.set('ownerUserId', jobData.ownerUserId);
 
       console.log('[useCreateJob] Sending FormData:', {
         title: jobData.title,

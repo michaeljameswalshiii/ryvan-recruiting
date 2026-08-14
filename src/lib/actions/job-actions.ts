@@ -308,6 +308,9 @@ export async function createJobAction(formData: FormData) {
       if (v) rawData[f] = v;
     }
 
+    const ownerUserId = formStr(formData, 'ownerUserId');
+    if (ownerUserId) rawData.ownerUserId = ownerUserId;
+
     console.log('[createJobAction] rawData:', JSON.stringify(rawData));
 
     const validated = createJobSchema.safeParse(rawData);

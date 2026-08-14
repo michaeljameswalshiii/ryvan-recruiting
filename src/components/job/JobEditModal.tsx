@@ -23,6 +23,7 @@ import {
   SearchableSelect,
   companyOptionsFromList,
 } from '@/components/ui/searchable-select';
+import { OwnerSelect } from '@/components/shared/OwnerSelect';
 
 interface JobEditModalProps {
   isOpen: boolean;
@@ -314,6 +315,15 @@ export default function JobEditModal({
                 Primary client contact for this req (from company contacts).
               </p>
             </div>
+
+            {job?.id ? (
+              <OwnerSelect
+                objectType="job"
+                objectId={String(job.id)}
+                persist
+                hint="Trio teammate who owns this req — not the hiring manager."
+              />
+            ) : null}
 
             <div className="grid grid-cols-2 gap-4">
               <div>

@@ -66,6 +66,8 @@ import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
 import { hasPermission } from "@/lib/roles";
 import { EntityFilesPanel } from "@/components/shared/EntityFilesPanel";
 import { CopyTextButton } from "@/components/shared/CopyTextButton";
+import { OwnerSelect } from "@/components/shared/OwnerSelect";
+import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
 
 type FitScoreClient = {
   score: number;
@@ -752,11 +754,20 @@ export default function JobDetailPage() {
             value={postedLabel || "—"}
             icon={<Calendar className="h-3.5 w-3.5" />}
           />
-          <div className="min-w-0">
+          <div className="min-w-0 xl:col-span-2">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
               Owner
             </div>
-            {ownerName ? (
+            {job.id ? (
+              <OwnerSelect
+                objectType="job"
+                objectId={String(job.id)}
+                persist
+                compact
+                label=""
+                className="max-w-[240px]"
+              />
+            ) : ownerName ? (
               <div className="inline-flex items-center gap-2 min-w-0">
                 <span
                   className={`h-7 w-7 shrink-0 rounded-full ${avatarColor(ownerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
@@ -886,6 +897,13 @@ export default function JobDetailPage() {
 
         {/* ─── Right sidebar: hiring manager + JD preview + candidates ─── */}
         <div className="xl:col-span-4 space-y-5">
+          {job.id ? (
+            <ObjectAssignments
+              objectType="job"
+              objectId={String(job.id)}
+              label="Owner / account rep"
+            />
+          ) : null}
           <JobHiringManagerCard
             jobId={job.id || jobId}
             companyId={job.companyId}

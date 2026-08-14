@@ -175,6 +175,8 @@ export const createJobSchema = jobSchema.omit({
 }).extend({
   companyId: z.string().min(1, 'Company ID is required'),  // Allow any string (not just UUID)
   companyName: z.string().min(1, 'Company name is required'),
+  /** Team member assigned as job owner / account rep. Not stored on the job item. */
+  ownerUserId: z.string().min(1).optional().or(z.literal('')),
 });
 
 /**

@@ -21,6 +21,7 @@ import {
   HiringManagerSelect,
   type HiringManagerFields,
 } from '@/components/job/JobHiringManagerCard';
+import { OwnerSelect } from '@/components/shared/OwnerSelect';
 import { JobDescriptionEditor } from '@/components/job/JobDescriptionEditor';
 import {
   looksLikeHtml,
@@ -83,6 +84,7 @@ export default function JobsPage() {
     showOnWebsite: false,
   });
   const [hiringManager, setHiringManager] = useState<HiringManagerFields>({});
+  const [ownerUserId, setOwnerUserId] = useState('');
 
   const handleCompanySelect = (companyId: string) => {
     const company = companies.find(
@@ -164,6 +166,7 @@ export default function JobsPage() {
         status: formData.status,
         showOnWebsite: formData.showOnWebsite,
         ...hiringManager,
+        ...(ownerUserId ? { ownerUserId } : {}),
       });
 
       setIsAddDialogOpen(false);
@@ -177,6 +180,7 @@ export default function JobsPage() {
         showOnWebsite: false,
       });
       setHiringManager({});
+      setOwnerUserId('');
       refetch();
     } catch (err: any) {
       // useCreateJob already toasts; keep a console trail only
@@ -338,6 +342,12 @@ export default function JobsPage() {
                   primary when you select a company).
                 </p>
               </div>
+
+              <OwnerSelect
+                value={ownerUserId}
+                onChange={setOwnerUserId}
+                hint="Trio teammate who owns this req — not the hiring manager."
+              />
 
               <div>
                 <Label className="mb-1.5 block">Description</Label>
