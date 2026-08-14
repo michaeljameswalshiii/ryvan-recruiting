@@ -227,11 +227,23 @@ export function expandSearchToken(
   const out = new Set<string>([key]);
   for (const row of taxonomy) {
     const hay = [row.id, row.label, ...row.synonyms].map((s) => s.toLowerCase());
-    if (hay.some((h) => h === key || h.includes(key) || key.includes(h))) {
+    if (hay.some((h) => taxonomyTermMatchesQuery(h, key))) {
       out.add(row.label.toLowerCase());
       out.add(row.id);
       for (const syn of row.synonyms) out.add(syn.toLowerCase());
     }
   }
   return [...out];
+}
+
+function taxonomyTermMatchesQuery(term: string, query: string): boolean {
+  if (term === query) return true;
+
+  // Keep useful partial taxonomy searches while preventing names such as
+  // "Anita" from expanding through the short "IT" taxonomy label.
+  if (query.length >= 4 && term.includes(query)) return true;
+  if (term.length < 4) return false;
+
+  const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escapedTerm}(?:$|[^a-z0-9])`, "i").test(query);
 }
