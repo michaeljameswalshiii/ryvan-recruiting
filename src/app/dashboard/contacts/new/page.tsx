@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Plus, Star, Trash2 } from "lucide-react";
@@ -16,6 +16,8 @@ import {
   SearchableSelect,
   companyOptionsFromList,
 } from "@/components/ui/searchable-select";
+import { TagEditor } from "@/components/shared/TagEditor";
+import { tagsFromRecord } from "@/lib/tags";
 
 // Phone types
 const PHONE_TYPES = [
@@ -51,6 +53,8 @@ export default function NewContactPage() {
     companyId: "",
   });
   const [isExtracting, setIsExtracting] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagsTouched, setTagsTouched] = useState(false);
 
   const [phones, setPhones] = useState<PhoneEntry[]>([
     { id: generateId(), type: "work", number: "", isPreferred: true },
@@ -136,6 +140,26 @@ const handleAddPhone = () => {
     }
   };
 
+  useEffect(() => {
+    if (tagsTouched) return;
+    const companyName =
+      clients.find((c: any) => c.id === formData.companyId)?.name || "";
+    setTags(
+      tagsFromRecord({
+        objectType: "contact",
+        title: formData.title,
+        notes: formData.notes,
+        description: companyName,
+      }).tags
+    );
+  }, [
+    tagsTouched,
+    formData.title,
+    formData.notes,
+    formData.companyId,
+    clients,
+  ]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -167,6 +191,7 @@ const handleAddPhone = () => {
           phones: validPhones,
           isPrimary: formData.isPrimary,
           notes: formData.notes,
+          tags,
         },
       });
       toast.success("Contact added successfully!");
@@ -357,6 +382,22 @@ const handleAddPhone = () => {
                 placeholder="Additional notes about this contact..."
                 rows={3}
               />
+            </div>
+
+            <div>
+              <Label>Tags</Label>
+              <TagEditor
+                value={tags}
+                onChange={(next) => {
+                  setTagsTouched(true);
+                  setTags(next);
+                }}
+                objectType="contact"
+                placeholder="Add tag…"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Auto-filled from title, company, and notes. You can edit before saving.
+              </p>
             </div>
 
             <div className="flex gap-4 pt-4">

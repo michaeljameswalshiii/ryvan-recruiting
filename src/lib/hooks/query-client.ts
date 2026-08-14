@@ -80,12 +80,38 @@ export function useClient(clientId: string) {
   });
 }
 
+function parseFormTags(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    return value.map((t) => String(t).trim()).filter(Boolean);
+  }
+  if (typeof value !== 'string') return undefined;
+  const raw = value.trim();
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.map((t) => String(t).trim()).filter(Boolean);
+    }
+  } catch {
+    // comma-separated fallback
+  }
+  return raw
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
 function formDataToObject(formData: FormData): Record<string, any> {
   const obj: Record<string, any> = {};
   formData.forEach((value, key) => {
     if (value === '' || value == null) return;
     obj[key] = value;
   });
+  if (Object.prototype.hasOwnProperty.call(obj, 'tags')) {
+    const tags = parseFormTags(obj.tags);
+    if (tags) obj.tags = tags;
+    else obj.tags = [];
+  }
   if (obj.employee_count != null && obj.employee_count !== '') {
     const n = Number(obj.employee_count);
     if (!Number.isNaN(n)) obj.employee_count = n;
@@ -146,6 +172,7 @@ export function useCreateClient() {
         fee_guarantee: payload.fee_guarantee
           ? String(payload.fee_guarantee)
           : undefined,
+        tags: Array.isArray(payload.tags) ? payload.tags : undefined,
       });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: clientKeys.all }),

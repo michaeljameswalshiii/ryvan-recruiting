@@ -34,6 +34,8 @@ import {
   SearchableSelect,
   companyOptionsFromList,
 } from '@/components/ui/searchable-select';
+import { TagEditor } from '@/components/shared/TagEditor';
+import { mergeManualAndGenerated, tagsFromRecord } from '@/lib/tags';
 
 export default function JobsPage() {
   const router = useRouter();
@@ -71,6 +73,7 @@ export default function JobsPage() {
       location: item.location,
       salaryRange: item.salaryRange || item.salary_range,
       showOnWebsite: item.showOnWebsite,
+      tags: Array.isArray(item.tags) ? item.tags : [],
     }));
   }, [jobsDataRaw]);
 
@@ -85,6 +88,7 @@ export default function JobsPage() {
   });
   const [hiringManager, setHiringManager] = useState<HiringManagerFields>({});
   const [ownerUserId, setOwnerUserId] = useState('');
+  const [jobTags, setJobTags] = useState<string[]>([]);
 
   const handleCompanySelect = (companyId: string) => {
     const company = companies.find(
@@ -152,19 +156,26 @@ export default function JobsPage() {
 
     try {
       // Toasts for success/error are handled by useCreateJob
+      const description = (() => {
+        const d = formData.description.trim();
+        return looksLikeHtml(d)
+          ? sanitizeJobHtml(d)
+          : normalizeJobDescriptionPaste(d);
+      })();
+      const generated = tagsFromRecord({
+        objectType: 'job',
+        title: formData.title.trim(),
+        description: description.replace(/<[^>]+>/g, ' '),
+      }).tags;
       await createJobMutation.mutateAsync({
         title: formData.title.trim(),
         companyId: formData.companyId.trim(),
         companyName,
-        description: (() => {
-          const d = formData.description.trim();
-          return looksLikeHtml(d)
-            ? sanitizeJobHtml(d)
-            : normalizeJobDescriptionPaste(d);
-        })(),
+        description,
         salaryRange: formData.salaryRange.trim(),
         status: formData.status,
         showOnWebsite: formData.showOnWebsite,
+        tags: mergeManualAndGenerated(jobTags, generated),
         ...hiringManager,
         ...(ownerUserId ? { ownerUserId } : {}),
       });
@@ -181,6 +192,7 @@ export default function JobsPage() {
       });
       setHiringManager({});
       setOwnerUserId('');
+      setJobTags([]);
       refetch();
     } catch (err: any) {
       // useCreateJob already toasts; keep a console trail only
@@ -261,7 +273,13 @@ export default function JobsPage() {
       <JobListView jobs={jobs} />
 
       {/* Add Job Modal — scrollable body + sticky footer so short viewports can reach Create */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+      <Dialog
+        open={isAddDialogOpen}
+        onOpenChange={(open) => {
+          setIsAddDialogOpen(open);
+          if (!open) setJobTags([]);
+        }}
+      >
         <DialogContent className="sm:max-w-lg max-h-[min(92vh,900px)] flex flex-col gap-0 p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-3 pr-12 shrink-0 border-b">
             <DialogTitle>Add New Job</DialogTitle>
@@ -357,6 +375,19 @@ export default function JobsPage() {
                     setFormData((prev) => ({ ...prev, description }))
                   }
                   minHeight={200}
+                />
+              </div>
+
+              <div>
+                <Label className="mb-1.5 block">Tags</Label>
+                <p className="text-xs text-muted-foreground mb-1.5">
+                  Controlled tags. Auto-filled from title and description on save.
+                </p>
+                <TagEditor
+                  value={jobTags}
+                  onChange={setJobTags}
+                  objectType="job"
+                  placeholder="Add tag…"
                 />
               </div>
 

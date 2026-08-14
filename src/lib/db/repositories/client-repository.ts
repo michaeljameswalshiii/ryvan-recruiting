@@ -16,6 +16,22 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import type { Contact, ContactPhone, CreateClientInput, UpdateClientInput } from '../../schemas/client';
 import { assignDefaultOwnerOnCreate } from '@/lib/ownership/default-owner';
+import { tagsFromRecord } from '@/lib/tags';
+
+function normalizeTagList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    const tag = String(raw || '').trim();
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+    if (out.length >= 18) break;
+  }
+  return out;
+}
 
 export type ClientRecord = {
   id?: string;
@@ -185,6 +201,18 @@ export async function createClient(
     throw new Error('Company name is required');
   }
 
+  if (Array.isArray((data as any).tags)) {
+    (item as any).tags = normalizeTagList((data as any).tags);
+  } else if (!Array.isArray((item as any).tags) || (item as any).tags.length === 0) {
+    (item as any).tags = tagsFromRecord({
+      objectType: 'company',
+      title: item.name,
+      industry: typeof (data as any).industry === 'string' ? (data as any).industry : '',
+      description:
+        typeof (data as any).description === 'string' ? (data as any).description : '',
+    }).tags;
+  }
+
   // Avoid empty-string GSI keys
   if (item.email === '') delete item.email;
   if ((item as any).fee_percent == null) delete (item as any).fee_percent;
@@ -235,6 +263,10 @@ export async function updateClient(
     updated_at: now,
     modified_at: now,
   }) as ClientRecord;
+
+  if (Array.isArray((safeUpdates as any).tags)) {
+    (merged as any).tags = normalizeTagList((safeUpdates as any).tags);
+  }
 
   if (merged.email === '') delete merged.email;
   if (safeUpdates.fee_percent === null) {
@@ -467,6 +499,15 @@ export async function addContactToClient(
 
   const phoneFields = normalizeIncomingPhones(contact);
   const now = new Date().toISOString();
+  const incomingTags = Array.isArray(contact?.tags)
+    ? normalizeTagList(contact.tags)
+    : undefined;
+  const generatedTags = tagsFromRecord({
+    objectType: 'contact',
+    title: typeof contact?.title === 'string' ? contact.title : '',
+    notes: typeof contact?.notes === 'string' ? contact.notes : '',
+    description: typeof client.name === 'string' ? client.name : '',
+  }).tags;
   const newContact = removeUndefinedDeep({
     id: typeof contact?.id === 'string' && contact.id ? contact.id : generateId(),
     companyId: client.id,
@@ -478,6 +519,7 @@ export async function addContactToClient(
         : '',
     isPrimary: !!contact?.isPrimary,
     notes: typeof contact?.notes === 'string' ? contact.notes : '',
+    tags: incomingTags ?? generatedTags,
     createdAt: now,
     updatedAt: now,
     ...phoneFields,
@@ -541,12 +583,22 @@ export async function updateClientContact(
       contacts = contacts.map((c) => ({ ...c, isPrimary: false, updatedAt: now }));
     }
     const newId = (data as any).id || generateId();
+    const incomingTags = Array.isArray((data as any).tags)
+      ? normalizeTagList((data as any).tags)
+      : undefined;
+    const generatedTags = tagsFromRecord({
+      objectType: 'contact',
+      title: typeof data.title === 'string' ? data.title : '',
+      notes: typeof data.notes === 'string' ? data.notes : '',
+      description: typeof client.name === 'string' ? client.name : '',
+    }).tags;
     contacts.push(
       removeUndefinedDeep({
         ...data,
         id: newId,
         companyId: client.id,
         ...phoneFields,
+        tags: incomingTags ?? generatedTags,
         createdAt: now,
         updatedAt: now,
       }) as Contact
@@ -569,10 +621,15 @@ export async function updateClientContact(
             ((data as any).phones as ContactPhone[] | undefined) || contacts[idx].phones
           );
 
+    const nextTags = Array.isArray((data as any).tags)
+      ? normalizeTagList((data as any).tags)
+      : contacts[idx].tags;
+
     contacts[idx] = removeUndefinedDeep({
       ...contacts[idx],
       ...data,
       ...preferred,
+      tags: nextTags,
       phones: phoneFields.phones || contacts[idx].phones,
       phone: preferred.preferredPhone || (data as any).phone || contacts[idx].phone || '',
       updatedAt: now,

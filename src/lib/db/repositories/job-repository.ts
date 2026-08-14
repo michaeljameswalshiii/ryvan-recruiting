@@ -170,6 +170,12 @@ export async function createJob(
   if (data.preScreenQuestions !== undefined) {
     job.preScreenQuestions = data.preScreenQuestions;
   }
+  if (Array.isArray((data as { tags?: string[] }).tags)) {
+    (job as { tags?: string[] }).tags = (data as { tags?: string[] }).tags!
+      .map((t) => String(t).trim())
+      .filter(Boolean)
+      .slice(0, 25);
+  }
 
   const explicitFee = feeFromRecord(data as unknown as Record<string, unknown>);
   let companyFee = {};
@@ -324,6 +330,16 @@ export async function updateJob(
     updates.push('#preScreenQuestions = :preScreenQuestions');
     values[':preScreenQuestions'] = data.preScreenQuestions;
     names['#preScreenQuestions'] = 'preScreenQuestions';
+  }
+  if ((data as { tags?: string[] }).tags !== undefined) {
+    updates.push('#tags = :tags');
+    values[':tags'] = Array.isArray((data as { tags?: string[] }).tags)
+      ? (data as { tags?: string[] }).tags!
+          .map((t) => String(t).trim())
+          .filter(Boolean)
+          .slice(0, 25)
+      : [];
+    names['#tags'] = 'tags';
   }
   if (data.hiringManagerContactId !== undefined) {
     updates.push('#hiringManagerContactId = :hiringManagerContactId');

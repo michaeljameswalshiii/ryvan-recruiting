@@ -16,6 +16,8 @@ import {
 } from "@/lib/contacts/phone";
 import { toast } from "sonner";
 import { Loader2, Star, Building2 } from "lucide-react";
+import { TagEditor } from "@/components/shared/TagEditor";
+import { tagsFromRecord, mergeManualAndGenerated } from "@/lib/tags";
 import {
   SearchableSelect,
   companyOptionsFromList,
@@ -33,6 +35,7 @@ interface Contact {
   isPrimary?: boolean;
   notes?: string;
   linkedin_url?: string;
+  tags?: string[];
 }
 
 function splitContactPhones(contact?: Contact | null) {
@@ -96,6 +99,8 @@ export default function ContactModal({
     notes: "",
     linkedin_url: "",
   });
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagsTouched, setTagsTouched] = useState(false);
 
   // Mutations
   const addContactMutation = useAddContact();
@@ -128,6 +133,20 @@ export default function ContactModal({
           notes: contact.notes || "",
           linkedin_url: contact.linkedin_url || "",
         });
+        const companyName =
+          companies.find((c: any) => c.id === initialClientId)?.name || "";
+        setTags(
+          mergeManualAndGenerated(
+            Array.isArray(contact.tags) ? contact.tags.map(String) : [],
+            tagsFromRecord({
+              objectType: "contact",
+              title: contact.title || "",
+              notes: contact.notes || "",
+              description: companyName,
+            }).tags
+          )
+        );
+        setTagsTouched(false);
 } else if (open) {
         // New contact - use passed clientId or first company (only if companies are loaded)
         const defaultClientId = initialClientId || (sortedCompanies.length > 0 ? (sortedCompanies[0]?.id || "") : "");
@@ -142,9 +161,39 @@ export default function ContactModal({
           notes: "",
           linkedin_url: "",
         });
+        setTags([]);
+        setTagsTouched(false);
       }
     }
   }, [open, contact, initialClientId, companies, isLoadingCompanies]);
+
+  useEffect(() => {
+    if (!open || tagsTouched) return;
+    const companyName =
+      companies.find((c: any) => c.id === formData.clientId)?.name || "";
+    const existing = Array.isArray(contact?.tags)
+      ? contact.tags.map(String)
+      : [];
+    setTags(
+      mergeManualAndGenerated(
+        existing,
+        tagsFromRecord({
+          objectType: "contact",
+          title: formData.title,
+          notes: formData.notes,
+          description: companyName,
+        }).tags
+      )
+    );
+  }, [
+    open,
+    tagsTouched,
+    formData.title,
+    formData.notes,
+    formData.clientId,
+    companies,
+    contact?.tags,
+  ]);
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
@@ -177,6 +226,7 @@ export default function ContactModal({
         isPrimary: formData.isPrimary,
         notes: formData.notes,
         linkedin_url: formData.linkedin_url,
+        tags,
       };
 
       if (contact?.id) {
@@ -220,6 +270,8 @@ export default function ContactModal({
         notes: contact.notes || "",
         linkedin_url: contact.linkedin_url || "",
       });
+      setTags(Array.isArray(contact.tags) ? contact.tags.map(String) : []);
+      setTagsTouched(false);
     } else if (!isOpen) {
       setFormData({
         clientId: initialClientId || "",
@@ -232,6 +284,8 @@ export default function ContactModal({
         notes: "",
         linkedin_url: "",
       });
+      setTags([]);
+      setTagsTouched(false);
     }
     setOpen(isOpen);
   };
@@ -421,6 +475,19 @@ export default function ContactModal({
               }
               placeholder="Additional notes about this contact..."
               rows={3}
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Tags</Label>
+            <TagEditor
+              value={tags}
+              onChange={(next) => {
+                setTagsTouched(true);
+                setTags(next);
+              }}
+              objectType="contact"
+              placeholder="Add tag…"
             />
           </div>
         </div>

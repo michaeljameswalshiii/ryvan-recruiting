@@ -31,6 +31,8 @@ import {
   SearchableSelect,
   companyOptionsFromList,
 } from '@/components/ui/searchable-select';
+import { TagEditor } from '@/components/shared/TagEditor';
+import { mergeManualAndGenerated, tagsFromRecord } from '@/lib/tags';
 
 interface Job {
   id: string;
@@ -82,6 +84,7 @@ export default function NewJobPage() {
   const [newJobCompanyName, setNewJobCompanyName] = useState(prefilledCompanyName);
   const [hiringManager, setHiringManager] = useState<HiringManagerFields>({});
   const [ownerUserId, setOwnerUserId] = useState('');
+  const [jobTags, setJobTags] = useState<string[]>([]);
 
   // Convert data to Job interface
   const jobsData: { jobs?: any[]; stats?: any } = jobsDataRaw && typeof jobsDataRaw === 'object' ? jobsDataRaw : { jobs: [] };
@@ -135,17 +138,26 @@ export default function NewJobPage() {
     try {
       // Success/error toasts come from useCreateJob
       const desc = (newJobDescription || '').trim();
+      const description = looksLikeHtml(desc)
+        ? sanitizeJobHtml(desc)
+        : normalizeJobDescriptionPaste(desc);
+      const generated = tagsFromRecord({
+        objectType: 'job',
+        title: newJobTitle.trim(),
+        description: [description.replace(/<[^>]+>/g, ' '), newJobLocation]
+          .filter(Boolean)
+          .join('\n'),
+      }).tags;
       await createJobMutation.mutateAsync({
         title: newJobTitle.trim(),
-        description: looksLikeHtml(desc)
-          ? sanitizeJobHtml(desc)
-          : normalizeJobDescriptionPaste(desc),
+        description,
         location: newJobLocation,
         salaryRange: newJobSalary,
         employmentType: newJobEmploymentType,
         companyId: newJobCompanyId,
         companyName,
         status: "Open",
+        tags: mergeManualAndGenerated(jobTags, generated),
         ...hiringManager,
         ...(ownerUserId ? { ownerUserId } : {}),
       });
@@ -160,6 +172,7 @@ export default function NewJobPage() {
       setNewJobCompanyName("");
       setHiringManager({});
       setOwnerUserId("");
+      setJobTags([]);
 
       router.push('/dashboard/jobs');
     } catch (err: any) {
@@ -325,6 +338,19 @@ export default function NewJobPage() {
             value={newJobDescription}
             onChange={setNewJobDescription}
             minHeight={220}
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label>Tags</Label>
+          <p className="text-xs text-muted-foreground">
+            Controlled tags. Auto-filled from title, description, and location on save.
+          </p>
+          <TagEditor
+            value={jobTags}
+            onChange={setJobTags}
+            objectType="job"
+            placeholder="Add tag…"
           />
         </div>
 

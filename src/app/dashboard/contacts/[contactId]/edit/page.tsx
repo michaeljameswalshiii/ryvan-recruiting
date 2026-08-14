@@ -12,6 +12,8 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useClients, useUpdateContact } from "@/lib/hooks/query-client";
 import { toast } from "sonner";
+import { TagEditor } from "@/components/shared/TagEditor";
+import { tagsFromRecord, mergeManualAndGenerated } from "@/lib/tags";
 
 // Phone types
 const PHONE_TYPES = [
@@ -66,6 +68,8 @@ export default function EditContactPage() {
   const [phones, setPhones] = useState<PhoneEntry[]>([
     { id: generateId(), type: "work", number: "", isPreferred: true },
   ]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagsTouched, setTagsTouched] = useState(false);
 
 // Pre-fill form with contact data when loaded
   useEffect(() => {
@@ -88,8 +92,46 @@ export default function EditContactPage() {
           isPreferred: p.isPreferred || false,
         })));
       }
+      const companyName =
+        clients.find((c: any) => c.id === companyIdParam)?.name || "";
+      setTags(
+        mergeManualAndGenerated(
+          Array.isArray(contactData.tags) ? contactData.tags.map(String) : [],
+          tagsFromRecord({
+            objectType: "contact",
+            title: contactData.title || "",
+            notes: contactData.notes || "",
+            description: companyName,
+          }).tags
+        )
+      );
+      setTagsTouched(false);
     }
-  }, [contactData, companyIdParam]);
+  }, [contactData, companyIdParam, clients]);
+
+  useEffect(() => {
+    if (!contactData || tagsTouched) return;
+    const companyName =
+      clients.find((c: any) => c.id === companyIdParam)?.name || "";
+    setTags(
+      mergeManualAndGenerated(
+        Array.isArray(contactData.tags) ? contactData.tags.map(String) : [],
+        tagsFromRecord({
+          objectType: "contact",
+          title: formData.title,
+          notes: formData.notes,
+          description: companyName,
+        }).tags
+      )
+    );
+  }, [
+    contactData,
+    tagsTouched,
+    formData.title,
+    formData.notes,
+    companyIdParam,
+    clients,
+  ]);
 
 const handleAddPhone = () => {
     setPhones([
@@ -146,6 +188,7 @@ const handleAddPhone = () => {
           phones: validPhones,
           isPrimary: formData.isPrimary,
           notes: formData.notes,
+          tags,
         },
       });
       toast.success("Contact updated successfully!");
@@ -325,6 +368,19 @@ const handleAddPhone = () => {
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 placeholder="Additional notes about this contact..."
                 rows={3}
+              />
+            </div>
+
+            <div>
+              <Label>Tags</Label>
+              <TagEditor
+                value={tags}
+                onChange={(next) => {
+                  setTagsTouched(true);
+                  setTags(next);
+                }}
+                objectType="contact"
+                placeholder="Add tag…"
               />
             </div>
 

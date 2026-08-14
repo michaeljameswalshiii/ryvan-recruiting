@@ -59,6 +59,17 @@ export type TenantProductConfig = {
    * Do not store secrets here.
    */
   extras?: Record<string, string | number | boolean | null>;
+  /** Recruiter-controlled tag library overlays. */
+  tagTaxonomy?: {
+    disabledIds?: string[];
+    extra?: Array<{
+      id: string;
+      label: string;
+      facet: string;
+      synonyms?: string[];
+      objects?: Array<"candidate" | "job" | "company" | "contact">;
+    }>;
+  };
 };
 
 export const DEFAULT_TENANT_PRODUCT_CONFIG: TenantProductConfig = {

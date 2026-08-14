@@ -68,6 +68,8 @@ import {
   isFollowUpOverdue,
   toDateInputValue,
 } from '@/lib/contacts/follow-up';
+import { TagEditor } from '@/components/shared/TagEditor';
+import { tagsFromRecord, mergeManualAndGenerated } from '@/lib/tags';
 
 /** Contact activity types (canonical order) */
 const NOTE_TYPES = [...CONTACT_ACTIVITY_TYPES];
@@ -183,6 +185,18 @@ export default function ContactDetailClient({
     contact.next_follow_up_manual === true || contact.nextFollowUpManual === true
   );
   const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [tags, setTags] = useState<string[]>(() =>
+    mergeManualAndGenerated(
+      Array.isArray(contact.tags) ? contact.tags.map(String) : [],
+      tagsFromRecord({
+        objectType: 'contact',
+        title: contact.title,
+        notes: typeof contact.notes === 'string' ? contact.notes : '',
+        description: companyName,
+      }).tags
+    )
+  );
+  const [savingTags, setSavingTags] = useState(false);
 
   const removeContact = useRemoveContact();
   const updateContact = useUpdateContact();
@@ -401,6 +415,7 @@ export default function ContactDetailClient({
           notes: form.notes || '',
           isPrimary: !!form.isPrimary,
           linkedin_url,
+          tags,
         },
       });
       setShowEditModal(false);
@@ -418,10 +433,32 @@ export default function ContactDetailClient({
       contact.preferredPhoneType =
         phones.find((p) => p.isPreferred)?.type || phones[0]?.type || 'work';
       setForm((prev) => ({ ...prev, linkedin_url }));
+      contact.tags = tags;
     } catch (err: any) {
       toast.error(err?.message || 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveTags = async (next: string[]) => {
+    if (!companyId || !contactId) {
+      toast.error('Missing company or contact ID');
+      return;
+    }
+    setSavingTags(true);
+    try {
+      await updateContact.mutateAsync({
+        clientId: companyId,
+        contactId,
+        contactData: { tags: next },
+      });
+      setTags(next);
+      contact.tags = next;
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save tags');
+    } finally {
+      setSavingTags(false);
     }
   };
 
@@ -712,6 +749,15 @@ export default function ContactDetailClient({
                     Add LinkedIn
                   </button>
                 )}
+              </div>
+              <div className="pt-1 max-w-xl">
+                <TagEditor
+                  value={tags}
+                  onChange={(next) => void saveTags(next)}
+                  objectType="contact"
+                  disabled={savingTags}
+                  placeholder="Add tag…"
+                />
               </div>
             </div>
           </div>
@@ -1439,6 +1485,17 @@ export default function ContactDetailClient({
                       setForm({ ...form, notes: e.target.value })
                     }
                     className="w-full min-h-[80px] rounded-md border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm placeholder:text-slate-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium block mb-1 text-slate-800">
+                    Tags
+                  </label>
+                  <TagEditor
+                    value={tags}
+                    onChange={setTags}
+                    objectType="contact"
+                    placeholder="Add tag…"
                   />
                 </div>
                 <label className="flex items-center gap-2 text-sm text-slate-800">

@@ -13,6 +13,8 @@ import {
 } from "@/lib/schemas/client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { TagEditor } from "@/components/shared/TagEditor";
+import { tagsFromRecord, mergeManualAndGenerated } from "@/lib/tags";
 import {
   PlacementFeeFields,
   appendPlacementFeeToFormData,
@@ -48,6 +50,7 @@ interface Company {
   feeType?: string;
   fee_guarantee?: string;
   feeGuarantee?: string;
+  tags?: string[];
 }
 
 interface CompanyEditModalProps {
@@ -101,6 +104,8 @@ export default function CompanyEditModal({
     contactPhone: "",
   });
   const [fee, setFee] = useState<PlacementFeeForm>(emptyPlacementFeeForm());
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagsTouched, setTagsTouched] = useState(false);
 
   // Mutations
   const createClientMutation = useCreateClient();
@@ -132,8 +137,43 @@ export default function CompanyEditModal({
         contactPhone: company.contactPhone || "",
       });
       setFee(placementFeeFormFromRecord(company));
+      const existing = Array.isArray(company.tags)
+        ? company.tags.map(String)
+        : [];
+      const generated = tagsFromRecord({
+        objectType: "company",
+        title: company.name,
+        industry: company.industry,
+        description: company.description,
+      }).tags;
+      setTags(mergeManualAndGenerated(existing, generated));
+      setTagsTouched(false);
+    } else if (open) {
+      setTags([]);
+      setTagsTouched(false);
     }
   }, [open, company]);
+
+  useEffect(() => {
+    if (!open || tagsTouched) return;
+    const existing = Array.isArray(company?.tags)
+      ? company.tags.map(String)
+      : [];
+    const generated = tagsFromRecord({
+      objectType: "company",
+      title: formData.name,
+      industry: formData.industry,
+      description: formData.description,
+    }).tags;
+    setTags(mergeManualAndGenerated(existing, generated));
+  }, [
+    open,
+    tagsTouched,
+    formData.name,
+    formData.industry,
+    formData.description,
+    company?.tags,
+  ]);
 
   const handleSave = async () => {
     if (!formData.name) {
@@ -162,6 +202,7 @@ export default function CompanyEditModal({
       formDataToSend.set("linkedin_url", formData.linkedin_url);
       formDataToSend.set("status", formData.status);
       appendPlacementFeeToFormData(formDataToSend, fee);
+      formDataToSend.set("tags", JSON.stringify(tags));
 
       if (company?.id) {
         await updateClientMutation.mutateAsync({
@@ -210,6 +251,11 @@ export default function CompanyEditModal({
         contactPhone: company.contactPhone || "",
       });
       setFee(placementFeeFormFromRecord(company));
+      const existing = Array.isArray(company.tags)
+        ? company.tags.map(String)
+        : [];
+      setTags(existing);
+      setTagsTouched(false);
     } else if (!isOpen) {
       // Reset for new company
       setFormData({
@@ -232,6 +278,8 @@ export default function CompanyEditModal({
         contactPhone: "",
       });
       setFee(emptyPlacementFeeForm());
+      setTags([]);
+      setTagsTouched(false);
     }
     setOpen(isOpen);
   };
@@ -453,6 +501,22 @@ export default function CompanyEditModal({
               placeholder="Brief description of the company..."
               rows={4}
             />
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Tags</Label>
+            <TagEditor
+              value={tags}
+              onChange={(next) => {
+                setTagsTouched(true);
+                setTags(next);
+              }}
+              objectType="company"
+              placeholder="Add tag…"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Auto-filled from name, industry, and notes. You can edit before saving.
+            </p>
           </div>
         </div>
       </SimpleDialog>

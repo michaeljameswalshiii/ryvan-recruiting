@@ -45,6 +45,7 @@ import {
   listThNameFlush,
   listThRight,
 } from '@/components/ui/data-list-table';
+import { recordMatchesQuery } from '@/lib/tags';
 
 export type JobListItem = {
   id: string;
@@ -59,6 +60,7 @@ export type JobListItem = {
   location?: string;
   salaryRange?: string;
   showOnWebsite?: boolean;
+  tags?: string[];
 };
 
 type SortKey = 'last_activity' | 'title' | 'added' | 'candidates' | 'status';
@@ -267,20 +269,20 @@ export function JobListView({ jobs }: JobListViewProps) {
           break;
       }
       if (!q) return true;
-      const hay = [
-        j.title,
-        j.companyName,
-        j.employmentType,
-        j.status,
-        j.location,
-        j.salaryRange,
-        j.ownerName,
-        j.isPosted ? 'posted' : 'not posted',
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return hay.includes(q);
+      return recordMatchesQuery({
+        query: search,
+        fields: [
+          j.title,
+          j.companyName,
+          j.employmentType,
+          j.status,
+          j.location,
+          j.salaryRange,
+          j.ownerName,
+          j.isPosted ? 'posted' : 'not posted',
+        ],
+        tags: j.tags,
+      });
     });
 
     list = [...list].sort((a, b) => {

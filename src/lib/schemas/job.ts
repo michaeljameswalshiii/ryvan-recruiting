@@ -140,6 +140,9 @@ export const jobSchema = z.object({
    */
   showOnWebsite: z.boolean().optional(),
 
+  /** Controlled search tags from the Trio taxonomy. */
+  tags: z.array(z.string().min(1).max(50)).max(25).optional(),
+
   /**
    * Optional pre-screen questions shown on the public careers apply form.
    * Answers are evaluated by the screen-bot on submit.

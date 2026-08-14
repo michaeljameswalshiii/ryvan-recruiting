@@ -59,6 +59,8 @@ export const contactSchema = z.object({
   /** Next scheduled follow-up (YYYY-MM-DD). Manual override wins over note inference. */
   next_follow_up: z.string().max(40).optional().or(z.literal('')),
   next_follow_up_manual: z.boolean().optional(),
+  /** Controlled search tags from the Trio taxonomy. */
+  tags: z.array(z.string().min(1).max(50)).max(25).optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
 });

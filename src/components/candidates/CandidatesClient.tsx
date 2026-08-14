@@ -58,6 +58,7 @@ import {
   getStageLabel,
 } from '@/lib/schemas/lead';
 import { noteTypeFromStage } from '@/lib/candidates/note-type-stage';
+import { recordMatchesQuery } from '@/lib/tags';
 
 type SortKey = 'last_activity' | 'name' | 'added' | 'stage';
 
@@ -337,6 +338,29 @@ function candidateLocation(candidate: any): string {
   return parts.join(', ');
 }
 
+function listFromUnknown(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item ?? '').trim()).filter(Boolean);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.split(/[,;\n]/).map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function experienceSearchFields(experience: unknown): string[] {
+  if (!Array.isArray(experience)) return [];
+  const out: string[] = [];
+  for (const row of experience) {
+    if (!row || typeof row !== 'object') continue;
+    const title = String((row as { title?: unknown }).title ?? '').trim();
+    const company = String((row as { company?: unknown }).company ?? '').trim();
+    if (title) out.push(title);
+    if (company) out.push(company);
+  }
+  return out;
+}
+
 type CandidateColumnId =
   | 'linked_job'
   | 'source'
@@ -428,6 +452,10 @@ export function CandidatesClient() {
           c.accountOwner ||
           c.createdByName ||
           '',
+        tags: listFromUnknown(c.tags),
+        skills: listFromUnknown(c.skills),
+        company: String(c.company || c.companyName || '').trim(),
+        experienceFields: experienceSearchFields(c.experience),
       };
     });
   }, [candidates, ownerMap]);
@@ -582,25 +610,26 @@ export function CandidatesClient() {
   }, [enriched]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
     let list = enriched.filter((c) => {
       if (!matchesBucket(c.stage, bucket)) return false;
-      if (!q) return true;
-      const hay = [
-        c.name,
-        c.title,
-        c.email,
-        c.source,
-        c.stage,
-        c.linked?.title,
-        c.linked?.company,
-        c.location,
-        c.ownerName,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return hay.includes(q);
+      return recordMatchesQuery({
+        query: search,
+        fields: [
+          c.name,
+          c.title,
+          c.email,
+          c.source,
+          c.stage,
+          c.linked?.title,
+          c.linked?.company,
+          c.company,
+          c.location,
+          c.ownerName,
+          ...c.skills,
+          ...c.experienceFields,
+        ],
+        tags: c.tags,
+      });
     });
 
     list = [...list].sort((a, b) => {

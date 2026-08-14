@@ -57,6 +57,7 @@ import {
   listThName,
   listThRight,
 } from '@/components/ui/data-list-table';
+import { recordMatchesQuery } from '@/lib/tags';
 
 type SortKey = 'last_activity' | 'name' | 'added' | 'stage' | 'contacts';
 
@@ -329,6 +330,30 @@ export function CompaniesClient() {
   const deleteClientMutation = useDeleteClient();
   const updateClientMutation = useUpdateClient();
 
+  useEffect(() => {
+    const refresh = () => {
+      void refetch();
+      router.refresh();
+    };
+    const onCompanies = () => refresh();
+    window.addEventListener("trio-companies-changed", onCompanies);
+    let ch: BroadcastChannel | null = null;
+    try {
+      ch = new BroadcastChannel("trio-crm-invalidate");
+      ch.addEventListener("message", (ev) => {
+        if (ev.data?.clients || /company|client/i.test(String(ev.data?.toolsUsed || ""))) {
+          refresh();
+        }
+      });
+    } catch {
+      /* BroadcastChannel unavailable */
+    }
+    return () => {
+      window.removeEventListener("trio-companies-changed", onCompanies);
+      ch?.close();
+    };
+  }, [refetch, router]);
+
   const [search, setSearch] = useState('');
   const [bucket, setBucket] = useState<StageBucket>('all');
   const [sortKey, setSortKey] = useState<SortKey>('last_activity');
@@ -503,21 +528,21 @@ export function CompaniesClient() {
     let list = enriched.filter((c) => {
       if (!matchesBucket(c.stage, bucket)) return false;
       if (!q) return true;
-      const hay = [
-        c.name,
-        c.industry,
-        c.domain,
-        c.location,
-        c.stage,
-        c.primary?.name,
-        c.primary?.email,
-        c.ownerName,
-        c.feeAgreement,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return hay.includes(q);
+      return recordMatchesQuery({
+        query: search,
+        fields: [
+          c.name,
+          c.industry,
+          c.domain,
+          c.location,
+          c.stage,
+          c.primary?.name,
+          c.primary?.email,
+          c.ownerName,
+          c.feeAgreement,
+        ],
+        tags: Array.isArray(c.raw?.tags) ? c.raw.tags : [],
+      });
     });
 
     list = [...list].sort((a, b) => {

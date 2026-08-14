@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, unstable_noStore as noStore } from 'next/cache';
 import {
   getSessionTenantId,
   getSessionUserId,
@@ -25,6 +25,7 @@ async function resolveTenantId(): Promise<string | null> {
  * Get all clients for the current tenant (real data)
  */
 export async function getClients() {
+  noStore();
   console.log('=== USING getClients from client-actions.ts ===');
 
   try {
@@ -71,6 +72,7 @@ export async function addContactAction(clientId: string, contactData: any) {
       email: typeof contactData?.email === 'string' ? contactData.email.trim() : '',
       isPrimary: !!contactData?.isPrimary,
       notes: typeof contactData?.notes === 'string' ? contactData.notes : '',
+      tags: Array.isArray(contactData?.tags) ? contactData.tags : undefined,
       ...phoneFields,
     };
 

@@ -24,6 +24,8 @@ import {
   companyOptionsFromList,
 } from '@/components/ui/searchable-select';
 import { OwnerSelect } from '@/components/shared/OwnerSelect';
+import { TagEditor } from '@/components/shared/TagEditor';
+import { mergeManualAndGenerated, tagsFromRecord } from '@/lib/tags';
 
 interface JobEditModalProps {
   isOpen: boolean;
@@ -100,6 +102,9 @@ export default function JobEditModal({
   const [preScreenQuestions, setPreScreenQuestions] = useState<PreScreenDraft[]>(
     () => normalizeQuestionsFromJob(job)
   );
+  const [formTags, setFormTags] = useState<string[]>(
+    Array.isArray(job?.tags) ? job.tags.map(String) : []
+  );
 
   // Reset form when opening for a job (keeps description in sync after refetch)
   useEffect(() => {
@@ -123,6 +128,7 @@ export default function JobEditModal({
       hiringManagerPhone: job.hiringManagerPhone || '',
     });
     setPreScreenQuestions(normalizeQuestionsFromJob(job));
+    setFormTags(Array.isArray(job?.tags) ? job.tags.map(String) : []);
   }, [isOpen, job?.id]);
 
   useEffect(() => {
@@ -220,6 +226,26 @@ export default function JobEditModal({
       for (const k of hmKeys) {
         jobData[k] = String(hiringManager[k] || '');
       }
+    }
+
+    const generated = tagsFromRecord({
+      objectType: 'job',
+      title: formData.title,
+      description: [formData.description.replace(/<[^>]+>/g, ' '), formData.location]
+        .filter(Boolean)
+        .join('\n'),
+    }).tags;
+    const nextTags = mergeManualAndGenerated(formTags, generated);
+    const prevTags = Array.isArray(job.tags) ? job.tags.map(String) : [];
+    const tagsChanged =
+      JSON.stringify(nextTags) !== JSON.stringify(prevTags);
+    if (
+      tagsChanged ||
+      jobData.title !== undefined ||
+      jobData.description !== undefined ||
+      jobData.location !== undefined
+    ) {
+      jobData.tags = nextTags;
     }
 
     // Extra safety: remove empty strings for non-HM fields (keep booleans / arrays / HM clears)
@@ -345,6 +371,18 @@ export default function JobEditModal({
                 }
                 autoFocus={focusDescription}
                 minHeight={240}
+              />
+            </div>
+
+            <div>
+              <Label className="mb-1.5 block">Tags</Label>
+              <p className="text-xs text-muted-foreground mb-1.5">
+                Controlled tags. Auto-filled from title, description, and location on save.
+              </p>
+              <TagEditor
+                value={formTags}
+                onChange={setFormTags}
+                objectType="job"
               />
             </div>
 

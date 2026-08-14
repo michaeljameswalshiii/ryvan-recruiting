@@ -3,6 +3,8 @@
  * Used by /api/parse-resume, careers apply, and replace-resume flows.
  */
 
+import { tagsFromRecord } from '@/lib/tags';
+
 export type ParsedExperience = {
   company: string;
   title: string;
@@ -1108,8 +1110,7 @@ function rankAndCleanSkills(
 }
 
 /**
- * Recruiter-facing tags from title + resume signals (industry + function).
- * Kept short so the create form can edit them before save.
+ * Recruiter-facing tags from the controlled taxonomy (not random keywords).
  */
 export function inferCandidateTags(input: {
   title?: string;
@@ -1118,45 +1119,13 @@ export function inferCandidateTags(input: {
   experience?: Array<{ title?: string; company?: string; description?: string }>;
   text?: string;
 }): string[] {
-  const title = (input.title || '').trim();
-  const blob = [
-    title,
-    input.summary || '',
-    ...(input.skills || []),
-    ...(input.experience || []).flatMap((item) => [
-      item.title || '',
-      item.company || '',
-      item.description || '',
-    ]),
-    (input.text || '').slice(0, 4000),
-  ]
-    .filter(Boolean)
-    .join('\n');
-
-  const tags: string[] = [];
-  const seen = new Set<string>();
-  const add = (tag: string) => {
-    const key = tag.toLowerCase();
-    if (!tag || seen.has(key)) return;
-    seen.add(key);
-    tags.push(tag);
-  };
-
-  if (/\bproject managers?\b/i.test(title)) add('Project Manager');
-  else if (/\bprogram managers?\b/i.test(title)) add('Program Manager');
-  else if (/\bsuperintendent/i.test(title)) add('Superintendent');
-  else if (/\bestimator/i.test(title)) add('Estimator');
-  else if (/\bproject engineer/i.test(title)) add('Project Engineer');
-  else if (/\bsoftware (?:engineer|developer)/i.test(title)) add('Software');
-  else if (/\baccountant|controller|bookkeeper/i.test(title)) add('Accounting');
-  else if (/\brecruiter|talent acquisition/i.test(title)) add('Recruiting');
-  else if (/\bsales\b/i.test(title)) add('Sales');
-
-  for (const [tag, pattern] of INDUSTRY_TAG_RULES) {
-    if (pattern.test(blob)) add(tag);
-  }
-
-  return tags.slice(0, 5);
+  return tagsFromRecord({
+    objectType: 'candidate',
+    title: input.title,
+    summary: [input.summary, input.text].filter(Boolean).join('\n'),
+    skills: input.skills,
+    experience: input.experience,
+  }).tags;
 }
 
 function extractCertifications(certText: string): string[] {

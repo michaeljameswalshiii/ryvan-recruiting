@@ -83,7 +83,7 @@ check(
 );
 check(
   "tags_construction_pm",
-  /construction/.test(cTags) && /project manager/.test(cTags),
+  /construction/.test(cTags) && /project manage/.test(cTags),
   `tags=${JSON.stringify(cm.tags)}`
 );
 check(
@@ -101,7 +101,7 @@ check(
 );
 check(
   "no_skills_section_tags",
-  /construction/i.test(nm.tags || "") && /project manager/i.test(nm.tags || ""),
+  /construction/i.test(nm.tags || "") && /project manage/i.test(nm.tags || ""),
   `tags=${JSON.stringify(nm.tags)}`
 );
 

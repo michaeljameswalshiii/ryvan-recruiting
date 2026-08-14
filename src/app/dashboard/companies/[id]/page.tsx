@@ -42,6 +42,7 @@ import {
 import { updateClient as updateClientApi } from "@/lib/api/client-api";
 import { clientKeys } from "@/lib/hooks/client-keys";
 import { useQueryClient } from "@tanstack/react-query";
+import { TagEditor } from "@/components/shared/TagEditor";
 
 // Dynamic import for EventTimeline to avoid SSR issues
 const CompanyEventTimeline = dynamic(() => 
@@ -560,11 +561,14 @@ function OverviewTab({
     company.next_follow_up_manual === true || company.nextFollowUpManual === true
   );
   const [savingFollowUp, setSavingFollowUp] = useState(false);
-  const [tagDraft, setTagDraft] = useState("");
   const [tags, setTags] = useState<string[]>(
     Array.isArray(company.tags) ? company.tags.map(String) : []
   );
   const [savingTags, setSavingTags] = useState(false);
+
+  useEffect(() => {
+    setTags(Array.isArray(company.tags) ? company.tags.map(String) : []);
+  }, [company.tags]);
 
   const activityRows = events.map((event: any) => ({
     ...event,
@@ -891,44 +895,13 @@ function OverviewTab({
               <div className="mb-1.5 flex items-center justify-between">
                 <span className="text-gray-500">Tags</span>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium"
-                  >
-                    {tag}
-                    <button
-                      type="button"
-                      className="text-slate-400 hover:text-slate-700"
-                      onClick={() =>
-                        void saveTags(tags.filter((item) => item !== tag))
-                      }
-                      aria-label={`Remove ${tag}`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-                <form
-                  className="inline-flex"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const next = tagDraft.trim();
-                    if (!next || tags.includes(next)) return;
-                    setTagDraft("");
-                    void saveTags([...tags, next].slice(0, 20));
-                  }}
-                >
-                  <input
-                    value={tagDraft}
-                    onChange={(e) => setTagDraft(e.target.value)}
-                    disabled={savingTags}
-                    placeholder="+ Add tag"
-                    className="h-7 w-24 rounded-full border border-dashed border-slate-300 bg-white px-2 text-xs"
-                  />
-                </form>
-              </div>
+              <TagEditor
+                value={tags}
+                onChange={(next) => void saveTags(next)}
+                objectType="company"
+                disabled={savingTags}
+                placeholder="Add tag…"
+              />
             </div>
           </div>
         </section>

@@ -27,12 +27,37 @@ import {
   getClientById,
 } from '../db/repositories';
 import { createJobSchema, normalizeJobStatus } from '../schemas/job';
+import { tagsFromRecord } from '../tags';
 
 /** Safe FormData string (never null — Zod string fields reject null). */
 function formStr(formData: FormData, key: string): string {
   const v = formData.get(key);
   if (v === null || v === undefined) return '';
   return String(v).trim();
+}
+
+/** Accept JSON array or comma/semicolon-separated tags from FormData. */
+function parseTagsField(raw: string): string[] {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((t) => String(t).trim())
+          .filter(Boolean)
+          .slice(0, 25);
+      }
+    } catch {
+      /* fall through to delimited parse */
+    }
+  }
+  return trimmed
+    .split(/[,;\n]/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 25);
 }
 
 /** Ensure server-action payloads are always plain JSON-serializable objects. */
@@ -311,6 +336,23 @@ export async function createJobAction(formData: FormData) {
     const ownerUserId = formStr(formData, 'ownerUserId');
     if (ownerUserId) rawData.ownerUserId = ownerUserId;
 
+    const tagsRaw = formStr(formData, 'tags');
+    if (tagsRaw) {
+      rawData.tags = parseTagsField(tagsRaw);
+    } else {
+      const generated = tagsFromRecord({
+        objectType: 'job',
+        title: String(rawData.title || ''),
+        description: [
+          String(rawData.description || '').replace(/<[^>]+>/g, ' '),
+          String(rawData.location || ''),
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      }).tags;
+      if (generated.length) rawData.tags = generated;
+    }
+
     console.log('[createJobAction] rawData:', JSON.stringify(rawData));
 
     const validated = createJobSchema.safeParse(rawData);
@@ -420,6 +462,10 @@ export async function updateJobAction(jobId: string, formData: FormData) {
         return { error: 'Invalid preScreenQuestions JSON' };
       }
     }
+  }
+
+  if (formData.has('tags')) {
+    rawData.tags = parseTagsField(formStr(formData, 'tags'));
   }
 
 try {

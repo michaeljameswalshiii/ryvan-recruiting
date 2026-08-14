@@ -50,6 +50,7 @@ export async function createClient(client: {
   fee_percent?: number;
   fee_type?: string;
   fee_guarantee?: string;
+  tags?: string[];
 }): Promise<any> {
   const response = await fetch(`${API_BASE}/clients`, {
     method: 'POST',

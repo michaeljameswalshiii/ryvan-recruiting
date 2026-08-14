@@ -28,6 +28,7 @@ import {
   FileText,
   UserRound,
   Settings2,
+  Tags,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,6 +46,7 @@ import { SecuritySettings } from '@/components/settings/SecuritySettings';
 import { ChangePasswordCard } from '@/components/settings/ChangePasswordCard';
 import { InvoiceTemplatesSettings } from '@/components/settings/InvoiceTemplatesSettings';
 import { ProductConfigSettings } from '@/components/settings/ProductConfigSettings';
+import { TagTaxonomySettings } from '@/components/settings/TagTaxonomySettings';
 
 interface EmailConnection {
   provider: 'gmail' | 'outlook';
@@ -82,6 +84,7 @@ type SettingsTab =
   | 'plan'
   | 'integrations'
   | 'product'
+  | 'taxonomy'
   | 'texting'
   | 'security';
 
@@ -95,6 +98,7 @@ const COMPANY_TABS: SettingsTab[] = [
   'invoices',
   'integrations',
   'product',
+  'taxonomy',
   'texting',
   'security',
   'plan',
@@ -144,6 +148,8 @@ export default function SettingsPage() {
       t === 'organization' ||
       t === 'plan' ||
       t === 'integrations' ||
+      t === 'product' ||
+      t === 'taxonomy' ||
       t === 'texting' ||
       t === 'security' ||
       t === 'invoices';
@@ -509,6 +515,13 @@ export default function SettingsPage() {
       adminOnly: true,
     },
     {
+      id: 'taxonomy',
+      label: 'Tags',
+      icon: <Tags className="h-4 w-4" />,
+      scope: 'company',
+      adminOnly: true,
+    },
+    {
       id: 'texting',
       label: 'Texting',
       icon: <MessageSquare className="h-4 w-4" />,
@@ -604,6 +617,9 @@ export default function SettingsPage() {
       )}
       {scope === 'company' && tab === 'product' && canTeamAdmin && (
         <ProductConfigSettings />
+      )}
+      {scope === 'company' && tab === 'taxonomy' && canTeamAdmin && (
+        <TagTaxonomySettings />
       )}
       {scope === 'company' && tab === 'texting' && canTeamAdmin && (
         <TextingSettings />

@@ -67,6 +67,7 @@ import { hasPermission } from "@/lib/roles";
 import { EntityFilesPanel } from "@/components/shared/EntityFilesPanel";
 import { CopyTextButton } from "@/components/shared/CopyTextButton";
 import { AccountRepPill } from "@/components/shared/AccountRepPill";
+import { matchControlledTags } from "@/lib/tags";
 
 type FitScoreClient = {
   score: number;
@@ -429,6 +430,24 @@ export default function JobDetailPage() {
       .slice(0, 50);
   }, [allCandidates, linkedIds, candidateSearch]);
 
+  const selectedCandidate = useMemo(() => {
+    if (!candidateId) return null;
+    return (
+      (Array.isArray(allCandidates) ? allCandidates : []).find(
+        (c: any) => String(c.id) === String(candidateId)
+      ) || null
+    );
+  }, [allCandidates, candidateId]);
+
+  const selectedTagMatch = useMemo(() => {
+    const required = Array.isArray((job as any)?.tags) ? (job as any).tags : [];
+    const candTags = Array.isArray(selectedCandidate?.tags)
+      ? selectedCandidate.tags
+      : [];
+    if (!required.length || !selectedCandidate) return null;
+    return matchControlledTags({ required, candidate: candTags });
+  }, [job, selectedCandidate]);
+
   const selectCandidate = (c: any) => {
     setCandidateId(c.id);
     setCandidateName(c.name || "Unknown");
@@ -558,6 +577,9 @@ export default function JobDetailPage() {
     ? `/dashboard/companies/${encodeURIComponent(companyId)}`
     : "";
   const companyName = String(job.companyName || (job as any).company_name || "").trim();
+  const jobTags = Array.isArray((job as any).tags)
+    ? (job as any).tags.map(String).filter(Boolean)
+    : [];
 
   return (
     <div className="space-y-5 max-w-7xl -mt-1">
@@ -620,6 +642,18 @@ export default function JobDetailPage() {
               </>
             ) : null}
           </p>
+          {jobTags.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {jobTags.map((tag: string) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-800"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-2 xl:items-end shrink-0">
@@ -970,6 +1004,18 @@ export default function JobDetailPage() {
                   const isRescoring = fitRescoringId === lc.candidateId;
                   const isExpanded = expandedFitId === lc.candidateId;
                   const hasFit = fit != null && typeof fit.score === "number";
+                  const linkedCand = (
+                    Array.isArray(allCandidates) ? allCandidates : []
+                  ).find(
+                    (c: any) => String(c.id) === String(lc.candidateId)
+                  );
+                  const tagMatch =
+                    jobTags.length && Array.isArray(linkedCand?.tags)
+                      ? matchControlledTags({
+                          required: jobTags,
+                          candidate: linkedCand.tags,
+                        })
+                      : null;
                   return (
                     <li
                       key={lc.candidateId}
@@ -1000,6 +1046,14 @@ export default function JobDetailPage() {
                               loading={(fitLoading || isRescoring) && !fit}
                               className="shrink-0"
                             />
+                            {tagMatch ? (
+                              <span
+                                className="text-[10px] font-medium text-slate-500"
+                                title={`${tagMatch.matched.length} of ${jobTags.length} required tags`}
+                              >
+                                {tagMatch.matched.length}/{jobTags.length} tags
+                              </span>
+                            ) : null}
                           </div>
                           <div className="mt-0.5 flex items-center gap-1.5">
                             <select
@@ -1128,6 +1182,14 @@ export default function JobDetailPage() {
                 {candidateId && (
                   <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs">
                     <span className="font-medium text-blue-900">{candidateName}</span>
+                    {selectedTagMatch ? (
+                      <span className="text-[11px] text-blue-800">
+                        Tag match {selectedTagMatch.matched.length}/
+                        {selectedTagMatch.matched.length +
+                          selectedTagMatch.gaps.length}{" "}
+                        ({selectedTagMatch.score}%)
+                      </span>
+                    ) : null}
                     <button
                       type="button"
                       className="ml-auto text-blue-700 hover:underline"

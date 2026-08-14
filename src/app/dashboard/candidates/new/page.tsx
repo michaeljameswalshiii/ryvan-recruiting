@@ -28,6 +28,7 @@ import {
   uploadResumeToS3 as directUploadResumeToS3,
 } from '@/lib/candidates/resume-parse-client';
 import { validateResumeFileClient } from '@/lib/candidates/resume-upload-limits';
+import { TagEditor } from '@/components/shared/TagEditor';
 
 const sourceOptions = [
   { value: 'manual', label: 'Manual Entry' },
@@ -644,16 +645,20 @@ export default function NewCandidatePage() {
                 </p>
               </div>
               <div>
-                <Label htmlFor="tags" className={fieldLabelClass}>Candidate Tags</Label>
-                <Input
-                  id="tags"
-                  value={formData.tags}
-                  onChange={(e) => handleChange('tags', e.target.value)}
-                  className={fieldInputClass}
-                  placeholder="e.g., Construction, Project Manager"
-                />
+                <Label className={fieldLabelClass}>Candidate Tags</Label>
+                <div className="mt-0.5">
+                  <TagEditor
+                    value={formData.tags
+                      .split(',')
+                      .map((tag) => tag.trim())
+                      .filter(Boolean)}
+                    onChange={(next) => handleChange('tags', next.join(', '))}
+                    objectType="candidate"
+                    placeholder="e.g., Construction, Project Manager"
+                  />
+                </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  Auto-generated from title and industry signals. Edit before creating.
+                  From the controlled taxonomy (title, industry, and skills) — not random keywords. Edit before creating.
                 </p>
               </div>
               <div>

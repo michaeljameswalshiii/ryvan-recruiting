@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { useCreateClient } from "@/lib/hooks/query-client";
 import { useAddContact } from "@/lib/hooks/contact-mutations";
 import { companyStageOptions } from "@/lib/schemas/client";
 import { toast } from "sonner";
+import { TagEditor } from "@/components/shared/TagEditor";
+import { tagsFromRecord } from "@/lib/tags";
 import {
   ArrowLeft,
   Building2,
@@ -59,6 +61,8 @@ export default function NewCompanyPage() {
     status: "identification",
   });
   const [fee, setFee] = useState<PlacementFeeForm>(emptyPlacementFeeForm());
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagsTouched, setTagsTouched] = useState(false);
 
   const [contactForm, setContactForm] = useState({
     name: "",
@@ -75,6 +79,17 @@ export default function NewCompanyPage() {
   const updateContact = (field: string, value: string | boolean) => {
     setContactForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  useEffect(() => {
+    if (tagsTouched) return;
+    const generated = tagsFromRecord({
+      objectType: "company",
+      title: formData.name,
+      industry: formData.industry,
+      description: formData.description,
+    }).tags;
+    setTags(generated);
+  }, [formData.name, formData.industry, formData.description, tagsTouched]);
 
   const handleCancel = () => {
     router.push("/dashboard/companies");
@@ -113,6 +128,7 @@ export default function NewCompanyPage() {
       payload.set("linkedin_url", formData.linkedin_url.trim());
       payload.set("status", formData.status);
       appendPlacementFeeToFormData(payload, fee);
+      payload.set("tags", JSON.stringify(tags));
 
       const client = await createClient.mutateAsync(payload);
       const id = client?.id || client?.client?.id;
@@ -152,6 +168,11 @@ export default function NewCompanyPage() {
           email: contactForm.email.trim(),
           phone: contactForm.phone.trim(),
           isPrimary: contactForm.isPrimary,
+          tags: tagsFromRecord({
+            objectType: "contact",
+            title: contactForm.title.trim(),
+            description: createdCompany.name,
+          }).tags,
         },
       });
       // useAddContact already toasts success
@@ -448,6 +469,22 @@ export default function NewCompanyPage() {
                     rows={6}
                     className="resize-y min-h-[120px]"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tags</Label>
+                  <TagEditor
+                    value={tags}
+                    onChange={(next) => {
+                      setTagsTouched(true);
+                      setTags(next);
+                    }}
+                    objectType="company"
+                    placeholder="Add tag…"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Auto-filled from name, industry, and notes. You can edit
+                    before saving.
+                  </p>
                 </div>
               </section>
             </div>

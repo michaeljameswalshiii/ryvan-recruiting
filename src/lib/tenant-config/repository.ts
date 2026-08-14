@@ -31,6 +31,16 @@ function mergeConfig(
       ? stored.customFields
       : base.customFields || [],
     extras: { ...(base.extras || {}), ...(stored.extras || {}) },
+    tagTaxonomy: stored.tagTaxonomy
+      ? {
+          disabledIds: Array.isArray(stored.tagTaxonomy.disabledIds)
+            ? stored.tagTaxonomy.disabledIds
+            : [],
+          extra: Array.isArray(stored.tagTaxonomy.extra)
+            ? stored.tagTaxonomy.extra
+            : [],
+        }
+      : undefined,
   };
 }
 
@@ -61,6 +71,10 @@ export async function saveTenantProductConfig(
         ? patch.customFields
         : current.customFields,
     extras: { ...current.extras, ...(patch.extras || {}) },
+    tagTaxonomy:
+      patch.tagTaxonomy !== undefined
+        ? patch.tagTaxonomy
+        : current.tagTaxonomy,
     version: TENANT_CONFIG_VERSION,
     updatedAt: new Date().toISOString(),
     updatedBy: actor?.email || actor?.userId,

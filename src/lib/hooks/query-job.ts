@@ -103,6 +103,7 @@ return useMutation({
       hiringManagerEmail?: string;
       hiringManagerPhone?: string;
       ownerUserId?: string;
+      tags?: string[];
     }) => {
       const formData = new FormData();
       formData.set('title', jobData.title);
@@ -130,6 +131,9 @@ return useMutation({
         formData.set('hiringManagerPhone', jobData.hiringManagerPhone);
       if (jobData.ownerUserId)
         formData.set('ownerUserId', jobData.ownerUserId);
+      if (jobData.tags !== undefined) {
+        formData.set('tags', JSON.stringify(jobData.tags));
+      }
 
       console.log('[useCreateJob] Sending FormData:', {
         title: jobData.title,
@@ -233,6 +237,7 @@ export function useUpdateJob() {
           options?: string[];
           required?: boolean;
         }>;
+        tags?: string[];
       };
     }) => {
       const formData = new FormData();
@@ -246,6 +251,9 @@ export function useUpdateJob() {
       if (jobData.status) formData.set('status', jobData.status);
       if (jobData.showOnWebsite !== undefined) {
         formData.set('showOnWebsite', jobData.showOnWebsite ? 'true' : 'false');
+      }
+      if (jobData.tags !== undefined) {
+        formData.set('tags', JSON.stringify(jobData.tags));
       }
       // Always send when defined (including empty string to clear)
       if (jobData.hiringManagerContactId !== undefined)

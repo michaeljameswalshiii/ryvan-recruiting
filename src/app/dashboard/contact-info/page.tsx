@@ -43,6 +43,7 @@ import {
   listThNameFlush,
   listThRight,
 } from '@/components/ui/data-list-table';
+import { recordMatchesQuery } from '@/lib/tags';
 
 type SortKey = 'name' | 'company' | 'added' | 'last_activity';
 
@@ -256,11 +257,11 @@ export default function ContactInfoPage() {
           break;
       }
       if (!q) return true;
-      const hay = [c.name, c.title, c.email, c.phone, c.companyName, c.ownerName, c.location]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return hay.includes(q);
+      return recordMatchesQuery({
+        query: search,
+        fields: [c.name, c.title, c.email, c.phone, c.companyName, c.ownerName, c.location],
+        tags: Array.isArray(c.raw?.tags) ? c.raw.tags : [],
+      });
     });
 
     list = [...list].sort((a, b) => {
