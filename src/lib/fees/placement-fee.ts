@@ -136,7 +136,7 @@ export function formatCommission(amount: number | null | undefined): string {
 }
 
 /**
- * Estimated placement commission: fee % of the high end of the salary range
+ * Estimated placement commission: fee % of the low end of the salary range
  * (or the single number if there is no range).
  */
 export function commissionFromFee(
@@ -147,7 +147,7 @@ export function commissionFromFee(
     return null;
   }
   const { high, low } = parseSalaryBounds(salaryRange);
-  const basis = high ?? low;
+  const basis = low ?? high;
   if (basis == null) return null;
   return Math.round(basis * (feePercent / 100));
 }
