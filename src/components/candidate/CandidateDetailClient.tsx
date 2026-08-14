@@ -14,6 +14,7 @@ import {
   Phone,
   PhoneCall,
   MessageSquare,
+  Pencil,
   Plus,
   Sparkles,
   Tag,
@@ -637,9 +638,9 @@ export function CandidateDetailClient({
 
         {/*
           Layout:
-            [ full-width header + contact + account-rep pill ]
-            [ applications | AI evaluation | resume ]
-            [ full-width timeline ]
+            [ full-width header + account-rep pill ]
+            [ applications | AI ] [ resume (taller, more width) ]
+            [ activity (same width as apps+AI) ] [ resume continues ]
         */}
         <div className="space-y-3">
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -750,20 +751,12 @@ export function CandidateDetailClient({
                   )}
                 </div>
               </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-3">
-                <Link
-                  href={`/dashboard/candidates/${candidate.id}/edit`}
-                  className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-blue-300 hover:text-blue-700"
-                >
-                  Edit
-                </Link>
-                <AccountRepPill
-                  objectType="candidate"
-                  objectId={String(candidate.id)}
-                  label="Account Rep"
-                  assignmentRole="account_manager"
-                />
-              </div>
+              <AccountRepPill
+                objectType="candidate"
+                objectId={String(candidate.id)}
+                label="Account Rep"
+                assignmentRole="account_manager"
+              />
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
               <button
@@ -851,12 +844,20 @@ export function CandidateDetailClient({
               >
                 Add Note
               </button>
+              <Link
+                href={`/dashboard/candidates/${candidate.id}/edit`}
+                className={actionBarBtn}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </Link>
             </div>
           </section>
 
-          {/* Applications + AI + Resume share one row and the same top edge */}
-          <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2 xl:grid-cols-3">
-              <section className="flex h-full min-h-[280px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(0,0.9fr)_minmax(520px,1.45fr)]">
+            <div className="grid min-w-0 content-start gap-3">
+              <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2">
+              <section className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
                     Applications ({jobs.length})
@@ -1051,7 +1052,7 @@ export function CandidateDetailClient({
 
               <section
                 data-ai-evaluation
-                className="flex h-full min-h-[280px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
               >
                 <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-700">
                   <Sparkles className="h-4 w-4 text-violet-600" /> AI Evaluation
@@ -1187,31 +1188,7 @@ export function CandidateDetailClient({
                       : "Run AI Fit"}
                 </Button>
               </section>
-
-          <section className="flex h-full min-h-[280px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:col-span-2 xl:col-span-1">
-            <div className="border-b border-slate-200 px-4 py-3">
-              <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                Resume
-              </h2>
-            </div>
-            <div className="min-h-[420px] flex-1">
-              <ResumeViewer
-                url={resumeUrl}
-                fileName={resumeName}
-                fileKey={resumeKey}
-                candidateId={candidate.id}
-                className="h-full min-h-[420px]"
-                onUrlUpdated={setResumeUrl}
-                onResumeChanged={(info) => {
-                  if (!info) return;
-                  setResumeUrl(info.resumeUrl || "");
-                  setResumeName(info.fileName || "");
-                  setResumeKey(info.fileKey || info.resumeUrl || "");
-                }}
-              />
-            </div>
-          </section>
-          </div>
+              </div>
 
             <section
               id="candidate-activity-log"
@@ -1381,6 +1358,32 @@ export function CandidateDetailClient({
                 )}
               </div>
             </section>
+            </div>
+
+          <section className="flex min-h-[560px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm xl:min-h-full">
+            <div className="border-b border-slate-200 px-4 py-3">
+              <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                Resume
+              </h2>
+            </div>
+            <div className="min-h-[560px] flex-1 xl:min-h-0">
+              <ResumeViewer
+                url={resumeUrl}
+                fileName={resumeName}
+                fileKey={resumeKey}
+                candidateId={candidate.id}
+                className="h-full min-h-[560px]"
+                onUrlUpdated={setResumeUrl}
+                onResumeChanged={(info) => {
+                  if (!info) return;
+                  setResumeUrl(info.resumeUrl || "");
+                  setResumeName(info.fileName || "");
+                  setResumeKey(info.fileKey || info.resumeUrl || "");
+                }}
+              />
+            </div>
+          </section>
+          </div>
         </div>
       </div>
 
