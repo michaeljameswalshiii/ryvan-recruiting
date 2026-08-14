@@ -126,6 +126,9 @@ export const clientSchema = z.object({
   ),
   fee_type: z.string().max(40).optional().or(z.literal('')),
   fee_guarantee: z.string().max(80).optional().or(z.literal('')),
+  next_follow_up: z.string().max(40).optional().or(z.literal('')),
+  next_follow_up_manual: z.boolean().optional(),
+  tags: z.array(z.string().max(40)).max(20).optional(),
   // Pipeline status field
   status: z.enum(companyStageValues).optional(),
   // Multiple contacts support

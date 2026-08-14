@@ -38,6 +38,7 @@ interface CompanyEvent {
 interface CompanyEventTimelineProps {
   companyId: string;
   initialEvents?: CompanyEvent[];
+  onEventsChange?: (events: CompanyEvent[]) => void;
 }
 
 const noteTypes = [
@@ -108,6 +109,7 @@ function getActivityBody(event: CompanyEvent): string {
 export function CompanyEventTimeline({
   companyId,
   initialEvents = [],
+  onEventsChange,
 }: CompanyEventTimelineProps) {
   const [events, setEvents] = useState<CompanyEvent[]>(initialEvents);
   const [loading, setLoading] = useState(!initialEvents.length);
@@ -141,6 +143,7 @@ export function CompanyEventTimeline({
           new Date(a.createdAt || a.timestamp || 0).getTime()
       );
       setEvents(list);
+      onEventsChange?.(list);
       setPage(1);
     } catch (err) {
       console.error('Failed to fetch events:', err);
@@ -208,7 +211,7 @@ export function CompanyEventTimeline({
         </p>
       </div>
 
-      <div className="flex flex-col items-start sm:flex-row gap-2 mb-5">
+      <div className="flex flex-col items-stretch sm:flex-row sm:items-end gap-2 mb-5">
         <select
           value={noteType}
           onChange={(e) => setNoteType(e.target.value)}
@@ -225,7 +228,7 @@ export function CompanyEventTimeline({
           onChange={(e) => setNewNote(e.target.value)}
           placeholder="Optional note detail..."
           rows={3}
-          className="min-h-[76px] w-full flex-1 resize-y rounded-md border border-input bg-white px-3 py-2 text-sm"
+          className="min-h-[76px] w-full min-w-0 flex-1 resize-y rounded-md border border-input bg-white px-3 py-2 text-sm"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();

@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ContactModal } from "@/components/company";
 import { useRemoveContact } from "@/lib/hooks/query-client";
-import { Building2, MapPin, Users, Globe, Linkedin, Mail, Phone, ArrowLeft, FileText, Clock, Briefcase, User, StickyNote, Plus, Star, Edit2, Trash2, Pencil } from "lucide-react";
+import { Building2, MapPin, Users, Globe, Linkedin, Mail, Phone, ArrowLeft, FileText, Clock, Briefcase, User, StickyNote, Plus, Star, Edit2, Trash2, Pencil, ExternalLink, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { companyStageLabel } from "@/lib/schemas/client";
@@ -24,6 +24,18 @@ import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
 import { hasPermission } from "@/lib/roles";
 import { EntityFilesPanel } from "@/components/shared/EntityFilesPanel";
 import { ObjectAssignments } from "@/components/shared/ObjectAssignments";
+import { websiteLabel as formatWebsiteLabel } from "@/lib/ui/website-href";
+import { FEE_TYPE_OPTIONS } from "@/lib/fees/placement-fee";
+import {
+  formatFollowUpDate,
+  inferLastContacted,
+  inferNextFollowUp,
+  isFollowUpOverdue,
+  toDateInputValue,
+} from "@/lib/contacts/follow-up";
+import { updateClient as updateClientApi } from "@/lib/api/client-api";
+import { clientKeys } from "@/lib/hooks/client-keys";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Dynamic import for EventTimeline to avoid SSR issues
 const CompanyEventTimeline = dynamic(() => 
@@ -360,29 +372,18 @@ export default function CompanyDetailPage() {
               Edit
             </Link>
           </Button>
-          {company.linkedin_url && (
-            <Button variant="outline" asChild>
-              <a
-                href={company.linkedin_url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Linkedin className="mr-2 h-4 w-4" />
-                LinkedIn
-              </a>
-            </Button>
-          )}
+          <Button variant="outline" asChild>
+            <Link href={`/dashboard/jobs/new?companyId=${company.id}`}>
+              <Briefcase className="mr-2 h-4 w-4" />
+              New Job
+            </Link>
+          </Button>
           <CompanyDeleteButton
             companyId={company.id}
             companyName={company.name}
           />
         </div>
       </div>
-
-      <ObjectAssignments
-        objectType="company"
-        objectId={String(company.id)}
-      />
 
       {/* Tabs */}
       <div className="border-b border-border">
@@ -414,6 +415,9 @@ export default function CompanyDetailPage() {
             company={company}
             timelineKey={timelineKey}
             onViewContacts={() => handleTabChange("contacts")}
+            onCreateInvoice={canInvoice ? () => setInvoiceOpen(true) : undefined}
+            websiteHref={websiteHref}
+            websiteLabel={websiteLabel}
           />
         )}
         {activeTab === "history" && (
@@ -459,138 +463,492 @@ export default function CompanyDetailPage() {
   );
 }
 
-// Overview Tab — primary contact + notes/activity (identity is in the page header)
+// Overview Tab — primary contact + notes + snapshot / stats / links
 function OverviewTab({
   company,
   timelineKey = 0,
   onViewContacts,
+  onCreateInvoice,
+  websiteHref,
+  websiteLabel,
 }: {
   company: any;
   timelineKey?: number;
   onViewContacts?: () => void;
+  onCreateInvoice?: () => void;
+  websiteHref?: string | null;
+  websiteLabel?: string | null;
 }) {
+  const queryClient = useQueryClient();
+  const { data: jobs = [] } = useJobsForCompany(company.id);
   const contacts = Array.isArray(company.contacts) ? company.contacts : [];
   const primaryContact = contacts.find((c: any) => c.isPrimary) || contacts[0];
   const primaryPhone =
     primaryContact?.preferredPhone ||
     primaryContact?.phone ||
     primaryContact?.phones?.[0]?.number;
+  const openJobs = (Array.isArray(jobs) ? jobs : []).filter(
+    (job: any) => String(job.status || "Open").toLowerCase() !== "closed"
+  );
+
+  const [events, setEvents] = useState<any[]>([]);
+  const [addContactOpen, setAddContactOpen] = useState(false);
+  const [followUpDraft, setFollowUpDraft] = useState(
+    toDateInputValue(company.next_follow_up || company.nextFollowUp)
+  );
+  const [followUpManual, setFollowUpManual] = useState(
+    company.next_follow_up_manual === true || company.nextFollowUpManual === true
+  );
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [tagDraft, setTagDraft] = useState("");
+  const [tags, setTags] = useState<string[]>(
+    Array.isArray(company.tags) ? company.tags.map(String) : []
+  );
+  const [savingTags, setSavingTags] = useState(false);
+
+  const activityRows = events.map((event: any) => ({
+    ...event,
+    type: event.metadata?.noteType || event.eventType,
+    content: event.metadata?.noteText || event.description || event.title,
+    createdAt: event.createdAt || event.timestamp,
+  }));
+  const lastContacted = inferLastContacted(activityRows);
+  const inferredFollowUp = inferNextFollowUp(activityRows);
+  const nextFollowUp = followUpManual
+    ? followUpDraft
+    : followUpDraft || inferredFollowUp;
+  const followUpOverdue = isFollowUpOverdue(nextFollowUp);
+
+  useEffect(() => {
+    if (followUpManual) return;
+    setFollowUpDraft(inferredFollowUp);
+  }, [inferredFollowUp, followUpManual]);
+
+  const feePercent = company.fee_percent ?? company.feePercent;
+  const feeTypeId = String(company.fee_type || company.feeType || "");
+  const feeTypeLabel =
+    FEE_TYPE_OPTIONS.find((opt) => opt.id === feeTypeId)?.label ||
+    feeTypeId ||
+    "—";
+  const locationLabel = [company.city, company.state, company.country]
+    .filter(Boolean)
+    .join(", ");
+  const clientSince = company.created_at || company.createdAt;
+
+  const persistCompany = async (patch: Record<string, unknown>) => {
+    await updateClientApi(String(company.id), patch);
+    await queryClient.invalidateQueries({ queryKey: clientKeys.all });
+  };
+
+  const saveFollowUp = async (value: string, manual: boolean) => {
+    setSavingFollowUp(true);
+    try {
+      await persistCompany({
+        next_follow_up: value || "",
+        next_follow_up_manual: manual,
+      });
+      setFollowUpDraft(value);
+      setFollowUpManual(manual);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to save follow-up");
+    } finally {
+      setSavingFollowUp(false);
+    }
+  };
+
+  const saveTags = async (next: string[]) => {
+    setSavingTags(true);
+    try {
+      await persistCompany({ tags: next });
+      setTags(next);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to save tags");
+    } finally {
+      setSavingTags(false);
+    }
+  };
+
+  const snapshotRows: Array<{ label: string; value: string }> = [
+    { label: "Industry", value: company.industry || "—" },
+    {
+      label: "Company size",
+      value:
+        company.employee_count != null
+          ? String(company.employee_count)
+          : company.company_size || "—",
+    },
+    { label: "Revenue", value: company.revenue || "—" },
+    { label: "Location", value: locationLabel || "—" },
+    { label: "Fee type", value: feeTypeLabel },
+    {
+      label: "Fee %",
+      value: feePercent != null && feePercent !== "" ? `${feePercent}` : "—",
+    },
+    {
+      label: "Guarantee",
+      value: company.fee_guarantee || company.feeGuarantee || "—",
+    },
+  ];
 
   return (
-    <div className="space-y-5">
-      {/* Primary contact — always light surface (readable in dark theme) */}
-      <div
-        data-ink-on-light
-        className="p-5 sm:p-6 rounded-2xl border border-gray-200 bg-white shadow-sm space-y-4 text-slate-900"
-      >
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
-            <User className="h-4 w-4" />
-            Primary Contact
-            {primaryContact && (
-              <Badge
-                variant="secondary"
-                className="ml-1 bg-yellow-100 text-yellow-800 normal-case tracking-normal"
-              >
-                <Star className="h-3 w-3 mr-1" />
-                Primary
-              </Badge>
-            )}
-          </h3>
-          {onViewContacts && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onViewContacts}
-              className="text-slate-700 hover:text-slate-900 hover:bg-slate-50"
-            >
-              View all contacts
-              {contacts.length > 0 ? ` (${contacts.length})` : ""}
-            </Button>
-          )}
-        </div>
-
-        {primaryContact ? (
-          <div className="flex items-center gap-4">
-            <div className="h-12 w-12 shrink-0 rounded-full bg-blue-50 flex items-center justify-center">
-              <User className="h-6 w-6 text-blue-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-medium text-slate-900">
-                {primaryContact.id ? (
-                  <Link
-                    href={`/dashboard/contact-info/${primaryContact.id}?companyId=${company.id}`}
-                    className="hover:underline text-blue-600"
-                  >
-                    {primaryContact.name}
-                  </Link>
-                ) : (
-                  primaryContact.name
-                )}
-              </p>
-              {primaryContact.title && (
-                <p className="text-sm text-slate-600">{primaryContact.title}</p>
+    <div className="grid gap-5 xl:grid-cols-12">
+      <div className="space-y-5 xl:col-span-7">
+        <div
+          data-ink-on-light
+          className="p-5 sm:p-6 rounded-2xl border border-gray-200 bg-white shadow-sm space-y-4 text-slate-900"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+              <User className="h-4 w-4" />
+              Primary Contact
+              {primaryContact && (
+                <Badge
+                  variant="secondary"
+                  className="ml-1 bg-yellow-100 text-yellow-800 normal-case tracking-normal"
+                >
+                  <Star className="h-3 w-3 mr-1" />
+                  Primary
+                </Badge>
               )}
-              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
-                {primaryContact.email && (
-                  <a
-                    href={`mailto:${primaryContact.email}`}
-                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
-                  >
-                    <Mail className="h-3 w-3" />
-                    {primaryContact.email}
-                  </a>
-                )}
-                {primaryPhone && (
-                  <a
-                    href={`tel:${primaryPhone}`}
-                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
-                  >
-                    <Phone className="h-3 w-3" />
-                    {primaryPhone}
-                  </a>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-dashed border-slate-300 px-4 py-6">
-            <p className="text-sm text-slate-600">
-              No contacts linked to this company yet.
-            </p>
+            </h3>
             {onViewContacts && (
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={onViewContacts}
-                className="border-slate-300 bg-white text-slate-900"
+                className="text-slate-700 hover:text-slate-900 hover:bg-slate-50"
               >
-                <User className="h-4 w-4 mr-2" />
-                Manage contacts
+                View all contacts
+                {contacts.length > 0 ? ` (${contacts.length})` : ""}
               </Button>
             )}
           </div>
+
+          {primaryContact ? (
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 shrink-0 rounded-full bg-blue-50 flex items-center justify-center">
+                <User className="h-6 w-6 text-blue-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium text-slate-900">
+                  {primaryContact.id ? (
+                    <Link
+                      href={`/dashboard/contact-info/${primaryContact.id}?companyId=${company.id}`}
+                      className="hover:underline text-blue-600"
+                    >
+                      {primaryContact.name}
+                    </Link>
+                  ) : (
+                    primaryContact.name
+                  )}
+                </p>
+                {primaryContact.title && (
+                  <p className="text-sm text-slate-600">{primaryContact.title}</p>
+                )}
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                  {primaryContact.email && (
+                    <a
+                      href={`mailto:${primaryContact.email}`}
+                      className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                    >
+                      <Mail className="h-3 w-3" />
+                      {primaryContact.email}
+                    </a>
+                  )}
+                  {primaryPhone && (
+                    <a
+                      href={`tel:${primaryPhone}`}
+                      className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                    >
+                      <Phone className="h-3 w-3" />
+                      {primaryPhone}
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-dashed border-slate-300 px-4 py-6">
+              <p className="text-sm text-slate-600">
+                No contacts linked to this company yet.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAddContactOpen(true)}
+                className="border-slate-300 bg-white text-slate-900"
+              >
+                <User className="h-4 w-4 mr-2" />
+                Add contact
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {company.description && (
+          <div
+            data-ink-on-light
+            className="p-5 sm:p-6 rounded-2xl border border-gray-200 bg-white shadow-sm space-y-3 text-slate-900"
+          >
+            <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+              <FileText className="h-4 w-4" />
+              About
+            </h3>
+            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+              {company.description}
+            </p>
+          </div>
         )}
+
+        <CompanyEventTimeline
+          key={timelineKey}
+          companyId={company.id}
+          onEventsChange={setEvents}
+        />
       </div>
 
-      {/* Optional company description */}
-      {company.description && (
-        <div
-          data-ink-on-light
-          className="p-5 sm:p-6 rounded-2xl border border-gray-200 bg-white shadow-sm space-y-3 text-slate-900"
-        >
-          <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
-            <FileText className="h-4 w-4" />
-            About
-          </h3>
-          <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-            {company.description}
-          </p>
-        </div>
-      )}
+      <div className="space-y-5 xl:col-span-5">
+        <ObjectAssignments
+          objectType="company"
+          objectId={String(company.id)}
+          label="Account rep"
+        />
 
-      {/* Notes & activity (same component as Timeline tab) */}
-      <CompanyEventTimeline key={timelineKey} companyId={company.id} />
+        <section
+          data-ink-on-light
+          className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm text-slate-900"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Open jobs
+            </h3>
+            <Link
+              href={`/dashboard/jobs?companyId=${company.id}`}
+              className="text-xs font-medium text-blue-600 hover:underline"
+            >
+              View all
+            </Link>
+          </div>
+          {openJobs.length ? (
+            <div className="space-y-2">
+              {openJobs.slice(0, 5).map((job: any) => (
+                <Link
+                  key={job.id}
+                  href={`/dashboard/jobs/${job.id}`}
+                  className="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2.5 hover:bg-gray-50"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-gray-900">
+                      {job.title || "Untitled job"}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {job.status || "Open"}
+                      {job.location ? ` · ${job.location}` : ""}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">No open jobs yet.</p>
+          )}
+        </section>
+
+        <section
+          data-ink-on-light
+          className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm text-slate-900"
+        >
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Company snapshot
+          </h3>
+          <div className="space-y-2.5 text-sm">
+            {snapshotRows.map((row) => (
+              <div key={row.label} className="flex justify-between gap-3">
+                <span className="text-gray-500">{row.label}</span>
+                <span className="text-right font-medium">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section
+          data-ink-on-light
+          className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm text-slate-900"
+        >
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Quick stats
+          </h3>
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Contacts</span>
+              <span className="font-medium tabular-nums">{contacts.length}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Open jobs</span>
+              <span className="font-medium tabular-nums">{openJobs.length}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Activities</span>
+              <span className="font-medium tabular-nums">{events.length}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Last activity</span>
+              <span className="font-medium">
+                {formatFollowUpDate(lastContacted)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="shrink-0 text-gray-500">Next follow-up</span>
+              <div className="flex min-w-0 items-center justify-end gap-2">
+                <input
+                  type="date"
+                  value={nextFollowUp}
+                  disabled={savingFollowUp}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    void saveFollowUp(value, !!value);
+                  }}
+                  className="h-8 max-w-[10.5rem] rounded-md border border-gray-200 bg-white px-2 text-xs font-medium text-gray-900"
+                />
+                {followUpOverdue ? (
+                  <span className="text-[11px] font-semibold text-rose-600">
+                    Overdue
+                  </span>
+                ) : null}
+                {followUpManual ? (
+                  <button
+                    type="button"
+                    className="text-[11px] font-medium text-blue-600 hover:underline"
+                    disabled={savingFollowUp}
+                    onClick={() => void saveFollowUp("", false)}
+                  >
+                    Auto
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Client since</span>
+              <span className="font-medium">
+                {formatFollowUpDate(clientSince)}
+              </span>
+            </div>
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-gray-500">Tags</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      className="text-slate-400 hover:text-slate-700"
+                      onClick={() =>
+                        void saveTags(tags.filter((item) => item !== tag))
+                      }
+                      aria-label={`Remove ${tag}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <form
+                  className="inline-flex"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const next = tagDraft.trim();
+                    if (!next || tags.includes(next)) return;
+                    setTagDraft("");
+                    void saveTags([...tags, next].slice(0, 20));
+                  }}
+                >
+                  <input
+                    value={tagDraft}
+                    onChange={(e) => setTagDraft(e.target.value)}
+                    disabled={savingTags}
+                    placeholder="+ Add tag"
+                    className="h-7 w-24 rounded-full border border-dashed border-slate-300 bg-white px-2 text-xs"
+                  />
+                </form>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          data-ink-on-light
+          className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm text-slate-900"
+        >
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Quick links
+          </h3>
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="flex w-full items-center gap-3 rounded-xl border border-gray-100 px-3 py-2.5 text-left text-sm font-medium text-gray-800 hover:bg-gray-50"
+            >
+              <Printer className="h-4 w-4 text-slate-500" />
+              Print cover sheet
+            </button>
+            <button
+              type="button"
+              onClick={() => setAddContactOpen(true)}
+              className="flex w-full items-center gap-3 rounded-xl border border-gray-100 px-3 py-2.5 text-left text-sm font-medium text-gray-800 hover:bg-gray-50"
+            >
+              <User className="h-4 w-4 text-blue-600" />
+              Add contact
+            </button>
+            {onCreateInvoice ? (
+              <button
+                type="button"
+                onClick={onCreateInvoice}
+                className="flex w-full items-center gap-3 rounded-xl border border-gray-100 px-3 py-2.5 text-left text-sm font-medium text-gray-800 hover:bg-gray-50"
+              >
+                <FileText className="h-4 w-4 text-emerald-600" />
+                Create invoice
+              </button>
+            ) : null}
+            {onViewContacts ? (
+              <button
+                type="button"
+                onClick={onViewContacts}
+                className="flex w-full items-center gap-3 rounded-xl border border-gray-100 px-3 py-2.5 text-left text-sm font-medium text-gray-800 hover:bg-gray-50"
+              >
+                <Users className="h-4 w-4 text-emerald-600" />
+                All contacts
+              </button>
+            ) : null}
+            {websiteHref ? (
+              <a
+                href={websiteHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 rounded-xl border border-gray-100 px-3 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+              >
+                <ExternalLink className="h-4 w-4 text-blue-600" />
+                Visit website
+                {websiteLabel ? (
+                  <span className="ml-auto truncate text-xs text-gray-400">
+                    {formatWebsiteLabel(String(websiteLabel))}
+                  </span>
+                ) : null}
+              </a>
+            ) : null}
+          </div>
+        </section>
+      </div>
+
+      <ContactModal
+        clientId={company.id}
+        open={addContactOpen}
+        onOpenChange={setAddContactOpen}
+        onSave={() => setAddContactOpen(false)}
+      />
     </div>
   );
 }
