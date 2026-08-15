@@ -34,6 +34,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { INDUSTRY_PLAYS } from '@/lib/sourcing/industry-plays';
+import { RecruiterAgentControls } from './RecruiterAgentControls';
 
 export type AgentMode = 'companies' | 'research';
 
@@ -56,13 +57,25 @@ type SourcedPerson = {
   fitReason?: string;
   mustHaveHit?: boolean;
   geoOk?: boolean;
+  distanceMiles?: number;
+  evidence?: string[];
+  searchStage?: string;
+  recruiterDisposition?: string;
 };
 
-function fitBadgeClass(score: number): string {
-  if (score >= 85) return 'bg-emerald-500/25 text-emerald-100 ring-emerald-400/40';
-  if (score >= 70) return 'bg-sky-500/20 text-sky-100 ring-sky-400/35';
-  if (score >= 50) return 'bg-amber-500/20 text-amber-100 ring-amber-400/30';
-  return 'bg-slate-500/20 text-slate-300 ring-slate-400/25';
+function fitBadgeClass(score: number, light = false): string {
+  if (score >= 85) return light
+    ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+    : 'bg-emerald-500/25 text-emerald-100 ring-emerald-400/40';
+  if (score >= 70) return light
+    ? 'bg-sky-50 text-sky-700 ring-sky-200'
+    : 'bg-sky-500/20 text-sky-100 ring-sky-400/35';
+  if (score >= 50) return light
+    ? 'bg-amber-50 text-amber-700 ring-amber-200'
+    : 'bg-amber-500/20 text-amber-100 ring-amber-400/30';
+  return light
+    ? 'bg-slate-100 text-slate-600 ring-slate-200'
+    : 'bg-slate-500/20 text-slate-300 ring-slate-400/25';
 }
 
 type ApolloSearchPlanDto = {
@@ -129,6 +142,12 @@ type ResearchRun = {
   jobLocation?: string;
   notes?: string[];
   candidates: SourcedPerson[];
+  qualifiedCount?: number;
+  reviewCount?: number;
+  rejectedCount?: number;
+  importableCount?: number;
+  targetQualified?: number;
+  targetReached?: boolean;
   error?: string;
   usageLine?: string;
   /** LLM-built Apollo filters used for this run */
@@ -147,6 +166,13 @@ type ResearchRun = {
       estimatedUsd: number;
       note?: string;
     };
+    engines?: Array<{
+      engine: string;
+      results?: number;
+      credits?: number;
+      estimatedUsd: number;
+      note?: string;
+    }>;
     totalEstimatedUsd: number;
   };
   /** Persisted sharing — private only you; public = whole tenant */
@@ -155,7 +181,29 @@ type ResearchRun = {
   ownerLabel?: string;
   /** Server-persisted (shareable) vs session-only */
   persisted?: boolean;
+  status?: 'queued' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed';
+  recruiterRunId?: string;
+  lastMessage?: string;
 };
+
+type FillRadius = 'exact' | '10' | '25' | '50' | '100' | 'state' | 'any';
+
+const FILL_RADIUS_OPTIONS: Array<{ value: FillRadius; label: string }> = [
+  { value: 'exact', label: 'Exact' },
+  { value: '10', label: '10 mi' },
+  { value: '25', label: '25 mi' },
+  { value: '50', label: '50 mi' },
+  { value: '100', label: '100 mi' },
+  { value: 'state', label: 'Entire state' },
+  { value: 'any', label: 'Anywhere' },
+];
+
+function fillRadiusLabel(radius: FillRadius): string {
+  if (radius === 'exact') return 'Exact city';
+  if (radius === 'state') return 'Entire state';
+  if (radius === 'any') return 'Anywhere';
+  return `Within ${radius} miles`;
+}
 
 export type AgentJobDto = {
   id: string;
@@ -443,16 +491,24 @@ export function AgentWorkbench({
   >(null);
   const fillRunRefs = useRef<Record<string, HTMLLIElement | null>>({});
   const [researching, setResearching] = useState(false);
+  const researchStopRequested = useRef(false);
+  const [activeRecruiterRunId, setActiveRecruiterRunId] = useState<string | null>(null);
+  const [importingRunId, setImportingRunId] = useState<string | null>(null);
+  const [selectedCandidateKeys, setSelectedCandidateKeys] = useState<Record<string, string[]>>({});
+  const [importedCandidateKeys, setImportedCandidateKeys] = useState<Record<string, string[]>>({});
   /** Editable Apollo filters — filled after first LLM plan; user can tweak & re-run */
   const [planDraft, setPlanDraft] = useState<PlanDraft>(emptyPlanDraft);
   const [planSourceLabel, setPlanSourceLabel] = useState<string | null>(null);
   /** Collapse plan after results so candidates (and links) stay clickable */
-  const [planExpanded, setPlanExpanded] = useState(true);
+  const [planExpanded, setPlanExpanded] = useState(false);
   /** Fill-job location: '' = use job default; 'any' = worldwide; else override */
   const [fillLocation, setFillLocation] = useState('');
   const [fillLocationMode, setFillLocationMode] = useState<
-    'job' | 'any' | 'custom'
+    'job' | 'custom'
   >('job');
+  const [fillRadius, setFillRadius] = useState<FillRadius>('25');
+  const [fillTargetQualified, setFillTargetQualified] = useState(25);
+  const [progressiveWidening, setProgressiveWidening] = useState(true);
 
   const jobsRef = useRef(jobs);
   jobsRef.current = jobs;
@@ -619,31 +675,65 @@ export function AgentWorkbench({
     []
   );
 
+  const mapRecruiterRun = useCallback(
+    (r: Record<string, unknown>): ResearchRun => ({
+      id: `recruiter-${String(r.id)}`,
+      recruiterRunId: String(r.id),
+      query: String(r.query || ''),
+      at: String(r.createdAt || r.updatedAt || new Date().toISOString()),
+      count: Array.isArray(r.candidates) ? r.candidates.length : 0,
+      estimatedCostUsd: Number(r.estimatedCostUsd) || 0,
+      notes: Array.isArray(r.notes) ? r.notes.map(String) : [],
+      candidates: Array.isArray(r.candidates) ? (r.candidates as SourcedPerson[]) : [],
+      qualifiedCount: Number(r.qualifiedCount) || 0,
+      targetQualified: Number(r.targetQualified) || undefined,
+      targetReached: r.status === 'completed' && Number(r.qualifiedCount) >= Number(r.targetQualified),
+      apolloPlan: r.apolloPlan && typeof r.apolloPlan === 'object' ? (r.apolloPlan as ApolloSearchPlanDto) : undefined,
+      apolloPlanSource: r.apolloPlanSource as ResearchRun['apolloPlanSource'],
+      visibility: r.visibility === 'public' ? 'public' : 'private',
+      isOwner: r.isOwner !== false,
+      persisted: true,
+      status: r.status as ResearchRun['status'],
+      lastMessage: typeof r.lastMessage === 'string' ? r.lastMessage : undefined,
+      error: typeof r.error === 'string' ? r.error : undefined,
+    }),
+    []
+  );
+
   const loadFillHistory = useCallback(
     async (opts?: { quiet?: boolean }) => {
       if (!opts?.quiet) setFillHistoryLoading(true);
       try {
-        const res = await fetch('/api/agent/fill-runs', {
-          credentials: 'include',
-          cache: 'no-store',
-        });
-        if (!res.ok) return;
+        const [res, recruiterRes] = await Promise.all([
+          fetch('/api/agent/fill-runs', {
+            credentials: 'include',
+            cache: 'no-store',
+          }),
+          fetch('/api/agent/recruiter-runs', {
+            credentials: 'include',
+            cache: 'no-store',
+          }),
+        ]);
         const data = await res.json().catch(() => ({}));
+        const recruiterData = await recruiterRes.json().catch(() => ({}));
         const list = Array.isArray(data?.runs) ? data.runs : [];
-        if (!list.length) {
-          // Don't wipe session-only runs
-          return;
-        }
-        mergeServerFillRuns(
-          list.map((r: Record<string, unknown>) => mapFillApiRun(r))
-        );
+        const activeRecruiterRuns = Array.isArray(recruiterData?.runs)
+          ? recruiterData.runs.filter((r: Record<string, unknown>) =>
+              ['queued', 'running', 'paused', 'failed'].includes(String(r.status))
+            )
+          : [];
+        const mapped = [
+          ...activeRecruiterRuns.map((r: Record<string, unknown>) => mapRecruiterRun(r)),
+          ...list.map((r: Record<string, unknown>) => mapFillApiRun(r)),
+        ];
+        if (mapped.length) mergeServerFillRuns(mapped);
       } catch {
         /* ignore */
       } finally {
         if (!opts?.quiet) setFillHistoryLoading(false);
       }
     },
-    [mapFillApiRun, mergeServerFillRuns]
+    [mapFillApiRun, mapRecruiterRun, mergeServerFillRuns]
   );
 
   // Load own + public fill-job runs for this tenant (team sharing)
@@ -759,111 +849,127 @@ export function AgentWorkbench({
   /**
    * @param opts.useEditedPlan — re-run with planDraft (skip LLM replan)
    */
-  const startResearch = async (opts?: { useEditedPlan?: boolean }) => {
+  const startResearchLegacy = async (opts?: { useEditedPlan?: boolean }) => {
     if (!brief.trim()) {
-      toast.error(
-        'Paste a careers job URL or describe the role (title + location + skills)'
-      );
+      toast.error('Paste a careers job URL or describe the role (title + location + skills)');
       return;
     }
     const useEdited = !!opts?.useEditedPlan;
-    if (useEdited) {
-      const p = draftToPlan(planDraft);
-      if (!p.titles?.length) {
-        toast.error(
-          'Add at least one title in the Apollo plan before searching again'
-        );
-        return;
-      }
+    const editedPlan = useEdited ? draftToPlan(planDraft) : undefined;
+    if (useEdited && !editedPlan?.titles?.length) {
+      toast.error('Add at least one title in the Apollo plan before searching again');
+      return;
     }
 
+    researchStopRequested.current = false;
     setResearching(true);
     setBusyId('research');
     try {
-      // When re-running a user-edited plan, locations live in the plan form
-      // (do not wipe them with the Location mode toggle).
       const locationPayload = useEdited
         ? undefined
-        : fillLocationMode === 'any'
+        : fillRadius === 'any'
           ? ''
           : fillLocationMode === 'custom' && fillLocation.trim()
             ? fillLocation.trim()
-            : undefined; // job default
+            : undefined;
+      const candidatesByKey = new Map<string, SourcedPerson>();
+      const importableKeys = new Set<string>();
+      const notes = new Set<string>();
+      let totalCost = 0;
+      let targetQualified: number | undefined;
+      let minFitScore = 80;
+      let lastData: any = {};
+      let returnedPlan = editedPlan;
+      let sourceLabel: ResearchRun['apolloPlanSource'];
+      let pageOffset = 0;
+      let noProgressBatches = 0;
+      let batch = 0;
 
-      const body: Record<string, unknown> = {
-        input: brief.trim(),
-        limit: 15,
-        ...(locationPayload !== undefined ? { location: locationPayload } : {}),
-      };
-      if (useEdited) {
-        body.apolloPlan = draftToPlan(planDraft);
+      while (!researchStopRequested.current && batch < 200) {
+        const body: Record<string, unknown> = {
+          input: brief.trim(),
+          batch: true,
+          batchSize: 25,
+          pageOffset,
+          targetQualified: fillTargetQualified,
+          locationRadius: fillRadius,
+          radiusMiles: /^\d+$/.test(fillRadius) ? Number(fillRadius) : undefined,
+          progressiveWidening: fillRadius !== 'any' && progressiveWidening,
+          ...(locationPayload !== undefined ? { location: locationPayload } : {}),
+          ...(returnedPlan ? { apolloPlan: returnedPlan } : {}),
+        };
+        const res = await fetch('/api/agent/source-candidates', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        lastData = data;
+        if (!res.ok) {
+          toast.error(data.error || 'Candidate batch stopped');
+          break;
+        }
+        const people: SourcedPerson[] = Array.isArray(data.candidates) ? data.candidates : [];
+        const before = candidatesByKey.size;
+        for (const [index, person] of people.entries()) {
+          const key = person.id || person.linkedinUrl || `${person.name}|${person.title || ''}|${person.company || ''}`;
+          candidatesByKey.set(key, person);
+          if (Array.isArray(data.importableCandidates) && data.importableCandidates.some((item: SourcedPerson) => (item.id || item.linkedinUrl || `${item.name}|${item.title || ''}|${item.company || ''}`) === key)) {
+            importableKeys.add(key);
+          }
+        }
+        for (const note of Array.isArray(data.notes) ? data.notes : []) notes.add(String(note));
+        totalCost += typeof data.estimatedCostUsd === 'number' ? data.estimatedCostUsd : 0;
+        targetQualified = typeof data.targetQualified === 'number' ? data.targetQualified : targetQualified;
+        minFitScore = Number(data.agentControls?.minFitScore || minFitScore);
+        returnedPlan = data.apolloPlan && typeof data.apolloPlan === 'object' ? data.apolloPlan : returnedPlan;
+        sourceLabel = data.apolloPlanSource as ResearchRun['apolloPlanSource'];
+        if (returnedPlan) {
+          setPlanDraft(planToDraft(returnedPlan));
+          setPlanSourceLabel(sourceLabel || null);
+        }
+        const qualified = [...candidatesByKey.values()].filter((person) => (person.fitScore || 0) >= minFitScore).length;
+        noProgressBatches = candidatesByKey.size === before ? noProgressBatches + 1 : 0;
+        if (targetQualified && qualified >= targetQualified) break;
+        if (!people.length || noProgressBatches >= 2) break;
+        pageOffset += 2;
+        batch += 1;
       }
 
-      const res = await fetch('/api/agent/source-candidates', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(() => ({}));
-      const cost =
-        typeof data.estimatedToolCostUsd === 'number'
-          ? data.estimatedToolCostUsd
-          : typeof data.estimatedCostUsd === 'number'
-            ? data.estimatedCostUsd
-            : 0;
-      const people: SourcedPerson[] = Array.isArray(data.candidates)
-        ? data.candidates
-        : [];
-      // Prefer real candidate count; do not show "15 people" from raw Apollo
-      // usage when the list is empty after filters.
-      const displayCount = people.length;
-      const returnedPlan =
-        data.apolloPlan && typeof data.apolloPlan === 'object'
-          ? (data.apolloPlan as ApolloSearchPlanDto)
-          : useEdited
-            ? draftToPlan(planDraft)
-            : undefined;
-      const sourceLabel =
-        data.apolloPlanSource === 'user' ||
-        data.apolloPlanSource === 'llm' ||
-        data.apolloPlanSource === 'heuristic'
-          ? data.apolloPlanSource
-          : useEdited
-            ? 'user'
-            : undefined;
-
-      if (returnedPlan) {
-        setPlanDraft(planToDraft(returnedPlan));
-        setPlanSourceLabel(sourceLabel || null);
-      }
-
+      const allCandidates = [...candidatesByKey.values()];
+      const qualifiedCandidates = allCandidates.filter((person) => (person.fitScore || 0) >= minFitScore);
+      const selectedCandidates = targetQualified && qualifiedCandidates.length >= targetQualified
+        ? qualifiedCandidates.slice(0, targetQualified)
+        : allCandidates;
       let run: ResearchRun = {
         id: `r-${Date.now()}`,
         query: brief.trim(),
         at: new Date().toISOString(),
-        count: displayCount,
-        estimatedCostUsd: cost,
-        jobTitle: data.job?.title,
-        jobLocation: data.job?.location,
-        notes: Array.isArray(data.notes) ? data.notes : [],
-        candidates: people,
-        error:
-          res.ok && people.length
-            ? undefined
-            : data.error || 'No candidates found',
-        usageLine:
-          typeof data.usageLine === 'string' ? data.usageLine : undefined,
-        usageBreakdown: data.usageBreakdown || undefined,
+        count: selectedCandidates.length,
+        estimatedCostUsd: totalCost,
+        jobTitle: lastData.job?.title,
+        jobLocation: lastData.job?.location,
+        notes: [...notes],
+        candidates: selectedCandidates,
+        qualifiedCount: qualifiedCandidates.length,
+        reviewCount: allCandidates.filter((person) => (person.fitScore || 0) >= 65 && (person.fitScore || 0) < minFitScore).length,
+        rejectedCount: allCandidates.filter((person) => (person.fitScore || 0) < 65).length,
+        importableCount: [...importableKeys].filter((key) => selectedCandidates.some((person) => (person.id || person.linkedinUrl || `${person.name}|${person.title || ''}|${person.company || ''}`) === key)).length,
+        targetQualified,
+        targetReached: !!targetQualified && qualifiedCandidates.length >= targetQualified,
+        error: selectedCandidates.length ? undefined : lastData.error || 'No candidates found',
+        usageLine: typeof lastData.usageLine === 'string' ? lastData.usageLine : undefined,
+        usageBreakdown: lastData.usageBreakdown || undefined,
         apolloPlan: returnedPlan,
-        apolloPlanSource: sourceLabel as ResearchRun['apolloPlanSource'],
+        apolloPlanSource: sourceLabel,
         visibility,
         isOwner: true,
         persisted: false,
       };
 
       // Persist so teammates can open Fill a job and see public runs
-      if (res.ok && people.length) {
+      if (run.candidates.length) {
         try {
           const saveRes = await fetch('/api/agent/fill-runs', {
             method: 'POST',
@@ -874,9 +980,9 @@ export function AgentWorkbench({
               visibility,
               jobTitle: run.jobTitle,
               jobLocation: run.jobLocation,
-              estimatedCostUsd: cost,
+              estimatedCostUsd: run.estimatedCostUsd,
               notes: run.notes,
-              candidates: people,
+              candidates: run.candidates,
               apolloPlan: returnedPlan,
               apolloPlanSource: sourceLabel,
               usageLine: run.usageLine,
@@ -903,15 +1009,15 @@ export function AgentWorkbench({
       }
 
       setResearchRuns((prev) => [run, ...prev].slice(0, 20));
-      if (!res.ok || !people.length) {
+      if (!run.candidates.length) {
         const authHint =
-          data.apolloHttpStatus === 401 || data.apolloHttpStatus === 403
-            ? ` (Apollo ${data.apolloHttpStatus}, key=${data.apolloKeySource || '?'})`
-            : data.apolloKeySource
-              ? ` (Apollo key=${data.apolloKeySource})`
+          lastData.apolloHttpStatus === 401 || lastData.apolloHttpStatus === 403
+            ? ` (Apollo ${lastData.apolloHttpStatus}, key=${lastData.apolloKeySource || '?'})`
+            : lastData.apolloKeySource
+              ? ` (Apollo key=${lastData.apolloKeySource})`
               : '';
         toast.error(
-          (data.error || 'No candidates found for this role') + authHint
+          (lastData.error || 'No candidates found for this role') + authHint
         );
         setPlanExpanded(true);
       } else {
@@ -925,7 +1031,7 @@ export function AgentWorkbench({
               : '';
         toast.success(
           (run.usageLine ||
-            `Found ${run.count} candidate(s) for ${data.job?.title || 'this role'} · ~$${cost.toFixed(4)}`) +
+            `Found ${run.count} candidate(s) for ${run.jobTitle || 'this role'} · ~$${run.estimatedCostUsd.toFixed(4)}`) +
             shareNote
         );
       }
@@ -935,6 +1041,181 @@ export function AgentWorkbench({
       setResearching(false);
       setBusyId(null);
     }
+  };
+
+  const startResearch = async (opts?: { useEditedPlan?: boolean }) => {
+    if (!brief.trim()) {
+      toast.error('Paste a careers job URL or describe the role (title + location + skills)');
+      return;
+    }
+    const useEdited = !!opts?.useEditedPlan;
+    const editedPlan = useEdited ? draftToPlan(planDraft) : undefined;
+    if (useEdited && !editedPlan?.titles?.length) {
+      toast.error('Add at least one title in the Apollo plan before searching again');
+      return;
+    }
+    setResearching(true);
+    setBusyId('research');
+    try {
+      const locationPayload = useEdited
+        ? undefined
+        : fillRadius === 'any'
+          ? ''
+          : fillLocationMode === 'custom' && fillLocation.trim()
+            ? fillLocation.trim()
+            : undefined;
+      const createRes = await fetch('/api/agent/recruiter-runs', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input: brief.trim(),
+          visibility,
+          location: locationPayload,
+          targetQualified: fillTargetQualified,
+          locationRadius: fillRadius,
+          radiusMiles: /^\d+$/.test(fillRadius) ? Number(fillRadius) : undefined,
+          progressiveWidening: fillRadius !== 'any' && progressiveWidening,
+          ...(editedPlan ? { apolloPlan: editedPlan } : {}),
+        }),
+      });
+      const createData = await createRes.json().catch(() => ({}));
+      if (!createRes.ok || !createData.run?.id) {
+        toast.error(createData.error || 'Could not start the recruiter agent');
+        return;
+      }
+
+      const recruiterId = String(createData.run.id);
+      setActiveRecruiterRunId(recruiterId);
+      let current = createData.run as Record<string, unknown>;
+      for (let attempt = 0; attempt < 720; attempt += 1) {
+        const mapped = mapRecruiterRun(current);
+        setResearchRuns((prev) => [mapped, ...prev.filter((r) => r.id !== mapped.id)].slice(0, 20));
+        if (mapped.apolloPlan) {
+          setPlanDraft(planToDraft(mapped.apolloPlan));
+          setPlanSourceLabel(mapped.apolloPlanSource || null);
+        }
+        const status = String(current.status);
+        if (['completed', 'paused', 'cancelled', 'failed'].includes(status)) {
+          if (status === 'completed') {
+            setPlanExpanded(false);
+            await loadFillHistory({ quiet: true });
+            toast.success(mapped.lastMessage || `Recruiter agent reached ${mapped.qualifiedCount || 0} qualified candidates`);
+          } else if (status === 'paused') {
+            toast.info(mapped.lastMessage || 'Recruiter agent paused');
+          } else if (status === 'failed') {
+            toast.error(mapped.error || 'Recruiter agent failed');
+            setPlanExpanded(true);
+          }
+          return;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 5000));
+        const statusRes = await fetch(`/api/agent/recruiter-runs/${encodeURIComponent(recruiterId)}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const statusData = await statusRes.json().catch(() => ({}));
+        if (!statusRes.ok || !statusData.run) {
+          toast.error(statusData.error || 'Could not read recruiter agent progress');
+          return;
+        }
+        current = statusData.run;
+      }
+      toast.info('The recruiter agent is still running in the background. You can leave this screen and return to History later.');
+    } catch {
+      toast.error('Could not start the recruiter agent');
+    } finally {
+      setResearching(false);
+      setActiveRecruiterRunId(null);
+      setBusyId(null);
+    }
+  };
+
+  const candidateKey = (candidate: SourcedPerson, index: number) =>
+    candidate.id || candidate.linkedinUrl || `${candidate.name}|${candidate.title || ''}|${candidate.company || ''}|${index}`;
+
+  const recordCandidateFeedback = async (
+    run: ResearchRun,
+    candidate: SourcedPerson,
+    index: number,
+    decision: 'strong_fit' | 'not_fit' | 'wrong_location' | 'wrong_seniority'
+  ) => {
+    if (!run.recruiterRunId) {
+      toast.info('Feedback learning is available on recruiter-agent runs.');
+      return;
+    }
+    const response = await fetch(`/api/agent/recruiter-runs/${encodeURIComponent(run.recruiterRunId)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'feedback',
+        candidateKey: candidateKey(candidate, index),
+        decision,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      toast.error(data.error || 'Could not save recruiter feedback');
+      return;
+    }
+    setResearchRuns((previous) => previous.map((item) =>
+      item.id !== run.id
+        ? item
+        : {
+            ...item,
+            candidates: item.candidates.map((person, personIndex) =>
+              candidateKey(person, personIndex) === candidateKey(candidate, index)
+                ? { ...person, recruiterDisposition: decision }
+                : person
+            ),
+          }
+    ));
+    toast.success('Feedback saved for this search.');
+  };
+
+  const importCandidates = async (
+    run: ResearchRun,
+    candidates: SourcedPerson[],
+    minFitScore: number,
+    successLabel: string
+  ) => {
+    if (!candidates.length || importingRunId) return;
+    setImportingRunId(run.id);
+    try {
+      const response = await fetch('/api/agent/source-candidates/import', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidates,
+          minFitScore,
+          searchQuery: run.query,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not load candidates');
+      toast.success(
+        data.message || `${data.imported || 0} candidate(s) ${successLabel}`
+      );
+      const keys = candidates.map((candidate, index) => candidateKey(candidate, index));
+      setImportedCandidateKeys((previous) => ({
+        ...previous,
+        [run.id]: [...new Set([...(previous[run.id] || []), ...keys])],
+      }));
+      setSelectedCandidateKeys((previous) => ({ ...previous, [run.id]: [] }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not load candidates');
+    } finally {
+      setImportingRunId(null);
+    }
+  };
+
+  const importQualifiedCandidates = async (run: ResearchRun) => {
+    const qualified = run.candidates.filter(
+      (candidate) => (candidate.fitScore || 0) >= 80
+    );
+    await importCandidates(run, qualified, 80, 'loaded into Turnkey');
   };
 
   const startJob = async () => {
@@ -992,7 +1273,9 @@ export function AgentWorkbench({
 
   return (
     <div
-      className={`flex h-full min-h-0 flex-col ${
+      className={`flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden ${
+        isResearch && light && !isCompact ? 'lg:flex-row' : ''
+      } ${
         light
           ? isCompact
             ? 'rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm'
@@ -1004,7 +1287,11 @@ export function AgentWorkbench({
     >
       {/* Launch form — constrained card on light Agent Desk */}
       <div
-        className={`shrink-0 ${
+        className={`min-w-0 shrink-0 overflow-x-hidden ${
+          isResearch && light && !isCompact
+            ? 'lg:w-[430px] lg:shrink-0 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:border-slate-200/80'
+            : ''
+        } ${
           light && !isCompact
             ? 'border-b border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 px-4 py-4 sm:px-6'
             : `border-b ${light ? 'border-slate-200' : 'border-white/10'} ${
@@ -1016,7 +1303,9 @@ export function AgentWorkbench({
       >
         <div
           className={
-            light && !isCompact ? 'mx-auto w-full max-w-2xl' : undefined
+            light && !isCompact
+              ? 'mx-auto w-full max-w-2xl lg:max-w-none'
+              : undefined
           }
         >
         {!hideChrome && (
@@ -1156,6 +1445,8 @@ export function AgentWorkbench({
           </p>
         )}
 
+        {isResearch && <RecruiterAgentControls light={light} />}
+
         {/* Launch form */}
         <div
           className={`space-y-3 ${
@@ -1182,67 +1473,172 @@ export function AgentWorkbench({
             }
           />
           {isResearch && (
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                Location (optional)
-              </label>
-              <div
-                className={`inline-flex max-w-full flex-wrap gap-0.5 rounded-lg border p-0.5 ${
-                  light
-                    ? 'border-slate-200 bg-slate-50'
-                    : 'border-white/10 bg-white/5'
-                }`}
-              >
-                {(
-                  [
-                    { id: 'job' as const, label: 'From job' },
-                    { id: 'any' as const, label: 'Anywhere' },
-                    { id: 'custom' as const, label: 'Custom' },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setFillLocationMode(opt.id)}
-                    className={`rounded-md px-2.5 py-1.5 text-[11px] font-medium transition ${
-                      fillLocationMode === opt.id
-                        ? 'bg-sky-600 text-white shadow-sm'
-                        : light
-                          ? 'text-slate-600 hover:bg-white hover:text-slate-900'
-                          : 'text-slate-400 hover:text-white'
+            <div className={`space-y-4 rounded-xl border p-3 ${
+              light ? 'border-slate-200 bg-slate-50/70' : 'border-white/10 bg-white/[0.035]'
+            }`}>
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <label className={`text-[11px] font-semibold ${light ? 'text-slate-800' : 'text-slate-200'}`}>
+                    Search location
+                  </label>
+                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 ${
+                    fillRadius === 'any'
+                      ? 'bg-slate-100 text-slate-600 ring-slate-200'
+                      : 'bg-rose-50 text-rose-700 ring-rose-200'
+                  }`}>
+                    {fillRadius === 'any' ? 'No constraint' : 'Hard constraint'}
+                  </span>
+                </div>
+                <div className={`mt-2 grid grid-cols-2 gap-1 rounded-lg border p-1 ${
+                  light ? 'border-slate-200 bg-white' : 'border-white/10 bg-slate-950/40'
+                }`}>
+                  {([
+                    { id: 'job' as const, label: 'Use job location' },
+                    { id: 'custom' as const, label: 'Set another location' },
+                  ] as const).map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setFillLocationMode(option.id)}
+                      className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                        fillLocationMode === option.id
+                          ? 'bg-sky-600 text-white shadow-sm'
+                          : light
+                            ? 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                            : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                {fillLocationMode === 'custom' && (
+                  <input
+                    type="text"
+                    value={fillLocation}
+                    onChange={(e) => setFillLocation(e.target.value)}
+                    placeholder="City, state or postal code"
+                    className={`mt-2 w-full rounded-lg border px-3 py-2 text-sm outline-none ${
+                      light
+                        ? 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-sky-300 focus:ring-2 focus:ring-sky-100'
+                        : 'border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus:border-sky-400/40 focus:ring-2 focus:ring-sky-500/20'
                     }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+                  />
+                )}
               </div>
-              {fillLocationMode === 'custom' && (
+
+              <fieldset>
+                <legend className={`text-[11px] font-semibold ${light ? 'text-slate-800' : 'text-slate-200'}`}>
+                  Search radius
+                </legend>
+                <div className="mt-2 grid grid-cols-4 gap-1.5">
+                  {FILL_RADIUS_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFillRadius(option.value)}
+                      className={`min-h-9 rounded-lg border px-1.5 py-1.5 text-[10px] font-semibold transition ${
+                        fillRadius === option.value
+                          ? 'border-sky-600 bg-sky-600 text-white shadow-sm'
+                          : light
+                            ? 'border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:text-sky-700'
+                            : 'border-white/10 bg-white/5 text-slate-300 hover:border-sky-400/30 hover:text-white'
+                      } ${option.value === 'any' ? 'col-span-2' : ''}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div className="grid grid-cols-[minmax(0,1fr)_96px] items-end gap-3">
+                <div>
+                  <label className={`text-[11px] font-semibold ${light ? 'text-slate-800' : 'text-slate-200'}`}>
+                    Qualified-candidate target
+                  </label>
+                  <p className="mt-0.5 text-[10px] text-slate-500">The agent stops when this target is reached.</p>
+                </div>
                 <input
-                  type="text"
-                  value={fillLocation}
-                  onChange={(e) => setFillLocation(e.target.value)}
-                  placeholder="e.g. Miami, FL · Remote · Texas"
-                  className={`w-full rounded-lg border px-3 py-2 text-sm outline-none ${
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={fillTargetQualified}
+                  onChange={(event) => setFillTargetQualified(Math.min(100, Math.max(1, Number(event.target.value) || 1)))}
+                  className={`h-9 rounded-lg border px-3 text-right text-sm font-semibold outline-none ${
                     light
-                      ? 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-sky-300'
-                      : 'border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus:border-sky-400/40'
+                      ? 'border-slate-200 bg-white text-slate-900 focus:border-sky-300'
+                      : 'border-white/10 bg-white/5 text-white focus:border-sky-400/40'
                   }`}
+                  aria-label="Qualified candidate target"
                 />
-              )}
-              <p className="text-[10px] text-slate-500">
-                {fillLocationMode === 'job'
-                  ? 'Uses the job’s location when available.'
-                  : fillLocationMode === 'any'
-                    ? 'No location filter — broader search.'
-                    : 'Apollo person location filter for this run only.'}
-              </p>
+              </div>
+
+              <label className={`flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5 ${
+                fillRadius === 'any' ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+              } ${
+                light ? 'border-slate-200 bg-white' : 'border-white/10 bg-white/5'
+              }`}>
+                <span>
+                  <span className={`block text-[11px] font-semibold ${light ? 'text-slate-800' : 'text-slate-200'}`}>
+                    Progressive widening
+                  </span>
+                  <span className="mt-0.5 block text-[10px] leading-relaxed text-slate-500">
+                    {fillRadius === 'any'
+                      ? 'Already searching without a geographic boundary.'
+                      : 'If supply is thin, widen geography gradually while keeping role requirements intact.'}
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={fillRadius !== 'any' && progressiveWidening}
+                  disabled={fillRadius === 'any'}
+                  onChange={(event) => setProgressiveWidening(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600"
+                />
+              </label>
+
+              <div className={`rounded-xl border p-3 ${
+                light ? 'border-sky-100 bg-sky-50/70' : 'border-sky-400/20 bg-sky-500/[0.07]'
+              }`}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className={`text-[10px] font-bold uppercase tracking-[0.12em] ${light ? 'text-sky-800' : 'text-sky-200'}`}>
+                    Search calibration
+                  </p>
+                  <span className="text-[10px] font-semibold text-slate-500">{fillTargetQualified} qualified</span>
+                </div>
+                <p className={`mt-2 text-[11px] leading-relaxed ${light ? 'text-slate-700' : 'text-slate-300'}`}>
+                  <span className="font-semibold">{fillLocationMode === 'custom' && fillLocation.trim() ? fillLocation.trim() : 'Job location'}</span>
+                  {' · '}{fillRadiusLabel(fillRadius)}
+                  {' · '}{fillRadius === 'any' ? 'No geographic boundary' : progressiveWidening ? 'Approved widening' : 'Fixed boundary'}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {fillRadius === 'any' ? (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-600 ring-1 ring-slate-200">
+                      No constraint · geography
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rose-700 ring-1 ring-rose-200">
+                      Hard · geography
+                    </span>
+                  )}
+                  <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-700 ring-1 ring-violet-200">
+                    Preference · titles &amp; seniority
+                  </span>
+                  <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-700 ring-1 ring-violet-200">
+                    Preference · skills &amp; keywords
+                  </span>
+                </div>
+                <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
+                  AI extracts role preferences from the job description. Geography starts as a hard boundary and only widens when you approve it.
+                </p>
+              </div>
             </div>
           )}
           {/* Actions row: sharing + launch — not full-bleed purple bars */}
           <div
-            className={`flex flex-col gap-3 ${
+            className={`flex min-w-0 flex-col gap-3 ${
               light && !isCompact
-                ? 'sm:flex-row sm:items-end sm:justify-between'
+                ? 'sm:flex-row sm:items-end sm:justify-between lg:flex-col lg:items-stretch'
                 : ''
             }`}
           >
@@ -1299,7 +1695,7 @@ export function AgentWorkbench({
               </p>
             </div>
             <div
-              className={`flex flex-col gap-1.5 ${
+              className={`flex min-w-0 flex-col gap-1.5 ${
                 light && !isCompact ? 'sm:items-end' : ''
               }`}
             >
@@ -1318,9 +1714,9 @@ export function AgentWorkbench({
                 </button>
               )}
               <div
-                className={`flex gap-2 ${
+                className={`flex min-w-0 gap-2 ${
                   light && !isCompact
-                    ? 'w-full sm:w-auto sm:flex-row'
+                    ? 'w-full sm:w-auto sm:flex-row lg:w-full lg:flex-col'
                     : 'w-full flex-col'
                 }`}
               >
@@ -1335,7 +1731,7 @@ export function AgentWorkbench({
                     }}
                     className={`h-10 rounded-xl text-sm font-semibold ${
                       light && !isCompact
-                        ? 'w-full sm:w-auto px-4'
+                        ? 'w-full sm:w-auto px-4 lg:w-full'
                         : 'w-full h-11'
                     } ${
                       light
@@ -1350,19 +1746,34 @@ export function AgentWorkbench({
                 )}
                 <Button
                   type="button"
-                  disabled={busyId === 'new' || researching}
-                  onClick={() => void startJob()}
+                  disabled={busyId === 'new'}
+                  onClick={() => {
+                    if (researching) {
+                      if (activeRecruiterRunId) {
+                        void fetch(`/api/agent/recruiter-runs/${encodeURIComponent(activeRecruiterRunId)}`, {
+                          method: 'PATCH',
+                          credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'pause' }),
+                        }).then(() => toast.info('Recruiter agent will pause after its current batch'));
+                      }
+                      return;
+                    }
+                    void startJob();
+                  }}
                   className={`h-10 rounded-xl text-sm font-semibold text-white shadow-md ${
                     light && !isCompact
-                      ? 'w-full sm:w-auto sm:min-w-[200px] px-6'
+                      ? 'w-full sm:w-auto sm:min-w-[200px] px-6 lg:w-full lg:min-w-0'
                       : 'w-full h-11 flex-1'
                   } ${
                     isResearch
-                      ? 'bg-sky-600 hover:bg-sky-500 shadow-sky-900/20'
+                        ? researching
+                          ? 'bg-amber-500 hover:bg-amber-400 shadow-amber-900/20'
+                          : 'bg-sky-600 hover:bg-sky-500 shadow-sky-900/20'
                       : 'bg-violet-600 hover:bg-violet-500 shadow-violet-900/20'
                   }`}
                 >
-                  {busyId === 'new' || researching ? (
+                  {busyId === 'new' || (researching && !activeRecruiterRunId) ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       {isResearch ? 'Finding candidates…' : 'Launching…'}
@@ -1375,7 +1786,9 @@ export function AgentWorkbench({
                         <Sparkles className="mr-2 h-4 w-4" />
                       )}
                       {isResearch
-                        ? 'Find candidates'
+                        ? researching
+                          ? 'Pause after batch'
+                          : 'Find candidates'
                         : 'Launch company agent'}
                     </>
                   )}
@@ -1410,19 +1823,19 @@ export function AgentWorkbench({
 
           {/* Editable Apollo plan — collapses after results so list/links stay usable */}
           {isResearch && (
-            <div className="mt-3 shrink-0 rounded-xl border border-violet-500/30 bg-violet-500/10">
+              <div className={`mt-3 shrink-0 overflow-hidden rounded-xl border ${light ? 'border-violet-200 bg-violet-50/70' : 'border-violet-500/30 bg-violet-500/10'}`}>
               <button
                 type="button"
                 onClick={() => setPlanExpanded((v) => !v)}
                 className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
               >
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-200">
+                  <p className={`text-[10px] font-semibold uppercase tracking-wide ${light ? 'text-violet-800' : 'text-violet-200'}`}>
                     Apollo search plan
                     {planSourceLabel ? ` · ${planSourceLabel}` : ''}
                   </p>
                   {!planExpanded && (
-                    <p className="mt-0.5 truncate text-[10px] text-slate-400">
+                    <p className={`mt-0.5 truncate text-[10px] ${light ? 'text-slate-600' : 'text-slate-400'}`}>
                       {(planDraft.titles || 'No titles yet').slice(0, 48)}
                       {planDraft.locations
                         ? ` · ${planDraft.locations}`
@@ -1431,14 +1844,14 @@ export function AgentWorkbench({
                     </p>
                   )}
                 </div>
-                <span className="shrink-0 rounded-md border border-white/15 px-2 py-0.5 text-[10px] text-violet-100">
+                <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] ${light ? 'border-violet-200 bg-white/70 text-violet-800' : 'border-white/15 text-violet-100'}`}>
                   {planExpanded ? 'Hide plan' : 'Edit plan'}
                 </span>
               </button>
               {planExpanded && (
-                <div className="max-h-[min(36vh,280px)] space-y-2 overflow-y-auto border-t border-violet-500/20 px-3 pb-3 pt-2">
+                <div className={`max-h-[min(36vh,280px)] space-y-2 overflow-y-auto border-t px-3 pb-3 pt-2 ${light ? 'border-violet-200' : 'border-violet-500/20'}`}>
                   <div>
-                    <p className="mb-1 text-[10px] text-slate-400">
+                    <p className={`mb-1 text-[10px] ${light ? 'text-slate-600' : 'text-slate-400'}`}>
                       Quick plays (seed plan, then edit)
                     </p>
                     <div className="flex flex-wrap gap-1.5">
@@ -1579,12 +1992,12 @@ export function AgentWorkbench({
       {/* Results — always scrollable and above any clipped form */}
       <div
         className={`relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-contain ${
-          light && !isCompact ? 'bg-slate-50/50 px-4 py-4 sm:px-6' : 'px-3 py-3'
+          light && !isCompact ? 'bg-[linear-gradient(135deg,#f8fafc_0%,#f1f5f9_55%,#eef2ff_100%)] px-4 py-5 sm:px-6 lg:px-8' : 'px-3 py-3'
         }`}
       >
         <div
           className={
-            light && !isCompact ? 'mx-auto w-full max-w-3xl' : undefined
+            light && !isCompact ? 'mx-auto w-full max-w-7xl' : undefined
           }
         >
         {isResearch ? (
@@ -1693,6 +2106,16 @@ export function AgentWorkbench({
                     run.candidates.every(
                       (c) => c.source === 'llm' || c.source === 'web'
                     );
+                  const apolloEnrichment = (run.usageBreakdown?.engines || [])
+                    .filter((engine) => engine.engine.includes('apollo-enrich'))
+                    .reduce(
+                      (summary, engine) => ({
+                        credits: summary.credits + (engine.credits || engine.results || 0),
+                        results: summary.results + (engine.results || 0),
+                        estimatedUsd: summary.estimatedUsd + (engine.estimatedUsd || 0),
+                      }),
+                      { credits: 0, results: 0, estimatedUsd: 0 }
+                    );
                   const isFocused = highlightedFillRunId === run.id;
                   return (
                   <li
@@ -1700,10 +2123,10 @@ export function AgentWorkbench({
                     ref={(node) => {
                       fillRunRefs.current[run.id] = node;
                     }}
-                    className={`rounded-2xl border p-3 ${
+                    className={`rounded-2xl border p-4 sm:p-5 ${
                       isFocused
                         ? light
-                          ? 'border-violet-400 bg-violet-50/60 shadow-md ring-2 ring-violet-200'
+                            ? 'border-violet-400 bg-violet-50/80 shadow-md ring-2 ring-violet-200'
                           : 'border-violet-400/60 bg-violet-500/10 shadow-md ring-2 ring-violet-500/30'
                         : light
                           ? 'border-slate-200 bg-white shadow-sm'
@@ -1781,7 +2204,9 @@ export function AgentWorkbench({
                             void (async () => {
                               try {
                                 const res = await fetch(
-                                  `/api/agent/fill-runs/${run.id}`,
+                                  run.recruiterRunId
+                                    ? `/api/agent/recruiter-runs/${encodeURIComponent(run.recruiterRunId)}`
+                                    : `/api/agent/fill-runs/${run.id}`,
                                   {
                                     method: 'PATCH',
                                     credentials: 'include',
@@ -1824,6 +2249,22 @@ export function AgentWorkbench({
                             : 'Share with team'}
                         </button>
                       )}
+                      {run.importableCount != null && run.importableCount > 0 && (
+                        <button
+                          type="button"
+                          disabled={importingRunId === run.id}
+                          onClick={() => void importQualifiedCandidates(run)}
+                          className={`inline-flex items-center rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm disabled:opacity-60 ${
+                            light
+                              ? 'bg-emerald-600 hover:bg-emerald-500'
+                              : 'bg-emerald-600 hover:bg-emerald-500'
+                          }`}
+                        >
+                          {importingRunId === run.id
+                            ? 'Loading…'
+                            : `Load ${run.importableCount} qualified`}
+                        </button>
+                      )}
                     </div>
                     {run.apolloPlan && (
                       <p className="mt-1.5 text-[10px] leading-snug text-slate-500">
@@ -1841,14 +2282,30 @@ export function AgentWorkbench({
                           : ' · anywhere'}
                       </p>
                     )}
+                    {(run.qualifiedCount != null || run.reviewCount != null) && (
+                      <p className="mt-1.5 text-[10px] text-slate-500">
+                        Recruiter gate: {run.qualifiedCount || 0}
+                        {run.targetQualified ? ` / ${run.targetQualified}` : ''}
+                        {' '}auto-qualified
+                        {' · '}{run.reviewCount || 0} needs review
+                        {run.rejectedCount != null
+                          ? ` · ${run.rejectedCount} below threshold`
+                          : ''}
+                        {run.targetQualified != null && (
+                          <span className={run.targetReached ? 'text-emerald-600' : 'text-amber-600'}>
+                            {' · '}{run.targetReached ? 'target reached' : 'source pool exhausted'}
+                          </span>
+                        )}
+                      </p>
+                    )}
                     {run.usageBreakdown && (
-                      <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                        <div className="rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-300">
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div className={`rounded-xl border px-3 py-2.5 ${light ? 'border-violet-100 bg-violet-50/70' : 'border-white/10 bg-black/25'}`}>
+                          <p className={`text-[10px] font-semibold uppercase tracking-wide ${light ? 'text-violet-700' : 'text-violet-300'}`}>
                             LLM
                           </p>
                           {run.usageBreakdown.llm ? (
-                            <p className="mt-0.5 text-[11px] text-slate-200">
+                            <p className={`mt-0.5 text-[11px] ${light ? 'text-slate-700' : 'text-slate-200'}`}>
                               {(run.usageBreakdown.llm.inputTokens || 0) +
                                 (run.usageBreakdown.llm.outputTokens || 0)}{' '}
                               tokens
@@ -1858,7 +2315,7 @@ export function AgentWorkbench({
                                 {run.usageBreakdown.llm.outputTokens || 0} out)
                               </span>
                               <br />
-                              <span className="font-medium text-emerald-200">
+                              <span className={`font-medium ${light ? 'text-emerald-700' : 'text-emerald-200'}`}>
                                 $
                                 {run.usageBreakdown.llm.estimatedUsd.toFixed(4)}
                               </span>
@@ -1869,16 +2326,16 @@ export function AgentWorkbench({
                             </p>
                           )}
                         </div>
-                        <div className="rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-300">
+                        <div className={`rounded-xl border px-3 py-2.5 ${light ? 'border-sky-100 bg-sky-50/70' : 'border-white/10 bg-black/25'}`}>
+                          <p className={`text-[10px] font-semibold uppercase tracking-wide ${light ? 'text-sky-700' : 'text-sky-300'}`}>
                             Apollo
                           </p>
                           {run.usageBreakdown.apollo ? (
-                            <p className="mt-0.5 text-[11px] text-slate-200">
+                            <p className={`mt-0.5 text-[11px] ${light ? 'text-slate-700' : 'text-slate-200'}`}>
                               {run.usageBreakdown.apollo.results} results ·{' '}
                               {run.usageBreakdown.apollo.credits} credits
                               <br />
-                              <span className="font-medium text-emerald-200">
+                              <span className={`font-medium ${light ? 'text-emerald-700' : 'text-emerald-200'}`}>
                                 $
                                 {run.usageBreakdown.apollo.estimatedUsd.toFixed(
                                   4
@@ -1887,6 +2344,13 @@ export function AgentWorkbench({
                               {run.usageBreakdown.apollo.note && (
                                 <span className="block text-[10px] text-slate-500">
                                   {run.usageBreakdown.apollo.note}
+                                </span>
+                              )}
+                              {apolloEnrichment.estimatedUsd > 0 && (
+                                <span className="mt-1 block text-[10px] text-slate-500">
+                                  Enrichment: {apolloEnrichment.results} profiles ·{' '}
+                                  {apolloEnrichment.credits} credits · $
+                                  {apolloEnrichment.estimatedUsd.toFixed(4)}
                                 </span>
                               )}
                             </p>
@@ -1902,8 +2366,8 @@ export function AgentWorkbench({
                       (c) =>
                         c.source === 'apollo' && /\*{2,}/.test(c.name || '')
                     ) && (
-                      <p className="mt-2 rounded-lg border border-sky-500/25 bg-sky-500/10 px-2.5 py-2 text-[10px] leading-relaxed text-sky-100/90">
-                        <strong className="text-sky-50">
+                      <p className={`mt-3 rounded-xl border px-3 py-2.5 text-[10px] leading-relaxed ${light ? 'border-sky-200 bg-sky-50 text-sky-800' : 'border-sky-500/25 bg-sky-500/10 text-sky-100/90'}`}>
+                        <strong className={light ? 'text-sky-900' : 'text-sky-50'}>
                           Asterisks = Apollo privacy mask, not fake people.
                         </strong>{' '}
                         People Search returns real database records with last
@@ -1913,7 +2377,7 @@ export function AgentWorkbench({
                       </p>
                     )}
                     {hasLlmOnly && (
-                      <p className="mt-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-2 text-[10px] leading-relaxed text-amber-100/90">
+                      <p className={`mt-3 rounded-xl border px-3 py-2.5 text-[10px] leading-relaxed ${light ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-amber-500/25 bg-amber-500/10 text-amber-100/90'}`}>
                         <strong className="text-amber-50">LLM leads ≠ open-to-work.</strong>{' '}
                         These are role-fit suggestions (or web-extracted names),
                         not people confirmed as job seekers. Verify on LinkedIn
@@ -1944,11 +2408,59 @@ export function AgentWorkbench({
                         ))}
                       </div>
                     )}
+                    {run.candidates.length > 0 && (() => {
+                      const visibleCandidates = run.candidates.slice(0, 100);
+                      const selectedKeys = selectedCandidateKeys[run.id] || [];
+                      const selected = visibleCandidates.filter((candidate, index) =>
+                        selectedKeys.includes(candidateKey(candidate, index))
+                      );
+                      return (
+                        <div className={`mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 ${light ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-white/5'}`}>
+                          <span className={`text-[11px] ${light ? 'text-slate-600' : 'text-slate-400'}`}>
+                            {selected.length} selected{run.candidates.length > visibleCandidates.length ? ` · showing ${visibleCandidates.length} of ${run.candidates.length}` : ''}
+                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              className={`rounded-md px-2 py-1 text-[10px] font-semibold ${light ? 'text-sky-700 hover:bg-sky-100' : 'text-sky-300 hover:bg-white/10'}`}
+                              onClick={() => setSelectedCandidateKeys((previous) => ({
+                                ...previous,
+                                [run.id]: visibleCandidates.map((candidate, index) => candidateKey(candidate, index)),
+                              }))}
+                            >
+                              Select shown
+                            </button>
+                            {selected.length > 0 && (
+                              <button
+                                type="button"
+                                disabled={importingRunId === run.id}
+                                className="rounded-md bg-sky-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm hover:bg-sky-500 disabled:opacity-60"
+                                onClick={() => void importCandidates(run, selected, 0, 'added to Trio')}
+                              >
+                                {importingRunId === run.id ? 'Adding…' : `Add selected to Trio (${selected.length})`}
+                              </button>
+                            )}
+                            {selected.length > 0 && (
+                              <button
+                                type="button"
+                                className={`rounded-md px-2 py-1 text-[10px] font-semibold ${light ? 'text-slate-600 hover:bg-white' : 'text-slate-400 hover:bg-white/10'}`}
+                                onClick={() => setSelectedCandidateKeys((previous) => ({ ...previous, [run.id]: [] }))}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <ul className="mt-2 space-y-2">
-                      {run.candidates.slice(0, 12).map((c, i) => {
+                      {run.candidates.slice(0, 100).map((c, i) => {
                         const liSearch = linkedInPeopleSearchUrl(c);
                         const googleSearch = googlePersonSearchUrl(c);
                         const isLlm = c.source === 'llm' || c.source === 'web';
+                        const key = candidateKey(c, i);
+                        const isSelected = (selectedCandidateKeys[run.id] || []).includes(key);
+                        const isImported = (importedCandidateKeys[run.id] || []).includes(key);
                         const fit =
                           typeof c.fitScore === 'number'
                             ? c.fitScore
@@ -1959,31 +2471,54 @@ export function AgentWorkbench({
                         return (
                         <li
                           key={`${run.id}-${c.id || i}`}
-                          className="relative z-10 rounded-lg border border-white/15 bg-slate-900/90 px-2.5 py-2.5 shadow-sm"
+                          className={`relative z-10 flex gap-3 rounded-xl border px-4 py-4 shadow-sm ${
+                            light
+                              ? isImported
+                                ? 'border-emerald-300 bg-emerald-50/50 hover:border-emerald-400 hover:shadow-md'
+                                : isSelected
+                                  ? 'border-sky-300 bg-sky-50/50 hover:border-sky-400 hover:shadow-md'
+                                  : 'border-slate-200 bg-white hover:border-sky-200 hover:shadow-md'
+                              : 'border-white/15 bg-slate-900/90'
+                          }`}
                         >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => setSelectedCandidateKeys((previous) => {
+                              const current = previous[run.id] || [];
+                              return {
+                                ...previous,
+                                [run.id]: current.includes(key)
+                                  ? current.filter((item) => item !== key)
+                                  : [...current, key],
+                              };
+                            })}
+                            className="mt-1 h-4 w-4 shrink-0 accent-sky-600"
+                            aria-label={`Select ${c.name}`}
+                          />
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-1.5">
                               {typeof fit === 'number' && (
                                 <span
-                                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${fitBadgeClass(fit)}`}
+                                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${fitBadgeClass(fit, light)}`}
                                   title="Fit score vs this job (re-ranked)"
                                 >
                                   {fit}
                                 </span>
                               )}
-                              <p className="text-sm font-semibold text-white">
+                              <p className={`text-sm font-semibold ${light ? 'text-slate-900' : 'text-white'}`}>
                                 {c.name}
                               </p>
                               {c.source && (
                                 <span
                                   className={`rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wide ${
-                                    c.source === 'apollo' || c.source === 'pdl'
-                                      ? 'bg-emerald-500/20 text-emerald-200'
-                                      : 'bg-amber-500/20 text-amber-100'
+                                    c.source === 'ats' || c.source === 'apollo' || c.source === 'pdl'
+                                      ? light ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-emerald-500/20 text-emerald-200'
+                                      : light ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' : 'bg-amber-500/20 text-amber-100'
                                   }`}
                                   title={
-                                    c.source === 'apollo' || c.source === 'pdl'
-                                      ? 'From people database'
+                                    c.source === 'ats' || c.source === 'apollo' || c.source === 'pdl'
+                                      ? c.source === 'ats' ? 'Rediscovered in Trio before external sourcing' : 'From people database'
                                       : 'LLM / web discovery — verify before outreach'
                                   }
                                 >
@@ -1992,9 +2527,14 @@ export function AgentWorkbench({
                                     : c.source}
                                 </span>
                               )}
+                              {isImported && (
+                                <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${light ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-500/20 text-emerald-200'}`}>
+                                  In Trio
+                                </span>
+                              )}
                               {c.mustHaveHit && (
                                 <span
-                                  className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide bg-amber-500/25 text-amber-100"
+                                  className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${light ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' : 'bg-amber-500/25 text-amber-100'}`}
                                   title="Must-have skill/experience signal found"
                                 >
                                   must-have
@@ -2002,7 +2542,7 @@ export function AgentWorkbench({
                               )}
                               {c.geoOk === false && (
                                 <span
-                                  className="rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wide bg-rose-500/20 text-rose-200"
+                                  className={`rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wide ${light ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200' : 'bg-rose-500/20 text-rose-200'}`}
                                   title="Location may not match job geo"
                                 >
                                   geo?
@@ -2011,28 +2551,37 @@ export function AgentWorkbench({
                               {c.source === 'apollo' &&
                                 /\*{2,}/.test(c.name || '') && (
                                   <span
-                                    className="rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wide bg-slate-500/25 text-slate-300"
+                                    className={`rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wide ${light ? 'bg-slate-100 text-slate-600 ring-1 ring-slate-200' : 'bg-slate-500/25 text-slate-300'}`}
                                     title="Apollo People Search redacts last names until enrichment"
                                   >
                                     masked
                                   </span>
                                 )}
                             </div>
-                            <p className="mt-0.5 text-[12px] text-slate-300">
-                              {[c.title, c.company, c.location]
+                            <p className={`mt-0.5 text-[12px] ${light ? 'text-slate-600' : 'text-slate-300'}`}>
+                              {[c.title, c.company, c.location, typeof c.distanceMiles === 'number' ? `${c.distanceMiles.toFixed(1)} mi` : undefined]
                                 .filter(Boolean)
                                 .join(' · ')}
                             </p>
                             {fitReason && (
-                              <p className="mt-1 text-[11px] leading-snug text-violet-100/90 line-clamp-2">
+                              <p className={`mt-1 text-[11px] leading-snug line-clamp-2 ${light ? 'text-violet-700' : 'text-violet-100/90'}`}>
                                 {fitReason}
                               </p>
+                            )}
+                            {Array.isArray(c.evidence) && c.evidence.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {c.evidence.slice(0, 3).map((item) => (
+                                  <span key={item} className={`rounded-full px-2 py-0.5 text-[9px] font-medium ring-1 ${light ? 'bg-slate-50 text-slate-600 ring-slate-200' : 'bg-white/5 text-slate-300 ring-white/10'}`}>
+                                    Verified · {item}
+                                  </span>
+                                ))}
+                              </div>
                             )}
                             <div className="relative z-20 mt-2 flex flex-wrap gap-1.5 text-[11px]">
                               {c.email && (
                                 <a
                                   href={`mailto:${c.email}`}
-                                  className="inline-flex items-center gap-1 rounded-md border border-sky-400/40 bg-sky-500/15 px-2 py-1 font-medium text-sky-100 hover:bg-sky-500/30"
+                                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium ${light ? 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100' : 'border-sky-400/40 bg-sky-500/15 text-sky-100 hover:bg-sky-500/30'}`}
                                 >
                                   <Mail className="h-3 w-3" />
                                   Email
@@ -2050,7 +2599,7 @@ export function AgentWorkbench({
                                   }
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 rounded-md border border-sky-400/40 bg-sky-500/15 px-2 py-1 font-medium text-sky-100 hover:bg-sky-500/30"
+                                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium ${light ? 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100' : 'border-sky-400/40 bg-sky-500/15 text-sky-100 hover:bg-sky-500/30'}`}
                                 >
                                   <Linkedin className="h-3 w-3" />
                                   Profile
@@ -2060,18 +2609,18 @@ export function AgentWorkbench({
                                   href={liSearch}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 rounded-md border border-sky-400/40 bg-sky-500/15 px-2 py-1 font-medium text-sky-100 hover:bg-sky-500/30"
-                                  title="Opens LinkedIn people search (first name + title + company)"
+                                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium ${light ? 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100' : 'border-sky-400/40 bg-sky-500/15 text-sky-100 hover:bg-sky-500/30'}`}
+                                  title="Searches LinkedIn for this person; Apollo did not return a verified profile URL"
                                 >
                                   <Linkedin className="h-3 w-3" />
-                                  LinkedIn
+                                  Find on LinkedIn
                                 </a>
                               )}
                               <a
                                 href={googleSearch}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-medium text-white hover:bg-white/20"
+                                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium ${light ? 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100' : 'border-white/20 bg-white/10 text-white hover:bg-white/20'}`}
                                 title="Google: name + title + company + LinkedIn"
                               >
                                 <ExternalLink className="h-3 w-3" />
@@ -2082,7 +2631,7 @@ export function AgentWorkbench({
                                   href={c.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-medium text-white hover:bg-white/20"
+                                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium ${light ? 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100' : 'border-white/20 bg-white/10 text-white hover:bg-white/20'}`}
                                 >
                                   Source
                                 </a>
@@ -2091,6 +2640,42 @@ export function AgentWorkbench({
                                 <span className="self-center text-[10px] text-slate-400">
                                   Not confirmed open to work
                                 </span>
+                              )}
+                              {run.recruiterRunId && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => void recordCandidateFeedback(run, c, i, 'strong_fit')}
+                                    className={`rounded-md border px-2 py-1 font-medium ${c.recruiterDisposition === 'strong_fit' ? 'border-emerald-400 bg-emerald-100 text-emerald-800' : light ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'}`}
+                                  >
+                                    Strong fit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void recordCandidateFeedback(run, c, i, 'not_fit')}
+                                    className={`rounded-md border px-2 py-1 font-medium ${c.recruiterDisposition === 'not_fit' ? 'border-rose-400 bg-rose-100 text-rose-800' : light ? 'border-slate-200 bg-white text-slate-600 hover:bg-rose-50 hover:text-rose-700' : 'border-white/15 bg-white/5 text-slate-300'}`}
+                                  >
+                                    Not a fit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void recordCandidateFeedback(run, c, i, 'wrong_location')}
+                                    className={`rounded-md border px-2 py-1 font-medium ${c.recruiterDisposition === 'wrong_location' ? 'border-amber-400 bg-amber-100 text-amber-800' : light ? 'border-slate-200 bg-white text-slate-600 hover:bg-amber-50 hover:text-amber-700' : 'border-white/15 bg-white/5 text-slate-300'}`}
+                                  >
+                                    Wrong location
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void recordCandidateFeedback(run, c, i, 'strong_fit');
+                                      setBrief(`${run.query}\n\nPrioritize profiles similar to ${c.name}, ${c.title || 'this title'} at ${c.company || 'a similar company'}, while preserving all hard requirements.`);
+                                      toast.success('More-like-this calibration loaded. Review it and launch the next search.');
+                                    }}
+                                    className={`rounded-md border px-2 py-1 font-medium ${light ? 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100' : 'border-violet-400/30 bg-violet-500/10 text-violet-200'}`}
+                                  >
+                                    More like this
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>

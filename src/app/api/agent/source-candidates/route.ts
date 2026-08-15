@@ -23,8 +23,25 @@ import {
   agentCoreWebSearchStatus,
 } from '@/lib/agentcore/web-search';
 import { getTenantApolloPublic } from '@/lib/db/repositories/tenant-apollo-credentials-repository';
+import {
+  getRecruiterAgentConfig,
+  getRecruiterAgentUsage,
+} from '@/lib/db/repositories/recruiter-agent-repository';
 
 export const dynamic = 'force-dynamic';
+
+function importReady(candidate: { name?: string; title?: string; company?: string; linkedinUrl?: string; email?: string; phone?: string }) {
+  const name = String(candidate.name || '').trim();
+  const title = String(candidate.title || '').trim();
+  const company = String(candidate.company || '').trim();
+  const phone = String(candidate.phone || '').replace(/\D/g, '');
+  const hasIdentity =
+    /linkedin\.com\/in\/[a-z0-9-]+/i.test(String(candidate.linkedinUrl || '')) ||
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(candidate.email || '')) ||
+    phone.length >= 7;
+  return name.length >= 5 && name.split(/\s+/).length >= 2 && !name.includes('*') &&
+    title.length >= 3 && company.length >= 2 && hasIdentity;
+}
 
 export async function GET(request: NextRequest) {
   const session = await getSession().catch(() => null);
@@ -115,6 +132,30 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
+    const agentConfig = await getRecruiterAgentConfig(tenantId);
+    const agentUsage = await getRecruiterAgentUsage(tenantId);
+
+    if (!agentConfig.enabled || agentConfig.paused) {
+      return NextResponse.json(
+        { error: 'Recruiter sourcing agent is paused. Resume it in Agent Controls before starting a run.' },
+        { status: 409 }
+      );
+    }
+    if (agentUsage.dayRuns >= agentConfig.maxRunsPerDay) {
+      return NextResponse.json(
+        { error: `Daily recruiter-agent run limit reached (${agentConfig.maxRunsPerDay}).` },
+        { status: 429 }
+      );
+    }
+    if (
+      agentUsage.dayUsd >= agentConfig.dailyBudgetUsd ||
+      agentUsage.monthUsd >= agentConfig.monthlyBudgetUsd
+    ) {
+      return NextResponse.json(
+        { error: 'Recruiter-agent budget reached. Increase the budget or wait for the next period.' },
+        { status: 429 }
+      );
+    }
     const input = String(
       body.input ||
         body.query ||
@@ -153,13 +194,28 @@ export async function POST(request: NextRequest) {
       apolloPlanOverride = body.plan as Record<string, unknown>;
     }
 
+    const requestedTarget = Number(body.targetQualified);
+    const targetQualified = Number.isFinite(requestedTarget) && requestedTarget > 0
+      ? Math.min(Math.floor(requestedTarget), 100)
+      : Math.min(agentConfig.maxCandidatesPerRun, 100);
+    const collectionLimit = Math.min(targetQualified * 2, 120);
+    const batchRequested = body.batch === true;
+    const batchSize = batchRequested
+      ? Math.min(Math.max(Number(body.batchSize) || 25, 10), 50)
+      : collectionLimit;
+    const pageOffset = Math.max(0, Math.floor(Number(body.pageOffset) || 0));
+
     const result = await sourceCandidatesForJob({
       input: input || jobId || '',
       jobId,
       tenantId,
       userId,
-      limit: body.limit != null ? Number(body.limit) : 15,
+      // Collect a larger pool because fit scoring happens after discovery.
+      // The response is narrowed to qualified candidates below.
+      limit: batchSize,
+      pageOffset,
       location,
+      locationRadius: body.locationRadius,
       apolloPlanOverride,
     });
 
@@ -192,11 +248,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const allCandidates = result.candidates;
+    const qualifiedCandidates = allCandidates.filter(
+      (candidate) => (candidate.fitScore ?? 0) >= agentConfig.minFitScore
+    );
+    const reviewCandidates = allCandidates.filter(
+      (candidate) =>
+        (candidate.fitScore ?? 0) >= agentConfig.reviewFitScore &&
+        (candidate.fitScore ?? 0) < agentConfig.minFitScore
+    );
+    const selectedCandidates = qualifiedCandidates.length >= targetQualified
+      ? qualifiedCandidates.slice(0, targetQualified)
+      : allCandidates;
+    const importableCandidates = selectedCandidates
+      .filter((candidate) => (candidate.fitScore ?? 0) >= agentConfig.minFitScore)
+      .filter(importReady);
+
     return NextResponse.json({
       success: true,
       job: result.job,
-      candidates: result.candidates,
-      count: result.candidates.length,
+      candidates: selectedCandidates,
+      qualifiedCandidates,
+      reviewCandidates,
+      importableCandidates,
+      rejectedCount: result.candidates.length - qualifiedCandidates.length - reviewCandidates.length,
+      agentControls: {
+        minFitScore: agentConfig.minFitScore,
+        reviewFitScore: agentConfig.reviewFitScore,
+        maxCandidatesPerRun: agentConfig.maxCandidatesPerRun,
+        targetQualified,
+      },
+      targetQualified,
+      targetReached: qualifiedCandidates.length >= targetQualified,
+      batch: batchRequested,
+      pageOffset,
+      count: selectedCandidates.length,
       notes: result.notes,
       estimatedCostUsd: result.estimatedCostUsd,
       estimatedToolCostUsd: result.estimatedCostUsd,

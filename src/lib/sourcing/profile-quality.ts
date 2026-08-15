@@ -90,7 +90,7 @@ export function scoreProfileQuality(p: QualityInput): QualityResult {
   const source = (p.source || '').toLowerCase();
   const linkedin = (p.linkedinUrl || (p as any).url || '').trim();
   const email = (p.email || '').trim();
-  const isDb = source === 'apollo' || source === 'pdl';
+  const isDb = source === 'ats' || source === 'apollo' || source === 'pdl';
 
   // Apollo People Search often returns partial names (first + obfuscated last).
   // Still treat as keep-eligible when we have employment signals from the DB.
@@ -173,7 +173,7 @@ export function scoreProfileQuality(p: QualityInput): QualityResult {
   }
 
   // Source trust
-  if (source === 'apollo' || source === 'pdl') {
+  if (source === 'ats' || source === 'apollo' || source === 'pdl') {
     score += 15;
     reasons.push('From people database');
   } else if (source === 'llm' || source === 'web') {
@@ -257,7 +257,7 @@ export function filterAndRankByQuality<T extends QualityInput>(
     .map((p) => {
       const q = scoreProfileQuality(p);
       const source = (p.source || '').toLowerCase();
-      const isDb = source === 'apollo' || source === 'pdl';
+      const isDb = source === 'ats' || source === 'apollo' || source === 'pdl';
       const floor =
         minScore != null ? minScore : isDb ? 35 : 45;
       return {

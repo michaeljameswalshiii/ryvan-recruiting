@@ -9,7 +9,7 @@
  * @serverOnly
  */
 
-import { getItem, putItem, tableNames } from '../dynamodb';
+import { getItem, putItem, scanItems, tableNames } from '../dynamodb';
 
 export type FillJobVisibility = 'private' | 'public';
 
@@ -236,8 +236,8 @@ export async function createFillJobRun(
   };
 
   await putItem(tableNames.profiles, {
-    id: runKey(tenantId, id),
     ...run,
+    id: runKey(tenantId, id),
   });
   await addToIndex(tenantId, userId, id);
   if (visibility === 'public') {
@@ -254,10 +254,18 @@ export async function getFillJobRun(
     ? runId.split('#').pop() || runId
     : runId;
   try {
-    const item = await getItem<FillJobRun & { id: string }>(
+    let item = await getItem<FillJobRun & { id: string }>(
       tableNames.profiles,
       { id: runKey(tenantId, short) }
     );
+    // Older deployments wrote the short id directly. Keep those runs readable
+    // while all new writes use tenant-prefixed keys.
+    if (!item) {
+      item = await getItem<FillJobRun & { id: string }>(
+        tableNames.profiles,
+        { id: short }
+      );
+    }
     if (!item || item.type !== 'fill_job_run') return null;
     return {
       ...item,
@@ -282,7 +290,19 @@ export async function listFillJobRunsForUser(
     seen.add(rid);
     idOrder.push(rid);
   }
-  if (idOrder.length === 0) return [];
+  if (idOrder.length === 0) {
+    // Recover runs created before the index was written reliably.
+    const rows = await scanItems<FillJobRun>(
+      tableNames.profiles,
+      'tenant_id = :tenant AND #type = :type',
+      { ':tenant': tenantId, ':type': 'fill_job_run' },
+      { '#type': 'type' }
+    );
+    return rows
+      .filter((run) => canViewFillJobRun(run, userId))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 30);
+  }
 
   const runs: FillJobRun[] = [];
   for (const rid of idOrder.slice(0, 30)) {
@@ -318,8 +338,8 @@ export async function setFillJobRunVisibility(
     updatedAt: new Date().toISOString(),
   };
   await putItem(tableNames.profiles, {
-    id: runKey(tenantId, run.id),
     ...updated,
+    id: runKey(tenantId, run.id),
   });
   return updated;
 }

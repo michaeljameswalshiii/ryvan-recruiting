@@ -43,6 +43,18 @@ import {
   type ApolloSearchPlan,
 } from '@/lib/sourcing/apollo-search-plan';
 import { rerankCandidatesForJob } from '@/lib/sourcing/rerank-candidates';
+import { rediscoverAtsCandidates } from '@/lib/sourcing/ats-rediscovery';
+import {
+  bundledCityLocationProvider,
+  createLocationAnchor,
+  evaluateCandidateRadius,
+  findNearbyUsCityLocations,
+  parseRadiusPreset,
+  parseUsLocation,
+  radiusMilesForPreset,
+  type LocationAnchor,
+  type RadiusPreset,
+} from '@/lib/sourcing/radius-location';
 
 export { isValidPersonLocation };
 
@@ -56,7 +68,7 @@ export type SourcedCandidate = {
   phone?: string;
   linkedinUrl?: string;
   /** apollo | pdl | structured DBs; llm | web = discovery (verify before outreach) */
-  source: 'apollo' | 'pdl' | 'llm' | 'web';
+  source: 'ats' | 'apollo' | 'pdl' | 'llm' | 'web';
   snippet?: string;
   url?: string;
   qualityScore?: number;
@@ -67,6 +79,13 @@ export type SourcedCandidate = {
   fitReason?: string;
   mustHaveHit?: boolean;
   geoOk?: boolean;
+  /** Straight-line distance from the requested location when resolved. */
+  distanceMiles?: number;
+  /** Recruiter-visible facts supporting the recommendation. */
+  evidence?: string[];
+  /** Geographic retrieval stage that surfaced this person. */
+  searchStage?: string;
+  recruiterDisposition?: string;
 };
 
 export type JobContext = {
@@ -520,7 +539,44 @@ export function personMatchesGeoTarget(
 ): boolean {
   if (!targets.length) return true;
   const loc = (personLocation || '').trim();
-  if (!loc) return true; // unknown — keep
+
+  // A recruiter-selected city is a hard constraint. This prevents a later
+  // ranking pass from turning "Weston, FL" into "anywhere in Florida".
+  const cityTarget = (() => {
+    for (const target of targets) {
+      const value = String(target || '').trim();
+      const codeMatch = value.match(
+        /^([A-Za-z .'-]{2,40}),\s*([A-Z]{2})(?:\b|,)/i
+      );
+      if (codeMatch) {
+        const code = codeMatch[2].toUpperCase();
+        if (US_STATE_CODE_TO_NAME[code]) {
+          return { city: codeMatch[1].trim(), stateCode: code };
+        }
+      }
+      const nameMatch = value.match(
+        /^([A-Za-z .'-]{2,40}),\s*([A-Za-z ]{4,30})(?:\b|,)/i
+      );
+      if (nameMatch) {
+        const stateCode = STATE_NAME_TO_CODE[nameMatch[2].trim().toLowerCase()];
+        if (stateCode) {
+          return { city: nameMatch[1].trim(), stateCode };
+        }
+      }
+    }
+    return null;
+  })();
+
+  if (cityTarget) {
+    if (!loc || NON_US_COUNTRY_RE.test(loc)) return false;
+    if (personInOtherUsState(loc, cityTarget.stateCode)) return false;
+    const escapedCity = cityTarget.city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escapedCity.replace(/\\s+/g, '\\s+')}\\b`, 'i').test(
+      loc
+    );
+  }
+
+  if (!loc) return true; // state/country target + unknown location — keep
 
   // Hard drop non-US when any US target
   const targetUs = targets.some((t) => US_STATE_HINT_RE.test(t));
@@ -633,7 +689,6 @@ export function canonicalizeApolloLocation(raw: string): string[] {
     if (name) {
       const pretty = name.replace(/\b\w/g, (c) => c.toUpperCase());
       add(`${city}, ${pretty}`);
-      add(`${pretty}, US`);
     }
     return out;
   }
@@ -689,6 +744,8 @@ export async function sourceCandidatesForJob(params: {
   userId?: string | null;
   jobId?: string | null;
   limit?: number;
+  /** Apollo page offset for resumable batch searches. */
+  pageOffset?: number;
   /**
    * Optional location override for this search only.
    * - undefined: use job location when available
@@ -696,6 +753,8 @@ export async function sourceCandidatesForJob(params: {
    * - "Miami, FL": person_locations filter
    */
   location?: string | null;
+  /** Exact city, mileage radius, statewide, or anywhere. */
+  locationRadius?: RadiusPreset | 'any' | null;
   /** Skip LLM path when Apollo already returned enough quality people */
   preferApolloOnlyWhenEnough?: boolean;
   /**
@@ -713,7 +772,9 @@ export async function sourceCandidatesForJob(params: {
   let llmUsd = 0;
   let llmModelId: string | undefined;
   const started = Date.now();
-  const limit = Math.min(Math.max(params.limit || 15, 5), 30);
+  // The caller may request a qualified target larger than one Apollo page.
+  // Search several pages/passes, then rank and return the requested pool.
+  const limit = Math.min(Math.max(params.limit || 15, 5), 500);
 
   const job = await resolveJobContext({
     input: params.input,
@@ -760,6 +821,31 @@ export async function sourceCandidatesForJob(params: {
   } else {
     notes.push('Location filter: none');
   }
+
+  const parsedSearchLocation = searchLocation ? parseUsLocation(searchLocation) : null;
+  const requestedRadius = parseRadiusPreset(params.locationRadius);
+  const locationRadius: RadiusPreset = !searchLocation || parsedSearchLocation?.scope === 'anywhere'
+    ? 'anywhere'
+    : parsedSearchLocation?.scope === 'state'
+      ? 'state'
+      : requestedRadius || 'exact';
+  let locationAnchor: LocationAnchor | null = null;
+  if (searchLocation && locationRadius !== 'anywhere') {
+    locationAnchor = await createLocationAnchor(
+      searchLocation,
+      locationRadius,
+      bundledCityLocationProvider
+    );
+  }
+  notes.push(
+    locationRadius === 'anywhere'
+      ? 'Geography: anywhere'
+      : locationRadius === 'state'
+        ? `Geography: entire ${parsedSearchLocation?.stateCode || 'requested state'} (hard constraint)`
+        : locationRadius === 'exact'
+          ? `Geography: exact city ${searchLocation} (hard constraint)`
+          : `Geography: within ${locationRadius} miles of ${searchLocation} (hard constraint)`
+  );
 
   notes.push(
     `Sourcing for: ${job.title}` +
@@ -862,13 +948,22 @@ export async function sourceCandidatesForJob(params: {
   }
 
   const titles = plan.titles.length ? plan.titles : [job.title].filter(Boolean);
+  const numericRadius = radiusMilesForPreset(locationRadius);
+  const nearbyLocations = numericRadius != null && locationAnchor
+    ? findNearbyUsCityLocations(locationAnchor, numericRadius, 8)
+    : [];
   const locations = expandApolloLocations(
-    plan.personLocations.length
-      ? plan.personLocations
-      : searchLocation
-        ? [searchLocation]
-        : []
+    nearbyLocations.length
+      ? [searchLocation!, ...nearbyLocations]
+      : plan.personLocations.length
+        ? plan.personLocations
+        : searchLocation
+          ? [searchLocation]
+          : []
   );
+  if (nearbyLocations.length) {
+    notes.push(`Radius retrieval: Apollo will search ${nearbyLocations.length} nearby city market(s), then Trio will enforce mileage.`);
+  }
   // Must-have hard skills (CNC, NetSuite…) — first-pass precision
   const mustHaveKeywords = (plan.mustHaveKeywords || [])
     .map((k) => k.trim())
@@ -881,6 +976,20 @@ export async function sourceCandidatesForJob(params: {
       (k) => !mustHaveKeywords.some((m) => m.toLowerCase() === k.toLowerCase())
     )
     .slice(0, 2);
+
+  if (params.tenantId) {
+    try {
+      const rediscovered = await rediscoverAtsCandidates({
+        tenantId: params.tenantId,
+        job,
+        limit: Math.min(limit, 50),
+      });
+      for (const candidate of rediscovered) add(candidate);
+      notes.push(`ATS rediscovery: ${rediscovered.length} existing Trio candidate(s) matched before external sourcing.`);
+    } catch (error) {
+      notes.push(`ATS rediscovery unavailable: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+  }
 
   /**
    * Shop / process skills (CNC, EDM, machining) are poorly represented in Apollo
@@ -1028,8 +1137,8 @@ export async function sourceCandidatesForJob(params: {
    * leaders over "*CNC* Inc" company-name matches.
    */
   const searchTarget = shopMustHaves.length
-    ? Math.min(28, Math.max(limit * 2, 18))
-    : Math.min(12, Math.max(limit, 8));
+    ? Math.min(500, Math.max(limit * 2, 18))
+    : Math.min(500, Math.max(limit, 8));
   /** Run at least this many pass types before early-stop on volume */
   const minPassesBeforeVolumeStop = shopMustHaves.length ? 3 : 1;
   let apolloConfiguredOk = false;
@@ -1051,7 +1160,9 @@ export async function sourceCandidatesForJob(params: {
         if (!pass.titles.length) continue;
 
         // Page 1 always; page 2 on deep passes when still thin (search is free).
-        const maxPages = pass.deepPages || passIdx === 0 ? 2 : 1;
+        const maxPages = pass.deepPages
+          ? Math.min(20, Math.ceil(searchTarget / 25))
+          : Math.min(8, Math.ceil(searchTarget / 25));
         const isCompanyTextSkillPass =
           pass.label === 'titles+location+skillInCompanyText';
 
@@ -1070,7 +1181,7 @@ export async function sourceCandidatesForJob(params: {
             keywords: pass.keywords,
             seniorities: pass.seniorities,
             per_page: Math.min(Math.max(limit, 15), 25),
-            page,
+            page: (params.pageOffset || 0) + page,
             auth: apolloAuth,
           });
 
@@ -1183,12 +1294,8 @@ export async function sourceCandidatesForJob(params: {
             ) {
               break;
             }
-            if (candidates.length < Math.min(8, limit)) {
-              notes.push(
-                `Apollo ${pass.label}: page 2 before loosening filters (search is free)`
-              );
-            } else {
-              break;
+            if (page === 1 && maxPages > 1) {
+              notes.push(`Apollo ${pass.label}: continuing pagination (search is free)`);
             }
           }
         }
@@ -1260,7 +1367,7 @@ export async function sourceCandidatesForJob(params: {
   // --- 3) Web-grounded discovery ONLY if Apollo/PDL still empty
   // Skip when Apollo auth is broken — fix the key first; web hints mislead.
   const dbCount = candidates.filter(
-    (c) => c.source === 'apollo' || c.source === 'pdl'
+    (c) => c.source === 'ats' || c.source === 'apollo' || c.source === 'pdl'
   ).length;
 
   if (apolloAuthError) {
@@ -1335,21 +1442,48 @@ export async function sourceCandidatesForJob(params: {
   }
 
   // Drop people clearly outside target geo (e.g. China when Florida was requested)
-  const geoTargets = locations.length
-    ? locations
-    : plan.personLocations || [];
+  // Filter against the recruiter's original geography, not Apollo-expanded
+  // variants. A state search may include major metros for recall; those must
+  // not accidentally turn the local gate into an exact-city requirement.
+  const geoTargets = searchLocation ? [searchLocation] : plan.personLocations;
   let geoFiltered = candidates;
-  if (geoTargets.length) {
+  if (locationAnchor && locationRadius !== 'anywhere') {
     const beforeGeo = geoFiltered.length;
-    geoFiltered = geoFiltered.filter((c) =>
-      personMatchesGeoTarget(c.location, geoTargets)
-    );
+    const evaluated = await Promise.all(geoFiltered.map(async (candidate) => ({
+      candidate,
+      evaluation: await evaluateCandidateRadius({
+        anchor: locationAnchor!,
+        preset: locationRadius,
+        candidate: { location: candidate.location },
+        provider: bundledCityLocationProvider,
+      }),
+    })));
+    geoFiltered = evaluated
+      .filter(({ evaluation }) => evaluation.matches)
+      .map(({ candidate, evaluation }) => ({
+        ...candidate,
+        geoOk: true,
+        distanceMiles: evaluation.distanceMiles != null
+          ? Math.round(evaluation.distanceMiles * 10) / 10
+          : candidate.distanceMiles,
+        evidence: [
+          ...(candidate.evidence || []),
+          evaluation.distanceMiles != null
+            ? `${Math.round(evaluation.distanceMiles * 10) / 10} miles from ${searchLocation}`
+            : evaluation.reason,
+        ],
+      }));
     const droppedGeo = beforeGeo - geoFiltered.length;
     if (droppedGeo > 0) {
       notes.push(
-        `Geo filter removed ${droppedGeo} profile(s) outside ${geoTargets.join(', ')} (e.g. non-US when Florida requested)`
+        `Hard geo filter removed ${droppedGeo} profile(s) outside ${locationRadius === 'state' ? 'the requested state' : locationRadius === 'exact' ? searchLocation : `${locationRadius} miles of ${searchLocation}`}.`
       );
     }
+  } else if (geoTargets.length) {
+    const beforeGeo = geoFiltered.length;
+    geoFiltered = geoFiltered.filter((candidate) => personMatchesGeoTarget(candidate.location, geoTargets));
+    const droppedGeo = beforeGeo - geoFiltered.length;
+    if (droppedGeo > 0) notes.push(`Geo filter removed ${droppedGeo} profile(s) outside ${geoTargets.join(', ')}.`);
   }
 
   // Quality filter: drop thin / likely-hallucinated LLM profiles.
@@ -1367,7 +1501,7 @@ export async function sourceCandidatesForJob(params: {
   // Soft-pass: never empty a full Apollo page
   if (qualityKept.length === 0 && beforeQ > 0) {
     const dbOnly = geoFiltered.filter(
-      (c) => c.source === 'apollo' || c.source === 'pdl'
+      (c) => c.source === 'ats' || c.source === 'apollo' || c.source === 'pdl'
     );
     if (dbOnly.length) {
       notes.push(
@@ -1471,7 +1605,9 @@ export async function sourceCandidatesForJob(params: {
 
   // --- Rank-then-enrich: spend Apollo credits only on top shortlist ---
   // Search is free (masked names OK). Enrich top N after re-rank for full name/LinkedIn.
-  const ENRICH_TOP_N = Math.min(8, limit);
+  // Apollo search rows frequently omit LinkedIn URLs. Enrich a larger
+  // shortlist so the UI can open verified /in/ profiles directly.
+  const ENRICH_TOP_N = Math.min(50, limit);
   if (
     apolloConfiguredOk &&
     !apolloAuthError &&
@@ -1491,17 +1627,32 @@ export async function sourceCandidatesForJob(params: {
 
     if (enrichIds.length > 0) {
       try {
-        const enriched = await enrichPeopleByIds(enrichIds, apolloAuth, {
-          revealPersonalEmails: false,
-          revealPhoneNumber: false,
-        });
-        if (enriched.error) {
-          notes.push(
-            `Apollo enrich (top ${enrichIds.length} only): ${enriched.error}. Search hits remain valid with privacy-masked names.`
+        const enrichedPeople: ApolloPerson[] = [];
+        let enrichError: string | undefined;
+        let enrichCredits = 0;
+        for (let batchStart = 0; batchStart < enrichIds.length; batchStart += 10) {
+          const enriched = await enrichPeopleByIds(
+            enrichIds.slice(batchStart, batchStart + 10),
+            apolloAuth,
+            { revealPersonalEmails: false, revealPhoneNumber: false }
           );
-        } else if (enriched.people.length) {
+          if (enriched.error) {
+            enrichError = enriched.error;
+            break;
+          }
+          enrichedPeople.push(...enriched.people);
+          enrichCredits +=
+            typeof enriched.creditsConsumed === 'number'
+              ? enriched.creditsConsumed
+              : enriched.people.length;
+        }
+        if (enrichError) {
+          notes.push(
+            `Apollo enrich (top ${enrichIds.length} only): ${enrichError}. Search hits remain valid with privacy-masked names.`
+          );
+        } else if (enrichedPeople.length) {
           const byId = new Map(
-            enriched.people
+            enrichedPeople
               .filter((p) => p.id)
               .map((p) => [String(p.id), p] as const)
           );
@@ -1525,20 +1676,16 @@ export async function sourceCandidatesForJob(params: {
             if (!/\*{2,}/.test(merged.name || '')) unlocked++;
             return merged;
           });
-          const enrichCredits =
-            typeof enriched.creditsConsumed === 'number'
-              ? enriched.creditsConsumed
-              : enriched.people.length;
           const enrichUsd = enrichCredits * 0.01;
           estimatedCostUsd += enrichUsd;
           costs.push({
             engine: 'apollo-enrich',
             estimatedCostUsd: enrichUsd,
-            count: enriched.people.length,
+            count: enrichedPeople.length,
           });
           void logApolloUsage({
             modelId: 'apollo-people-bulk-match',
-            resultsCount: enriched.people.length,
+            resultsCount: enrichedPeople.length,
             estimatedCost: enrichUsd,
             credits: enrichCredits,
             endpoint: 'people/bulk_match',
