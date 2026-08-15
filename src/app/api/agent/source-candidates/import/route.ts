@@ -35,7 +35,10 @@ export async function POST(request: NextRequest) {
   const candidates = Array.isArray(body.candidates)
     ? (body.candidates as AIRawResult[])
     : [];
-  const threshold = Number(body.minFitScore || 80);
+  const requestedThreshold = Number(body.minFitScore ?? 80);
+  const threshold = Number.isFinite(requestedThreshold)
+    ? Math.max(0, requestedThreshold)
+    : 80;
   const eligible = candidates.filter(
     (candidate) =>
       Number(candidate.fitScore || 0) >= threshold && importReady(candidate)
@@ -48,7 +51,9 @@ export async function POST(request: NextRequest) {
       errors: 0,
       skipped: candidates.length,
       message:
-        'No candidates met the import gate. Require 80+ fit, name, title, company, and a direct LinkedIn URL, valid email, or phone.',
+        threshold > 0
+          ? `No candidates met the import requirements. Require ${threshold}+ fit, name, title, company, and a direct LinkedIn URL, valid email, or phone.`
+          : 'No candidates met the manual-add requirements. A name, title, company, and a direct LinkedIn URL, valid email, or phone are required.',
     });
   }
 
@@ -66,12 +71,12 @@ export async function POST(request: NextRequest) {
     skipped: candidates.length - eligible.length,
     message:
       result.imported > 0
-        ? `${result.imported} candidate(s) loaded into Turnkey` +
+        ? `${result.imported} candidate(s) loaded into Trio` +
           (result.duplicates ? `; ${result.duplicates} already existed` : '') +
           (result.errors ? `; ${result.errors} failed` : '') +
           '.'
         : result.duplicates > 0 && result.errors === 0
-          ? `0 candidate(s) loaded; ${result.duplicates} already existed in Turnkey.`
+          ? `0 candidate(s) loaded; ${result.duplicates} already existed in Trio.`
           : `0 candidate(s) loaded; ${result.errors} failed during import.` +
             (result.duplicates ? ` ${result.duplicates} already existed.` : ''),
   });

@@ -188,31 +188,94 @@ async function enrichWithAI(rawData: AIRawResult, searchQuery?: string): Promise
   }
 }
 
+function normalizeMatchText(value: unknown): string {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function normalizePhone(value: unknown): string {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+function candidateName(candidate: AIRawResult): string {
+  return (
+    String(candidate.name || '').trim() ||
+    `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim()
+  );
+}
+
+function candidateLocation(candidate: AIRawResult): string {
+  return (
+    String(candidate.location || '').trim() ||
+    [candidate.city, candidate.state].filter(Boolean).join(', ')
+  );
+}
+
+function isCorroboratedNameMatch(
+  existing: AIRawResult,
+  candidate: AIRawResult
+): boolean {
+  const name = normalizeMatchText(candidateName(candidate));
+  if (!name || name.split(' ').length < 2) return false;
+  if (name !== normalizeMatchText(candidateName(existing))) return false;
+
+  const sameCompany =
+    normalizeMatchText(candidate.company) !== '' &&
+    normalizeMatchText(candidate.company) === normalizeMatchText(existing.company);
+  const sameTitle =
+    normalizeMatchText(candidate.title) !== '' &&
+    normalizeMatchText(candidate.title) === normalizeMatchText(existing.title);
+  const sameLocation =
+    normalizeMatchText(candidateLocation(candidate)) !== '' &&
+    normalizeMatchText(candidateLocation(candidate)) ===
+      normalizeMatchText(candidateLocation(existing));
+
+  return sameCompany || sameTitle || sameLocation;
+}
+
 /**
- * Check for duplicates by email or LinkedIn
+ * Check for duplicates by strong identifiers, then by a full-name match that
+ * is corroborated by company, title, or location.
  */
-async function checkDuplicate(
-  email?: string, 
-  linkedin?: string
-): Promise<string | null> {
+async function checkDuplicate(rawResult: AIRawResult): Promise<string | null> {
   const tenantId = await getSessionTenantId();
   if (!tenantId) return null;
 
-// Check by email
-  if (email) {
-    const existingByEmail = await getLeadByEmail(tenantId, email);
+  // Check by email.
+  if (rawResult.email) {
+    const existingByEmail = await getLeadByEmail(tenantId, rawResult.email);
     if (existingByEmail?.id) {
       return existingByEmail.id;
     }
   }
 
-  // Check by LinkedIn
-  if (linkedin) {
-    const existingByLinkedIn = await getLeadByLinkedIn(tenantId, linkedin);
+  // Check by LinkedIn.
+  if (rawResult.linkedin_url) {
+    const existingByLinkedIn = await getLeadByLinkedIn(
+      tenantId,
+      rawResult.linkedin_url
+    );
     if (existingByLinkedIn?.id) {
       return existingByLinkedIn.id;
     }
   }
+
+  // Apollo can return a different or missing identifier for a person already
+  // in Trio. Check phone and a conservative, corroborated full-name match.
+  const allLeads = await getAllLeads(tenantId);
+  const phone = normalizePhone(rawResult.phone);
+  const existing = allLeads.find((lead) => {
+    const samePhone =
+      phone.length >= 7 && phone === normalizePhone(lead.phone);
+    return samePhone || isCorroboratedNameMatch(lead, rawResult);
+  });
+
+  if (existing?.id) return existing.id;
 
   return null;
 }
@@ -245,10 +308,7 @@ export async function importResultAsCandidate(
     }
 
     // Step 1: Check for duplicates (before AI enrichment to save API calls)
-    const duplicateId = await checkDuplicate(
-      rawResult.email,
-      rawResult.linkedin_url
-    );
+    const duplicateId = await checkDuplicate(rawResult);
 
     if (duplicateId) {
       return {
