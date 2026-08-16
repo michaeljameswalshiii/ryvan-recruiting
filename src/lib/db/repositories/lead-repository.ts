@@ -186,7 +186,7 @@ export async function getAllLeadsWithLinkedJobs(
           const job = jobsMap.get(jobId);
           if (job) {
             linkedJobs.push({
-              jobId: job.id,
+              jobId: job.id || jobId,
               jobTitle: job.title,
               companyName: job.companyName,
               stage: "sourced",
@@ -217,7 +217,7 @@ export async function getLeadsByStatus(
     leadsTable,
     "tenant_id = :tenantId AND #status = :status",
     { ":tenantId": tenantId, ":status": status },
-    { "#status": "status" },
+    { expressionNames: { "#status": "status" } },
   );
   return result.items || [];
 }
@@ -297,16 +297,24 @@ export async function createLead(
     lead.resume_key = lead.resume_url;
     lead.resume_s3_key = lead.resume_url;
   }
-  if (extra.summary) lead.summary = extra.summary;
-  if (extra.skills) lead.skills = extra.skills;
-  if (Array.isArray(extra.tags)) lead.tags = extra.tags;
-  if (extra.experience) lead.experience = extra.experience;
-  if (extra.education) lead.education = extra.education;
-  if (extra.certifications) lead.certifications = extra.certifications;
-  if (extra.salary_requirements) {
+  if (typeof extra.summary === "string") lead.summary = extra.summary;
+  if (Array.isArray(extra.skills)) {
+    lead.skills = extra.skills.filter((skill): skill is string => typeof skill === "string");
+  }
+  if (Array.isArray(extra.tags)) {
+    lead.tags = extra.tags.filter((tag): tag is string => typeof tag === "string");
+  }
+  if (Array.isArray(extra.experience)) lead.experience = extra.experience;
+  if (Array.isArray(extra.education)) lead.education = extra.education;
+  if (Array.isArray(extra.certifications)) {
+    lead.certifications = extra.certifications.filter(
+      (certification): certification is string => typeof certification === "string",
+    );
+  }
+  if (typeof extra.salary_requirements === "string") {
     lead.salary_requirements = extra.salary_requirements;
   }
-  if (extra.full_address) lead.full_address = extra.full_address;
+  if (typeof extra.full_address === "string") lead.full_address = extra.full_address;
   if (extra.company != null && String(extra.company).trim()) {
     lead.company = String(extra.company).trim();
   }
@@ -533,7 +541,7 @@ export async function getLeadByEmail(
 
   // Try to use GSI first (EmailIndex)
   try {
-    const leads = await queryItems<Lead>(
+    const { items: leads } = await queryItems<Lead>(
       leadsTable,
       "tenant_id = :tenantId AND email = :email",
       { ":tenantId": tenantId, ":email": normalizedEmail },

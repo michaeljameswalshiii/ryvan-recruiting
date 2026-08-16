@@ -233,7 +233,7 @@ export function scoreProfileQuality(p: QualityInput): QualityResult {
   const minForKeep = isDb ? 35 : 45;
   const keep =
     score >= minForKeep &&
-    (hasEmploymentSignal || (isDb && (title || company || nameOk)));
+    (hasEmploymentSignal || (isDb && Boolean(title || company || nameOk)));
   if (!keep && !reasons.some((r) => r.includes('drop'))) {
     reasons.push('Below quality threshold');
   }

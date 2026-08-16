@@ -101,8 +101,6 @@ export async function setCandidatePipelineStage(
       };
     }
 
-    const previousStage = (lead as any).status || null;
-    const currentStatus = normStatus(previousStage);
     const linked = Array.isArray((lead as any).linkedJobs)
       ? (lead as any).linkedJobs.map((j: any) => ({ ...j }))
       : [];
@@ -110,6 +108,13 @@ export async function setCandidatePipelineStage(
     const scopedJobId = options?.jobId
       ? String(options.jobId).trim()
       : '';
+    const scopedJob = scopedJobId
+      ? linked.find(
+          (job: any) => String(job?.jobId || job?.id || '') === scopedJobId
+        )
+      : null;
+    const previousStage = scopedJob?.stage || (lead as any).status || null;
+    const currentStatus = normStatus((lead as any).status || null);
 
     let jobsNeedSync = false;
     if (scopedJobId) {

@@ -4,11 +4,15 @@ node_modules
 .pnp.js
 
 # Build
-.next
+.next*
 out
 build
 dist
 cdk/cdk.out
+
+# Python generated artifacts
+__pycache__/
+*.py[cod]
 
 # Environment / secrets — never commit
 .env
@@ -42,6 +46,7 @@ Thumbs.db
 
 # Testing
 coverage
+/docs/pdf-preview/
 
 # TypeScript
 *.tsbuildinfo
@@ -50,6 +55,9 @@ next-env.d.ts
 # Supabase / Vercel local
 .supabase
 .vercel
+
+# Separate local projects checked out beside this app
+/walsh-consulting/
 
 # Local scratch / dumps / one-off Dynamo scans
 bedrock-body.b64

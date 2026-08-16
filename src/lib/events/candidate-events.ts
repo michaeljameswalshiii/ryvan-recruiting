@@ -511,6 +511,18 @@ export async function addNoteToCandidate(
   if (options?.stage) {
     metadata.stage = options.stage;
   }
+  if (options?.previousStage) {
+    metadata.previousStage = String(options.previousStage);
+  }
+  if (options?.newStage) {
+    metadata.newStage = String(options.newStage);
+  }
+  if (typeof options?.stageUpdated === 'boolean') {
+    metadata.stageUpdated = options.stageUpdated;
+  }
+  if (typeof options?.autoStageSync === 'boolean') {
+    metadata.autoStageSync = options.autoStageSync;
+  }
 
   // Job tag — stored permanently so closed/unlinked jobs still render
   const jobId = options?.jobId ? String(options.jobId).trim() : '';

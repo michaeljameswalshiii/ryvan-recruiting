@@ -183,9 +183,15 @@ export async function invalidateCrmCaches(
       ch.postMessage({
         type: 'crm-invalidate',
         toolsUsed,
+        clients: touched.clients,
         at: Date.now(),
       });
       ch.close();
+    }
+    if (typeof window !== 'undefined' && touched.clients) {
+      window.dispatchEvent(
+        new CustomEvent('trio-companies-changed', { detail: { toolsUsed } })
+      );
     }
   } catch {
     /* ignore */

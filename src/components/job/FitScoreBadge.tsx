@@ -112,7 +112,7 @@ export function FitScoreBadge({
       ? Math.round(Number(toolReadiness.score))
       : null;
   const toolsApplicable = toolReadiness?.applicable !== false;
-  const hasSplit = domainScore != null;
+  const hasSplit = domainScore != null && toolScore != null && toolScore > 0;
 
   if (!hasSplit && (score == null || Number.isNaN(Number(score)))) {
     return null;

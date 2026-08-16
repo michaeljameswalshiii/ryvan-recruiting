@@ -28,6 +28,7 @@ import {
   BedrockRuntimeClient,
   InvokeModelCommand,
   ConverseCommand,
+  type ContentBlock,
 } from "@aws-sdk/client-bedrock-runtime";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -43,6 +44,11 @@ import {
   isApolloToolEnabled,
   isTavilyToolEnabled,
 } from "@/lib/ai/tool-flags";
+import {
+  APOLLO_ASSISTANT_RULES,
+  maybePrefireApolloLookup,
+} from "@/lib/ai/apollo-intent";
+import { formatApolloLookupForModel } from "@/lib/ai/tools/apollo-lookup";
 import {
   getDecryptedAnthropicKey,
   getDecryptedGrokKey,
@@ -130,6 +136,7 @@ interface BedrockRequest {
   /** 'bedrock' (platform) | BYOK: anthropic | openai | gemini | grok */
   provider?: AiProviderId;
   useSearch?: boolean;
+  imageAttachments?: Array<{ fileName?: string; mimeType?: string; imageBase64: string }>;
 }
 
 function buildGeneralAiSystemPrompt(): string {
@@ -137,7 +144,10 @@ function buildGeneralAiSystemPrompt(): string {
   const externalLines: string[] = [];
   if (isApolloToolEnabled()) {
     externalLines.push(
-      "- apollo / apollo_company_search: external people & company search"
+      "- apollo_lookup: look up ONE person (LinkedIn URL, email, or name + company). Required when the user wants LinkedIn, email, phone, title, or 'who is X'."
+    );
+    externalLines.push(
+      "- apollo / apollo_company_search: search Apollo for a list of people or companies"
     );
   }
   externalLines.push(
@@ -182,6 +192,7 @@ WRITE tools (CRM mutations — same data as the UI):
 - create_candidate, update_candidate, update_candidate_stage → Candidates list (pipeline)
 - create_contact → company contact on Contacts (hiring managers, NOT candidates)
 - create_company, update_company → Companies
+- create_company_with_primary_contact → create a Company plus a primary client-side Contact in one confirmed Trio workflow
 - create_job, update_job
 - link_candidate_to_job, update_job_candidate_stage
 
@@ -204,6 +215,8 @@ CRITICAL confirmation rules for ALL write tools:
 Other rules:
 - Maintain multi-turn context; honor revision requests
 - Use tools when they improve the answer
+- If the user wants LinkedIn, email, phone, current title, or who a named person is, call apollo_lookup first (when that tool is available). Use web_search only if Apollo returns nothing.
+- When Apollo returns a person, say you looked them up in Apollo. Do not invent a LinkedIn URL.
 - When building a company record from a website:
   1) ALWAYS call fetch_website first
   2) If fetch fails / blocked / insufficient text: do NOT invent industry, city, state, or description. Offer only name (from title or domain label) + domain, set website_fetch_failed:true on create_company, and ask the user to paste About text or confirm a minimal record
@@ -734,6 +747,7 @@ interface ClaudeMessage {
  */
 type ClaudeContent = 
   | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_result"; tool_use_id: string; content: string };
 
@@ -743,11 +757,7 @@ type ClaudeContent =
 interface BedrockTool {
   name: string;
   description: string;
-  input_schema: {
-    type: "object";
-    properties: Record<string, { type: string; description: string }>;
-    required: string[];
-  };
+  input_schema: Record<string, unknown>;
 }
 
 /**
@@ -762,13 +772,14 @@ function getToolSchemasForBedrock(): BedrockTool[] {
   const listBuilderTools: BedrockTool[] = LIST_BUILDER_TOOLS.map((t) => ({
     name: t.name,
     description: t.description,
-    input_schema: t.schema as BedrockTool["input_schema"],
+    input_schema: t.schema,
   }));
 
   const all: BedrockTool[] = [
     {
       name: "apollo",
-      description: "Search for people/candidates using Apollo.io (emails, phones, LinkedIn, titles).",
+      description:
+        "Search Apollo for a list of people (title, company, location). For one named person or a LinkedIn URL, use apollo_lookup.",
       input_schema: {
         type: "object",
         properties: {
@@ -777,6 +788,26 @@ function getToolSchemasForBedrock(): BedrockTool[] {
           per_page: { type: "number", description: "Number of results (default 10)" },
         },
         required: ["query"],
+      },
+    },
+    {
+      name: "apollo_lookup",
+      description:
+        "Look up one person in Apollo by LinkedIn URL, email, or name + company. Required for LinkedIn, email, phone, current title, or 'who is X'. Do not use to fill a job (use source_candidates).",
+      input_schema: {
+        type: "object",
+        properties: {
+          linkedin_url: { type: "string", description: "LinkedIn profile URL" },
+          email: { type: "string", description: "Email address to match" },
+          name: { type: "string", description: "Full name" },
+          company: { type: "string", description: "Company name" },
+          domain: { type: "string", description: "Company domain" },
+          reveal_contact: {
+            type: "boolean",
+            description: "true only if the user asked for email or phone",
+          },
+        },
+        required: [],
       },
     },
     {
@@ -957,7 +988,8 @@ function getToolSchemasForBedrock(): BedrockTool[] {
 async function invokeNovaConverse(
   messages: Array<{ role: "user" | "assistant"; content: string }>,
   systemPrompt: string = "",
-  modelId: string = MODEL_NOVA_LITE
+  modelId: string = MODEL_NOVA_LITE,
+  imageAttachments: Array<{ fileName?: string; mimeType?: string; imageBase64: string }> = []
 ): Promise<{ text: string; modelId: string }> {
   const converseMessages = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
@@ -965,6 +997,19 @@ async function invokeNovaConverse(
       role: m.role as "user" | "assistant",
       content: [{ text: m.content || "" }],
     }));
+  if (imageAttachments.length && converseMessages.length) {
+    const last = converseMessages[converseMessages.length - 1] as any;
+    if (last.role === "user") {
+      last.content.push(
+        ...imageAttachments.slice(0, 4).map((image) => ({
+          image: {
+            format: String(image.mimeType || "image/png").split("/")[1] || "png",
+            source: { bytes: Uint8Array.from(Buffer.from(image.imageBase64, "base64")) },
+          },
+        })) as any
+      );
+    }
+  }
 
   // Converse requires alternating roles and ending with user
   if (
@@ -1039,7 +1084,7 @@ async function invokeNovaConverse(
 
 type ConverseMsg = {
   role: "user" | "assistant";
-  content: Array<Record<string, unknown>>;
+  content: ContentBlock[];
 };
 
 /**
@@ -1056,7 +1101,7 @@ async function invokeGrokBedrockConverse(
   modelId: string;
   stopReason?: string;
   toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }>;
-  rawAssistantContent: Array<Record<string, unknown>>;
+  rawAssistantContent: ContentBlock[];
 }> {
   const candidates = modelFallbackChain(modelId);
   let lastError: unknown;
@@ -1088,11 +1133,9 @@ async function invokeGrokBedrockConverse(
       }
       const command = new ConverseCommand(input as any);
       const response = await bedrockClient.send(command);
-      const parts = (response.output?.message?.content || []) as Array<
-        Record<string, unknown>
-      >;
+      const parts = response.output?.message?.content || [];
       const text = parts
-        .map((p) => (typeof p.text === "string" ? p.text : ""))
+        .map((part) => ("text" in part && typeof part.text === "string" ? part.text : ""))
         .filter(Boolean)
         .join("\n")
         .trim();
@@ -1160,12 +1203,17 @@ async function runGrokBedrockAgent(
   crmMutated: boolean;
   generatedFiles: NonNullable<ToolContext["generatedFiles"]>;
 }> {
-  const systemPrompt =
+  let systemPrompt =
     options?.systemPrompt ||
     `You are a recruiting AI assistant on Grok 4.3 via Amazon Bedrock.
 Use tools when they improve the answer. Be concise and actionable.`;
   const tools = getToolSchemasForBedrock();
   const toolsUsed = new Set<string>();
+  const prefire = await maybePrefireApolloLookup(query, toolContext);
+  for (const name of prefire.toolsUsed) toolsUsed.add(name);
+  if (prefire.didRun) {
+    systemPrompt += `\n\n${APOLLO_ASSISTANT_RULES}`;
+  }
   let crmMutated = false;
   let modelId = options?.modelId || MODEL_GROK_43;
   if (!toolContext.generatedFiles) toolContext.generatedFiles = [];
@@ -1180,7 +1228,10 @@ Use tools when they improve the answer. Be concise and actionable.`;
       role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
       content: [{ text: m.content }],
     })),
-    { role: "user", content: [{ text: query }] },
+    {
+      role: "user",
+      content: [{ text: prefire.block ? `${query}${prefire.block}` : query }],
+    },
   ];
 
   for (let i = 0; i < MODEL_CONFIG.maxIterations; i++) {
@@ -1213,10 +1264,10 @@ Use tools when they improve the answer. Be concise and actionable.`;
               name: tu.name,
               input: tu.input,
             },
-          })),
+          }) as ContentBlock),
     });
 
-    const toolResultBlocks: Array<Record<string, unknown>> = [];
+    const toolResultBlocks: ContentBlock[] = [];
     for (const tu of result.toolUses) {
       toolsUsed.add(tu.name);
       const out = await executeToolByName(tu.name, tu.input, toolContext);
@@ -1231,7 +1282,7 @@ Use tools when they improve the answer. Be concise and actionable.`;
           toolUseId: tu.id,
           content: [{ text: out }],
         },
-      });
+      } as ContentBlock);
     }
     converseMessages.push({
       role: "user",
@@ -1259,7 +1310,8 @@ async function invokeClaude(
   messages: ClaudeMessage[],
   tools: BedrockTool[] = [],
   systemPrompt: string = "",
-  modelId: string = DEFAULT_MODEL
+  modelId: string = DEFAULT_MODEL,
+  imageAttachments: Array<{ fileName?: string; mimeType?: string; imageBase64: string }> = []
 ): Promise<{
   content: ClaudeContent[];
   stop_reason?: string;
@@ -1267,9 +1319,33 @@ async function invokeClaude(
   modelId: string;
 }> {
   // Anthropic Messages API: only user/assistant roles in messages array
-  const safeMessages = messages
+  const safeMessages: any[] = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m) => ({ role: m.role, content: m.content }));
+  if (imageAttachments.length && safeMessages.length) {
+    // Tool turns end with a user message containing tool_result blocks. Never
+    // replace that message with image blocks: Claude requires every assistant
+    // tool_use to be followed immediately by its matching tool_result blocks.
+    // Attach images to the most recent plain-text user message instead.
+    const imageTarget = [...safeMessages]
+      .reverse()
+      .find((message) => message.role === "user" && typeof message.content === "string");
+    if (imageTarget && !safeMessages.some((message) =>
+      Array.isArray(message.content) && message.content.some((block: any) => block?.type === "image")
+    )) {
+      imageTarget.content = [
+        { type: "text", text: imageTarget.content },
+        ...imageAttachments.slice(0, 4).map((image) => ({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: image.mimeType || "image/png",
+            data: image.imageBase64,
+          },
+        })),
+      ];
+    }
+  }
 
   const body: Record<string, unknown> = {
     anthropic_version: ANTHROPIC_VERSION,
@@ -1502,6 +1578,7 @@ Never map "br" in a brand domain (e.g. structuralbr.com) to Brazil.`;
     const result = await executeTool(
       "internal_data",
       {
+        query: "",
         data_type: toolInput.data_type || "leads",
         action: toolInput.action || "list",
         id: toolInput.id,
@@ -1545,6 +1622,39 @@ Never map "br" in a brand domain (e.g. structuralbr.com) to Brazil.`;
     return `Error: ${result.error || "List builder tool failed"}`;
   }
 
+  if (toolName === "apollo_lookup") {
+    const result = await executeTool(
+      "apollo_lookup",
+      {
+        query,
+        linkedin_url: toolInput.linkedin_url,
+        email: toolInput.email,
+        name: toolInput.name,
+        company: toolInput.company,
+        domain: toolInput.domain,
+        reveal_contact: toolInput.reveal_contact,
+      } as ToolParams,
+      toolContext
+    );
+    if (result.success && result.data) {
+      return formatApolloLookupForModel(
+        result.data as {
+          people?: Array<{
+            name?: string;
+            title?: string;
+            company?: string;
+            linkedin_url?: string;
+            email?: string;
+            phone?: string;
+            location?: string;
+          }>;
+          fallbackSearch?: boolean;
+        }
+      );
+    }
+    return `Apollo lookup failed: ${result.error || "no match"}. You may try web_search.`;
+  }
+
   if (toolName === "apollo_company_search" || toolName === "apollo_company") {
     const result = await executeTool(
       "apollo_company_search",
@@ -1572,7 +1682,7 @@ Never map "br" in a brand domain (e.g. structuralbr.com) to Brazil.`;
   // Fallback: registry execute for any registered tool
   const fallback = await executeTool(
     toolName,
-    { query, ...toolInput } as ToolParams,
+    { ...toolInput, query } as ToolParams,
     toolContext
   );
   if (fallback.success && fallback.data !== undefined) {
@@ -1615,6 +1725,7 @@ async function runMCPAgent(
     maxIterations?: number;
     agentMode?: boolean;
     agentGoal?: string;
+    imageAttachments?: Array<{ fileName?: string; mimeType?: string; imageBase64: string }>;
   }
 ): Promise<{
   text: string;
@@ -1635,9 +1746,10 @@ async function runMCPAgent(
     options?.systemPrompt ||
     `You are an MCP (Multi-step Cognitive Processor) agent powered by Claude on AWS Bedrock.
 Specialize in talent sourcing, recruiting, and CRM operations for Trio Recruiting.
-Use only the tools provided in this request (internal ATS data, CRM writes, source_candidates, web_search, website fetch, files).
+Use only the tools provided in this request (internal ATS data, CRM writes, Apollo lookup/search, source_candidates, web_search, website fetch, files).
 When the user wants people to fill a job / careers posting / "great fits for this role": use source_candidates with the careers URL or brief — never web_search the job URL as a query.
-For public resume / person research / "who is this" / GitHub-LinkedIn footprint on a named person: use web_search with purpose=resume_research and always cite titles + URLs.
+${APOLLO_ASSISTANT_RULES}
+For public news / GitHub / articles after Apollo misses: use web_search with purpose=resume_research and cite titles + URLs.
 Think step-by-step: Plan → Use tools when needed → Observe results → Reflect → Final Answer.
 Only use tools when they genuinely help. Be concise and actionable.`;
 
@@ -1677,6 +1789,11 @@ Rules:
 
   const tools = getToolSchemasForBedrock();
   const toolsUsed = new Set<string>();
+  const prefire = await maybePrefireApolloLookup(query, toolContext);
+  for (const name of prefire.toolsUsed) toolsUsed.add(name);
+  if (prefire.didRun) {
+    systemPrompt += `\n\n${APOLLO_ASSISTANT_RULES}`;
+  }
   let crmMutated = false;
   let modelId = options?.modelId || DEFAULT_MODEL;
   if (!toolContext.generatedFiles) toolContext.generatedFiles = [];
@@ -1705,16 +1822,17 @@ Rules:
       };
     });
 
+  const userQuery =
+    query.length > 12_000
+      ? query.slice(0, 10_000) +
+        `\n\n…[truncated ${query.length - 11_000} chars]…\n\n` +
+        query.slice(-1_000)
+      : query;
   let messages: ClaudeMessage[] = [
     ...prior,
     {
       role: "user",
-      content:
-        query.length > 12_000
-          ? query.slice(0, 10_000) +
-            `\n\n…[truncated ${query.length - 11_000} chars]…\n\n` +
-            query.slice(-1_000)
-          : query,
+      content: prefire.block ? `${userQuery}${prefire.block}` : userQuery,
     },
   ];
 
@@ -1730,7 +1848,7 @@ Rules:
   while (iteration < MAX_ITERATIONS) {
     console.log(`[MCP] Iteration ${iteration + 1}/${MAX_ITERATIONS} (history=${prior.length})`);
 
-    const result = await invokeClaude(messages, tools, systemPrompt, modelId);
+    const result = await invokeClaude(messages, tools, systemPrompt, modelId, options?.imageAttachments || []);
     // Stick to the model that actually worked after any fallback
     modelId = result.modelId;
     const content = result.content;
@@ -2132,7 +2250,7 @@ try {
     }
     
     const {
-      messages,
+      messages: rawMessages,
       model: requestedModel,
       useTools = true,
       assistantMode = false,
@@ -2143,6 +2261,7 @@ try {
       agentGoal,
       provider: requestedProvider,
       pageContext: rawPageContext,
+      imageAttachments = [],
     } = body;
 
     // Agent Desk always needs tools + general-style routing
@@ -2154,7 +2273,7 @@ try {
         : "";
 
     // Validate messages exist
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    if (!rawMessages || !Array.isArray(rawMessages) || rawMessages.length === 0) {
       return NextResponse.json(
         { error: "messages array is required and cannot be empty" },
         { status: 400 }
@@ -2163,7 +2282,7 @@ try {
 
     // Structural hard-cap on inbound history (defense in depth vs client bugs).
     // Prevents payload-too-large / function timeout after several tool turns.
-    messages = messages
+    const messages = rawMessages
       .filter(
         (m: any) =>
           m &&
@@ -2308,6 +2427,12 @@ ${pageContext}`
       !String(selectedModel).includes("xai.")
     ) {
       selectedModel = MODEL_GROK_43;
+    }
+
+    // Mantle Grok does not accept Bedrock image blocks. Route visual turns
+    // directly to Claude Sonnet so pasted/uploaded images survive the turn.
+    if (imageAttachments.length && provider === "bedrock") {
+      selectedModel = MODEL_SONNET;
     }
 
     let modelLabel = friendlyModelLabel(selectedModel);
@@ -2729,6 +2854,7 @@ ${pageContext}`
               ? agentGoal.trim()
               : lastUserQuery,
           maxIterations: agentMode ? 10 : 5,
+          imageAttachments,
         });
         completion = agentResult.text;
         usedModel = agentResult.modelId;
@@ -2760,7 +2886,8 @@ ${pageContext}`
       const result = await invokeNovaConverse(
         messagesForModel,
         systemPrompt,
-        usedModel
+        usedModel,
+        imageAttachments
       );
       completion = result.text;
       usedModel = result.modelId;
@@ -2776,7 +2903,13 @@ ${pageContext}`
         content: m.content,
       }));
 
-      const result = await invokeClaude(messagesForModel, [], systemPrompt, usedModel);
+      const result = await invokeClaude(
+        messagesForModel,
+        [],
+        systemPrompt,
+        usedModel,
+        imageAttachments,
+      );
       const textBlock = result.content.find(
         (c): c is ClaudeContent & { type: "text" } =>
           typeof c === "object" && c.type === "text"
@@ -2816,7 +2949,8 @@ ${pageContext}`
             ? agentMaxIterations
             : agentMode
               ? 10
-              : 5,
+            : 5,
+        imageAttachments,
       });
       completion = agentResult.text;
       usedModel = agentResult.modelId;

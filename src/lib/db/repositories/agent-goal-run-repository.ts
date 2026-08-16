@@ -191,8 +191,8 @@ export async function upsertGoalRun(
   };
 
   await putItem(tableNames.profiles, {
-    id: runKey(tenantId, slim.id),
     ...stored,
+    id: runKey(tenantId, slim.id),
   });
 
   if (!existing) {

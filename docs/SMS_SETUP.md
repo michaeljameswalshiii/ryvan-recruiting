@@ -1,8 +1,8 @@
-# Trio SMS setup (AWS End User Messaging)
+# Turnkey SMS setup (AWS End User Messaging)
 
-This guide wires **live texting** into Trio using **AWS End User Messaging SMS** (formerly Pinpoint SMS). The product UI and compliance flow are already in the app.
+This guide wires **live texting** into Turnkey using **AWS End User Messaging SMS** (formerly Pinpoint SMS). The product UI and compliance flow are already in the app.
 
-## What Trio already does for you
+## What Turnkey already does for you
 
 | Feature | Where |
 |--------|--------|
@@ -10,20 +10,22 @@ This guide wires **live texting** into Trio using **AWS End User Messaging SMS**
 | Quiet hours, daily limits, require consent | Same |
 | Record opt-in / opt-out | Candidate → **Text candidate**; Contact → **Text contact** |
 | Send SMS + thread log | Candidate panel + Contact detail panel |
+| Route replies to the assigned user | **Texting inbox / My texts** |
+| Company-wide and unassigned queues | Company Admin **Texting inbox** |
 | STOP / START / HELP auto-replies | Webhook `/api/public/sms/inbound` |
 | Simulated mode (no AWS number yet) | Messages log with status `simulated` |
 
 ## Prerequisites
 
 - AWS account (same one as Dynamo/Cognito is fine)
-- IAM user/role Trio already uses needs SMS permissions (below)
+- IAM user/role Turnkey already uses needs SMS permissions (below)
 - US production volume: **10DLC brand + campaign registration**
 
 ---
 
 ## Step 1 — IAM permissions
 
-Attach to the credentials used by Vercel / Trio:
+Attach to the credentials used by Vercel / Turnkey:
 
 ```json
 {
@@ -62,11 +64,12 @@ Attach to the credentials used by Vercel / Trio:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `AWS_ACCESS_KEY_ID` | Yes | Already used by Trio |
-| `AWS_SECRET_ACCESS_KEY` | Yes | Already used by Trio |
+| `AWS_ACCESS_KEY_ID` | Yes | Already used by Turnkey |
+| `AWS_SECRET_ACCESS_KEY` | Yes | Already used by Turnkey |
 | `AWS_REGION` | Yes | e.g. `us-east-1` (number region) |
-| `AWS_SMS_ORIGINATION_NUMBER` | Recommended | Default from number `+1…` |
-| `SMS_WEBHOOK_SECRET` | Recommended | Shared secret for inbound webhook |
+| `AWS_SMS_ORIGINATION_IDENTITY` | Recommended | Default phone number or origination ARN (`AWS_SMS_ORIGINATION_NUMBER` is also accepted) |
+| `AWS_SMS_CONFIGURATION_SET_NAME` | Yes for delivery events | Configuration set used for outbound sends |
+| `AWS_SMS_INBOUND_TOPIC_ARN` | Yes for replies | Expected SNS topic; prevents cross-topic notifications |
 | `SMS_DEFAULT_TENANT_ID` | Optional | If webhook cannot pass tenantId |
 | `SMS_PROVIDER` | Optional | `simulated` to force dry-run; `off` to disable |
 
@@ -76,7 +79,7 @@ You can also set origination only in **Settings → Texting** (stored per tenant
 
 ## Step 4 — Enable in the app
 
-1. Log into Trio → **Settings** → **Texting** tab.
+1. Log into Turnkey → **Settings** → **Texting** tab.
 2. Check **Enable texting**.
 3. Set **Business / agency name** (shows on first messages).
 4. Paste **Origination number** if not using env.
@@ -97,23 +100,29 @@ Until AWS is fully live, sends still work in **simulated** mode (logged in the t
 
 Contacts use the same consent/compliance rules as candidates. Phone preference for contacts: mobile/cell first, then work/preferred.
 
+## Conversation routing
+
+- Assign one AWS origination number to each company tenant. Five company users share that one number rather than purchasing five numbers.
+- The first outbound text assigns the conversation to the candidate/contact owner. Assignment priority is owner, recruiter, account manager, then collaborator; the sender is the fallback.
+- AWS's prior-message identifier routes a reply back to the same conversation. The company-number plus candidate-number pair is the fallback.
+- Standard users can access only **My texts**. Company Admins can access **My texts**, **All company**, and **Unassigned**, and can reassign a thread.
+- An inbound message that cannot be matched safely is placed in **Unassigned**. It is never exposed to every standard user.
+- Routing is inside Turnkey's responsive inbox. It does not forward candidate messages to employees' personal phone numbers.
+
 ---
 
 ## Step 6 — Inbound STOP/START (two-way)
 
-Point AWS event destination / SNS → HTTPS:
+Subscribe the SNS topic to the production HTTPS endpoint:
 
 ```
 POST https://<your-domain>/api/public/sms/inbound
-Header: x-sms-webhook-secret: <SMS_WEBHOOK_SECRET>
-Body example:
-{
-  "tenantId": "tenant-…",
-  "from": "+15559876543",
-  "body": "STOP",
-  "messageId": "…"
-}
 ```
+
+Turnkey verifies the Amazon SNS certificate and message signature, checks the
+topic ARN, confirms the subscription, and unwraps the AWS inbound SMS payload.
+The destination number is matched to the tenant's Texting settings; use
+`SMS_DEFAULT_TENANT_ID` only as a fallback for a shared platform number.
 
 Supported keywords:
 
@@ -145,7 +154,7 @@ Supported keywords:
 | “Texting is disabled” | Settings → enable |
 | “Consent required” | Record opt-in on candidate |
 | “Quiet hours” | Wait, or bypass for urgent only |
-| “No origination number” | Set number in Settings or `AWS_SMS_ORIGINATION_NUMBER` |
+| “No origination number” | Set number in Settings or `AWS_SMS_ORIGINATION_IDENTITY` |
 | Status `simulated` | Credentials missing or `SMS_PROVIDER=simulated`, or number not set while in sim mode |
 | AWS error about sandbox | Verify destination numbers or exit sandbox |
 | 10DLC rejected | Fix brand/campaign registration in AWS console |

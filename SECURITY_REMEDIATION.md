@@ -67,7 +67,8 @@ Checklist:
 - [x] `/api/cron/*` requires `CRON_SECRET` in middleware (fail closed in prod if missing)
 - [x] `/api/mcp/*` requires `Authorization: Bearer` header presence in middleware
 - [ ] Set **`SESSION_SECRET`** on Vercel (min 16 chars; `openssl rand -base64 32`). Falls back to `AI_CREDENTIALS_SECRET` if set.
-- [ ] Set **`CRON_SECRET`** on Vercel for production cron jobs
+- [x] Set **`CRON_SECRET`** on Vercel for production cron jobs
+- [x] Set **`GITHUB_OPS_TOKEN`** on Vercel (contents + pull requests write) so System ops can open and merge fix PRs
 
 ### Hardening pass (earlier)
 

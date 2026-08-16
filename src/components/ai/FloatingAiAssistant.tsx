@@ -689,8 +689,15 @@ export function FloatingAiAssistant() {
                   <span>{formatTime(m.timestamp)}</span>
                   {m.modelLabel && <span>· {m.modelLabel}</span>}
                   {m.toolsUsed && m.toolsUsed.length > 0 && (
-                    <span className="truncate max-w-[8rem]">
+                    <span className="truncate max-w-[10rem]">
                       · {m.toolsUsed.slice(0, 3).join(', ')}
+                    </span>
+                  )}
+                  {m.toolsUsed?.some((t) =>
+                    /apollo/i.test(t)
+                  ) && (
+                    <span className="rounded-full bg-sky-50 px-1.5 py-0.5 font-semibold text-sky-800">
+                      Looked up in Apollo
                     </span>
                   )}
                   <button

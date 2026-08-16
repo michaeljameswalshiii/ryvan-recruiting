@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
     if (!tenantId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const scopedTenantId = tenantId;
 
     const limit = Math.min(
       parseInt(request.nextUrl.searchParams.get("limit") || "25", 10) || 25,
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
 
     async function lead(id: string) {
       if (leadCache.has(id)) return leadCache.get(id)!;
-      const l = await getLeadById(tenantId, id).catch(() => null);
+      const l = await getLeadById(scopedTenantId, id).catch(() => null);
       leadCache.set(id, l);
       return l;
     }

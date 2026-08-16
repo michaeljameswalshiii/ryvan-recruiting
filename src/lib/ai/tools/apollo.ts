@@ -12,8 +12,8 @@ import { ToolResult, ToolContext, ToolParams } from "./types";
  * Tool metadata
  */
 export const APOLLO_TOOL_NAME = "apollo";
-export const APOLLO_TOOL_DESCRIPTION = 
-  "Search for candidates/people using Apollo.io API. Use for finding software engineers, managers, and other tech talent.";
+export const APOLLO_TOOL_DESCRIPTION =
+  "Search Apollo for a list of people by title, company, skills, or location. For one named person or a LinkedIn URL, use apollo_lookup instead.";
 
 /**
  * Apollo search input parameters

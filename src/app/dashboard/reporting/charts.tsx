@@ -30,7 +30,6 @@ import {
   Users,
   Briefcase,
   TrendingUp,
-  Clock,
   AlertTriangle,
   Building2,
   ArrowUpRight,
@@ -65,11 +64,7 @@ const PERIODS: { key: PeriodKey; label: string }[] = [
 
 function DeltaBadge({ deltaPct }: { deltaPct: number | null }) {
   if (deltaPct === null) {
-    return (
-      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-gray-400">
-        <Minus className="h-3 w-3" /> n/a
-      </span>
-    );
+    return <span className="h-4" aria-hidden />;
   }
   if (deltaPct === 0) {
     return (
@@ -147,31 +142,22 @@ export function PeriodSelector({ current }: { current: PeriodKey }) {
 export function KPICards({ stats }: { stats: ReportingStats }) {
   const cards = [
     {
-      title: 'Placements',
-      value: stats.placementsKpi.value,
-      delta: stats.placementsKpi.deltaPct,
-      sub: `vs prior period (${stats.placementsKpi.previous})`,
-      icon: Target,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50',
+      title: 'Interviews',
+      value: stats.interviewsKpi?.value ?? stats.interviews ?? 0,
+      delta: stats.interviewsKpi?.deltaPct ?? null,
+      sub: `${stats.inMotion} in motion`,
+      icon: Users,
+      color: 'text-violet-600',
+      bg: 'bg-violet-50',
     },
     {
       title: 'Open jobs',
       value: stats.openJobs,
       delta: stats.openJobsKpi.deltaPct,
-      sub: `${stats.jobs.emptyOpen} with 0 candidates`,
+      sub: `${stats.jobs.emptyOpen} empty pipelines`,
       icon: Briefcase,
       color: 'text-blue-600',
       bg: 'bg-blue-50',
-    },
-    {
-      title: 'In motion',
-      value: stats.inMotion,
-      delta: null as number | null,
-      sub: `${stats.totalCandidates} total candidates`,
-      icon: Users,
-      color: 'text-violet-600',
-      bg: 'bg-violet-50',
     },
     {
       title: 'New candidates',
@@ -183,14 +169,22 @@ export function KPICards({ stats }: { stats: ReportingStats }) {
       bg: 'bg-sky-50',
     },
     {
-      title: 'Time to hire',
-      value: stats.avgTimeToHire > 0 ? `${stats.avgTimeToHire}d` : '—',
-      delta: null as number | null,
-      sub: stats.avgTimeToFill > 0 ? `Fill: ${stats.avgTimeToFill}d avg` : 'Avg for placed',
-      icon: Clock,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50',
-      isString: true,
+      title: 'New companies',
+      value: stats.companiesAddedKpi?.value ?? 0,
+      delta: stats.companiesAddedKpi?.deltaPct ?? null,
+      sub: `${stats.companies.closedWon} closed won`,
+      icon: Building2,
+      color: 'text-indigo-600',
+      bg: 'bg-indigo-50',
+    },
+    {
+      title: 'Placements',
+      value: stats.placementsKpi.value,
+      delta: stats.placementsKpi.deltaPct,
+      sub: `vs prior (${stats.placementsKpi.previous})`,
+      icon: Target,
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-50',
     },
   ];
 
@@ -208,7 +202,7 @@ export function KPICards({ stats }: { stats: ReportingStats }) {
             <DeltaBadge deltaPct={c.delta} />
           </div>
           <div className="mt-3 text-2xl font-semibold tabular-nums text-gray-900">
-            {c.isString ? c.value : Number(c.value).toLocaleString()}
+            {Number(c.value).toLocaleString()}
           </div>
           <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mt-1">
             {c.title}

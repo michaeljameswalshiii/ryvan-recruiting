@@ -70,6 +70,8 @@ interface ChatAttachment {
   charCount: number;
   text: string;
   warning?: string;
+  imageBase64?: string;
+  mimeType?: string;
 }
 
 /** Downloadable file — base64 is never kept in React state (blob URL only) */
@@ -285,6 +287,9 @@ const MAX_ATTACH_CHARS = 24_000;
 function buildUserContent(text: string, files: ChatAttachment[]): string {
   if (!files.length) return text;
   const blocks = files.map((f) => {
+    if (f.imageBase64) {
+      return `--- Attached image: ${f.fileName} ---\nThe user attached this image for visual analysis.\n--- End of ${f.fileName} ---`;
+    }
     const body =
       f.text.length > MAX_ATTACH_CHARS
         ? `${f.text.slice(0, MAX_ATTACH_CHARS)}\n…[truncated, ${f.charCount} total chars]`
@@ -599,6 +604,16 @@ function GeneralAiUsagePageInner() {
 
     for (const file of Array.from(fileList)) {
       try {
+        if (file.type.startsWith('image/')) {
+          const imageBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+          });
+          next.push({ id: `${Date.now()}-${file.name}`, fileName: file.name, charCount: 0, text: '', imageBase64, mimeType: file.type });
+          continue;
+        }
         const form = new FormData();
         form.append('file', file);
         const res = await fetch('/api/ai/extract-file', {
@@ -742,6 +757,13 @@ function GeneralAiUsagePageInner() {
             generalMode: true,
             useTools,
             assistantMode: false,
+            imageAttachments: filesForTurn
+              .filter((file) => file.imageBase64)
+              .map((file) => ({
+                fileName: file.fileName,
+                mimeType: file.mimeType,
+                imageBase64: file.imageBase64,
+              })),
           }),
         });
       } finally {
@@ -1350,7 +1372,15 @@ function GeneralAiUsagePageInner() {
                   key={f.id}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700"
                 >
-                  <FileText className="h-3.5 w-3.5 text-slate-500" />
+                  {f.imageBase64 ? (
+                    <img
+                      src={`data:${f.mimeType || 'image/png'};base64,${f.imageBase64}`}
+                      alt="Pasted attachment"
+                      className="h-8 w-8 rounded object-cover"
+                    />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5 text-slate-500" />
+                  )}
                   <span className="max-w-[12rem] truncate font-medium">
                     {f.fileName}
                   </span>
@@ -1384,7 +1414,7 @@ function GeneralAiUsagePageInner() {
               type="file"
               className="hidden"
               multiple
-              accept=".txt,.md,.csv,.tsv,.json,.jsonl,.xml,.html,.log,.yaml,.yml,.docx,.pdf,.js,.ts,.tsx,.py,.sql"
+              accept="image/*,.txt,.md,.csv,.tsv,.json,.jsonl,.xml,.html,.log,.yaml,.yml,.docx,.pdf,.xlsx,.xlsm,.pptx,.js,.ts,.tsx,.py,.sql"
               onChange={(e) => void onPickFiles(e.target.files)}
             />
             <Button
@@ -1408,6 +1438,18 @@ function GeneralAiUsagePageInner() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
+              onPaste={(event) => {
+                const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith('image/'));
+                if (imageItem) {
+                  event.preventDefault();
+                  const pasted = imageItem.getAsFile();
+                  if (pasted) {
+                    const dt = new DataTransfer();
+                    dt.items.add(new File([pasted], pasted.name || `pasted-image-${Date.now()}.png`, { type: pasted.type }));
+                    void onPickFiles(dt.files);
+                  }
+                }
+              }}
               placeholder="Message AI Assistant… (Enter to send, Shift+Enter for new line)"
               rows={1}
               disabled={isLoading}

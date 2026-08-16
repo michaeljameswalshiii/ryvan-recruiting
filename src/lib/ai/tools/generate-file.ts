@@ -1,5 +1,5 @@
 /**
- * Generate downloadable files for the AI assistant (docx, xlsx, csv, md, txt, json, html).
+ * Generate downloadable files for the AI assistant (docx, xlsx, csv, md, txt, json, html, svg).
  * Returns base64 content so the UI can offer a one-click download — no S3 required.
  *
  * @serverOnly
@@ -32,6 +32,7 @@ const MIME: Record<string, string> = {
   csv: "text/csv;charset=utf-8",
   json: "application/json;charset=utf-8",
   html: "text/html;charset=utf-8",
+  svg: "image/svg+xml;charset=utf-8",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
@@ -255,10 +256,12 @@ export async function executeGenerateFile(
         /* keep as-is */
       }
       buffer = Buffer.from(out, "utf-8");
-    } else if (format === "html") {
+    } else if (format === "html" || format === "svg") {
       const html = contentRaw.includes("<html")
         ? contentRaw
-        : `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${
+        : format === "svg"
+          ? contentRaw
+          : `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${
             title || fileName
           }</title></head><body><pre style="font-family:system-ui,sans-serif;white-space:pre-wrap">${escapeHtml(
             contentRaw

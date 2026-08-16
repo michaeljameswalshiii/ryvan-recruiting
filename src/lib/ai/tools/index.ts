@@ -550,8 +550,6 @@ export function formatToolResultsForAI(results: Record<string, ToolResult>): {
     const data = results.apollo.data as { candidates?: unknown[] };
     if (data.candidates?.length) {
       hasData = true;
-      // Import format function from apollo module
-      const { formatApolloCandidate } = require("./apollo");
       const formatted = data.candidates.slice(0, 10).map((p: unknown) => 
         typeof p === 'object' ? formatApolloCandidate(p as any) : String(p)
       );
@@ -564,7 +562,6 @@ export function formatToolResultsForAI(results: Record<string, ToolResult>): {
     const data = results.tavily.data as { results?: unknown[] };
     if (data.results?.length) {
       hasData = true;
-      const { formatTavilyResult } = require("./tavily");
       const formatted = data.results.map((r: unknown, i: number) => 
         typeof r === 'object' ? formatTavilyResult(r as any, i) : String(r)
       );

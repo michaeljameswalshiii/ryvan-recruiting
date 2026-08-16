@@ -426,13 +426,22 @@ export async function addNoteToContact(contactId: string, note: any) {
         createdBy: note.createdBy || "current-user",
       };
 
-      await updateItem(clientsTable, {
-        tenant_id: tenantId,
-        SK: `CONTACT#${contactId}`,
-      }, {
-        notes: [...notes, newNote],
-        updatedAt: new Date().toISOString(),
-      });
+      await updateItem(
+        clientsTable,
+        {
+          tenant_id: tenantId,
+          SK: `CONTACT#${contactId}`,
+        },
+        "SET #notes = :notes, #updatedAt = :updatedAt",
+        {
+          ":notes": [...notes, newNote],
+          ":updatedAt": new Date().toISOString(),
+        },
+        {
+          "#notes": "notes",
+          "#updatedAt": "updatedAt",
+        },
+      );
 
       console.log(`✅ Note added directly to CONTACT#${contactId}`);
       return { success: true };
@@ -443,7 +452,12 @@ export async function addNoteToContact(contactId: string, note: any) {
 
     for (const client of allClients) {
       const contactIndex = client.contacts?.findIndex((c: any) => c.id === contactId);
-      if (contactIndex !== -1) {
+      if (
+        contactIndex !== undefined &&
+        contactIndex >= 0 &&
+        client.id &&
+        client.contacts
+      ) {
         const contact = client.contacts[contactIndex];
         const notes = Array.isArray(contact.notes) ? [...contact.notes] : [];
 

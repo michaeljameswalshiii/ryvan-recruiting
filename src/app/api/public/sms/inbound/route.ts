@@ -1,79 +1,141 @@
 /**
- * Public inbound SMS webhook (AWS End User Messaging event destination).
- * POST /api/public/sms/inbound
- *
- * Protect with shared secret header: x-sms-webhook-secret === SMS_WEBHOOK_SECRET
- * Or set tenantId in body when using multi-tenant routing.
- *
- * Expected body (flexible):
- * {
- *   tenantId?: string,
- *   originationNumber / destinationNumber / messageBody / messageId
- *   OR from / to / body / messageId
- * }
+ * Signed Amazon SNS webhook for inbound SMS and delivery events.
  *
  * @serverOnly
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { handleInboundSms } from '@/lib/sms/service';
+import {
+  findSmsTenantByOriginationIdentity,
+  incrementSmsConversationUnread,
+  resolveSmsConversationRoute,
+  upsertSmsConversationRoute,
+} from '@/lib/db/repositories/sms-repository';
 import { normalizeToE164 } from '@/lib/sms/phone';
+import { handleInboundSms } from '@/lib/sms/service';
+import {
+  confirmSnsSubscription,
+  verifySnsEnvelope,
+} from '@/lib/sms/sns';
 
-function unauthorized() {
-  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+function objectValue(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function textValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const secret = process.env.SMS_WEBHOOK_SECRET;
-    if (secret) {
-      const header = request.headers.get('x-sms-webhook-secret');
-      if (header !== secret) return unauthorized();
+    const envelopeBody = await request.json();
+    const envelope = await verifySnsEnvelope(
+      envelopeBody,
+      process.env.AWS_SMS_INBOUND_TOPIC_ARN
+    );
+
+    if (envelope.Type === 'SubscriptionConfirmation') {
+      await confirmSnsSubscription(envelope);
+      return NextResponse.json({ ok: true, subscription: 'confirmed' });
+    }
+    if (envelope.Type !== 'Notification') {
+      return NextResponse.json({ ok: true, ignored: envelope.Type });
     }
 
-    const body = await request.json().catch(() => ({}));
-    const tenantId =
-      body.tenantId ||
-      body.tenant_id ||
-      process.env.SMS_DEFAULT_TENANT_ID ||
-      null;
+    const payload = objectValue(JSON.parse(envelope.Message));
+    const from = textValue(
+      payload.originationNumber || payload.originatingNumber || payload.from
+    );
+    const destination = textValue(
+      payload.destinationNumber || payload.destinationPhoneNumber || payload.to
+    );
+    const messageBody = textValue(
+      payload.messageBody || payload.body || payload.message
+    );
 
+    // Configuration-set delivery events share this topic but are not replies.
+    if (!from || !messageBody) {
+      return NextResponse.json({ ok: true, event: 'delivery-status' });
+    }
+
+    const normalized = normalizeToE164(from, 'US');
+    if (!normalized.ok) {
+      return NextResponse.json({ error: normalized.error }, { status: 400 });
+    }
+
+    const previousProviderMessageId = textValue(
+      payload.previousPublishedMessageId || payload.previousMessageId
+    );
+    const route = await resolveSmsConversationRoute({
+      destinationNumber: destination || undefined,
+      phoneE164: normalized.e164,
+      previousProviderMessageId: previousProviderMessageId || undefined,
+    });
+
+    const tenantId =
+      route?.tenant_id ||
+      textValue(payload.tenantId || payload.tenant_id) ||
+      (destination
+        ? await findSmsTenantByOriginationIdentity(destination)
+        : null) ||
+      process.env.SMS_DEFAULT_TENANT_ID;
     if (!tenantId) {
       return NextResponse.json(
-        { error: 'tenantId required (body or SMS_DEFAULT_TENANT_ID)' },
-        { status: 400 }
+        { error: 'No Turnkey tenant is configured for this SMS destination' },
+        { status: 422 }
       );
     }
 
-    const fromRaw =
-      body.originationNumber ||
-      body.originatingNumber ||
-      body.from ||
-      body.source ||
-      body.SourceNumber;
-    const text =
-      body.messageBody || body.body || body.message || body.MessageBody || '';
-
-    if (!fromRaw || !text) {
-      return NextResponse.json(
-        { error: 'from and body required' },
-        { status: 400 }
-      );
-    }
-
-    const norm = normalizeToE164(String(fromRaw), 'US');
-    if (!norm.ok) {
-      return NextResponse.json({ error: norm.error }, { status: 400 });
-    }
+    const initialConversation = route || (destination
+      ? await upsertSmsConversationRoute({
+          tenantId,
+          destinationNumber: destination,
+          phoneE164: normalized.e164,
+        })
+      : null);
 
     const result = await handleInboundSms({
-      tenantId: String(tenantId),
-      fromE164: norm.e164,
-      body: String(text),
-      providerMessageId:
-        body.messageId || body.MessageId || body.inboundMessageId,
-      candidateId: body.candidateId,
+      tenantId,
+      fromE164: normalized.e164,
+      body: messageBody,
+      providerMessageId: textValue(
+        payload.inboundMessageId || payload.messageId || envelope.MessageId
+      ),
+      candidateId:
+        initialConversation?.candidateId ||
+        textValue(payload.candidateId) ||
+        undefined,
+      candidateName: initialConversation?.candidateName,
+      contactId: initialConversation?.contactId,
+      contactName: initialConversation?.contactName,
+      companyId: initialConversation?.companyId,
+      ownerUserId: initialConversation?.ownerUserId,
+      ownerName: initialConversation?.ownerName,
+      ownerEmail: initialConversation?.ownerEmail,
+      conversationKey: initialConversation?.id,
+      originationIdentity:
+        destination || initialConversation?.destinationNumber,
     });
+
+    const conversation = destination
+      ? await upsertSmsConversationRoute({
+          tenantId,
+          destinationNumber: destination,
+          phoneE164: normalized.e164,
+          candidateId: result.message.candidateId,
+          candidateName: result.message.candidateName,
+          contactId: result.message.contactId,
+          contactName: result.message.contactName,
+          companyId: result.message.companyId,
+          ownerUserId: result.message.ownerUserId,
+          ownerName: result.message.ownerName,
+          ownerEmail: result.message.ownerEmail,
+        })
+      : initialConversation;
+    if (conversation) {
+      await incrementSmsConversationUnread(conversation.id);
+    }
 
     return NextResponse.json({
       ok: true,
@@ -83,15 +145,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[SMS_INBOUND]', error);
-    return NextResponse.json({ error: 'Inbound handler failed' }, { status: 500 });
+    return NextResponse.json({ error: 'Invalid SNS notification' }, { status: 403 });
   }
 }
 
-/** Health / docs for webhook setup */
 export async function GET() {
   return NextResponse.json({
-    service: 'trio-sms-inbound',
+    service: 'turnkey-sms-inbound',
     method: 'POST',
-    auth: 'Header x-sms-webhook-secret when SMS_WEBHOOK_SECRET is set',
+    authentication: 'Amazon SNS signature verification',
   });
 }

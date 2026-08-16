@@ -23,6 +23,10 @@ import {
 
 export const MANTLE_GROK_43 = "xai.grok-4.3";
 
+function usesCompletionTokens(model: string): boolean {
+  return /grok|xai\./i.test(model || "");
+}
+
 const MAX_ITERATIONS = 5;
 
 function mantleRegion(): string {
@@ -144,11 +148,15 @@ async function invokeMantleChat(params: {
 }> {
   const region = mantleRegion();
   const url = `${mantleBaseUrl(region)}/chat/completions`;
+  const maxOut = params.maxTokens ?? 4096;
   const bodyObj: Record<string, unknown> = {
     model: params.model,
     messages: params.messages,
     temperature: params.temperature ?? 0.7,
-    max_tokens: params.maxTokens ?? 4096,
+    // AWS Grok 4.3 on Mantle rejects max_tokens — it wants max_completion_tokens.
+    ...(usesCompletionTokens(params.model)
+      ? { max_completion_tokens: maxOut }
+      : { max_tokens: maxOut }),
   };
   if (params.tools?.length) {
     bodyObj.tools = params.tools;
@@ -160,6 +168,19 @@ async function invokeMantleChat(params: {
 
   if (!res.ok) {
     const text = await res.text();
+    const usedCompletion = usesCompletionTokens(params.model);
+    if (
+      !usedCompletion &&
+      /max_tokens|max_completion_tokens/i.test(text) &&
+      /not supported|unsupported/i.test(text)
+    ) {
+      return invokeMantleChat({
+        ...params,
+        model: params.model.includes("xai.")
+          ? params.model
+          : `xai.${params.model}`,
+      });
+    }
     let msg = `Bedrock Mantle error (${res.status})`;
     try {
       const json = JSON.parse(text);

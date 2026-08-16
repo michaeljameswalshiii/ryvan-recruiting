@@ -38,6 +38,7 @@ export function isAwsSmsConfigured(): boolean {
 
 export function getEnvOriginationIdentity(): string | undefined {
   return (
+    process.env.AWS_SMS_ORIGINATION_IDENTITY ||
     process.env.AWS_SMS_ORIGINATION_NUMBER ||
     process.env.SMS_ORIGINATION_IDENTITY ||
     undefined
@@ -126,7 +127,10 @@ export async function providerSendSms(params: {
       DestinationPhoneNumber: params.toE164,
       MessageBody: params.body,
       OriginationIdentity: params.originationIdentity,
-      ConfigurationSetName: params.configurationSetName || undefined,
+      ConfigurationSetName:
+        params.configurationSetName ||
+        process.env.AWS_SMS_CONFIGURATION_SET_NAME ||
+        undefined,
       // TRANSACTIONAL is safer default for recruiting ops; marketing needs registration
       MessageType: 'TRANSACTIONAL',
     });

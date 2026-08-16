@@ -26,6 +26,7 @@ import {
 import { OwnerSelect } from '@/components/shared/OwnerSelect';
 import { TagEditor } from '@/components/shared/TagEditor';
 import { mergeManualAndGenerated, tagsFromRecord } from '@/lib/tags';
+import { SalaryRangeFields } from '@/components/job/SalaryRangeFields';
 
 interface JobEditModalProps {
   isOpen: boolean;
@@ -351,16 +352,15 @@ export default function JobEditModal({
               />
             ) : null}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Location</Label>
-                <Input value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} />
-              </div>
-              <div>
-                <Label>Salary Range</Label>
-                <Input value={formData.salaryRange} onChange={(e) => setFormData({ ...formData, salaryRange: e.target.value })} />
-              </div>
+            <div>
+              <Label>Location</Label>
+              <Input value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} />
             </div>
+
+            <SalaryRangeFields
+              value={formData.salaryRange}
+              onChange={(salaryRange) => setFormData({ ...formData, salaryRange })}
+            />
 
             <div id="edit-description">
               <Label className="mb-1.5 block">Description</Label>

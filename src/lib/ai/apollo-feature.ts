@@ -2,9 +2,9 @@
  * Apollo.io product feature flag (UI + re-enable docs).
  * Tools use isApolloToolEnabled() in tool-flags.ts (same env family).
  *
- * Default: OFF. Re-enable with:
- *   AI_TOOLS_APOLLO_ENABLED=true
- *   NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true  (shows nav / page)
+ * Tools default on when a platform Apollo key is present.
+ * Hard off: AI_TOOLS_APOLLO_ENABLED=false.
+ * Nav/page: NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true
  *
  * Code paths stay in the repo for easy restore.
  */

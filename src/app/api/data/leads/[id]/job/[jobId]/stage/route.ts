@@ -10,6 +10,7 @@ import {
   getSession,
 } from "@/lib/server-auth";
 import { updateCandidateStageInJob } from "@/lib/db/repositories/lead-repository";
+import { updateCandidateStageInJob as updateJobCandidateStage } from "@/lib/db/repositories/job-repository";
 
 export async function PUT(
   request: NextRequest,
@@ -54,6 +55,15 @@ export async function PUT(
         { error: "Failed to update stage" },
         { status: 500 }
       );
+    }
+
+    try {
+      await updateJobCandidateStage(tenantId, jobId, {
+        candidateId: leadId,
+        stage: stage as any,
+      });
+    } catch (error) {
+      console.warn("[StageUpdate] Job-side stage sync failed:", error);
     }
 
     return NextResponse.json({ success: true, lead: updated });

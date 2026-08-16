@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/searchable-select';
 import { TagEditor } from '@/components/shared/TagEditor';
 import { mergeManualAndGenerated, tagsFromRecord } from '@/lib/tags';
+import { SalaryRangeFields } from '@/components/job/SalaryRangeFields';
 
 export default function JobsPage() {
   const router = useRouter();
@@ -391,15 +392,10 @@ export default function JobsPage() {
                 />
               </div>
 
-              <div>
-                <Label htmlFor="salaryRange">Salary Range</Label>
-                <Input
-                  id="salaryRange"
-                  value={formData.salaryRange}
-                  onChange={(e) => setFormData({ ...formData, salaryRange: e.target.value })}
-                  placeholder="$80k - $120k"
-                />
-              </div>
+              <SalaryRangeFields
+                value={formData.salaryRange}
+                onChange={(salaryRange) => setFormData({ ...formData, salaryRange })}
+              />
 
               <div>
                 <Label htmlFor="status">Status</Label>

@@ -70,7 +70,10 @@ function range(period: 'day' | 'month') {
   const now = new Date();
   const start = new Date(now);
   if (period === 'day') start.setUTCHours(0, 0, 0, 0);
-  else start.setUTCDate(1), start.setUTCHours(0, 0, 0, 0);
+  else {
+    start.setUTCDate(1);
+    start.setUTCHours(0, 0, 0, 0);
+  }
   return { start: start.toISOString(), end: now.toISOString() };
 }
 

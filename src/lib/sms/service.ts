@@ -11,9 +11,11 @@ import {
   saveSmsMessage,
   listMessagesForCandidate,
   listMessagesForContact,
+  listRecentMessages,
   getDailySendCount,
   incrementDailySendCount,
   updateSmsConfig,
+  upsertSmsConversationRoute,
 } from '@/lib/db/repositories/sms-repository';
 import type {
   SendSmsInput,
@@ -41,6 +43,8 @@ import {
 import { getLeadById } from '@/lib/db/repositories/lead-repository';
 import { getContactById } from '@/lib/db/repositories/contact-repository';
 import { getDisplayPhone, getPhoneByType } from '@/lib/contacts/phone';
+import { listObjectAssignments } from '@/lib/db/repositories/object-assignment-repository';
+import { getProfileById } from '@/lib/db/repositories/profile-repository';
 
 export type SendSmsResult =
   | { ok: true; message: SmsMessage; simulated: boolean }
@@ -107,6 +111,62 @@ function resolveContactSmsPhone(contact: {
     '';
   if (mobile.trim()) return mobile.trim();
   return getDisplayPhone(contact) || (contact.phone || '').trim();
+}
+
+type SmsOwner = {
+  ownerUserId?: string;
+  ownerName?: string;
+  ownerEmail?: string;
+};
+
+async function resolveConversationOwner(input: {
+  tenantId: string;
+  objectType: 'candidate' | 'contact';
+  objectId: string;
+  companyId?: string;
+  senderUserId?: string;
+}): Promise<SmsOwner> {
+  try {
+    let assignments = await listObjectAssignments(
+      input.tenantId,
+      input.objectType,
+      input.objectId
+    );
+    if (
+      assignments.length === 0 &&
+      input.objectType === 'contact' &&
+      input.companyId
+    ) {
+      assignments = await listObjectAssignments(
+        input.tenantId,
+        'company',
+        input.companyId
+      );
+    }
+    const priority = ['owner', 'recruiter', 'account_manager', 'collaborator'];
+    const assigned = [...assignments].sort(
+      (a, b) => priority.indexOf(a.role) - priority.indexOf(b.role)
+    )[0];
+    if (assigned) {
+      return {
+        ownerUserId: assigned.userId,
+        ownerName: assigned.userName,
+        ownerEmail: assigned.userEmail,
+      };
+    }
+  } catch (error) {
+    console.warn('[SMS] assignment lookup failed', error);
+  }
+
+  if (!input.senderUserId) return {};
+  const profile = await getProfileById(input.senderUserId);
+  return {
+    ownerUserId: input.senderUserId,
+    ownerName:
+      profile?.tenant_id === input.tenantId ? profile.full_name : undefined,
+    ownerEmail:
+      profile?.tenant_id === input.tenantId ? profile.email : undefined,
+  };
 }
 
 /**
@@ -189,6 +249,14 @@ export async function sendSms(
     };
   }
 
+  const owner = await resolveConversationOwner({
+    tenantId,
+    objectType: isContact ? 'contact' : 'candidate',
+    objectId: isContact ? input.contactId! : input.candidateId!,
+    companyId: input.companyId,
+    senderUserId: userId,
+  });
+
   let justRecordedOptIn = false;
   if (input.markConsent && input.consentSource) {
     try {
@@ -252,6 +320,7 @@ export async function sendSms(
   }
 
   const origination = resolveOrigination(config);
+  const routeDestination = origination || `SIMULATED:${tenantId}`;
 
   const history = isContact
     ? await listMessagesForContact(tenantId, input.contactId!)
@@ -291,11 +360,22 @@ export async function sendSms(
       provider: providerResult.provider,
       errorMessage: providerResult.error,
       createdBy: userId,
+      ...owner,
+      originationIdentity: routeDestination,
     });
     return { ok: false, error: providerResult.error, code: 'provider_error' };
   }
 
   await incrementDailySendCount(tenantId, 1);
+
+  const route = await upsertSmsConversationRoute({
+    tenantId,
+    destinationNumber: routeDestination,
+    phoneE164: norm.e164,
+    ...entityFields,
+    ...owner,
+    providerMessageId: providerResult.messageId,
+  });
 
   const message = await saveSmsMessage(tenantId, {
     direction: 'outbound',
@@ -307,6 +387,11 @@ export async function sendSms(
     provider: providerResult.provider,
     providerMessageId: providerResult.messageId,
     createdBy: userId,
+    ownerUserId: route.ownerUserId,
+    ownerName: route.ownerName,
+    ownerEmail: route.ownerEmail,
+    conversationKey: route.id,
+    originationIdentity: route.destinationNumber,
   });
 
   // Soft activity note (non-fatal)
@@ -369,6 +454,15 @@ export async function handleInboundSms(params: {
   body: string;
   providerMessageId?: string;
   candidateId?: string;
+  candidateName?: string;
+  contactId?: string;
+  contactName?: string;
+  companyId?: string;
+  ownerUserId?: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  conversationKey?: string;
+  originationIdentity?: string;
 }): Promise<{
   action: 'stop' | 'start' | 'help' | 'message';
   autoReply?: string;
@@ -376,6 +470,25 @@ export async function handleInboundSms(params: {
 }> {
   const config = await getSmsConfig(params.tenantId);
   const keyword = classifyInboundKeyword(params.body);
+  const recentMessages = await listRecentMessages(params.tenantId, 500);
+  const priorMessage = recentMessages.find(
+    (message) => message.phoneE164 === params.fromE164
+  );
+  const entityFields = {
+    candidateId: params.candidateId || priorMessage?.candidateId,
+    candidateName: params.candidateName || priorMessage?.candidateName,
+    contactId: params.contactId || priorMessage?.contactId,
+    contactName: params.contactName || priorMessage?.contactName,
+    companyId: params.companyId || priorMessage?.companyId,
+  };
+  const routeFields = {
+    ownerUserId: params.ownerUserId || priorMessage?.ownerUserId,
+    ownerName: params.ownerName || priorMessage?.ownerName,
+    ownerEmail: params.ownerEmail || priorMessage?.ownerEmail,
+    conversationKey: params.conversationKey || priorMessage?.conversationKey,
+    originationIdentity:
+      params.originationIdentity || priorMessage?.originationIdentity,
+  };
 
   let autoReply: string | undefined;
   if (keyword === 'stop') {
@@ -384,7 +497,9 @@ export async function handleInboundSms(params: {
       phoneE164: params.fromE164,
       status: 'opted_out',
       source: 'manual',
-      candidateId: params.candidateId,
+      candidateId: entityFields.candidateId,
+      contactId: entityFields.contactId,
+      companyId: entityFields.companyId,
       lastKeyword: 'STOP',
     });
     autoReply = stopAutoReply(config);
@@ -394,7 +509,9 @@ export async function handleInboundSms(params: {
       phoneE164: params.fromE164,
       status: 'opted_in',
       source: 'inbound_start',
-      candidateId: params.candidateId,
+      candidateId: entityFields.candidateId,
+      contactId: entityFields.contactId,
+      companyId: entityFields.companyId,
       lastKeyword: 'START',
     });
     autoReply = startAutoReply(config);
@@ -405,13 +522,42 @@ export async function handleInboundSms(params: {
   const message = await saveSmsMessage(params.tenantId, {
     direction: 'inbound',
     status: 'received',
-    candidateId: params.candidateId,
+    ...entityFields,
     phoneE164: params.fromE164,
     body: params.body,
     segments: 1,
     provider: 'aws',
     providerMessageId: params.providerMessageId,
+    ...routeFields,
   });
+
+  try {
+    const note = `SMS received: ${params.body.slice(0, 200)}${
+      params.body.length > 200 ? '...' : ''
+    }`;
+    if (entityFields.contactId) {
+      const { createEvent } = await import(
+        '@/lib/db/repositories/event-repository'
+      );
+      await createEvent({
+        contactId: entityFields.contactId,
+        companyId: entityFields.companyId,
+        type: 'Text Received',
+        content: note,
+        createdBy: 'system',
+        metadata: { noteText: note, noteType: 'Text Received', channel: 'sms' },
+      });
+    } else if (entityFields.candidateId) {
+      const { addNoteToCandidate } = await import(
+        '@/lib/events/candidate-events'
+      );
+      await addNoteToCandidate(entityFields.candidateId, note, 'system', {
+        noteType: 'Text Received',
+      });
+    }
+  } catch {
+    /* Activity logging is best effort; the SMS thread remains authoritative. */
+  }
 
   if (autoReply) {
     const origination = resolveOrigination(config);
@@ -424,12 +570,13 @@ export async function handleInboundSms(params: {
     await saveSmsMessage(params.tenantId, {
       direction: 'outbound',
       status: 'sent',
-      candidateId: params.candidateId,
+      ...entityFields,
       phoneE164: params.fromE164,
       body: autoReply,
       segments: 1,
       provider: origination ? 'aws' : 'simulated',
       createdBy: 'system',
+      ...routeFields,
     });
   }
 

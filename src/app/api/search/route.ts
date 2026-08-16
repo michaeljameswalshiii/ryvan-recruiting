@@ -145,14 +145,19 @@ async function searchOneTenant(
     if (!id) continue;
     const row = lead as unknown as Record<string, unknown>;
     const name = personName(row) || "Candidate";
+    const company =
+      typeof row.company === "string"
+        ? row.company
+        : typeof row.currentCompany === "string"
+          ? row.currentCompany
+          : "";
     const score = scoreMatch(
       q,
       name,
       lead.email,
       lead.phone,
       lead.title,
-      lead.company,
-      (lead as { currentCompany?: string }).currentCompany,
+      company,
       lead.location
     );
     if (score <= 0) continue;
@@ -161,7 +166,7 @@ async function searchOneTenant(
       type: "candidate",
       title: String(name),
       subtitle: withTenant(
-        [lead.title, lead.email, lead.company || (lead as { currentCompany?: string }).currentCompany]
+        [lead.title, lead.email, company]
           .filter(Boolean)
           .join(" · "),
         tenantName

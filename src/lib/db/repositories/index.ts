@@ -135,4 +135,5 @@ export {
   rebuildSkillsGraph,
   getSkillsGraphFresh,
   isSkillsGraphStale,
+  searchTalentGraphCandidates,
 } from './skills-graph-repository';

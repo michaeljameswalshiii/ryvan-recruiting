@@ -177,3 +177,124 @@ export async function addNoteToJob(
     createdBy
   );
 }
+
+export async function recordJobCreated(
+  jobId: string,
+  jobTitle: string,
+  companyName: string,
+  createdBy: string,
+) {
+  return recordJobEvent(
+    jobId,
+    'JOB_CREATED',
+    {
+      title: 'Job created',
+      description: `${jobTitle} was created for ${companyName}.`,
+      metadata: { jobTitle, companyName },
+    },
+    createdBy,
+  );
+}
+
+export async function recordJobUpdated(
+  jobId: string,
+  jobTitle: string,
+  changes: Record<string, unknown>,
+  createdBy: string,
+) {
+  return recordJobEvent(
+    jobId,
+    'JOB_UPDATED',
+    {
+      title: 'Job updated',
+      description: `${jobTitle} was updated.`,
+      metadata: { jobTitle, changes },
+    },
+    createdBy,
+  );
+}
+
+export async function recordJobStatusChanged(
+  jobId: string,
+  jobTitle: string,
+  previousStatus: string,
+  status: string,
+  createdBy: string,
+) {
+  return recordJobEvent(
+    jobId,
+    'JOB_STATUS_CHANGED',
+    {
+      title: 'Job status changed',
+      description: `${jobTitle} moved from ${previousStatus} to ${status}.`,
+      metadata: { jobTitle, previousStatus, status },
+    },
+    createdBy,
+  );
+}
+
+export async function recordCandidateLinked(
+  jobId: string,
+  jobTitle: string,
+  candidateId: string,
+  candidateName: string,
+  stage: string,
+  createdBy: string,
+) {
+  return recordJobEvent(
+    jobId,
+    'CANDIDATE_LINKED',
+    {
+      title: 'Candidate linked',
+      description: `${candidateName} was linked to ${jobTitle}.`,
+      metadata: { jobTitle, candidateId, candidateName, stage },
+    },
+    createdBy,
+  );
+}
+
+export async function recordCandidateUnlinked(
+  jobId: string,
+  jobTitle: string,
+  candidateId: string,
+  candidateName: string,
+  createdBy: string,
+) {
+  return recordJobEvent(
+    jobId,
+    'CANDIDATE_UNLINKED',
+    {
+      title: 'Candidate unlinked',
+      description: `${candidateName} was unlinked from ${jobTitle}.`,
+      metadata: { jobTitle, candidateId, candidateName },
+    },
+    createdBy,
+  );
+}
+
+export async function recordCandidateStageChanged(
+  jobId: string,
+  jobTitle: string,
+  candidateId: string,
+  candidateName: string,
+  previousStage: string,
+  stage: string,
+  createdBy: string,
+) {
+  return recordJobEvent(
+    jobId,
+    'CANDIDATE_STAGE_CHANGED',
+    {
+      title: 'Candidate stage changed',
+      description: `${candidateName} moved from ${previousStage} to ${stage} for ${jobTitle}.`,
+      metadata: {
+        jobTitle,
+        candidateId,
+        candidateName,
+        previousStage,
+        stage,
+      },
+    },
+    createdBy,
+  );
+}

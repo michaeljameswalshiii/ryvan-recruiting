@@ -4,12 +4,10 @@
  * Apollo + Tavily backends live in the repo (APIs, execute handlers, registry).
  * Code is kept so Apollo can be re-enabled without a rewrite.
  *
- * Defaults (2026-07):
- *   - Apollo: OFF (set AI_TOOLS_APOLLO_ENABLED=true to re-enable tools)
+ * Defaults:
+ *   - Apollo: ON when a platform Apollo key is present, unless
+ *     AI_TOOLS_APOLLO_ENABLED=false. Explicit true always on.
  *   - Tavily: OFF (set AI_TOOLS_TAVILY_ENABLED=true to enable)
- *
- * Also honor NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true for tools when
- * the server flag is unset (pairs with UI re-enable).
  *
  * @serverOnly
  */
@@ -22,20 +20,30 @@ function envTriState(name: string): "true" | "false" | "unset" {
   return "unset";
 }
 
+function platformApolloKeyPresent(): boolean {
+  const key = (
+    process.env.APOLLO_API_KEY ||
+    process.env.Apollo_API_key ||
+    process.env.APOLLO_API_key ||
+    process.env.apollo_api_key ||
+    ""
+  ).trim();
+  return key.length > 10;
+}
+
 /**
- * Apollo people + company search tools for the AI assistant.
- * Default OFF. Set AI_TOOLS_APOLLO_ENABLED=true (and preferably
- * NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED=true for nav) to re-enable.
+ * Apollo people / company / lookup tools for the AI assistant.
+ * Hard off: AI_TOOLS_APOLLO_ENABLED=false.
+ * Otherwise on when the public flag is true or a platform Apollo key exists.
  */
 export function isApolloToolEnabled(): boolean {
   const t = envTriState("AI_TOOLS_APOLLO_ENABLED");
   if (t === "false") return false;
   if (t === "true") return true;
-  // Optional single-flag re-enable via public env
   const pub = envTriState("NEXT_PUBLIC_AI_TOOLS_APOLLO_ENABLED");
   if (pub === "true") return true;
   if (pub === "false") return false;
-  return false; // default off — product is not Apollo-dependent
+  return platformApolloKeyPresent();
 }
 
 /**
@@ -54,6 +62,7 @@ const APOLLO_NAMES = new Set([
   "apollo_people",
   "apollo_company_search",
   "apollo_company",
+  "apollo_lookup",
 ]);
 
 const TAVILY_NAMES = new Set(["tavily"]);

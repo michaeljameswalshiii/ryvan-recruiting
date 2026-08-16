@@ -1,6 +1,6 @@
 ﻿﻿import { notFound } from "next/navigation";
 import ContactDetailClient from "@/components/contact/ContactDetailClient";
-import { getClientByIdAction } from "@/lib/actions/client-actions";
+import { getAllClients } from "@/lib/db/repositories/client-repository";
 import { getAllJobs } from "@/lib/db/repositories/job-repository";
 import { getSessionTenantId, getSessionUserId } from "@/lib/server-auth";
 
@@ -22,7 +22,7 @@ export default async function ContactDetailPage({ params }: Props) {
     tenantId = `tenant-${userId}`;
   }
 
-  // Try multiple tenant formats to find the contact (handles legacy data migration)
+  // Try the resolved tenant formats to find the contact (handles legacy data migration).
   const tenantsToTry: string[] = [];
   
   if (tenantId) tenantsToTry.push(tenantId);
@@ -40,20 +40,24 @@ export default async function ContactDetailPage({ params }: Props) {
   let companyId = "";
   let clientData: any = null;
 
-  // Search across clients for the contact (until we have dedicated getContactById)
+  // Search the clients belonging to each candidate tenant. Do not use a
+  // session-scoped action here because it can return data from the wrong tenant.
   for (const tenant of uniqueTenants) {
-    const result = await getClientByIdAction(contactId);
-    
-    if (result.client) {
-      // Check if this client has the contact
-      const found = result.client.contacts?.find((c: any) => c.id === contactId);
-      if (found) {
-        contact = found;
-        companyName = result.client.name || "";
-        companyId = result.client.id;
-        clientData = result.client;
-        break;
+    try {
+      const clients = await getAllClients(tenant);
+      for (const client of clients) {
+        const found = client.contacts?.find((c: any) => c.id === contactId);
+        if (found) {
+          contact = found;
+          companyName = client.name || "";
+          companyId = client.id;
+          clientData = client;
+          break;
+        }
       }
+      if (contact) break;
+    } catch {
+      // Continue to the next legacy tenant format.
     }
   }
 
@@ -81,19 +85,30 @@ export default async function ContactDetailPage({ params }: Props) {
     notFound();
   }
 
-  // Get jobs for this company
+  // Get jobs assigned to this specific hiring manager. Older jobs may only
+  // have the manager name, so retain a guarded legacy fallback.
   let companyJobs: any[] = [];
   for (const tenant of uniqueTenants) {
     try {
       const allJobs = await getAllJobs(tenant);
+      const normalize = (value: unknown) =>
+        String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const contactName = normalize(contact.name);
       companyJobs = allJobs
-        .filter((job: any) => job.companyId === companyId && job.status !== "Closed")
+        .filter((job: any) => {
+          if (String(job.companyId || job.clientId || '') !== String(companyId)) {
+            return false;
+          }
+          const managerId =
+            job.hiringManagerContactId || job.hiring_manager_contact_id || '';
+          if (managerId) return String(managerId) === String(contactId);
+          return normalize(job.hiringManagerName || job.hiring_manager_name) === contactName;
+        })
         .sort((a: any, b: any) => {
           const timeA = a.created_at || a.createdAt ? new Date(a.created_at || a.createdAt).getTime() : 0;
           const timeB = b.created_at || b.createdAt ? new Date(b.created_at || b.createdAt).getTime() : 0;
           return timeB - timeA;
         })
-        .slice(0, 10)
         .map((job: any) => JSON.parse(JSON.stringify(job)));
       if (companyJobs.length > 0) break;
     } catch {

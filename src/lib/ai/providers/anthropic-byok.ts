@@ -7,6 +7,7 @@ import {
   getToolSchemas,
   type ToolContext,
 } from '@/lib/ai/tools';
+import { applyApolloPrefire } from '@/lib/ai/apollo-intent';
 
 export type ClaudeContent =
   | { type: 'text'; text: string }
@@ -232,14 +233,15 @@ Never infer Brazil from "br" inside a domain brand (structuralbr.com is not Braz
 Use tools when they help. Be concise and actionable.`;
 
   const tools = useTools ? getToolSchemas() : [];
-  let messages: AnthropicMessage[] = [{ role: 'user', content: query }];
-  const toolsUsed = new Set<string>();
+  const pre = await applyApolloPrefire(query, systemPrompt, toolContext);
+  const toolsUsed = new Set<string>(pre.toolsUsed);
+  let messages: AnthropicMessage[] = [{ role: 'user', content: pre.query }];
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
     const result = await invokeAnthropic({
       apiKey,
       model,
-      system: systemPrompt,
+      system: pre.systemPrompt,
       messages,
       tools: useTools ? tools : undefined,
     });

@@ -15,7 +15,7 @@ export default function RecruiterOutreach({ name, company, ctaUrl = 'https://tur
           <Text style={{ fontSize: '14px', color: '#8898bb', marginBottom: '8px' }}>Trio Recruiting</Text>
           
           <Text style={{ fontSize: '24px', fontWeight: 'bold', color: '#32325d', marginBottom: '24px' }}>
-            Let's discuss your hiring needs at {company}
+            Let&apos;s discuss your hiring needs at {company}
           </Text>
           
           <Text style={{ fontSize: '16px', color: '#525f7f', lineHeight: '24px', marginBottom: '24px' }}>
@@ -23,11 +23,11 @@ export default function RecruiterOutreach({ name, company, ctaUrl = 'https://tur
           </Text>
           
           <Text style={{ fontSize: '16px', color: '#525f7f', lineHeight: '24px', marginBottom: '24px' }}>
-            I'm reaching out from Trio Recruiting. We specialize in helping companies build high-quality engineering teams through our AI-powered sourcing platform.
+            I&apos;m reaching out from Trio Recruiting. We specialize in helping companies build high-quality engineering teams through our AI-powered sourcing platform.
           </Text>
           
           <Text style={{ fontSize: '16px', color: '#525f7f', lineHeight: '24px', marginBottom: '32px' }}>
-            I'd love to schedule a brief call to understand your hiring goals and share how we've helped similar companies accelerate their recruitment process.
+            I&apos;d love to schedule a brief call to understand your hiring goals and share how we&apos;ve helped similar companies accelerate their recruitment process.
           </Text>
           
           <Button 

@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     if (error || errorDescription) {
       console.error('[OUTLOOK OAuth] Error from Microsoft:', error || errorDescription);
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/settings?email_error=${encodeURIComponent(errorDescription || error)}`
+        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/settings?email_error=${encodeURIComponent(errorDescription || error || 'OAuth authorization failed')}`
       );
     }
     

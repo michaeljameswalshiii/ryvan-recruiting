@@ -6,6 +6,7 @@ import {
   getToolSchemas,
   type ToolContext,
 } from '@/lib/ai/tools';
+import { applyApolloPrefire } from '@/lib/ai/apollo-intent';
 
 const MAX_ITERATIONS = 5;
 
@@ -313,11 +314,12 @@ Never infer Brazil from "br" inside a domain brand (structuralbr.com is not Braz
 Use tools when they help. Be concise and actionable.`;
 
   const tools = useTools ? toOpenAITools() : undefined;
+  const pre = await applyApolloPrefire(query, systemPrompt, toolContext);
   const messages: ChatMessage[] = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: query },
+    { role: 'system', content: pre.systemPrompt },
+    { role: 'user', content: pre.query },
   ];
-  const toolsUsed = new Set<string>();
+  const toolsUsed = new Set<string>(pre.toolsUsed);
   let usedModel = model;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {

@@ -9,26 +9,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAllTenants } from "@/lib/db/repositories/tenant-repository";
 import { listEnrollments } from "@/lib/db/repositories/sequence-repository";
 import { pollSequenceReplies } from "@/lib/sequences/reply-poll";
+import { recordCronHeartbeat } from "@/lib/observability/store";
+import { cronAuthorized, skipIfScheduleOff } from "@/lib/agents/cron-gate";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function authorize(request: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    if (process.env.NODE_ENV !== "production") return true;
-    return false;
-  }
-  const auth = request.headers.get("authorization") || "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  const header = request.headers.get("x-cron-secret") || "";
-  return bearer === secret || header === secret;
-}
-
 async function handle(request: NextRequest) {
-  if (!authorize(request)) {
+  if (!cronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const skipped = await skipIfScheduleOff(request, "sequences-poll-replies");
+  if (skipped) return skipped;
 
   const scopeEnv = process.env.CRON_SEQUENCE_TENANT_IDS || "";
   let tenantIds: string[] = scopeEnv
@@ -97,6 +89,16 @@ async function handle(request: NextRequest) {
       }
     }
   }
+
+  await recordCronHeartbeat({
+    cronId: "sequences-poll-replies",
+    label: "Sequence replies",
+    schedule: "Hourly at :30",
+    path: "/api/cron/sequences-poll-replies",
+    status: "ok",
+    durationMs: 0,
+    detail: `${totalReplies} replies · ${slice.length} tenants`,
+  });
 
   return NextResponse.json({
     success: true,
