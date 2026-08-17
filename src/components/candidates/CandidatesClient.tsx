@@ -213,8 +213,8 @@ function getPrimaryStage(candidate: any): string {
 }
 
 function getProgressColor(step: number) {
-  if (step >= 5) return 'bg-emerald-500';
-  if (step >= 4) return 'bg-amber-500';
+  if (step >= 5) return 'bg-emerald-600';
+  if (step >= 4) return 'bg-emerald-400';
   if (step >= 3) return 'bg-violet-500';
   if (step >= 2) return 'bg-sky-500';
   return 'bg-slate-400';
@@ -226,10 +226,10 @@ function stageBadgeClasses(stage: string) {
     return 'bg-rose-50 text-rose-700 border-rose-200';
   }
   if (['placed', 'accept', 'converted', 'hired'].includes(s)) {
-    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    return 'bg-emerald-100 text-emerald-800 border-emerald-300';
   }
   if (['offer_out', 'offer_accepted', 'offer'].includes(s)) {
-    return 'bg-amber-50 text-amber-800 border-amber-200';
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
   }
   if (
     [
@@ -742,14 +742,14 @@ export function CandidatesClient() {
       label: 'Offer Out',
       sub: 'Pending decision',
       count: stats.offer_out,
-      tone: 'amber' as const,
+      tone: 'emerald' as const,
     },
     {
       key: 'placed',
       label: 'Placed YTD',
       sub: 'Closed wins',
       count: stats.placed,
-      tone: 'emerald' as const,
+      tone: 'forest' as const,
     },
     {
       key: 'rejected',

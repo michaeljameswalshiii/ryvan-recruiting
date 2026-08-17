@@ -163,7 +163,7 @@ export const jobSchema = z.object({
           })
         )
         .min(1)
-        .max(8),
+        .max(12),
     })
     .optional(),
 

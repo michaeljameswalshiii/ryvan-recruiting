@@ -5,7 +5,7 @@
 
 import { getTaxonomyEntry } from "@/lib/tags";
 
-export const BOOLEAN_PROMPT_VERSION = 1;
+export const BOOLEAN_PROMPT_VERSION = 2;
 
 export type BooleanPlatform =
   | "LinkedIn"
@@ -29,20 +29,28 @@ export type BooleanCache = {
   strings: BooleanString[];
 };
 
-export const BOOLEAN_SYSTEM_PROMPT = `You are a sourcing assistant for a recruiting firm. Given a job's details, produce standard Boolean search strings a recruiter can paste into LinkedIn Recruiter, Indeed, Apollo, and general search engines. Return ONLY valid JSON, no preamble or markdown, in this shape:
+export const BOOLEAN_SYSTEM_PROMPT = `You are a sourcing assistant for a recruiting firm. Given a job's details, produce standard Boolean search strings a recruiter can paste into LinkedIn Recruiter, Indeed Resume Search / Jobs, Apollo, and general search engines. Return ONLY valid JSON, no preamble or markdown, in this shape:
 
 {"strings": [{"label": "...", "platform": "LinkedIn", "query": "...", "notes": "..."}]}
 
 Rules:
-- Produce 4–6 variants: a broad net, a tight/senior-focused one, a title-synonym version, and a skills-heavy version. Add Indeed-simpler and Apollo-oriented variants when useful.
+- Produce 7–10 variants covering LinkedIn, Indeed, Apollo, and Google. Always include at least three Indeed strings (Resume Search, Jobs keywords, tight/senior). Never give Indeed only a space-separated keyword dump.
 - Use proper Boolean: quotes for phrases, parentheses for grouping, AND/OR/NOT in caps.
 - Include title synonyms (e.g. "Director of Operations" OR "Operations Director" OR "VP Operations" OR "Plant Manager").
 - Weave in the most differentiating skills from the tags, not all of them. Cluster related skills (e.g. CNC + Lean Manufacturing + Six Sigma) rather than dumping the full tag list.
 - Platform notes:
   - LinkedIn: Recruiter Boolean. Prefer title + skills. Do not use site: operators.
-  - Indeed: keep it shorter and less nested; Indeed caps complexity.
+  - Indeed Resume Search / Smart Sourcing (platform: "Indeed"):
+    * Use title:() for current-title targeting. Use anytitle:() when past titles should count.
+    * AND, OR, and quotes are reliable. Keep a single level of parentheses. Prefer -intern -junior over a nested NOT group.
+    * Do NOT put city/state in the query — Indeed has a separate location box. Mention the location in notes instead ("set Where to Atlanta, GA").
+    * Required Indeed set:
+      1) Resume Search — title:("Title A" OR "Title B") AND (skill OR "vertical phrase")
+      2) Jobs keywords — flatter quoted phrases for indeed.com/jobs (competitive postings + simple paste)
+      3) Tight / senior — title: + skills + -intern -junior -assistant
+    * Stay under ~800 characters. 3–7 high-signal terms. Field operators beat dumping every tag.
   - Apollo: people-search style keywords (titles + skills). Avoid site: and location operators Apollo already filters separately.
-  - Google: may use site:linkedin.com/in and location phrases.
+  - Google: may use site:linkedin.com/in and site:indeed.com/r plus location phrases.
 - Add a one-line note on when to use each variant.
 - Never include the client or company name in any query, even if it appears in the job details.
 - If the job is marked confidential, search on role and skills only. Do not echo company, client, or brand names.
@@ -130,7 +138,7 @@ export function parseBooleanPayload(raw: unknown): BooleanString[] {
       query: query.slice(0, 4000),
       notes: String(row.notes || row.note || "").trim().slice(0, 500) || undefined,
     });
-    if (strings.length >= 8) break;
+    if (strings.length >= 12) break;
   }
   return strings;
 }
@@ -204,6 +212,143 @@ function orGroup(values: string[]): string {
   return parts.length === 1 ? parts[0] : `(${parts.join(" OR ")})`;
 }
 
+function indeedLocationNote(location?: string | null): string {
+  const loc = String(location || "").trim();
+  return loc
+    ? `Set Indeed's Where box to ${loc} — do not paste the city into the keyword field.`
+    : "Set location in Indeed's Where box, not in this string.";
+}
+
+/**
+ * Indeed Resume Search / Smart Sourcing: title:() plus one skill OR-group.
+ * Location stays out of the query (Indeed filters it separately).
+ */
+export function indeedResumeQuery(titles: string[], skills: string[]): string {
+  const titleBit = titles.length ? `title:${orGroup(titles)}` : "";
+  const skillBit = orGroup(skills);
+  if (titleBit && skillBit) return `${titleBit} AND ${skillBit}`;
+  return titleBit || skillBit;
+}
+
+/** Flatter Indeed Jobs what-box: quoted title plus one skill OR-group. */
+export function indeedJobsQuery(titles: string[], skills: string[]): string {
+  const titleBit = titles[0] ? quotePhrase(titles[0]) : "";
+  const skillBit = orGroup(skills);
+  if (titleBit && skillBit) return `${titleBit} ${skillBit}`;
+  return titleBit || skillBit;
+}
+
+export function indeedTightQuery(titles: string[], skills: string[]): string {
+  const base = indeedResumeQuery(titles.slice(0, 3), skills.slice(0, 3));
+  if (!base) return "";
+  return `${base} -intern -junior -assistant`;
+}
+
+export function indeedOpenUrls(
+  query: string,
+  location?: string | null
+): { jobs: string; resumes: string } {
+  const q = encodeURIComponent(String(query || "").trim());
+  const loc = String(location || "").trim();
+  const l = loc ? `&l=${encodeURIComponent(loc)}` : "";
+  return {
+    jobs: `https://www.indeed.com/jobs?q=${q}${l}`,
+    resumes: `https://resumes.indeed.com/search?q=${q}${l}`,
+  };
+}
+
+export function isIndeedPlatform(platform?: string | null): boolean {
+  return /\bindeed\b/i.test(String(platform || ""));
+}
+
+function indeedFallbackStrings(job: {
+  title?: string | null;
+  tags?: string[] | null;
+  location?: string | null;
+}): BooleanString[] {
+  const titles = titleSynonyms(job.title);
+  const skills = differentiatingTags(job.tags, 5);
+  const locNote = indeedLocationNote(job.location);
+  const resume = indeedResumeQuery(titles, skills.slice(0, 3));
+  const jobs = indeedJobsQuery(titles, skills.slice(0, 3));
+  const tight = indeedTightQuery(titles, skills);
+  const strings: BooleanString[] = [];
+  if (resume) {
+    strings.push({
+      label: "Resume Search",
+      platform: "Indeed",
+      query: resume,
+      notes: `Indeed Resume Search / Smart Sourcing workhorse. ${locNote}`,
+    });
+  }
+  if (jobs) {
+    strings.push({
+      label: "Jobs keywords",
+      platform: "Indeed",
+      query: jobs,
+      notes: `Paste into Indeed Jobs what-box for competing postings. ${locNote}`,
+    });
+  }
+  if (tight && tight !== resume) {
+    strings.push({
+      label: "Tight / senior",
+      platform: "Indeed",
+      query: tight,
+      notes: `Tighter Resume Search when volume is high. ${locNote}`,
+    });
+  }
+  return strings;
+}
+
+/**
+ * If Claude omitted Indeed or only emitted a keyword dump, splice in
+ * title: Resume Search / Jobs / tight variants from tags.
+ */
+export function ensureIndeedVariants(
+  strings: BooleanString[],
+  job: {
+    title?: string | null;
+    tags?: string[] | null;
+    location?: string | null;
+  }
+): BooleanString[] {
+  const extras = indeedFallbackStrings(job);
+  if (!extras.length) return strings.slice(0, 12);
+
+  const indeedRows = strings.filter((row) => isIndeedPlatform(row.platform));
+  const hasTitleOperator = indeedRows.some((row) => /\btitle\s*:/i.test(row.query));
+  const hasJobsKeywords = indeedRows.some((row) =>
+    /jobs|keyword/i.test(`${row.label} ${row.notes || ""}`)
+  );
+
+  const merged = [...strings];
+  const existingQueries = new Set(merged.map((row) => row.query.toLowerCase()));
+
+  const needed: BooleanString[] = [];
+  if (indeedRows.length === 0 || !hasTitleOperator) {
+    const resume = extras.find((row) => /resume/i.test(row.label));
+    if (resume) needed.push(resume);
+  }
+  if (indeedRows.length === 0 || !hasJobsKeywords) {
+    const jobs = extras.find((row) => /jobs/i.test(row.label));
+    if (jobs) needed.push(jobs);
+  }
+  if (indeedRows.length < 2) {
+    for (const extra of extras) {
+      if (!needed.includes(extra)) needed.push(extra);
+    }
+  }
+
+  const toAdd = needed.filter((extra) => !existingQueries.has(extra.query.toLowerCase()));
+  if (!toAdd.length) return merged.slice(0, 12);
+
+  const insertAt = merged.findIndex((row) => isIndeedPlatform(row.platform));
+  if (insertAt >= 0) merged.splice(insertAt, 0, ...toAdd);
+  else merged.push(...toAdd);
+
+  return merged.slice(0, 12);
+}
+
 /**
  * Deterministic strings from title + tags so the modal still works if Claude is down.
  */
@@ -216,7 +361,6 @@ export function fallbackBooleanStrings(job: {
   const skills = differentiatingTags(job.tags, 5);
   const titleGroup = orGroup(titles);
   const skillGroup = orGroup(skills.slice(0, 3));
-  const skillLoose = orGroup(skills);
   const location = String(job.location || "").trim();
   const locBit = location ? ` AND ${quotePhrase(location)}` : "";
 
@@ -243,13 +387,8 @@ export function fallbackBooleanStrings(job: {
       notes: "Use when you only want seasoned operators.",
     });
   }
-  if (skillLoose) {
-    strings.push({
-      label: "Skills-heavy",
-      platform: "Indeed",
-      query: titleGroup ? `${titleGroup} AND ${skillLoose}` : skillLoose,
-      notes: "Shorter Indeed-friendly string built from the job tags.",
-    });
+  strings.push(...indeedFallbackStrings(job));
+  if (titles.length || skills.length) {
     strings.push({
       label: "Apollo keywords",
       platform: "Apollo",
@@ -264,8 +403,15 @@ export function fallbackBooleanStrings(job: {
       query: `site:linkedin.com/in ${titleGroup}${skillGroup ? ` AND ${skillGroup}` : ""}${locBit}`,
       notes: "X-ray search for public LinkedIn profiles.",
     });
+    const indeedXraySkills = orGroup(skills.slice(0, 2));
+    strings.push({
+      label: "Google / Indeed resumes",
+      platform: "Google",
+      query: `site:indeed.com/r ${titleGroup}${indeedXraySkills ? ` AND ${indeedXraySkills}` : ""}${locBit}`,
+      notes: "X-ray public Indeed resume pages when Recruiter search is thin.",
+    });
   }
-  return strings.slice(0, 6);
+  return strings.slice(0, 12);
 }
 
 export function parseBooleanText(text: string): BooleanString[] {

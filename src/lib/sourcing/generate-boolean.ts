@@ -9,6 +9,7 @@ import {
   BOOLEAN_PROMPT_VERSION,
   BOOLEAN_SYSTEM_PROMPT,
   buildBooleanJobContext,
+  ensureIndeedVariants,
   fallbackBooleanStrings,
   parseBooleanText,
   type BooleanCache,
@@ -56,7 +57,7 @@ export async function generateJobBooleanStrings(params: {
       {
         modelIds: BOOLEAN_MODELS,
         temperature: 0.3,
-        maxTokens: 1600,
+        maxTokens: 2200,
         timeoutMs: 12_000,
       }
     );
@@ -72,7 +73,7 @@ export async function generateJobBooleanStrings(params: {
       const fromData = parseBooleanText(JSON.stringify(result.data));
       if (fromData.length) {
         return {
-          cache: toCache(fromData, model),
+          cache: toCache(ensureIndeedVariants(fromData, params.job), model),
           rawText: result.text,
         };
       }
@@ -87,7 +88,10 @@ export async function generateJobBooleanStrings(params: {
       rawText: text,
     };
   }
-  return { cache: toCache(strings, model), rawText: text };
+  return {
+    cache: toCache(ensureIndeedVariants(strings, params.job), model),
+    rawText: text,
+  };
 }
 
 function toCache(strings: BooleanString[], model: string): BooleanCache {

@@ -26,7 +26,7 @@ export const JOB_STATUS_META: Record<
   Paused: {
     label: "Paused",
     description: "Temporarily on hold",
-    badge: "bg-amber-50 text-amber-800 border-amber-200",
+    badge: "bg-slate-100 text-slate-700 border-slate-200",
   },
   Filled: {
     label: "Filled",

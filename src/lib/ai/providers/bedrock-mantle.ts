@@ -22,9 +22,10 @@ import {
 } from "@/lib/ai/tools";
 import { applyApolloPrefire } from "@/lib/ai/apollo-intent";
 import {
-  CRM_WRITE_NOW_NUDGE,
+  crmWriteNudgeForQuery,
   maxIterationsFallback,
   shouldNudgeCrmWrite,
+  shouldRetryCrmWrite,
   toolLoopBudget,
   withLinkedInCreateGuidance,
 } from "@/lib/ai/crm-write-loop";
@@ -335,7 +336,7 @@ Use tools when they improve the answer. Be concise and actionable.`;
 
   for (let i = 0; i < maxIterations; i++) {
     if (shouldNudgeCrmWrite(params.query, i, maxIterations, toolsUsed)) {
-      messages.push({ role: "user", content: CRM_WRITE_NOW_NUDGE });
+      messages.push({ role: "user", content: crmWriteNudgeForQuery(params.query) });
     }
     const result = await invokeMantleChat({
       model,
@@ -346,8 +347,20 @@ Use tools when they improve the answer. Be concise and actionable.`;
     const toolCalls = result.tool_calls || [];
 
     if (!toolCalls.length) {
+      const text = result.content || "No response";
+      if (
+        shouldRetryCrmWrite(params.query, toolsUsed) &&
+        i < maxIterations - 1
+      ) {
+        messages.push({ role: "assistant", content: text });
+        messages.push({
+          role: "user",
+          content: crmWriteNudgeForQuery(params.query),
+        });
+        continue;
+      }
       return {
-        text: result.content || "No response",
+        text,
         toolsUsed: Array.from(toolsUsed),
         model: usedModel,
       };

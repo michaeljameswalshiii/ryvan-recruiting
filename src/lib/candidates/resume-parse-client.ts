@@ -9,6 +9,7 @@ import {
 import {
   inferCandidateTags,
   sanitizeCandidateLocation,
+  sanitizeCandidatePhone,
 } from '@/lib/candidates/resume-text-parser';
 
 export type ParsedResumeFields = {
@@ -249,7 +250,8 @@ export function mapParsedResumeToForm(
 
   // Robust location: profile location only. Never keep "Company - City, ST".
   let location = sanitizeCandidateLocation(
-    parsed?.location || parsed?.fullAddress || parsed?.full_address || ''
+    parsed?.location || parsed?.fullAddress || parsed?.full_address || '',
+    name
   );
   if (!location && experience.length) {
     const withLoc = experience.find((e: any) =>
@@ -262,7 +264,7 @@ export function mapParsedResumeToForm(
     name,
     title,
     email: parsed?.email || '',
-    phone: parsed?.phone || '',
+    phone: sanitizeCandidatePhone(parsed?.phone),
     location,
     linkedin_url: linkedin,
     summary,
@@ -301,8 +303,9 @@ export function mergeFormWithParsed(
     name: pick('name'),
     title: pick('title'),
     email: pick('email'),
-    phone: pick('phone'),
-    location: sanitizeCandidateLocation(pick('location')) || prev.location,
+    phone: sanitizeCandidatePhone(pick('phone')),
+    location:
+      sanitizeCandidateLocation(pick('location'), pick('name')) || prev.location,
     linkedin_url: pick('linkedin_url'),
     summary: pick('summary'),
     skills: pick('skills'),

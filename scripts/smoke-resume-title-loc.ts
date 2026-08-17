@@ -1,4 +1,8 @@
-import { parseResumeText } from "../src/lib/candidates/resume-text-parser";
+import {
+  parseResumeText,
+  sanitizeCandidateLocation,
+  sanitizeCandidatePhone,
+} from "../src/lib/candidates/resume-text-parser";
 import { mapParsedResumeToForm } from "../src/lib/candidates/resume-parse-client";
 
 const samples = [
@@ -42,6 +46,21 @@ ABC Company | Dallas, TX
 • Led close
 `,
   },
+  {
+    name: "indeed_header_blob",
+    text: `Mary Prosper
+Accounting Associate
+maryp718@gmail.com
+gmail.com Mary Prosper Greenacres, FL
+(555) 123-4567
+
+WORK EXPERIENCE
+Accounting Associate
+Local Firm
+2020 - Present
+• Reconciled accounts
+`,
+  },
 ];
 
 let failed = 0;
@@ -55,4 +74,71 @@ for (const s of samples) {
   );
   if (!ok) failed++;
 }
+
+const indeed = parseResumeText(
+  `Mary Prosper
+Accounting Associate
+maryp718@gmail.com
+gmail.com Mary Prosper Greenacres, FL
+(555) 123-4567
+
+WORK EXPERIENCE
+Accounting Associate
+Local Firm
+2020 - Present
+• Reconciled accounts
+`,
+  { filename: "Mary-Prosper-resume.pdf" }
+);
+const indeedForm = mapParsedResumeToForm(indeed);
+console.log(
+  (indeedForm.location === "Greenacres, FL" ? "OK  " : "FAIL") +
+    ` indeed_location: ${JSON.stringify(indeedForm.location)}`
+);
+if (indeedForm.location !== "Greenacres, FL") failed++;
+console.log(
+  (indeedForm.phone === "" ? "OK  " : "FAIL") +
+    ` indeed_phone_blank: ${JSON.stringify(indeedForm.phone)}`
+);
+if (indeedForm.phone !== "") failed++;
+console.log(
+  (indeedForm.email === "maryp718@gmail.com" ? "OK  " : "FAIL") +
+    ` indeed_email: ${JSON.stringify(indeedForm.email)}`
+);
+if (indeedForm.email !== "maryp718@gmail.com") failed++;
+
+const locCheck =
+  sanitizeCandidateLocation(
+    "gmail.com Mary Prosper Greenacres, FL",
+    "Mary Prosper"
+  ) === "Greenacres, FL";
+console.log(
+  (locCheck ? "OK  " : "FAIL") +
+    ` sanitize_indeed_loc: ${JSON.stringify(
+      sanitizeCandidateLocation(
+        "gmail.com Mary Prosper Greenacres, FL",
+        "Mary Prosper"
+      )
+    )}`
+);
+if (!locCheck) failed++;
+
+const westPalm = sanitizeCandidateLocation("West Palm Beach, FL");
+console.log(
+  (westPalm === "West Palm Beach, FL" ? "OK  " : "FAIL") +
+    ` keep_west_palm: ${JSON.stringify(westPalm)}`
+);
+if (westPalm !== "West Palm Beach, FL") failed++;
+
+console.log(
+  (sanitizeCandidatePhone("(555) 123-4567") === "" ? "OK  " : "FAIL") +
+    " placeholder_555"
+);
+if (sanitizeCandidatePhone("(555) 123-4567") !== "") failed++;
+console.log(
+  (sanitizeCandidatePhone("(305) 696-0248") === "(305) 696-0248" ? "OK  " : "FAIL") +
+    " keep_real_phone"
+);
+if (sanitizeCandidatePhone("(305) 696-0248") !== "(305) 696-0248") failed++;
+
 process.exit(failed ? 1 : 0);

@@ -80,9 +80,12 @@ async function main() {
   const { generateJobBooleanStrings } = await import(
     "../src/lib/sourcing/generate-boolean.ts"
   );
-  const { isConfidentialJob, fallbackBooleanStrings } = await import(
-    "../src/lib/sourcing/boolean-prompt.ts"
-  );
+  const {
+    isConfidentialJob,
+    fallbackBooleanStrings,
+    ensureIndeedVariants,
+    indeedOpenUrls,
+  } = await import("../src/lib/sourcing/boolean-prompt.ts");
 
   let failed = 0;
   for (const sample of jobs) {
@@ -90,6 +93,46 @@ async function main() {
     console.log("confidential", isConfidentialJob(sample.job));
     const fallback = fallbackBooleanStrings(sample.job);
     console.log("fallback count", fallback.length);
+    const indeedRows = fallback.filter((s) => /indeed/i.test(s.platform));
+    const hasTitleOp = indeedRows.some((s) => /\btitle\s*:/i.test(s.query));
+    const locationInIndeed = indeedRows.some((s) =>
+      sample.job.location
+        ? s.query.toLowerCase().includes(sample.job.location.toLowerCase())
+        : false
+    );
+    console.log(
+      "indeed fallbacks",
+      indeedRows.length,
+      "title:",
+      hasTitleOp,
+      "location leaked into query",
+      locationInIndeed
+    );
+    if (indeedRows.length < 2 || !hasTitleOp || locationInIndeed) failed += 1;
+
+    const keywordDump = [
+      {
+        label: "Simplified Search",
+        platform: "Indeed",
+        query: `${sample.job.title} commercial construction ${sample.job.location}`,
+        notes: "Shorter, less Boolean-heavy",
+      },
+    ];
+    const upgraded = ensureIndeedVariants(keywordDump, sample.job);
+    const upgradedTitle = upgraded.some((s) => /\btitle\s*:/i.test(s.query));
+    const urls = indeedOpenUrls(upgraded.find((s) => /\btitle\s*:/i.test(s.query))?.query || "", sample.job.location);
+    if (!upgradedTitle || upgraded.length < 2) {
+      console.log("ensureIndeedVariants failed to beef up keyword dump");
+      failed += 1;
+    }
+    if (!urls.jobs.includes("indeed.com/jobs") || !urls.resumes.includes("resumes.indeed.com")) {
+      console.log("indeedOpenUrls missing expected hosts");
+      failed += 1;
+    }
+    if (sample.job.location && !urls.jobs.includes(encodeURIComponent(sample.job.location))) {
+      console.log("indeedOpenUrls missing location param");
+      failed += 1;
+    }
     if (isConfidentialJob(sample.job)) {
       const leaked = fallback.some((s) => /MSK/i.test(s.query));
       console.log("fallback leaks company", leaked);

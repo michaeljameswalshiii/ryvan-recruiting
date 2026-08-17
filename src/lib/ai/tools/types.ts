@@ -58,6 +58,11 @@ export interface ToolContext {
    * Write tools may skip the preview gate (confirmed:true injected).
    */
   agentWriteApproved?: boolean;
+  /**
+   * User reported the company exists but the contact was never posted.
+   * Auto-confirm create_contact / create_company_with_primary_contact.
+   */
+  repairMissingContact?: boolean;
   /** Soft cap for bulk creates in one agent wave (default 10) */
   agentMaxCreatesPerWave?: number;
 }

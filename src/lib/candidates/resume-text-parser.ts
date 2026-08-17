@@ -440,9 +440,77 @@ function looksLikeEmail(s: string): boolean {
   return /@/.test(s);
 }
 
+function looksLikeEmailDomain(s: string): boolean {
+  return /\b(?:gmail|yahoo|ymail|hotmail|outlook|icloud|aol|live|msn|protonmail|proton|me)\.com\b/i.test(
+    s
+  );
+}
+
 function looksLikePhone(s: string): boolean {
   const digits = s.replace(/\D/g, '');
   return digits.length >= 10 && digits.length <= 15 && /[\d(]/.test(s);
+}
+
+/** 555 / 123-456-7890 / Indeed & form placeholders — never treat as captured. */
+export function isPlaceholderPhone(raw: string): boolean {
+  const digits = String(raw || '').replace(/\D/g, '');
+  const d =
+    digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  if (d.length !== 10) return false;
+  const area = d.slice(0, 3);
+  const exch = d.slice(3, 6);
+  if (area === '555' || exch === '555') return true;
+  if (d === '1234567890' || d === '0123456789') return true;
+  if (/^(\d)\1{9}$/.test(d)) return true;
+  return false;
+}
+
+export function sanitizeCandidatePhone(raw?: string | null): string {
+  const value = String(raw || '').trim();
+  if (!value || isPlaceholderPhone(value)) return '';
+  return value;
+}
+
+const EMAIL_DOMAIN_RE =
+  /\b(?:gmail|yahoo|ymail|hotmail|outlook|icloud|aol|live|msn|protonmail|proton|me)\.com\b/gi;
+
+const LOC_PREFIX =
+  /^(New|North|South|East|West|Fort|Ft|Saint|St|Mount|Mt|Lake|Port|San|Santa|Los|Las|El|Des|Cape|Palm|Grand|Little|Great|Upper|Lower|Salt|Sioux)$/i;
+
+const LOC_SUFFIX =
+  /^(City|Beach|Park|Parks|Springs|Hills|Falls|Grove|Gardens|Harbor|Harbour|Haven|Heights|Valley|Woods|Creek|Town|Village|Junction|Station|Island|Islands|Bay|Lake)$/i;
+
+function stripLocationNoise(raw: string, personName?: string): string {
+  let value = String(raw || '').replace(/\s+/g, ' ').trim();
+  value = value.replace(
+    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
+    ' '
+  );
+  value = value.replace(EMAIL_DOMAIN_RE, ' ');
+  if (personName && personName.trim().length >= 3) {
+    const escaped = personName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    value = value.replace(new RegExp(`\\b${escaped}\\b`, 'ig'), ' ');
+  }
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function cityFromTrailingWords(prev: string): string {
+  const words = String(prev || '')
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w && !EMAIL_DOMAIN_RE.test(w) && !/\./.test(w));
+  if (!words.length) return '';
+  let i = words.length - 1;
+  const parts = [words[i]];
+  if (i > 0 && LOC_SUFFIX.test(words[i])) {
+    i -= 1;
+    parts.unshift(words[i]);
+  }
+  while (i > 0 && LOC_PREFIX.test(words[i - 1])) {
+    i -= 1;
+    parts.unshift(words[i]);
+  }
+  return parts.join(' ');
 }
 
 function looksLikeUrl(s: string): boolean {
@@ -467,7 +535,12 @@ function isPureLocation(s: string): boolean {
   if (!s || s.length > 60) return false;
   const value = s.replace(/\s+/g, " ").trim();
   if (!value) return false;
-  if (looksLikeEmail(value) || looksLikePhone(value) || looksLikeUrl(value)) {
+  if (
+    looksLikeEmail(value) ||
+    looksLikeEmailDomain(value) ||
+    looksLikePhone(value) ||
+    looksLikeUrl(value)
+  ) {
     return false;
   }
   if (COMPANY_MARKERS.test(value) || TITLE_WORDS.test(value)) return false;
@@ -488,8 +561,8 @@ function isPureLocation(s: string): boolean {
 }
 
 /** Pull "Atlanta, GA" out of "BuildCore - Atlanta, Ga" / "Title | City, ST". */
-function isolateLocationFragment(raw: string): string {
-  const value = String(raw || "").replace(/\s+/g, " ").trim();
+function isolateLocationFragment(raw: string, personName?: string): string {
+  const value = stripLocationNoise(raw, personName);
   if (!value) return "";
   if (isPureLocation(value)) return value;
 
@@ -506,11 +579,13 @@ function isolateLocationFragment(raw: string): string {
     const prev = commas[commas.length - 2];
     const zip = last.match(/^([A-Za-z]{2}|[A-Za-z .']+)\s+\d{5}(?:-\d{4})?$/);
     const region = zip ? zip[1] : last;
-    if (isStateOrCountry(region) && prev && !TITLE_WORDS.test(prev) && !COMPANY_MARKERS.test(prev)) {
-      const city = prev.split(/\s*[-–—|•·]\s+/).pop() || prev;
-      const candidate = zip ? `${city}, ${last}` : `${city}, ${last}`;
-      if (isPureLocation(candidate) || isPureLocation(`${city}, ${region}`)) {
-        return normalizeLocationString(`${city}, ${region}`);
+    if (isStateOrCountry(region) && prev && !COMPANY_MARKERS.test(prev)) {
+      const city = cityFromTrailingWords(
+        prev.split(/\s*[-–—|•·]\s+/).pop() || prev
+      );
+      const candidate = `${city}, ${region}`;
+      if (city && isPureLocation(candidate)) {
+        return normalizeLocationString(candidate);
       }
     }
   }
@@ -518,12 +593,26 @@ function isolateLocationFragment(raw: string): string {
   const cityState = value.match(
     new RegExp(`\\b(${CITY_NAME},\\s*(?:${US_STATES})(?:\\s+\\d{5}(?:-\\d{4})?)?)\\b`, "i")
   );
-  if (cityState && isPureLocation(cityState[1])) return cityState[1];
+  if (cityState) {
+    const [cityRaw, rest] = cityState[1].split(",");
+    const city = cityFromTrailingWords(cityRaw);
+    const candidate = `${city},${rest}`;
+    if (city && isPureLocation(candidate.replace(/\s+/g, " ").trim())) {
+      return candidate.replace(/\s+/g, " ").trim();
+    }
+  }
 
   const cityRegion = value.match(
     new RegExp(`\\b(${CITY_NAME},\\s*(?:${FULL_STATES}))\\b`, "i")
   );
-  if (cityRegion && isPureLocation(cityRegion[1])) return cityRegion[1];
+  if (cityRegion) {
+    const [cityRaw, rest] = cityRegion[1].split(",");
+    const city = cityFromTrailingWords(cityRaw);
+    const candidate = `${city},${rest}`;
+    if (city && isPureLocation(candidate.replace(/\s+/g, " ").trim())) {
+      return candidate.replace(/\s+/g, " ").trim();
+    }
+  }
 
   return "";
 }
@@ -534,8 +623,11 @@ function looksLikeLocation(s: string): boolean {
 }
 
 /** Public: keep only City, ST (or metro). Drop employer/title prefixes. */
-export function sanitizeCandidateLocation(raw?: string | null): string {
-  const isolated = isolateLocationFragment(String(raw || ""));
+export function sanitizeCandidateLocation(
+  raw?: string | null,
+  personName?: string
+): string {
+  const isolated = isolateLocationFragment(String(raw || ""), personName);
   if (!isolated) return "";
   return normalizeLocationString(isolated).slice(0, 60);
 }
@@ -705,6 +797,7 @@ function extractPhone(text: string): string {
       // Reject obvious junk (0000000000, font metrics)
       if (/^(\d)\1+$/.test(digits)) continue;
       if (/^0+$/.test(digits) || /^1{10,}$/.test(digits)) continue;
+      if (isPlaceholderPhone(digits)) continue;
       // Prefer US-looking numbers near top
       if (digits.length === 10 || (digits.length === 11 && digits.startsWith('1'))) {
         return formatUsPhone(digits);
@@ -718,29 +811,73 @@ function extractPhone(text: string): string {
     const compact = line.replace(/[^\d+]/g, '');
     const digits = compact.replace(/\D/g, '');
     if (digits.length === 10 || (digits.length === 11 && digits.startsWith('1'))) {
-      if (!/^(\d)\1+$/.test(digits)) return formatUsPhone(digits);
+      if (!/^(\d)\1+$/.test(digits) && !isPlaceholderPhone(digits)) {
+        return formatUsPhone(digits);
+      }
     }
   }
 
   return '';
 }
 
-function extractLinkedIn(text: string): string {
-  // LinkedIn PDF exports frequently wrap a profile slug across two lines.
-  const normalized = text.replace(
-    /(linkedin\.com\/in\/[A-Za-z0-9_-]*-)\s*\n\s*([A-Za-z0-9_-]+)(?:\s*\(LinkedIn\))?/gi,
-    '$1$2'
+const LINKEDIN_IN_RE =
+  /(?:https?:\/\/)?(?:[\w-]+\.)?linkedin\.com\/in\/[A-Za-z0-9_%.-]+/i;
+
+/** Canonical https://www.linkedin.com/in/{slug} — strips Easy Apply tracking query. */
+export function normalizeLinkedInUrl(raw: string): string {
+  const input = String(raw || '')
+    .trim()
+    .replace(/\\([()])/g, '$1');
+  if (!input) return '';
+  const m = input.match(
+    /(?:https?:\/\/)?(?:[\w-]+\.)?linkedin\.com\/in\/([A-Za-z0-9_%.-]+)/i
   );
-  const m = normalized.match(
-    /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[A-Za-z0-9_-]+\/?/i
-  );
-  if (!m) return '';
-  let url = m[0].replace(/\/$/, '');
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url.replace(/^www\./i, 'www.');
-  if (!url.includes('://www.') && url.includes('linkedin.com')) {
-    url = url.replace('://linkedin.com', '://www.linkedin.com');
+  if (!m?.[1]) return '';
+  const slug = m[1].replace(/[.,;:]+$/, '');
+  if (slug.length < 2) return '';
+  return `https://www.linkedin.com/in/${slug}`;
+}
+
+/**
+ * LinkedIn "Save as PDF" / Easy Apply resumes wrap the slug after /in/ or mid-name:
+ *   www.linkedin.com/in/
+ *   raunykhandaker (LinkedIn)
+ */
+export function extractLinkedIn(text: string): string {
+  const normalized = String(text || '')
+    // Only join when the first line is clearly truncated (ends with / or -).
+    // Otherwise "in/slug\\nContact" becomes "in/slugContact".
+    .replace(
+      /(linkedin\.com\/in\/(?:[A-Za-z0-9_%.-]+[/-])?)\s*(?:\r?\n)+\s*([A-Za-z0-9_%.-]+)(?:\s*\(\s*LinkedIn\s*\))?/gi,
+      '$1$2'
+    )
+    .replace(/\s*\(\s*LinkedIn\s*\)/gi, ' ');
+
+  const matches = normalized.match(new RegExp(LINKEDIN_IN_RE.source, 'gi')) || [];
+  for (const raw of matches) {
+    const url = normalizeLinkedInUrl(raw);
+    if (url) return url;
   }
-  return url;
+  return '';
+}
+
+/** Pull profile URLs from PDF /URI annotations and raw bytes. */
+export function scrapeLinkedInUrlsFromPdfBytes(buffer: Buffer | Uint8Array): string[] {
+  const latin = Buffer.from(buffer).toString('latin1');
+  const found: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: string) => {
+    const url = normalizeLinkedInUrl(raw);
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    found.push(url);
+  };
+  for (const m of latin.matchAll(/\/URI\s*\(([^)]+)\)/g)) {
+    add(m[1]);
+  }
+  const loose = latin.match(new RegExp(LINKEDIN_IN_RE.source, 'gi')) || [];
+  for (const raw of loose) add(raw);
+  return found;
 }
 
 type LinkedInProfileIdentity = {
@@ -797,7 +934,11 @@ function normalizeLocationString(loc: string): string {
   return s.slice(0, 60);
 }
 
-function extractLocation(text: string, headerText: string): string {
+function extractLocation(
+  text: string,
+  headerText: string,
+  personName?: string
+): string {
   // Prefer header / top lines — full-text scans pick up skill pairs like "Python, AWS"
   const topLines = linesOf(text).slice(0, 15);
   const areas = [
@@ -809,10 +950,10 @@ function extractLocation(text: string, headerText: string): string {
 
   const tryMatch = (area: string): string => {
     if (!area) return '';
-    const isolated = isolateLocationFragment(area);
+    const isolated = isolateLocationFragment(area, personName);
     if (isolated) return normalizeLocationString(isolated);
     for (const line of linesOf(area)) {
-      const hit = isolateLocationFragment(line);
+      const hit = isolateLocationFragment(line, personName);
       if (hit) return normalizeLocationString(hit);
     }
     const metroArea = area.match(
@@ -1559,7 +1700,8 @@ export function parseResumeText(
   const phone = extractPhone(text);
   const linkedin = extractLinkedIn(text);
   const location = sanitizeCandidateLocation(
-    linkedInIdentity.location || extractLocation(text, header)
+    linkedInIdentity.location || extractLocation(text, header, name),
+    name
   );
   const salaryRequirements = extractSalary(text);
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Binary, Check, Copy, Loader2, RefreshCw, Save } from "lucide-react";
+import { Binary, Check, Copy, ExternalLink, Loader2, RefreshCw, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,6 +13,8 @@ import {
 import { toast } from "sonner";
 import {
   fallbackBooleanStrings,
+  indeedOpenUrls,
+  isIndeedPlatform,
   type BooleanCache,
   type BooleanString,
 } from "@/lib/sourcing/boolean-prompt";
@@ -39,6 +41,49 @@ function platformTone(platform: string): string {
   if (p.includes("apollo")) return "border-amber-200 bg-amber-50 text-amber-800";
   if (p.includes("google")) return "border-emerald-200 bg-emerald-50 text-emerald-800";
   return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function IndeedOpenActions({
+  query,
+  location,
+}: {
+  query: string;
+  location?: string;
+}) {
+  const urls = indeedOpenUrls(query, location);
+  const chars = query.length;
+  const long = chars > 800;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <a
+        href={urls.resumes}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex h-7 items-center rounded-md border border-indigo-200 bg-indigo-50 px-2 text-[11px] font-medium text-indigo-800 hover:bg-indigo-100"
+      >
+        <ExternalLink className="mr-1 h-3 w-3" />
+        Open Resumes
+      </a>
+      <a
+        href={urls.jobs}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex h-7 items-center rounded-md border border-indigo-200 bg-white px-2 text-[11px] font-medium text-indigo-800 hover:bg-indigo-50"
+      >
+        <ExternalLink className="mr-1 h-3 w-3" />
+        Open Jobs
+      </a>
+      <span
+        className={`text-[11px] ${long ? "font-medium text-amber-700" : "text-slate-400"}`}
+      >
+        {chars} chars
+        {long ? " — trim toward 800 for Indeed" : ""}
+        {location
+          ? ` · Where: ${location}`
+          : " · set location in Indeed's Where box"}
+      </span>
+    </div>
+  );
 }
 
 async function fetchJson(url: string, init: RequestInit, timeoutMs: number) {
@@ -214,7 +259,7 @@ export function BooleanGeneratorButton({
               <span className="font-medium text-slate-700">
                 {jobTitle || "this job"}
               </span>
-              . Copy into LinkedIn Recruiter, Indeed, Apollo, or Google.
+              . Copy into LinkedIn Recruiter, Indeed Resume Search / Jobs, Apollo, or Google.
             </DialogDescription>
           </DialogHeader>
 
@@ -269,9 +314,12 @@ export function BooleanGeneratorButton({
                   <textarea
                     value={row.query}
                     onChange={(e) => updateDraft(index, { query: e.target.value })}
-                    rows={3}
+                    rows={isIndeedPlatform(row.platform) ? 4 : 3}
                     className="w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-[12px] leading-5 text-slate-800 focus:border-slate-400 focus:outline-none"
                   />
+                  {isIndeedPlatform(row.platform) && row.query.trim() ? (
+                    <IndeedOpenActions query={row.query} location={location} />
+                  ) : null}
                   <input
                     value={row.notes || ""}
                     onChange={(e) => updateDraft(index, { notes: e.target.value })}

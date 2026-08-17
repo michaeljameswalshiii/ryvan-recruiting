@@ -1155,14 +1155,17 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
           (c: any) =>
             String(c.name || "").toLowerCase() === input.name.trim().toLowerCase()
         );
+        if (!created?.id) {
+          return errorResult(
+            `Contact write did not persist on ${company.name}. Retry create_contact.`
+          );
+        }
         return textResult({
           success: true,
           tenantId,
           company: summarizeCompany(updated),
-          contact: created ? summarizeContact(created, updated) : null,
-          url: created?.id
-            ? `/dashboard/contact-info/${created.id}?companyId=${company.id}`
-            : `/dashboard/companies/${company.id}`,
+          contact: summarizeContact(created, updated),
+          url: `/dashboard/contact-info/${created.id}?companyId=${company.id}`,
           message: `Added ${input.name} as a contact on ${company.name} in Trio Contacts.`,
         });
       } catch (e) {
@@ -1233,18 +1236,23 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
             String(c.name || "").toLowerCase() ===
             input.contact_name.trim().toLowerCase()
         );
+        if (!contact?.id) {
+          return errorResult(
+            `Company ${updated.name || company.id} is on file, but ${input.contact_name} was not posted to Contacts. Retry create_contact.`
+          );
+        }
         return textResult({
           success: true,
           tenantId,
           company: summarizeCompany(updated),
-          contact: contact ? summarizeContact(contact, updated) : null,
+          contact: summarizeContact(contact, updated),
           urls: {
             company: `/dashboard/companies/${company.id}`,
-            contact: contact?.id
-              ? `/dashboard/contact-info/${contact.id}?companyId=${company.id}`
-              : null,
+            contact: `/dashboard/contact-info/${contact.id}?companyId=${company.id}`,
           },
-          message: `Created ${updated.name} in Trio Companies and added ${input.contact_name} as primary contact.`,
+          message: existing
+            ? `Added ${input.contact_name} as primary contact on existing company ${updated.name}.`
+            : `Created ${updated.name} in Trio Companies and added ${input.contact_name} as primary contact.`,
         });
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));

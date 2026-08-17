@@ -50,9 +50,9 @@ export const PIPELINE_BUCKETS = [
       'placed',
       'offered',
     ],
-    bg: 'bg-amber-50',
-    text: 'text-amber-800',
-    ring: 'ring-amber-100',
+    bg: 'bg-emerald-50',
+    text: 'text-emerald-800',
+    ring: 'ring-emerald-100',
   },
   {
     key: 'rejected',

@@ -49,7 +49,9 @@ import {
   maybePrefireApolloLookup,
 } from "@/lib/ai/apollo-intent";
 import {
-  CRM_WRITE_NOW_NUDGE,
+  crmWriteNudgeForQuery,
+  shouldRetryCrmWrite,
+  wantsMissingContactPosted,
   maxIterationsFallback,
   shouldNudgeCrmWrite,
   toolLoopBudget,
@@ -207,7 +209,8 @@ IMPORTANT entity rules:
 - "Contact" / "hiring manager" / "add to Contact Info" / "contact at Company X" → use create_contact (needs company_id or company_name).
 - "Candidate" / "talent" / "pipeline" / "applicant" → use create_candidate.
 - create_candidate with a company name only stores a note; it does NOT put them on Contact Info.
-- Never say someone is a company contact unless create_contact returned status "created".
+- Never say someone is a company contact unless create_contact returned status "created" with a real contact id.
+- If the user says the company is already there but the person is not on Contacts / "no contact was posted": immediately call create_contact with name + company_name. Do not look up invented contact ids. Do not create a second company.
 
 CRITICAL confirmation rules for ALL write tools:
 1. First call the tool WITHOUT confirmed (or confirmed:false). You will get status "needs_confirmation" and a preview.
@@ -1247,7 +1250,7 @@ Use tools when they improve the answer. Be concise and actionable.`;
     if (shouldNudgeCrmWrite(query, i, grokMaxIter, toolsUsed)) {
       converseMessages.push({
         role: "user",
-        content: [{ text: CRM_WRITE_NOW_NUDGE }],
+        content: [{ text: crmWriteNudgeForQuery(query) }],
       });
     }
     const result = await invokeGrokBedrockConverse(
@@ -1259,6 +1262,17 @@ Use tools when they improve the answer. Be concise and actionable.`;
     modelId = result.modelId;
 
     if (!result.toolUses.length) {
+      if (shouldRetryCrmWrite(query, toolsUsed) && i < grokMaxIter - 1) {
+        converseMessages.push({
+          role: "assistant",
+          content: [{ text: result.text || "No response" }],
+        });
+        converseMessages.push({
+          role: "user",
+          content: [{ text: crmWriteNudgeForQuery(query) }],
+        });
+        continue;
+      }
       return {
         text: result.text || "No response",
         toolsUsed: Array.from(toolsUsed),
@@ -1755,7 +1769,7 @@ async function runMCPAgent(
   const pendingConfirm = historyHasPendingCrmConfirm(options?.history || []);
   const confirming = isUserConfirmation(query) || (
     pendingConfirm && /yes|confirm|save|go ahead|do it|ok|sure|proceed/i.test(query)
-  );
+  ) || wantsMissingContactPosted(query);
 
   let systemPrompt =
     options?.systemPrompt ||
@@ -1868,7 +1882,7 @@ Rules:
     if (shouldNudgeCrmWrite(query, iteration, MAX_ITERATIONS, toolsUsed)) {
       messages.push({
         role: "user",
-        content: CRM_WRITE_NOW_NUDGE,
+        content: crmWriteNudgeForQuery(query),
       });
     }
     console.log(`[MCP] Iteration ${iteration + 1}/${MAX_ITERATIONS} (history=${prior.length})`);
@@ -2530,6 +2544,7 @@ ${pageContext}`
         generatedFiles: [],
         toolSpend: toolSpendAcc,
         agentWriteApproved: extra?.agentWriteApproved,
+        repairMissingContact: wantsMissingContactPosted(lastUserQuery),
         agentMaxCreatesPerWave: extra?.agentMaxCreatesPerWave,
       });
 

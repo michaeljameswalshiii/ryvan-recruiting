@@ -43,6 +43,9 @@ export {
   removeClientContact,
   setPrimaryContact as setClientPrimaryContact,
   getPrimaryContact as getClientPrimaryContact,
+  findCompanyByName,
+  matchCompanyByName,
+  normalizeCompanyNameKey,
 } from './client-repository';
 
 // Contact repository - explicit exports (has getPrimaryContact, setPrimaryContact)

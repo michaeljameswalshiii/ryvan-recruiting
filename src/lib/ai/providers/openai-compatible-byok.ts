@@ -8,9 +8,10 @@ import {
 } from '@/lib/ai/tools';
 import { applyApolloPrefire } from '@/lib/ai/apollo-intent';
 import {
-  CRM_WRITE_NOW_NUDGE,
+  crmWriteNudgeForQuery,
   maxIterationsFallback,
   shouldNudgeCrmWrite,
+  shouldRetryCrmWrite,
   toolLoopBudget,
   withLinkedInCreateGuidance,
 } from '@/lib/ai/crm-write-loop';
@@ -336,7 +337,7 @@ Use tools when they help. Be concise and actionable.`;
 
   for (let i = 0; i < maxIterations; i++) {
     if (shouldNudgeCrmWrite(query, i, maxIterations, toolsUsed)) {
-      messages.push({ role: 'user', content: CRM_WRITE_NOW_NUDGE });
+      messages.push({ role: 'user', content: crmWriteNudgeForQuery(query) });
     }
     const result = await invokeCompatible({
       apiKey,
@@ -349,8 +350,17 @@ Use tools when they help. Be concise and actionable.`;
 
     const toolCalls = result.tool_calls || [];
     if (toolCalls.length === 0) {
+      const text = result.content || 'No response';
+      if (
+        shouldRetryCrmWrite(query, toolsUsed) &&
+        i < maxIterations - 1
+      ) {
+        messages.push({ role: 'assistant', content: text });
+        messages.push({ role: 'user', content: crmWriteNudgeForQuery(query) });
+        continue;
+      }
       return {
-        text: result.content || 'No response',
+        text,
         toolsUsed: Array.from(toolsUsed),
         model: usedModel,
       };

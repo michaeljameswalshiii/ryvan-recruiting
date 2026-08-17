@@ -18,8 +18,8 @@ const pipelineStages = [
   { id: "last18", label: "LAST 18", color: "bg-blue-500" },
   { id: "submitted", label: "SUBMITTED", color: "bg-slate-500" },
   { id: "interview", label: "INTERVIEW", color: "bg-amber-500" },
-  { id: "offer", label: "OFFER OUT", color: "bg-orange-500" },
-  { id: "accepted", label: "ACCEPTED", color: "bg-green-500" },
+  { id: "offer", label: "OFFER OUT", color: "bg-emerald-400" },
+  { id: "accepted", label: "ACCEPTED", color: "bg-emerald-700" },
 ];
 
 // Format date for display

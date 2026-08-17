@@ -20,6 +20,7 @@ import {
 } from "@/lib/db/repositories/job-repository";
 import {
   BOOLEAN_PROMPT_VERSION,
+  ensureIndeedVariants,
   fallbackBooleanStrings,
   parseBooleanPayload,
   type BooleanCache,
@@ -38,6 +39,38 @@ function readCache(job: { booleanStrings?: BooleanCache } | null): BooleanCache 
   return cache;
 }
 
+function jobInputFrom(job: {
+  title?: string | null;
+  location?: string | null;
+  tags?: string[] | null;
+  salaryRange?: string | null;
+  description?: string | null;
+  employmentType?: string | null;
+  companyName?: string | null;
+  confidential?: boolean | null;
+}) {
+  return {
+    title: job.title,
+    location: job.location,
+    tags: job.tags,
+    salaryRange: job.salaryRange,
+    description: job.description,
+    employmentType: job.employmentType,
+    companyName: job.companyName,
+    confidential: job.confidential,
+  };
+}
+
+function withIndeedCoverage(
+  cache: BooleanCache,
+  job: Parameters<typeof ensureIndeedVariants>[1]
+): BooleanCache {
+  return {
+    ...cache,
+    strings: ensureIndeedVariants(cache.strings, job),
+  };
+}
+
 export async function GET(_request: NextRequest, context: RouteCtx) {
   try {
     const { id: jobId } = await context.params;
@@ -52,10 +85,13 @@ export async function GET(_request: NextRequest, context: RouteCtx) {
     }
 
     const cache = readCache(job as { booleanStrings?: BooleanCache });
+    const upgraded = cache
+      ? withIndeedCoverage(cache, jobInputFrom(job))
+      : null;
     return NextResponse.json({
-      cached: Boolean(cache),
+      cached: Boolean(upgraded),
       promptVersion: BOOLEAN_PROMPT_VERSION,
-      ...(cache || { strings: [] }),
+      ...(upgraded || { strings: [] }),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load Boolean strings";
@@ -84,24 +120,16 @@ export async function POST(request: NextRequest, context: RouteCtx) {
 
     const existing = readCache(job as { booleanStrings?: BooleanCache });
     if (existing && !regenerate) {
+      const upgraded = withIndeedCoverage(existing, jobInputFrom(job));
       return NextResponse.json({
         cached: true,
         regenerated: false,
         promptVersion: BOOLEAN_PROMPT_VERSION,
-        ...existing,
+        ...upgraded,
       });
     }
 
-    const jobInput = {
-      title: job.title,
-      location: job.location,
-      tags: (job as { tags?: string[] }).tags,
-      salaryRange: job.salaryRange,
-      description: job.description,
-      employmentType: job.employmentType,
-      companyName: job.companyName,
-      confidential: (job as { confidential?: boolean }).confidential,
-    };
+    const jobInput = jobInputFrom(job);
 
     const { generateJobBooleanStrings } = await import(
       "@/lib/sourcing/generate-boolean"

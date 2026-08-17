@@ -11,7 +11,9 @@ import { createRequire } from 'module';
 import mammoth from 'mammoth';
 import {
   extractNameFromFilename,
+  isPlaceholderPhone,
   parseResumeText,
+  scrapeLinkedInUrlsFromPdfBytes,
   textFromPdfItems,
   type StructuredParsedResume,
 } from '@/lib/candidates/resume-text-parser';
@@ -105,6 +107,7 @@ function scrapeContactFromBinary(buffer: Buffer): string {
     if (digits.length < 10 || digits.length > 11) continue;
     // Reject runs of identical digits / obvious junk
     if (/^(\d)\1+$/.test(digits)) continue;
+    if (isPlaceholderPhone(digits)) continue;
     if (seen.has(digits)) continue;
     seen.add(digits);
     parts.push(p.trim());
@@ -632,6 +635,20 @@ export async function parseResumeBuffer(
     }
   }
 
+  // LinkedIn Easy Apply / Save-as-PDF puts the profile URL in a /URI
+  // annotation and wraps the visible slug after "linkedin.com/in/".
+  const linkedInFromPdf = lowerCasePdf(fileName)
+    ? scrapeLinkedInUrlsFromPdfBytes(buffer)
+    : [];
+  if (linkedInFromPdf.length) {
+    workingText = [linkedInFromPdf.join('\n'), workingText]
+      .filter(Boolean)
+      .join('\n');
+    workingMethod = workingMethod
+      ? `${workingMethod}+linkedin-uri`
+      : 'linkedin-uri';
+  }
+
   let parsed = parseResumeText(workingText, { filename: fileName });
 
   // A readable PDF can still have a broken text layer (common with exported
@@ -688,6 +705,10 @@ export async function parseResumeBuffer(
     } catch (error) {
       console.warn('[resume-extract] sparse parse OCR retry failed:', error);
     }
+  }
+
+  if (linkedInFromPdf.length) {
+    parsed = { ...parsed, linkedin: linkedInFromPdf[0] };
   }
 
   if (!parsed.name) {

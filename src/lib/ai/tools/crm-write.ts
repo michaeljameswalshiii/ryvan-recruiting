@@ -19,6 +19,8 @@ import {
   getAllClients,
   addContactToClient,
   updateClientContact,
+  findCompanyByName,
+  matchCompanyByName,
 } from "../../db/repositories/client-repository";
 import { phonesFromWorkAndMobile } from "../../contacts/phone";
 import {
@@ -141,6 +143,8 @@ export const CREATE_CANDIDATE_DESCRIPTION =
   "Create a job-seeker on the Candidates list. " +
   "NOT for hiring managers, client contacts, or 'add a company page + primary contact'. " +
   "Use create_company_with_primary_contact (or create_company then create_contact) for those. " +
+  "If the company already exists and the person should appear on Contacts, use create_contact — " +
+  "this tool will NOT post them there. " +
   "ALWAYS call once without confirmed to preview, show the user, then call again with " +
   "confirmed:true after they agree. Requires name. Optional company is only a note, " +
   "it does NOT add them under Contacts.";
@@ -201,6 +205,10 @@ export async function executeCreateCandidate(
       lead.id ? `/dashboard/candidates/${lead.id}` : "",
     ].filter(Boolean));
 
+    const matchedCompany = preview.company
+      ? await findCompanyByName(context.tenantId!, preview.company)
+      : null;
+
     return {
       success: true,
       data: {
@@ -213,6 +221,15 @@ export async function executeCreateCandidate(
           title: lead.title,
         },
         message: `Created candidate ${lead.name} (id: ${lead.id}).`,
+        ...(matchedCompany
+          ? {
+              warning:
+                `This is a candidate only. ${preview.name} is NOT on Contacts at ${matchedCompany.name}. ` +
+                `Call create_contact with company_id=${matchedCompany.id} if they are a hiring manager.`,
+              not_a_company_contact: true,
+              existing_company_id: matchedCompany.id,
+            }
+          : {}),
       },
       metadata: { action: CREATE_CANDIDATE_TOOL, id: lead.id },
     };
@@ -397,7 +414,8 @@ export const CREATE_COMPANY_DESCRIPTION =
 export const CREATE_COMPANY_WITH_PRIMARY_CONTACT_TOOL =
   "create_company_with_primary_contact";
 export const CREATE_COMPANY_WITH_PRIMARY_CONTACT_DESCRIPTION =
-  "Create a client company and its primary company contact in Trio. Use for a complete company + primary contact workflow, including when the user pastes a LinkedIn /in/ URL after Apollo lookup. Preview first, then confirmed:true.";
+  "Create a client company and its primary company contact in Trio, or add the contact to the existing company if that company already exists (never create a duplicate). " +
+  "Use for a complete company + primary contact workflow, including when the user pastes a LinkedIn /in/ URL after Apollo lookup. Preview first, then confirmed:true.";
 
 export async function executeCreateCompanyWithPrimaryContact(
   params: unknown,
@@ -411,6 +429,8 @@ export async function executeCreateCompanyWithPrimaryContact(
   if (!companyName) return { success: false, error: "company_name is required" };
   if (!contactName) return { success: false, error: "contact_name is required" };
 
+  const existingCompany = await findCompanyByName(context.tenantId!, companyName);
+
   if (!isConfirmed(p)) {
     return {
       success: true,
@@ -421,7 +441,9 @@ export async function executeCreateCompanyWithPrimaryContact(
           "Do NOT claim these records were saved. Show this preview and ask the user to confirm. Then call this same tool with confirmed:true.",
         preview: {
           company: {
-            name: companyName,
+            name: existingCompany?.name || companyName,
+            id: existingCompany?.id,
+            already_exists: !!existingCompany,
             domain: str(p.domain) || str(p.website) || "",
             industry: str(p.industry) || "",
             city: str(p.city) || "",
@@ -433,6 +455,9 @@ export async function executeCreateCompanyWithPrimaryContact(
             email: str(p.contact_email) || str(p.email) || "",
             phone: str(p.contact_phone) || str(p.phone) || "",
           },
+          note: existingCompany
+            ? `Company already exists — will add ${contactName} to the existing record (no duplicate company).`
+            : `Will create ${companyName} and add ${contactName} as primary contact.`,
         },
       },
       metadata: {
@@ -442,18 +467,25 @@ export async function executeCreateCompanyWithPrimaryContact(
     };
   }
 
-  const companyResult = await executeCreateCompany(
-    { ...p, name: companyName, confirmed: true },
-    context,
-  );
-  if (!companyResult.success) return companyResult;
-  const company = (companyResult.data as any)?.company;
-  if (!company?.id) return { success: false, error: "Company was created without an id" };
+  let companyId = existingCompany?.id;
+  let companyLabel = existingCompany?.name || companyName;
+
+  if (!companyId) {
+    const companyResult = await executeCreateCompany(
+      { ...p, name: companyName, confirmed: true },
+      context,
+    );
+    if (!companyResult.success) return companyResult;
+    const company = (companyResult.data as any)?.company;
+    if (!company?.id) return { success: false, error: "Company was created without an id" };
+    companyId = company.id;
+    companyLabel = company.name || companyName;
+  }
 
   const contactResult = await executeCreateContact(
     {
       name: contactName,
-      company_id: company.id,
+      company_id: companyId,
       title: str(p.contact_title) || str(p.title),
       email: str(p.contact_email) || str(p.email),
       phone: str(p.contact_phone) || str(p.phone),
@@ -468,21 +500,33 @@ export async function executeCreateCompanyWithPrimaryContact(
   if (!contactResult.success) {
     return {
       success: false,
-      error: `Company ${company.name} was created, but the primary contact failed: ${contactResult.error || "unknown error"}`,
-      metadata: { company_created: true, company_id: company.id },
+      error: `Company ${companyLabel} is on file, but the primary contact failed: ${contactResult.error || "unknown error"}`,
+      metadata: { company_created: !existingCompany, company_id: companyId },
+    };
+  }
+  const contactData = contactResult.data as { contact?: { id?: string } } | undefined;
+  if (!contactData?.contact?.id) {
+    return {
+      success: false,
+      error: `Company ${companyLabel} is on file, but ${contactName} was not posted to Contacts. Retry create_contact.`,
+      metadata: { company_id: companyId },
     };
   }
   return {
     success: true,
     data: {
       status: "created",
-      company: companyResult.data,
+      company: { id: companyId, name: companyLabel },
       primary_contact: contactResult.data,
-      message: `Created ${company.name} and added ${contactName} as its primary contact in Trio.`,
+      already_exists: !!existingCompany,
+      message: existingCompany
+        ? `Added ${contactName} as a contact at existing company ${companyLabel}. They appear under Contacts.`
+        : `Created ${companyLabel} and added ${contactName} as its primary contact in Trio.`,
     },
     metadata: {
       action: CREATE_COMPANY_WITH_PRIMARY_CONTACT_TOOL,
-      company_id: company.id,
+      company_id: companyId,
+      contact_id: contactData.contact.id,
     },
   };
 }
@@ -497,6 +541,28 @@ export async function executeCreateCompany(
   const p = (params || {}) as Record<string, unknown>;
   const name = str(p.name) || str(p.company_name);
   if (!name) return { success: false, error: "name is required" };
+
+  const existingCompany = await findCompanyByName(context.tenantId!, name);
+  if (existingCompany?.id) {
+    const existingPreview = {
+      name: existingCompany.name || name,
+      id: existingCompany.id,
+      already_exists: true,
+      note: `Company already exists — will reuse ${existingCompany.name} (no duplicate).`,
+    };
+    const existingGate = confirmGate(p, CREATE_COMPANY_TOOL, existingPreview);
+    if (existingGate) return existingGate;
+    return {
+      success: true,
+      data: {
+        status: "created",
+        already_exists: true,
+        company: { id: existingCompany.id, name: existingCompany.name },
+        message: `Company ${existingCompany.name} already exists (id: ${existingCompany.id}). Reusing it.`,
+      },
+      metadata: { action: CREATE_COMPANY_TOOL, id: existingCompany.id },
+    };
+  }
 
   const domain = str(p.domain) || str(p.website) || "";
   let industry = str(p.industry) || "";
@@ -714,7 +780,27 @@ export const CREATE_CONTACT_TOOL = "create_contact";
 export const CREATE_CONTACT_DESCRIPTION =
   "Add a person as a company contact (hiring manager / business contact). " +
   "These appear on Contacts (/dashboard/contact-info), NOT Candidates. " +
-  "Requires name + company_id OR company_name. Preview first, then confirmed:true.";
+  "Requires name + company_id OR company_name. Reuses the existing company — never creates a second company. " +
+  "If the user says the company is there but the person is not on Contacts, call this (not internal_data lookup of invented ids). " +
+  "Preview first, then confirmed:true.";
+
+function findContactOnCompany(
+  company: { contacts?: Array<Record<string, any>> } | null | undefined,
+  name: string,
+  email?: string
+): Record<string, any> | undefined {
+  const contacts = Array.isArray(company?.contacts) ? company!.contacts! : [];
+  const wantName = name.toLowerCase().trim();
+  const wantEmail = email ? email.toLowerCase().trim() : "";
+  return contacts.find((c) => {
+    const cn = String(c?.name || "").toLowerCase().trim();
+    if (cn !== wantName) return false;
+    if (wantEmail && c?.email && String(c.email).toLowerCase() !== wantEmail) {
+      return false;
+    }
+    return true;
+  });
+}
 
 async function resolveCompanyId(
   tenantId: string,
@@ -728,11 +814,7 @@ async function resolveCompanyId(
   }
   if (companyName) {
     const all = await getAllClients(tenantId);
-    const needle = companyName.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const match = all.find((c) => {
-      const n = (c.name || c.companyName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      return n === needle || n.includes(needle) || needle.includes(n);
-    });
+    const match = matchCompanyByName(all, companyName);
     if (!match?.id) {
       return {
         error: `No company matching "${companyName}". Create the company first or pass company_id.`,
@@ -793,6 +875,42 @@ export async function executeCreateContact(
     destination: "Contacts (company contact)",
   };
 
+  const existingOnCompany = await getClientById(context.tenantId!, resolved.id);
+  const already = findContactOnCompany(
+    existingOnCompany,
+    preview.name,
+    preview.email
+  );
+  if (already?.id) {
+    const existingGate = confirmGate(p, CREATE_CONTACT_TOOL, {
+      ...preview,
+      contact_id: already.id,
+      already_exists: true,
+      note: `${preview.name} is already a contact at ${resolved.name}.`,
+    });
+    if (existingGate) return existingGate;
+    return {
+      success: true,
+      data: {
+        status: "created",
+        already_exists: true,
+        contact: {
+          id: already.id,
+          name: already.name || preview.name,
+          company_id: resolved.id,
+          company_name: resolved.name,
+        },
+        message: `${preview.name} is already a contact at ${resolved.name}.`,
+        url_hint: "/dashboard/contact-info",
+      },
+      metadata: {
+        action: CREATE_CONTACT_TOOL,
+        id: already.id,
+        company_id: resolved.id,
+      },
+    };
+  }
+
   const gate = confirmGate(p, CREATE_CONTACT_TOOL, preview);
   if (gate) return gate;
 
@@ -813,23 +931,34 @@ export async function executeCreateContact(
         ? { userId: context.userId, email: context.email }
         : undefined,
     );
-    const created = (updated.contacts || []).find(
-      (c: any) =>
-        c.name?.toLowerCase() === preview.name.toLowerCase() &&
-        (!preview.email || c.email === preview.email.toLowerCase())
-    );
+    const created =
+      findContactOnCompany(updated, preview.name, preview.email) ||
+      findContactOnCompany(
+        await getClientById(context.tenantId!, resolved.id),
+        preview.name,
+        preview.email
+      );
+    if (!created?.id) {
+      return {
+        success: false,
+        error:
+          `Contact write did not persist on ${resolved.name}. ` +
+          `The company is there; retry create_contact. Do not invent a contact id.`,
+        metadata: { company_id: resolved.id },
+      };
+    }
     await revalidateCrmPaths([
       "/dashboard/contact-info",
       "/dashboard/companies",
       `/dashboard/companies/${resolved.id}`,
-      created?.id ? `/dashboard/contact-info/${created.id}` : "",
-    ].filter(Boolean));
+      `/dashboard/contact-info/${created.id}`,
+    ]);
     return {
       success: true,
       data: {
         status: "created",
         contact: {
-          id: created?.id,
+          id: created.id,
           name: preview.name,
           company_id: resolved.id,
           company_name: resolved.name,
@@ -837,7 +966,7 @@ export async function executeCreateContact(
         message: `Added ${preview.name} as a contact at ${resolved.name}. They appear under Contacts.`,
         url_hint: "/dashboard/contact-info",
       },
-      metadata: { action: CREATE_CONTACT_TOOL, id: created?.id, company_id: resolved.id },
+      metadata: { action: CREATE_CONTACT_TOOL, id: created.id, company_id: resolved.id },
     };
   } catch (err) {
     return {

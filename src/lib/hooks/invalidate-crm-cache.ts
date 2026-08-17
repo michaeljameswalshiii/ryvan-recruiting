@@ -22,6 +22,7 @@ import { pipelineKeys } from './query-pipeline';
 const CLIENT_TOOLS = new Set([
   'create_company',
   'update_company',
+  'create_company_with_primary_contact',
   'create_contact',
   'update_contact',
   'create_client',
@@ -51,6 +52,7 @@ const JOB_TOOLS = new Set([
  */
 export const CRM_FALLBACK_WRITE_TOOLS = [
   'create_company',
+  'create_company_with_primary_contact',
   'create_contact',
   'create_candidate',
   'create_job',

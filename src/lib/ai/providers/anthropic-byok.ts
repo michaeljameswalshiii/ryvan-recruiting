@@ -9,9 +9,10 @@ import {
 } from '@/lib/ai/tools';
 import { applyApolloPrefire } from '@/lib/ai/apollo-intent';
 import {
-  CRM_WRITE_NOW_NUDGE,
+  crmWriteNudgeForQuery,
   maxIterationsFallback,
   shouldNudgeCrmWrite,
+  shouldRetryCrmWrite,
   toolLoopBudget,
   withLinkedInCreateGuidance,
 } from '@/lib/ai/crm-write-loop';
@@ -253,7 +254,7 @@ Use tools when they help. Be concise and actionable.`;
     if (shouldNudgeCrmWrite(query, iteration, maxIterations, toolsUsed)) {
       messages = [
         ...messages,
-        { role: 'user', content: CRM_WRITE_NOW_NUDGE },
+        { role: 'user', content: crmWriteNudgeForQuery(query) },
       ];
     }
     const result = await invokeAnthropic({
@@ -275,8 +276,20 @@ Use tools when they help. Be concise and actionable.`;
         (c): c is ClaudeContent & { type: 'text' } =>
           typeof c === 'object' && c.type === 'text'
       );
+      const text = textBlock?.text || 'No response';
+      if (
+        shouldRetryCrmWrite(query, toolsUsed) &&
+        iteration < maxIterations - 1
+      ) {
+        messages = [
+          ...messages,
+          { role: 'assistant', content },
+          { role: 'user', content: crmWriteNudgeForQuery(query) },
+        ];
+        continue;
+      }
       return {
-        text: textBlock?.text || 'No response',
+        text,
         toolsUsed: Array.from(toolsUsed),
         model,
       };

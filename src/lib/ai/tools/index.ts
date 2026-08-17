@@ -272,10 +272,14 @@ export function getToolSchemas(): Array<{
         properties: {
           data_type: {
             type: "string",
-            description: "leads | candidates | clients | jobs | pipeline",
+            description: "leads | candidates | clients | contacts | jobs | pipeline",
           },
           action: { type: "string", description: "list, get, or count" },
           id: { type: "string", description: "id when action is get" },
+          company_id: {
+            type: "string",
+            description: "Optional company id to filter or resolve contacts",
+          },
         },
         required: ["data_type"],
       },

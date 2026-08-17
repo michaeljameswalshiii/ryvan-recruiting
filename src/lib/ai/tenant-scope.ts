@@ -168,6 +168,7 @@ export function buildToolContext(
   extras?: Partial<ToolContext> & {
     requestUrl?: string;
     agentWriteApproved?: boolean;
+    repairMissingContact?: boolean;
     agentMaxCreatesPerWave?: number;
   }
 ): ToolContext {
@@ -183,6 +184,7 @@ export function buildToolContext(
     generatedFiles: extras?.generatedFiles,
     toolSpend: extras?.toolSpend,
     agentWriteApproved: extras?.agentWriteApproved,
+    repairMissingContact: extras?.repairMissingContact,
     agentMaxCreatesPerWave: extras?.agentMaxCreatesPerWave,
   };
 }

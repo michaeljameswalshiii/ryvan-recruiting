@@ -124,6 +124,40 @@ function tenantsToTry(tenantId: string): string[] {
   return [...new Set(list.filter(Boolean))];
 }
 
+export function normalizeCompanyNameKey(name: string): string {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/** Exact name match first; unique contains-match only for longer names. */
+export function matchCompanyByName<
+  T extends { name?: string; companyName?: string },
+>(companies: T[], name: string): T | null {
+  const needle = normalizeCompanyNameKey(name);
+  if (!needle) return null;
+  const exact = companies.filter((c) => {
+    const n = normalizeCompanyNameKey(c.name || c.companyName || '');
+    return n === needle;
+  });
+  if (exact.length > 0) return exact[0];
+  if (needle.length < 5) return null;
+  const fuzzy = companies.filter((c) => {
+    const n = normalizeCompanyNameKey(c.name || c.companyName || '');
+    if (!n) return false;
+    return n.includes(needle) || needle.includes(n);
+  });
+  return fuzzy.length === 1 ? fuzzy[0] : null;
+}
+
+export async function findCompanyByName(
+  tenantId: string,
+  name: string
+): Promise<ClientRecord | null> {
+  const all = await getAllClients(tenantId);
+  return matchCompanyByName(all, name);
+}
+
 export async function getAllClients(tenantId: string): Promise<ClientRecord[]> {
   try {
     console.log(`[getAllClients] Fetching for tenant: ${tenantId}`);
@@ -132,6 +166,8 @@ export async function getAllClients(tenantId: string): Promise<ClientRecord[]> {
     const items = (result.Items || []) as ClientRecord[];
     const companies = items.filter((item) => {
       if (!item) return false;
+      const sk = String((item as { SK?: string }).SK || '');
+      if (sk.startsWith('CONTACT#')) return false;
       if (item.tenant_id) return tenantsToTry(tenantId).includes(item.tenant_id);
       return true;
     });
@@ -352,6 +388,15 @@ export async function setPrimaryContact(
   );
 }
 
+function isConditionalCheckFailed(err: unknown): boolean {
+  const name = String((err as { name?: string })?.name || '');
+  const msg = String((err as { message?: string })?.message || '');
+  return (
+    name === 'ConditionalCheckFailedException' ||
+    msg.includes('ConditionalCheckFailed')
+  );
+}
+
 async function persistContacts(
   tenantId: string,
   clientId: string,
@@ -367,6 +412,9 @@ async function persistContacts(
       new UpdateCommand({
         TableName: TABLE_NAME,
         Key: { tenant_id: t, id },
+        // Never create a ghost company under a tenant alias — only update
+        // the existing company item the UI is listing.
+        ConditionExpression: 'attribute_exists(id)',
         UpdateExpression:
           'SET #contacts = :contacts, #primaryContactId = :primaryContactId, #modified_at = :modified_at',
         ExpressionAttributeNames: {
@@ -385,18 +433,29 @@ async function persistContacts(
     return res.Attributes as ClientRecord;
   };
 
-  for (const t of tenantsToTry(tenantId)) {
+  const preferred = [tenantId, ...tenantsToTry(tenantId)].filter(
+    (t, i, arr) => !!t && arr.indexOf(t) === i
+  );
+  for (const t of preferred) {
     try {
       const updated = await tryUpdate(t, clientId);
       if (updated) return updated;
     } catch (err: any) {
+      if (isConditionalCheckFailed(err)) continue;
       console.warn(`[persistContacts] update failed tenant=${t}:`, err?.message || err);
     }
   }
 
   const found = await getClientById(tenantId, clientId);
   if (found?.tenant_id && found.id) {
-    return tryUpdate(found.tenant_id, found.id);
+    try {
+      return await tryUpdate(found.tenant_id, found.id);
+    } catch (err: any) {
+      console.warn(
+        `[persistContacts] fallback update failed tenant=${found.tenant_id}:`,
+        err?.message || err
+      );
+    }
   }
 
   throw new Error(`Could not update contacts for client ${clientId}`);

@@ -349,7 +349,7 @@ export function JobListView({ jobs }: JobListViewProps) {
       label: 'Paused',
       sub: 'Temporarily on hold',
       count: stats.paused,
-      tone: 'amber' as const,
+      tone: 'slate' as const,
     },
     {
       key: 'filled',

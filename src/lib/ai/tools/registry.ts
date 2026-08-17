@@ -329,6 +329,12 @@ export async function executeTool(
       if (writeTools.has(toolName)) {
         execParams = { ...safeParams, confirmed: true };
       }
+    } else if (
+      safeContext.repairMissingContact &&
+      (toolName === "create_contact" ||
+        toolName === "create_company_with_primary_contact")
+    ) {
+      execParams = { ...safeParams, confirmed: true };
     }
     const result = await tool.execute(execParams, safeContext);
     // Never echo a different tenant back from tools
