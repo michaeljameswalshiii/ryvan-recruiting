@@ -20,10 +20,10 @@ import {
 } from "@/lib/db/repositories/job-repository";
 import {
   BOOLEAN_PROMPT_VERSION,
+  fallbackBooleanStrings,
   parseBooleanPayload,
   type BooleanCache,
 } from "@/lib/sourcing/boolean-prompt";
-import { generateJobBooleanStrings } from "@/lib/sourcing/generate-boolean";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -92,21 +92,56 @@ export async function POST(request: NextRequest, context: RouteCtx) {
       });
     }
 
-    const { cache } = await generateJobBooleanStrings({
-      job: {
-        title: job.title,
-        location: job.location,
-        tags: (job as { tags?: string[] }).tags,
-        salaryRange: job.salaryRange,
-        description: job.description,
-        employmentType: job.employmentType,
-        companyName: job.companyName,
-        confidential: (job as { confidential?: boolean }).confidential,
-      },
+    const jobInput = {
+      title: job.title,
+      location: job.location,
+      tags: (job as { tags?: string[] }).tags,
+      salaryRange: job.salaryRange,
+      description: job.description,
+      employmentType: job.employmentType,
+      companyName: job.companyName,
+      confidential: (job as { confidential?: boolean }).confidential,
+    };
+
+    const { generateJobBooleanStrings } = await import(
+      "@/lib/sourcing/generate-boolean"
+    );
+    const generate = generateJobBooleanStrings({
+      job: jobInput,
       tenantId,
       userId,
       jobId,
     });
+    const timed = new Promise<{ cache: BooleanCache }>((resolve) => {
+      const t = setTimeout(() => {
+        resolve({
+          cache: {
+            generatedAt: new Date().toISOString(),
+            promptVersion: BOOLEAN_PROMPT_VERSION,
+            model: "fallback-timeout",
+            strings: fallbackBooleanStrings(jobInput),
+          },
+        });
+      }, 18_000);
+      void generate
+        .then((result) => {
+          clearTimeout(t);
+          resolve(result);
+        })
+        .catch((err) => {
+          clearTimeout(t);
+          console.warn("[boolean-generator] generate failed", err);
+          resolve({
+            cache: {
+              generatedAt: new Date().toISOString(),
+              promptVersion: BOOLEAN_PROMPT_VERSION,
+              model: "fallback-error",
+              strings: fallbackBooleanStrings(jobInput),
+            },
+          });
+        });
+    });
+    const { cache } = await timed;
 
     try {
       await updateJob(tenantId, jobId, { booleanStrings: cache });

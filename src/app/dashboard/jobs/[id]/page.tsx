@@ -691,6 +691,8 @@ export default function JobDetailPage() {
             <BooleanGeneratorButton
               jobId={String(job.id || jobId)}
               jobTitle={job.title}
+              location={job.location}
+              tags={jobTags}
               className="border-gray-200 bg-white text-gray-800 hover:bg-gray-50"
             />
           </div>

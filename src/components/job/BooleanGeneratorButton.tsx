@@ -11,7 +11,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import type { BooleanCache, BooleanString } from "@/lib/sourcing/boolean-prompt";
+import {
+  fallbackBooleanStrings,
+  type BooleanCache,
+  type BooleanString,
+} from "@/lib/sourcing/boolean-prompt";
 
 type BooleanResponse = BooleanCache & {
   cached?: boolean;
@@ -23,6 +27,8 @@ type BooleanResponse = BooleanCache & {
 interface BooleanGeneratorButtonProps {
   jobId: string;
   jobTitle?: string;
+  location?: string;
+  tags?: string[];
   className?: string;
 }
 
@@ -35,9 +41,27 @@ function platformTone(platform: string): string {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
+async function fetchJson(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...init,
+      credentials: "include",
+      signal: controller.signal,
+    });
+    const data = (await res.json().catch(() => ({}))) as BooleanResponse;
+    return { res, data };
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export function BooleanGeneratorButton({
   jobId,
   jobTitle,
+  location,
+  tags,
   className,
 }: BooleanGeneratorButtonProps) {
   const [open, setOpen] = useState(false);
@@ -59,38 +83,62 @@ export function BooleanGeneratorButton({
       toast.error("Missing job id");
       return;
     }
-    setLoading(true);
+    const instant = fallbackBooleanStrings({
+      title: jobTitle,
+      location,
+      tags,
+    });
     setOpen(true);
     if (regenerate) {
       setResult(null);
-      setDrafts([]);
+      setDirty(false);
     }
+    if (instant.length) {
+      setDrafts(instant);
+      setResult({
+        generatedAt: new Date().toISOString(),
+        strings: instant,
+        model: "instant-tags",
+      });
+    }
+    setLoading(true);
+    const url = `/api/jobs/${encodeURIComponent(jobId)}/boolean`;
     try {
       if (!regenerate) {
-        const cachedRes = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/boolean`, {
-          credentials: "include",
-        });
-        const cached = (await cachedRes.json().catch(() => ({}))) as BooleanResponse;
-        if (cachedRes.ok && cached.strings?.length) {
-          applyPayload({ ...cached, cached: true });
+        const cached = await fetchJson(url, { method: "GET" }, 8000);
+        if (cached.res.ok && cached.data.strings?.length) {
+          applyPayload({ ...cached.data, cached: true });
           return;
         }
       }
 
-      const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/boolean`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ regenerate }),
-      });
-      const data = (await res.json().catch(() => ({}))) as BooleanResponse;
-      if (!res.ok) {
-        throw new Error(data.error || "Boolean Generator failed");
+      const posted = await fetchJson(
+        url,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ regenerate }),
+        },
+        22000
+      );
+      if (!posted.res.ok) {
+        throw new Error(posted.data.error || "Boolean Generator failed");
       }
-      applyPayload(data);
-      if (regenerate) toast.success("Generated fresh Boolean strings");
+      if (posted.data.strings?.length) {
+        applyPayload(posted.data);
+        if (regenerate) toast.success("Generated fresh Boolean strings");
+      }
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Failed to generate Boolean strings";
+      if (instant.length) {
+        toast.message("Showing tag-based strings. Claude refine timed out — try Regenerate.");
+        return;
+      }
+      const aborted = e instanceof DOMException && e.name === "AbortError";
+      const message = aborted
+        ? "Boolean Generator timed out. Try again."
+        : e instanceof Error
+          ? e.message
+          : "Failed to generate Boolean strings";
       toast.error(message);
       setResult({ generatedAt: "", strings: [], error: message });
     } finally {
@@ -170,7 +218,7 @@ export function BooleanGeneratorButton({
             </DialogDescription>
           </DialogHeader>
 
-          {loading ? (
+          {loading && !drafts.length ? (
             <div className="flex flex-col items-center justify-center gap-3 py-12 text-sm text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
               Building Boolean variants from the title, tags, and description…
@@ -181,6 +229,12 @@ export function BooleanGeneratorButton({
             </div>
           ) : (
             <div className="space-y-3">
+              {loading ? (
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Refining with Claude… you can copy these now.
+                </div>
+              ) : null}
               {drafts.map((row, index) => (
                 <article
                   key={`${row.platform}-${index}`}

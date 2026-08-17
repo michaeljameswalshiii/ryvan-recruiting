@@ -1,14 +1,10 @@
 /**
- * Generate Boolean search strings for a job via Claude (Bedrock or Anthropic BYOK).
+ * Generate Boolean search strings for a job via Claude (Bedrock Haiku).
+ * Fast path: one cheap model, short timeout, tag fallback if it stalls.
  * @serverOnly
  */
 
-import { completeJson, fillJobPlanModelChain } from "@/lib/list-builder/llm-json";
-import {
-  getAiCredentialsPublic,
-  getDecryptedAnthropicKey,
-} from "@/lib/db/repositories/ai-credentials-repository";
-import { runAnthropicByokChat } from "@/lib/ai/providers/anthropic-byok";
+import { completeJson } from "@/lib/list-builder/llm-json";
 import {
   BOOLEAN_PROMPT_VERSION,
   BOOLEAN_SYSTEM_PROMPT,
@@ -18,6 +14,12 @@ import {
   type BooleanCache,
   type BooleanString,
 } from "@/lib/sourcing/boolean-prompt";
+
+const BOOLEAN_MODELS = [
+  process.env.BOOLEAN_MODEL_ID || "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "us.anthropic.claude-3-haiku-20240307-v1:0",
+];
 
 export type BooleanJobInput = {
   title?: string | null;
@@ -40,14 +42,6 @@ export async function generateJobBooleanStrings(params: {
   let text = "";
   let model = "";
 
-  const byok = await tryAnthropicByok(params.userId, jobContext);
-  if (byok) {
-    const fromByok = parseBooleanText(byok.text);
-    if (fromByok.length) {
-      return { cache: toCache(fromByok, byok.model), rawText: byok.text };
-    }
-  }
-
   {
     const result = await completeJson<{ strings?: BooleanString[] }>(
       BOOLEAN_SYSTEM_PROMPT,
@@ -60,10 +54,10 @@ export async function generateJobBooleanStrings(params: {
         queryPreview: params.job.title || "job boolean",
       },
       {
-        modelIds: fillJobPlanModelChain(),
+        modelIds: BOOLEAN_MODELS,
         temperature: 0.3,
-        maxTokens: 2000,
-        timeoutMs: 45_000,
+        maxTokens: 1600,
+        timeoutMs: 12_000,
       }
     );
     if (result.error && !result.text && !result.data) {
@@ -94,31 +88,6 @@ export async function generateJobBooleanStrings(params: {
     };
   }
   return { cache: toCache(strings, model), rawText: text };
-}
-
-async function tryAnthropicByok(
-  userId: string | undefined,
-  jobContext: string
-): Promise<{ text: string; model: string } | null> {
-  if (!userId) return null;
-  try {
-    const prefs = await getAiCredentialsPublic(userId);
-    if (prefs.preferredProvider !== "anthropic" || !prefs.hasAnthropicKey) {
-      return null;
-    }
-    const apiKey = await getDecryptedAnthropicKey(userId);
-    if (!apiKey) return null;
-    const result = await runAnthropicByokChat({
-      apiKey,
-      systemPrompt: BOOLEAN_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: jobContext }],
-      model: process.env.ANTHROPIC_BYOK_MODEL || "claude-sonnet-4-20250514",
-    });
-    return { text: result.text, model: result.model };
-  } catch (err) {
-    console.warn("[boolean-generator] Anthropic BYOK failed, falling back", err);
-    return null;
-  }
 }
 
 function toCache(strings: BooleanString[], model: string): BooleanCache {
