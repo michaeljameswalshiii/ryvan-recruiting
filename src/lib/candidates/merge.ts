@@ -22,6 +22,12 @@ import {
 import { invalidateTenantCache, makeCacheKey, invalidateCache } from "@/lib/cache";
 import { addNoteToCandidate } from "@/lib/events/candidate-events";
 import { stageIndex } from "@/lib/candidates/pipeline-rank";
+import {
+  jobsAlign,
+  schoolsMatch,
+  type EducationLike,
+  type ExperienceLike,
+} from "@/lib/candidates/duplicates";
 
 export type MergeCandidateSummary = {
   id: string;
@@ -99,6 +105,208 @@ function mergeLinkedJobs(primaryJobs: any[], secondaryJobs: any[]): any[] {
     byId.set(id, keep);
   }
   return Array.from(byId.values());
+}
+
+export type IncomingCandidateFields = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  title?: string;
+  linkedin_url?: string;
+  resume_url?: string;
+  resume_file_name?: string;
+  resume_key?: string;
+  resume_s3_key?: string;
+  summary?: string;
+  skills?: string[];
+  tags?: string[];
+  experience?: ExperienceLike[];
+  education?: EducationLike[];
+  certifications?: string[];
+  salary_requirements?: string;
+  source?: string;
+};
+
+function unionExperience(
+  primary: ExperienceLike[] = [],
+  incoming: ExperienceLike[] = []
+): ExperienceLike[] {
+  const out = [...primary];
+  for (const row of incoming) {
+    if (!row) continue;
+    if (out.some((existing) => jobsAlign(existing, row))) continue;
+    out.push(row);
+  }
+  return out;
+}
+
+function unionEducation(
+  primary: EducationLike[] = [],
+  incoming: EducationLike[] = []
+): EducationLike[] {
+  const out = [...primary];
+  for (const row of incoming) {
+    if (!row) continue;
+    if (out.some((existing) => schoolsMatch(existing, row))) continue;
+    out.push(row);
+  }
+  return out;
+}
+
+/**
+ * Fold an unsaved incoming candidate (resume / manual add) into an existing
+ * ATS record. Existing id is kept. Incoming resume is attached when present.
+ */
+export async function applyIncomingToExisting(
+  tenantId: string,
+  existingId: string,
+  incoming: IncomingCandidateFields,
+  options?: { mergedBy?: string }
+): Promise<MergeResult> {
+  const existing = await getLeadById(tenantId, existingId);
+  if (!existing) {
+    return {
+      success: false,
+      primaryId: existingId,
+      secondaryId: "",
+      error: "Existing candidate not found",
+    };
+  }
+
+  let fieldsFilled = 0;
+  const merged: any = { ...existing };
+  const fillKeys = [
+    "email",
+    "phone",
+    "location",
+    "title",
+    "salary_requirements",
+    "summary",
+    "linkedin_url",
+  ] as const;
+
+  for (const key of fillKeys) {
+    const incomingVal = (incoming as any)[key];
+    if (!nonEmpty((merged as any)[key]) && nonEmpty(incomingVal)) {
+      merged[key] = incomingVal;
+      fieldsFilled++;
+    }
+  }
+
+  if (!nonEmpty(merged.name) && nonEmpty(incoming.name)) {
+    merged.name = incoming.name;
+    fieldsFilled++;
+  }
+
+  if (nonEmpty(incoming.resume_url)) {
+    merged.resume_url = incoming.resume_url;
+    fieldsFilled++;
+  }
+  if (nonEmpty(incoming.resume_file_name)) {
+    merged.resume_file_name = incoming.resume_file_name;
+  }
+  const resumeKey =
+    incoming.resume_key || incoming.resume_s3_key || incoming.resume_url;
+  if (
+    nonEmpty(resumeKey) &&
+    !String(resumeKey).startsWith("http")
+  ) {
+    merged.resume_key = resumeKey;
+    merged.resume_s3_key = resumeKey;
+  }
+
+  const skills = unionStrings(
+    Array.isArray((existing as any).skills) ? (existing as any).skills : undefined,
+    incoming.skills
+  );
+  if (skills) merged.skills = skills;
+
+  const tags = unionStrings(
+    Array.isArray((existing as any).tags) ? (existing as any).tags : undefined,
+    incoming.tags
+  );
+  if (tags) merged.tags = tags;
+
+  const certs = unionStrings(
+    Array.isArray((existing as any).certifications)
+      ? (existing as any).certifications
+      : undefined,
+    incoming.certifications
+  );
+  if (certs) merged.certifications = certs;
+
+  const existingExp = Array.isArray((existing as any).experience)
+    ? (existing as any).experience
+    : [];
+  const incomingExp = Array.isArray(incoming.experience) ? incoming.experience : [];
+  if (incomingExp.length) {
+    merged.experience = unionExperience(existingExp, incomingExp);
+  }
+
+  const existingEdu = Array.isArray((existing as any).education)
+    ? (existing as any).education
+    : [];
+  const incomingEdu = Array.isArray(incoming.education) ? incoming.education : [];
+  if (incomingEdu.length) {
+    merged.education = unionEducation(existingEdu, incomingEdu);
+  }
+
+  merged.modified_at = new Date().toISOString();
+
+  await putItem(leadsTable, {
+    ...merged,
+    tenant_id: tenantId,
+    id: existingId,
+  });
+
+  try {
+    await invalidateCache(makeCacheKey(tenantId, "leads", existingId));
+  } catch {
+    /* optional */
+  }
+
+  try {
+    const by = options?.mergedBy || "system";
+    await addNoteToCandidate(
+      existingId,
+      [
+        `Merged an incoming add into this record.`,
+        incoming.name ? `Incoming name: ${incoming.name}` : "",
+        incoming.email ? `Incoming email: ${incoming.email}` : "",
+        incoming.resume_file_name
+          ? `Incoming resume: ${incoming.resume_file_name}`
+          : "",
+        incoming.source ? `Incoming source: ${incoming.source}` : "",
+        `Merged by: ${by}`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      by,
+      {
+        noteType: "profile_updated",
+        merge: true,
+        incomingMerge: true,
+      }
+    );
+  } catch (e) {
+    console.warn("[merge] incoming activity note failed:", e);
+  }
+
+  await invalidateTenantCache(tenantId);
+  const fresh = await getLeadById(tenantId, existingId);
+
+  return {
+    success: true,
+    primaryId: existingId,
+    secondaryId: "",
+    candidate: fresh || merged,
+    stats: {
+      fieldsFilled,
+      jobsMerged: 0,
+      eventsMoved: 0,
+    },
+  };
 }
 
 function preferFurtherStatus(a?: string, b?: string): string {

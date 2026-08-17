@@ -29,6 +29,13 @@ import {
 } from '@/lib/candidates/resume-parse-client';
 import { validateResumeFileClient } from '@/lib/candidates/resume-upload-limits';
 import { TagEditor } from '@/components/shared/TagEditor';
+import { DuplicateCandidateModal } from '@/components/candidate/DuplicateCandidateModal';
+import {
+  checkCandidateDuplicates,
+  matchesFromCreateError,
+  resolveDuplicateCandidate,
+} from '@/lib/candidates/duplicate-client';
+import type { DuplicateMatch } from '@/lib/candidates/duplicates';
 
 const sourceOptions = [
   { value: 'manual', label: 'Manual Entry' },
@@ -76,6 +83,11 @@ export default function NewCandidatePage() {
   const [formData, setFormData] = useState(emptyForm);
   const [dragActive, setDragActive] = useState(false);
   const dragDepthRef = useRef(0);
+  const [dupMatches, setDupMatches] = useState<DuplicateMatch[]>([]);
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dupResolving, setDupResolving] = useState(false);
+  const allowDuplicateRef = useRef(false);
+  const dismissedDupKey = useRef('');
 
   // Load draft from Candidates list resume upload
   useEffect(() => {
@@ -112,11 +124,139 @@ export default function NewCandidatePage() {
 
       clearResumeDraft();
       toast.success('Resume data loaded — review and create the candidate');
+
+      void checkForDuplicates({
+        name: draft.form.name || '',
+        email: draft.form.email || '',
+        phone: draft.form.phone || '',
+        title: draft.form.title || '',
+        location: draft.form.location || '',
+        linkedin_url: draft.form.linkedin_url || '',
+        resume_file_name: draft.fileName || draft.form.resume_file_name || '',
+        source: draft.form.source || 'resume',
+        experience: draft.form.experience || [],
+        education: draft.form.education || [],
+      });
     }
   }, []);
 
   const handleChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const structuredResume = () =>
+    (typeof window !== 'undefined' &&
+      (window as any).__turnkeyParsedResumeStructured) ||
+    {};
+
+  const buildCreatePayload = (opts?: { allowDuplicate?: boolean }) => {
+    const structured = structuredResume();
+    const payload: Record<string, unknown> = {
+      name: formData.name.trim(),
+      email: formData.email || undefined,
+      phone: formData.phone || undefined,
+      location: formData.location || undefined,
+      title: formData.title || undefined,
+      status: formData.status,
+      source: formData.source,
+      linkedin_url: formData.linkedin_url || undefined,
+      resume_url: formData.resume_url || undefined,
+      resume_file_name: resumeFileName || undefined,
+      summary: formData.summary || undefined,
+      salary_requirements: formData.salary_requirements || undefined,
+      allowDuplicate: opts?.allowDuplicate === true || allowDuplicateRef.current,
+    };
+
+    if (formData.skills) {
+      payload.skills = formData.skills
+        .split(/[,;\n]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    payload.tags = formData.tags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+
+    if (Array.isArray(structured.experience) && structured.experience.length) {
+      payload.experience = structured.experience;
+    }
+    if (Array.isArray(structured.education) && structured.education.length) {
+      payload.education = structured.education;
+    }
+    if (
+      Array.isArray(structured.certifications) &&
+      structured.certifications.length
+    ) {
+      payload.certifications = structured.certifications;
+    }
+
+    return payload;
+  };
+
+  const checkForDuplicates = async (
+    incoming?: Record<string, unknown>,
+    opts?: { forceOpen?: boolean }
+  ) => {
+    const payload = incoming || buildCreatePayload();
+    const name = String(payload.name || '').trim();
+    const email = String(payload.email || '').trim();
+    const phone = String(payload.phone || '').trim();
+    if (!name && !email && !phone) return [];
+    const key = [name, email, phone].join('|').toLowerCase();
+    try {
+      const matches = await checkCandidateDuplicates({
+        name,
+        email,
+        phone,
+        title: String(payload.title || ''),
+        location: String(payload.location || ''),
+        linkedin_url: String(payload.linkedin_url || ''),
+        resume_file_name: String(payload.resume_file_name || resumeFileName || ''),
+        source: String(payload.source || formData.source || ''),
+        experience: Array.isArray(payload.experience) ? payload.experience : [],
+        education: Array.isArray(payload.education) ? payload.education : [],
+      });
+      setDupMatches(matches);
+      if (
+        matches.length &&
+        (opts?.forceOpen || dismissedDupKey.current !== key)
+      ) {
+        setDupOpen(true);
+      }
+      return matches;
+    } catch (err) {
+      console.warn('[new candidate] duplicate check failed', err);
+      return [];
+    }
+  };
+
+  const finishOnCandidate = (candidateId?: string) => {
+    if (typeof window !== 'undefined') {
+      delete (window as any).__turnkeyPendingResumeFile;
+      window.location.href = candidateId
+        ? `/dashboard/candidates/${candidateId}`
+        : '/dashboard/candidates';
+    } else {
+      router.push(
+        candidateId ? `/dashboard/candidates/${candidateId}` : '/dashboard/candidates'
+      );
+    }
+  };
+
+  const attachResumeIfNeeded = async (candidateId: string) => {
+    if (!uploadedFile || !candidateId) return;
+    const resumeUrl = await uploadResumeToS3(candidateId);
+    if (!resumeUrl) return;
+    await fetch(`/api/data/leads/${candidateId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        resume_url: resumeUrl,
+        resume_file_name: resumeFileName || uploadedFile.name,
+      }),
+    }).catch(() => null);
   };
 
   const handleResumeFile = async (file: File | null | undefined) => {
@@ -173,6 +313,19 @@ export default function NewCandidatePage() {
           ? `Resume parsed — filled ${filled.join(', ')}`
           : 'Resume parsed — review fields and edit as needed'
       );
+
+      void checkForDuplicates({
+        name: mapped.name || '',
+        email: mapped.email || '',
+        phone: mapped.phone || '',
+        title: mapped.title || '',
+        location: mapped.location || '',
+        linkedin_url: mapped.linkedin_url || '',
+        resume_file_name: file.name,
+        source: 'resume',
+        experience: mapped.experience || [],
+        education: mapped.education || [],
+      });
     } catch (err: any) {
       console.error(err);
       toast.error(err?.message || 'Failed to parse resume');
@@ -200,9 +353,7 @@ export default function NewCandidatePage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const createCandidate = async (opts?: { allowDuplicate?: boolean }) => {
     if (!formData.name?.trim()) {
       toast.error('Name is required');
       return;
@@ -211,48 +362,14 @@ export default function NewCandidatePage() {
     setLoading(true);
 
     try {
-      const structured =
-        (typeof window !== 'undefined' &&
-          (window as any).__turnkeyParsedResumeStructured) ||
-        {};
+      const payload = buildCreatePayload(opts);
 
-      const payload: Record<string, unknown> = {
-        name: formData.name.trim(),
-        email: formData.email || undefined,
-        phone: formData.phone || undefined,
-        location: formData.location || undefined,
-        title: formData.title || undefined,
-        status: formData.status,
-        source: formData.source,
-        linkedin_url: formData.linkedin_url || undefined,
-        resume_url: formData.resume_url || undefined,
-        summary: formData.summary || undefined,
-        salary_requirements: formData.salary_requirements || undefined,
-      };
-
-      if (formData.skills) {
-        payload.skills = formData.skills
-          .split(/[,;\n]/)
-          .map((s) => s.trim())
-          .filter(Boolean);
-      }
-
-      payload.tags = formData.tags
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter(Boolean);
-
-      if (Array.isArray(structured.experience) && structured.experience.length) {
-        payload.experience = structured.experience;
-      }
-      if (Array.isArray(structured.education) && structured.education.length) {
-        payload.education = structured.education;
-      }
-      if (
-        Array.isArray(structured.certifications) &&
-        structured.certifications.length
-      ) {
-        payload.certifications = structured.certifications;
+      if (!payload.allowDuplicate) {
+        const matches = await checkForDuplicates(payload, { forceOpen: true });
+        if (matches.length) {
+          setLoading(false);
+          return;
+        }
       }
 
       const response = await fetch('/api/candidate', {
@@ -263,6 +380,16 @@ export default function NewCandidatePage() {
 
       const data = await response.json();
 
+      if (response.status === 409) {
+        const matches = matchesFromCreateError(data);
+        if (matches?.length) {
+          setDupMatches(matches);
+          setDupOpen(true);
+          setLoading(false);
+          return;
+        }
+      }
+
       if (!response.ok) {
         throw new Error(data.error || 'Failed to create candidate');
       }
@@ -270,40 +397,67 @@ export default function NewCandidatePage() {
       const candidateId = data.candidate?.id || data.id || data.lead?.id;
 
       if (uploadedFile && candidateId) {
-        const resumeUrl = await uploadResumeToS3(candidateId);
-        if (resumeUrl) {
-          await fetch(`/api/data/leads/${candidateId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              resume_url: resumeUrl,
-              resume_file_name: resumeFileName || uploadedFile.name,
-            }),
-          }).catch(() => null);
-          toast.success('Resume saved to candidate');
-        }
-      }
-
-      if (typeof window !== 'undefined') {
-        delete (window as any).__turnkeyPendingResumeFile;
+        await attachResumeIfNeeded(candidateId);
+        toast.success('Resume saved to candidate');
       }
 
       toast.success('Candidate created successfully');
-      // Hard navigation so the list page always reloads (avoids stale React Query cache)
-      if (typeof window !== 'undefined') {
-        window.location.href = candidateId
-          ? `/dashboard/candidates/${candidateId}`
-          : '/dashboard/candidates';
-      } else {
-        router.push(
-          candidateId ? `/dashboard/candidates/${candidateId}` : '/dashboard/candidates'
-        );
-      }
+      finishOnCandidate(candidateId);
     } catch (error: any) {
       console.error('Failed to create candidate:', error);
       toast.error(error.message || 'Failed to create candidate');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await createCandidate();
+  };
+
+  const handleAddAnyway = async () => {
+    allowDuplicateRef.current = true;
+    setDupOpen(false);
+    await createCandidate({ allowDuplicate: true });
+  };
+
+  const handleMergeDuplicate = async (
+    primary: 'existing' | 'incoming',
+    match: DuplicateMatch
+  ) => {
+    if (!match?.candidateId) return;
+    if (
+      primary === 'incoming' &&
+      !confirm(
+        'The existing profile will be merged into this new record and then removed. Continue?'
+      )
+    ) {
+      return;
+    }
+    setDupResolving(true);
+    try {
+      const incoming = buildCreatePayload({ allowDuplicate: true });
+      const result = await resolveDuplicateCandidate({
+        action: 'merge',
+        primary,
+        existingId: match.candidateId,
+        incoming,
+      });
+      const candidateId = result.primaryId || result.candidate?.id;
+      if (uploadedFile && candidateId) {
+        await attachResumeIfNeeded(candidateId);
+      }
+      toast.success(
+        primary === 'existing'
+          ? 'Merged into the existing profile'
+          : 'Merged into the new profile'
+      );
+      finishOnCandidate(candidateId);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to merge candidates');
+    } finally {
+      setDupResolving(false);
     }
   };
 
@@ -704,6 +858,25 @@ export default function NewCandidatePage() {
           </Button>
         </div>
       </form>
+
+      <DuplicateCandidateModal
+        open={dupOpen}
+        matches={dupMatches}
+        resolving={dupResolving}
+        onClose={() => {
+          const payload = buildCreatePayload();
+          dismissedDupKey.current = [
+            String(payload.name || ''),
+            String(payload.email || ''),
+            String(payload.phone || ''),
+          ]
+            .join('|')
+            .toLowerCase();
+          setDupOpen(false);
+        }}
+        onAddAnyway={() => void handleAddAnyway()}
+        onMerge={(primary, match) => void handleMergeDuplicate(primary, match)}
+      />
     </div>
   );
 }

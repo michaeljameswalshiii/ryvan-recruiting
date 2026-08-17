@@ -8,6 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Upload, UserPlus, Loader2 } from 'lucide-react';
+import { DuplicateCandidateModal } from '@/components/candidate/DuplicateCandidateModal';
+import {
+  checkCandidateDuplicates,
+  matchesFromCreateError,
+  resolveDuplicateCandidate,
+} from '@/lib/candidates/duplicate-client';
+import type { DuplicateMatch } from '@/lib/candidates/duplicates';
 
 export default function NewCandidatePage() {
   const router = useRouter();
@@ -25,6 +32,10 @@ export default function NewCandidatePage() {
     summary: '',
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dupMatches, setDupMatches] = useState<DuplicateMatch[]>([]);
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dupResolving, setDupResolving] = useState(false);
+  const allowDuplicateRef = useRef(false);
 
   const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -52,6 +63,25 @@ export default function NewCandidatePage() {
         summary: parsed.summary || '',
       });
       toast.success('Resume parsed successfully! Fields pre-filled.');
+      try {
+        const matches = await checkCandidateDuplicates({
+          name: parsed.name || '',
+          email: parsed.email || '',
+          phone: parsed.phone || '',
+          title: parsed.title || '',
+          location: parsed.location || '',
+          linkedin_url: parsed.linkedin || parsed.linkedin_url || '',
+          source: 'resume',
+          experience: parsed.experience || [],
+          education: parsed.education || [],
+        });
+        if (matches.length) {
+          setDupMatches(matches);
+          setDupOpen(true);
+        }
+      } catch {
+        /* check is best-effort */
+      }
     } catch (err: any) {
       toast.error(err?.message || 'Upload failed');
     } finally {
@@ -74,7 +104,6 @@ export default function NewCandidatePage() {
     setIsSubmitting(true);
 
     try {
-      // Prepare payload for API
       const payload = {
         name: formData.name,
         email: formData.email,
@@ -87,7 +116,22 @@ export default function NewCandidatePage() {
         summary: formData.summary,
         status: 'identification',
         source: 'direct',
+        allowDuplicate: allowDuplicateRef.current,
       };
+
+      if (!payload.allowDuplicate) {
+        try {
+          const matches = await checkCandidateDuplicates(payload);
+          if (matches.length) {
+            setDupMatches(matches);
+            setDupOpen(true);
+            setIsSubmitting(false);
+            return;
+          }
+        } catch {
+          /* fail open */
+        }
+      }
 
       const res = await fetch('/api/candidate', {
         method: 'POST',
@@ -96,6 +140,16 @@ export default function NewCandidatePage() {
       });
 
       const data = await res.json();
+
+      if (res.status === 409) {
+        const matches = matchesFromCreateError(data);
+        if (matches?.length) {
+          setDupMatches(matches);
+          setDupOpen(true);
+          setIsSubmitting(false);
+          return;
+        }
+      }
 
       if (data.success || data.id) {
         toast.success('Candidate created successfully!');
@@ -244,6 +298,52 @@ export default function NewCandidatePage() {
           </Button>
         </form>
       </div>
+
+      <DuplicateCandidateModal
+        open={dupOpen}
+        matches={dupMatches}
+        resolving={dupResolving}
+        onClose={() => setDupOpen(false)}
+        onAddAnyway={() => {
+          allowDuplicateRef.current = true;
+          setDupOpen(false);
+          void (async () => {
+            const fakeEvent = { preventDefault() {} } as React.FormEvent;
+            await handleSubmit(fakeEvent);
+          })();
+        }}
+        onMerge={async (primary, match) => {
+          if (!match?.candidateId) return;
+          setDupResolving(true);
+          try {
+            const result = await resolveDuplicateCandidate({
+              action: 'merge',
+              primary,
+              existingId: match.candidateId,
+              incoming: {
+                name: formData.name,
+                email: formData.email,
+                title: formData.title,
+                phone: formData.phone,
+                location: formData.location,
+                linkedin_url: formData.linkedin_url,
+                notes: formData.notes,
+                skills: formData.skills,
+                summary: formData.summary,
+                source: 'direct',
+              },
+            });
+            toast.success('Merged into one profile');
+            router.push(
+              `/dashboard/candidates/${result.primaryId || match.candidateId}`
+            );
+          } catch (err: any) {
+            toast.error(err?.message || 'Failed to merge');
+          } finally {
+            setDupResolving(false);
+          }
+        }}
+      />
     </div>
   );
 }

@@ -11,7 +11,12 @@ import {
   getSessionUserId,
   getSessionUserEmail,
 } from '@/lib/server-auth';
-import { createLead } from '@/lib/db/repositories/lead-repository';
+import { createLead, getAllLeads } from '@/lib/db/repositories/lead-repository';
+import { findDuplicateMatches } from '@/lib/candidates/duplicates';
+import {
+  incomingFromCreateFields,
+  sanitizeCandidateCreateBody,
+} from '@/lib/candidates/create-payload';
 
 /**
  * POST /api/candidate
@@ -33,73 +38,44 @@ export async function POST(
       );
     }
 
-    // Parse the request body
     const body = await request.json();
-    const {
-      name,
-      email,
-      phone,
-      location,
-      title,
-      status = 'identification',
-      source = 'manual',
-      notes = '',
-      linkedin_url = '',
-      resume_url = '',
-      resume_file_name = '',
-      summary = '',
-      skills = [],
-      experience = [],
-      education = [],
-      certifications = [],
-      salary_requirements = '',
-      tags = [],
-    } = body;
+    const fields = sanitizeCandidateCreateBody(body);
 
-    // Validate required fields
-    if (!name || name.trim() === '') {
+    if (!fields.name) {
       return NextResponse.json(
         { error: 'Name is required' },
         { status: 400 }
       );
     }
 
-    // Create the lead
+    if (!fields.allowDuplicate) {
+      try {
+        const leads = await getAllLeads(tenantId);
+        const matches = findDuplicateMatches(
+          incomingFromCreateFields(fields),
+          leads as any[]
+        );
+        if (matches.length) {
+          return NextResponse.json(
+            {
+              error: 'Possible duplicate candidate found',
+              code: 'DUPLICATE_CANDIDATE',
+              matches,
+            },
+            { status: 409 }
+          );
+        }
+      } catch (dupErr) {
+        console.warn('[API] duplicate check skipped:', dupErr);
+      }
+    }
+
+    const { allowDuplicate: _allow, ...createFields } = fields;
+    void _allow;
+
     const lead = await createLead(
       tenantId,
-      ({
-        name: name.trim(),
-        email: email?.trim() || '',
-        phone: phone?.trim() || '',
-        location: location?.trim() || '',
-        title: title?.trim() || '',
-        status,
-        source,
-        notes: notes?.trim() || '',
-        linkedin_url: linkedin_url?.trim() || '',
-        resume_url: resume_url?.trim() || '',
-        resume_file_name: resume_file_name?.trim() || '',
-        summary: summary?.trim() || '',
-        skills: Array.isArray(skills)
-          ? skills.map((skill: unknown) => String(skill).trim()).filter(Boolean).slice(0, 100)
-          : [],
-        experience: Array.isArray(experience) ? experience.slice(0, 30) : [],
-        education: Array.isArray(education) ? education.slice(0, 20) : [],
-        certifications: Array.isArray(certifications)
-          ? certifications.map((certification: unknown) => String(certification).trim()).filter(Boolean).slice(0, 50)
-          : [],
-        salary_requirements: salary_requirements?.trim() || '',
-        tags: Array.isArray(tags)
-          ? Array.from(
-              new Set(
-                tags
-                  .map((tag: unknown) => String(tag).trim())
-                  .filter(Boolean)
-                  .slice(0, 25),
-              ),
-            )
-          : [],
-      } as any),
+      createFields as any,
       { userId, email: userEmail },
     );
 
