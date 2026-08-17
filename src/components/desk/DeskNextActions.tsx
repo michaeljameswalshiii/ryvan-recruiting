@@ -6,8 +6,6 @@ import {
   Loader2,
   Zap,
   RefreshCw,
-  Play,
-  UserPlus,
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -37,6 +35,15 @@ type Props = {
   limit?: number;
 };
 
+function isSequenceDeskAction(a: NextAction): boolean {
+  return (
+    a.kind === "enroll_sequence" ||
+    a.kind === "send_due_step" ||
+    a.kind === "mark_reply" ||
+    /sequence|enroll/i.test(`${a.label} ${a.reason}`)
+  );
+}
+
 function deskActionKey(a: NextAction): string {
   return buildDismissKey({
     feed: "desk",
@@ -54,7 +61,6 @@ function actionTag(kind: string, label: string): string {
   if (k.includes("follow") || /follow/i.test(label)) return "Follow-up";
   if (k.includes("offer") || /offer/i.test(label)) return "Offer";
   if (k.includes("feedback") || /feedback/i.test(label)) return "Feedback";
-  if (k.includes("enroll") || k.includes("sequence")) return "Prep";
   if (k.includes("send") || k.includes("due")) return "Follow-up";
   if (k.includes("admin") || k.includes("status")) return "Admin";
   return label.split(" ")[0] || "Action";
@@ -90,8 +96,9 @@ export function DeskNextActions({
     due: number;
     enroll: number;
     urgent: number;
+    followUp?: number;
+    stale?: number;
   } | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
   const { dismiss, clearFeed, isHidden, hydrated } = useDismissedItems();
 
   const load = useCallback(async () => {
@@ -106,7 +113,11 @@ export function DeskNextActions({
           toast.error(data.error || "Failed to load desk actions");
         return;
       }
-      setActions(Array.isArray(data.actions) ? data.actions : []);
+      setActions(
+        Array.isArray(data.actions)
+          ? data.actions.filter((a: NextAction) => !isSequenceDeskAction(a))
+          : []
+      );
       setSummary(data.summary || null);
     } catch {
       if (!compact && !onDeck) toast.error("Failed to load desk actions");
@@ -128,78 +139,6 @@ export function DeskNextActions({
     if (!hydrated) return 0;
     return actions.filter((a) => isHidden(deskActionKey(a))).length;
   }, [actions, hydrated, isHidden]);
-
-  async function runDue(enrollmentId?: string) {
-    setBusy(enrollmentId || "batch");
-    try {
-      const res = await fetch("/api/sequences/run", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          enrollmentId ? { enrollmentId, force: true } : { limit: 20 }
-        ),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || "Run failed");
-        return;
-      }
-      if (data.mode === "single") {
-        toast.success(
-          data.result?.success
-            ? data.result.message || "Step ran"
-            : data.result?.message || "Failed"
-        );
-      } else {
-        toast.success(
-          `Processed ${data.processed}: ${data.sent} ok, ${data.failed} failed`
-        );
-      }
-      await load();
-    } catch {
-      toast.error("Network error");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function quickEnroll(
-    candidateId: string,
-    jobId?: string,
-    name?: string
-  ) {
-    setBusy(`enroll-${candidateId}`);
-    try {
-      const res = await fetch("/api/sequences/quick-enroll", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          candidateId,
-          jobId: jobId && jobId !== "unassigned" ? jobId : undefined,
-          runFirstStep: true,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || "Enroll failed");
-        return;
-      }
-      toast.success(
-        `Enrolled ${name || "candidate"}${
-          data.firstStepRan && data.runResult?.success
-            ? " · first step sent"
-            : ""
-        }`
-      );
-      await load();
-    } catch {
-      toast.error("Enroll failed");
-    } finally {
-      setBusy(null);
-    }
-  }
 
   if (compact && !loading && visibleActions.length === 0 && dismissedCount === 0) {
     return null;
@@ -235,7 +174,7 @@ export function DeskNextActions({
               </button>
             )}
             <Link
-              href="/dashboard/sequences"
+              href="/dashboard/candidates"
               className="text-xs font-medium text-blue-600 hover:underline"
             >
               View all
@@ -277,7 +216,7 @@ export function DeskNextActions({
                 ? `/dashboard/candidates/${a.candidateId}`
                 : a.jobId
                   ? `/dashboard/jobs/${a.jobId}`
-                  : "/dashboard/sequences";
+                  : "/dashboard/candidates";
               const line =
                 a.reason ||
                 a.label ||
@@ -332,8 +271,9 @@ export function DeskNextActions({
           </span>
           {summary && (
             <span className="truncate text-[11px] font-medium text-slate-700">
-              {summary.urgent} urgent · {summary.due} due · {summary.enroll}{" "}
-              enroll
+              {summary.urgent} urgent
+              {(summary.followUp ?? 0) > 0 ? ` · ${summary.followUp} follow-up` : ""}
+              {(summary.stale ?? 0) > 0 ? ` · ${summary.stale} stale` : ""}
             </span>
           )}
         </div>
@@ -361,24 +301,6 @@ export function DeskNextActions({
             >
               Dismiss
             </button>
-          )}
-          {(summary?.due || 0) > 0 && (
-            <Button
-              type="button"
-              size="sm"
-              className="h-7 bg-emerald-700 text-[11px] hover:bg-emerald-800"
-              disabled={busy === "batch"}
-              onClick={() => runDue()}
-            >
-              {busy === "batch" ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <>
-                  <Play className="h-3 w-3 mr-1" />
-                  Run due
-                </>
-              )}
-            </Button>
           )}
           <Button
             type="button"
@@ -427,7 +349,6 @@ export function DeskNextActions({
           className={`space-y-1.5 ${compact ? "max-h-36" : "max-h-64"} overflow-y-auto`}
         >
           {visibleActions.map((a, i) => {
-            const enrollId = a.meta?.enrollmentId as string | undefined;
             const jobTitle = a.meta?.jobTitle as string | undefined;
             return (
               <li
@@ -448,31 +369,6 @@ export function DeskNextActions({
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  {a.kind === "send_due_step" && enrollId && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-6 bg-emerald-700 px-2 text-[10px] text-white hover:bg-emerald-800"
-                      disabled={!!busy}
-                      onClick={() => runDue(enrollId)}
-                    >
-                      Run
-                    </Button>
-                  )}
-                  {a.kind === "enroll_sequence" && a.candidateId && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-6 px-2 text-[10px]"
-                      disabled={!!busy}
-                      onClick={() =>
-                        quickEnroll(a.candidateId!, a.jobId, a.candidateName)
-                      }
-                    >
-                      <UserPlus className="mr-0.5 h-3 w-3" />
-                      Enroll
-                    </Button>
-                  )}
                   {a.candidateId && (
                     <Link
                       href={`/dashboard/candidates/${a.candidateId}`}

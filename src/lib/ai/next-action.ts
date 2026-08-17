@@ -1,6 +1,6 @@
 /**
  * Dense "next best action" recommendations for jobs / candidates.
- * Pure rules over stage + fit + sequence state.
+ * Pure rules over stage + fit. Candidate actions never recommend sequences.
  *
  * @serverOnly
  */
@@ -19,6 +19,21 @@ export type NextActionKind =
   | "revive_stale"
   | "source_more"
   | "none";
+
+const SEQUENCE_ACTION_KINDS = new Set<NextActionKind>([
+  "enroll_sequence",
+  "send_due_step",
+  "mark_reply",
+]);
+
+/** Candidate next actions must not surface sequence enroll / run / reply work. */
+export function isSequenceNextAction(
+  action: Pick<NextAction, "kind" | "label" | "reason"> | null | undefined
+): boolean {
+  if (!action) return false;
+  if (SEQUENCE_ACTION_KINDS.has(action.kind)) return true;
+  return /sequence|enroll/i.test(`${action.label} ${action.reason}`);
+}
 
 export interface NextAction {
   kind: NextActionKind;
@@ -129,43 +144,15 @@ export function nextActionForCandidate(
     };
   }
 
-  if (c.sequenceDue && c.sequenceEnrollmentId) {
-    return {
-      kind: "send_due_step",
-      priority: 100,
-      label: "Run sequence step",
-      reason: "Enrollment is due — send email or complete task",
-      cta: "Run now",
-      candidateId: c.candidateId,
-      candidateName: c.candidateName,
-      jobId,
-      meta: { enrollmentId: c.sequenceEnrollmentId },
-    };
-  }
-
-  if (c.hasActiveSequence && (c.lastActivityDays ?? 0) >= 5) {
-    return {
-      kind: "mark_reply",
-      priority: 85,
-      label: "Check for reply",
-      reason: "Active sequence with no recent activity — log reply or stop",
-      cta: "Log reply",
-      candidateId: c.candidateId,
-      candidateName: c.candidateName,
-      jobId,
-      meta: { enrollmentId: c.sequenceEnrollmentId },
-    };
-  }
-
   const score = c.fit?.score;
   if (score != null && score >= 70 && si < STAGE_ORDER.indexOf("submitted")) {
     if (si < STAGE_ORDER.indexOf("contacted") && !c.hasActiveSequence) {
       return {
-        kind: "enroll_sequence",
+        kind: "follow_up_task",
         priority: 90,
-        label: "Enroll in sequence",
-        reason: `Strong fit (${score}) but not in outreach yet`,
-        cta: "Enroll",
+        label: "Reach out",
+        reason: `Strong fit (${score}) but not contacted yet`,
+        cta: "Contact",
         candidateId: c.candidateId,
         candidateName: c.candidateName,
         jobId,
@@ -228,11 +215,11 @@ export function nextActionForCandidate(
 
   if (!c.hasActiveSequence && si < STAGE_ORDER.indexOf("interested") && c.email) {
     return {
-      kind: "enroll_sequence",
+      kind: "follow_up_task",
       priority: 70,
-      label: "Start outreach",
-      reason: "No active sequence — first touch recommended",
-      cta: "Enroll",
+      label: "Make first contact",
+      reason: "No outreach logged yet — call, email, or text",
+      cta: "Contact",
       candidateId: c.candidateId,
       candidateName: c.candidateName,
       jobId,
@@ -287,6 +274,7 @@ export function nextActionsForJob(
 } {
   const actions = candidates
     .map((c) => nextActionForCandidate(c, jobId))
+    .filter((a) => !isSequenceNextAction(a))
     .filter((a) => a.kind !== "none" || (a.priority || 0) > 0)
     .sort((a, b) => b.priority - a.priority);
 

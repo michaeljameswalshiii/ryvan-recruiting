@@ -9,13 +9,14 @@ import {
   getSessionTenantId,
 } from "@/lib/server-auth";
 import { getAllJobs } from "@/lib/db/repositories/job-repository";
-import { getLeadById, getAllLeads } from "@/lib/db/repositories/lead-repository";
+import { getLeadById } from "@/lib/db/repositories/lead-repository";
 import { listEnrollments } from "@/lib/db/repositories/sequence-repository";
 import { getSkillsGraphFresh } from "@/lib/db/repositories/skills-graph-repository";
 import { scoreCandidateJobFitWithOutcomes } from "@/lib/ai/outcome-rank";
 import {
   nextActionForCandidate,
   daysSinceStageUpdate,
+  isSequenceNextAction,
   type CandidateActionInput,
   type NextAction,
 } from "@/lib/ai/next-action";
@@ -130,7 +131,11 @@ export async function GET(request: NextRequest) {
         };
 
         const action = nextActionForCandidate(input, job.id!);
-        if (action.kind !== "none" && action.priority >= 60) {
+        if (
+          action.kind !== "none" &&
+          action.priority >= 60 &&
+          !isSequenceNextAction(action)
+        ) {
           actions.push({
             ...action,
             meta: {
@@ -144,39 +149,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Candidates with no job link but stale / need outreach
-    const allLeads = await getAllLeads(tenantId).catch(() => []);
-    const linkedIds = new Set(
-      jobSlice.flatMap((j) => (j.candidates || []).map((c) => c.candidateId))
-    );
-    for (const ld of allLeads.slice(0, 40)) {
-      if (!ld?.id || linkedIds.has(ld.id)) continue;
-      const activeEnroll = enrollments.find(
-        (e) => e.candidateId === ld.id && e.status === "active"
-      );
-      const due =
-        !!activeEnroll &&
-        !Number.isNaN(Date.parse(activeEnroll.nextRunAt)) &&
-        Date.parse(activeEnroll.nextRunAt) <= now;
-      if (!due && !activeEnroll) continue;
-
-      const action = nextActionForCandidate(
-        {
-          candidateId: ld.id,
-          candidateName: ld.name,
-          stage: ld.status || "sourced",
-          email: ld.email,
-          hasActiveSequence: !!activeEnroll,
-          sequenceDue: due,
-          sequenceEnrollmentId: activeEnroll?.id,
-        },
-        "unassigned"
-      );
-      if (action.kind === "send_due_step" || action.kind === "mark_reply") {
-        actions.push(action);
-      }
-    }
-
     actions.sort((a, b) => b.priority - a.priority);
     const top = actions.slice(0, limit);
 
@@ -184,8 +156,10 @@ export async function GET(request: NextRequest) {
       actions: top,
       summary: {
         total: top.length,
-        due: top.filter((a) => a.kind === "send_due_step").length,
-        enroll: top.filter((a) => a.kind === "enroll_sequence").length,
+        due: 0,
+        enroll: 0,
+        followUp: top.filter((a) => a.kind === "follow_up_task").length,
+        stale: top.filter((a) => a.kind === "revive_stale").length,
         urgent: top.filter((a) => a.priority >= 85).length,
         jobsScanned: jobSlice.length,
       },
