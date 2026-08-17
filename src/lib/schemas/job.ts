@@ -144,6 +144,30 @@ export const jobSchema = z.object({
   tags: z.array(z.string().min(1).max(50)).max(25).optional(),
 
   /**
+   * Cached Boolean Generator strings (LinkedIn / Indeed / Apollo / Google).
+   * First generate is persisted; recruiters can edit and save.
+   */
+  booleanStrings: z
+    .object({
+      generatedAt: z.string(),
+      editedAt: z.string().optional(),
+      promptVersion: z.number().optional(),
+      model: z.string().optional(),
+      strings: z
+        .array(
+          z.object({
+            label: z.string().min(1).max(120),
+            platform: z.string().min(1).max(40),
+            query: z.string().min(1).max(4000),
+            notes: z.string().max(500).optional(),
+          })
+        )
+        .min(1)
+        .max(8),
+    })
+    .optional(),
+
+  /**
    * Optional pre-screen questions shown on the public careers apply form.
    * Answers are evaluated by the screen-bot on submit.
    */

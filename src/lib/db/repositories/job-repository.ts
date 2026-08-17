@@ -384,6 +384,11 @@ export async function updateJob(
     values[':fee_guarantee'] = data.fee_guarantee || '';
     names['#fee_guarantee'] = 'fee_guarantee';
   }
+  if (data.booleanStrings !== undefined) {
+    updates.push('#booleanStrings = :booleanStrings');
+    values[':booleanStrings'] = data.booleanStrings;
+    names['#booleanStrings'] = 'booleanStrings';
+  }
 
   if (updates.length === 0) {
     return getJobById(tenantId, jobId);

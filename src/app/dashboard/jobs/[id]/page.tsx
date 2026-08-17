@@ -44,6 +44,7 @@ import JobEditModal from "@/components/job/JobEditModal";
 import { JobActivityNotes } from "@/components/job/JobActivityNotes";
 import { FitScoreBadge, type FitGrade } from "@/components/job/FitScoreBadge";
 import { FillReqPlaybookButton } from "@/components/job/FillReqPlaybookButton";
+import { BooleanGeneratorButton } from "@/components/job/BooleanGeneratorButton";
 import { JobHiringManagerCard } from "@/components/job/JobHiringManagerCard";
 import { JobDescriptionPreview } from "@/components/job/JobDescriptionPreview";
 import { Button } from "@/components/ui/button";
@@ -683,6 +684,11 @@ export default function JobDetailPage() {
               <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
             </div>
             <FillReqPlaybookButton
+              jobId={job.id}
+              jobTitle={job.title}
+              className="border-gray-200 bg-white text-gray-800 hover:bg-gray-50"
+            />
+            <BooleanGeneratorButton
               jobId={job.id}
               jobTitle={job.title}
               className="border-gray-200 bg-white text-gray-800 hover:bg-gray-50"
