@@ -199,16 +199,21 @@ export async function applyIncomingToExisting(
     fieldsFilled++;
   }
 
-  if (nonEmpty(incoming.resume_url)) {
+  // Primary résumé stays; only fill resume if the existing record has none.
+  if (!nonEmpty((existing as any).resume_url) && nonEmpty(incoming.resume_url)) {
     merged.resume_url = incoming.resume_url;
     fieldsFilled++;
   }
-  if (nonEmpty(incoming.resume_file_name)) {
+  if (
+    !nonEmpty((existing as any).resume_file_name) &&
+    nonEmpty(incoming.resume_file_name)
+  ) {
     merged.resume_file_name = incoming.resume_file_name;
   }
   const resumeKey =
     incoming.resume_key || incoming.resume_s3_key || incoming.resume_url;
   if (
+    !nonEmpty((existing as any).resume_key || (existing as any).resume_s3_key) &&
     nonEmpty(resumeKey) &&
     !String(resumeKey).startsWith("http")
   ) {

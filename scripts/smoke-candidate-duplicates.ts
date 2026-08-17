@@ -100,6 +100,11 @@ check(
     match?.incoming.highlightEducation === true,
   "school rows highlighted"
 );
+check(
+  "content_match_pct",
+  (match?.contentMatchPercent || 0) >= 90,
+  `content match ${match?.contentMatchPercent ?? 0}%`
+);
 
 const emailOnly = compareIncomingToExisting(
   { name: "Alex Rivera", email: "alex@example.com" },

@@ -72,6 +72,7 @@ export type DuplicateMatch = {
   explanation: string;
   signalLabel: string;
   contactDiffers: boolean;
+  contentMatchPercent: number;
   workMatched: number;
   workIncomingTotal: number;
   educationMatched: boolean;
@@ -301,7 +302,7 @@ function formatUpdated(raw?: string): string {
   const t = new Date(raw).getTime();
   if (!Number.isFinite(t)) return "";
   return new Date(t).toLocaleDateString(undefined, {
-    month: "long",
+    month: "short",
     day: "numeric",
     year: "numeric",
   });
@@ -383,8 +384,8 @@ function explanationFor(args: {
 }): string {
   if (args.workMatched > 0 && args.contactDiffers) {
     return args.fromResume
-      ? "The uploaded resume has overlapping work history in your ATS. Contact details differ, but the work history is the same person."
-      : "This candidate has overlapping work history with a record already in your ATS. Contact details differ, but the work history is the same person.";
+      ? "The uploaded résumé matches a candidate already in your ATS. Contact details differ, but the work history is the same person."
+      : "This candidate matches a record already in your ATS. Contact details differ, but the work history is the same person.";
   }
   if (args.email) {
     return "An existing candidate already uses this email address.";
@@ -440,12 +441,28 @@ function subheadFor(args: {
   return parts.join(" · ");
 }
 
+export function contentMatchPercent(args: {
+  name: boolean;
+  workMatched: number;
+  workTotal: number;
+  education: boolean;
+  sameTitle: boolean;
+}): number {
+  const ratio = args.workTotal > 0 ? args.workMatched / args.workTotal : 0;
+  const raw =
+    Math.round(ratio * 70) +
+    (args.name ? 12 : 0) +
+    (args.education ? 8 : 0) +
+    (args.sameTitle ? 6 : 0);
+  return Math.max(50, Math.min(99, raw));
+}
+
 function signalLabelFor(reasons: DuplicateMatchReason[]): string {
   if (reasons.includes("work_history") && reasons.includes("education")) {
-    return "Work history and education match — the reliable signal";
+    return "Résumé history & education match — the reliable signal.";
   }
   if (reasons.includes("work_history")) {
-    return "Work history match — the reliable signal";
+    return "Résumé history match — the reliable signal.";
   }
   if (reasons.includes("email")) {
     return "Email address match — the reliable signal";
@@ -553,6 +570,13 @@ export function compareIncomingToExisting(
     }),
     signalLabel: signalLabelFor(scored.reasons),
     contactDiffers: differs,
+    contentMatchPercent: contentMatchPercent({
+      name,
+      workMatched: work.matched,
+      workTotal: work.incomingTotal || work.existingTotal,
+      education,
+      sameTitle,
+    }),
     workMatched: work.matched,
     workIncomingTotal: work.incomingTotal,
     educationMatched: education,
@@ -561,7 +585,9 @@ export function compareIncomingToExisting(
       id,
       name: existing.name || "Unknown",
       role: "existing",
-      subtitle: `Existing profile · last updated ${updated}`,
+      subtitle: existing.title
+        ? `${existing.title} · added ${updated}`
+        : `Existing record · added ${updated}`,
       title: existing.title,
       email: existing.email,
       phone: existing.phone,
@@ -574,9 +600,11 @@ export function compareIncomingToExisting(
     incoming: {
       name: incoming.name || "New candidate",
       role: "incoming",
-      subtitle: fromResume
-        ? "Incoming resume · uploading now"
-        : "New candidate · not saved yet",
+      subtitle: incoming.title
+        ? `${incoming.title} · ${fromResume ? "uploading now" : "not saved yet"}`
+        : fromResume
+          ? "New upload · uploading now"
+          : "New candidate · not saved yet",
       title: incoming.title,
       email: incoming.email,
       phone: incoming.phone,
