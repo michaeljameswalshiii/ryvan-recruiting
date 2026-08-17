@@ -50,7 +50,7 @@ export default async function ContactDetailPage({ params }: Props) {
         if (found) {
           contact = found;
           companyName = client.name || "";
-          companyId = client.id;
+          companyId = client.id || "";
           clientData = client;
           break;
         }

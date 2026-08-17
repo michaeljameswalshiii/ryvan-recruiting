@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
             : null,
           sequence,
           step: firstStep,
-          recruiterName: session?.fullName || session?.email,
+          recruiterName: session?.email,
         });
         drafts = [
           {
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
         userId,
         enrollmentId: enrollment.id,
         force: true,
-        recruiterName: session?.fullName || session?.email,
+        recruiterName: session?.email,
       });
     }
 

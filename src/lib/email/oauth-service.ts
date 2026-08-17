@@ -5,10 +5,12 @@
  * @serverOnly
  */
 
-import { google, Auth } from 'googleapis';
+import { google } from 'googleapis';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { getEmailConnection, saveEmailConnection, updateEmailConnection } from '../db/repositories/email-connection-repository';
 import { type EmailProvider, type UserEmailConnection } from '../schemas/email-connection';
+
+type GoogleOAuth2Client = InstanceType<typeof google.auth.OAuth2>;
 
 // ============================================================================
 // Configuration
@@ -146,7 +148,7 @@ export async function exchangeGmailCode(
       provider: 'gmail',
       emailAddress,
       refreshToken: tokens.refresh_token,
-      accessToken: tokens.access_token,
+      accessToken: tokens.access_token ?? undefined,
       tokenType: tokens.token_type || 'Bearer',
       expiresAt: tokens.expiry_date || undefined,
       status: 'active',
@@ -277,8 +279,8 @@ export async function refreshGmailToken(
     // Update stored tokens
     await updateEmailConnection(userId, 'gmail', {
       accessToken: newCredentials.credentials.access_token,
-      tokenType: newCredentials.credentials.token_type,
-      expiresAt: newCredentials.credentials.expiry_date,
+      tokenType: newCredentials.credentials.token_type ?? undefined,
+      expiresAt: newCredentials.credentials.expiry_date ?? undefined,
     });
     
     return { success: true };
@@ -386,7 +388,7 @@ export async function refreshOutlookToken(
  */
 export async function getGmailClient(
   userId: string
-): Promise<{ oauth2Client: Auth.OAuth2Client; emailAddress: string } | null> {
+): Promise<{ oauth2Client: GoogleOAuth2Client; emailAddress: string } | null> {
   if (!gmailClientId || !gmailClientSecret) {
     return null;
   }
@@ -450,8 +452,9 @@ export async function getOutlookClient(
     return null;
   }
   
+  const accessToken = updatedConnection.accessToken;
   const graphClient = Client.init({
-    authProvider: (done) => done(null, updatedConnection.accessToken),
+    authProvider: (done) => done(null, accessToken),
   });
   
   return {

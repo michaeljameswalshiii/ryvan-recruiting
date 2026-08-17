@@ -1075,8 +1075,7 @@ export function skillMatchCredit(
 
   // Related skill family on structured skill lists
   // Guard: related must be a Set (.has); never call .has on arrays
-  const relatedSet =
-    related instanceof Set ? related : related ? new Set(related) : null;
+  const relatedSet = related ?? null;
   if (relatedSet) {
     for (const c of candNorm) {
       if (relatedSet.has(c)) {

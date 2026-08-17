@@ -37,7 +37,6 @@ export async function POST(request: NextRequest) {
       typeof body.limit === "number" ? body.limit : parseInt(body.limit, 10);
     const recruiterName =
       body.recruiterName ||
-      session?.fullName ||
       session?.email ||
       undefined;
 

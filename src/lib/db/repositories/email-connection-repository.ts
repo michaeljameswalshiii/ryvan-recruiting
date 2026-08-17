@@ -98,7 +98,7 @@ export async function getUserEmailConnections(
  * Save an email connection
  */
 export async function saveEmailConnection(
-  connection: Omit<UserEmailConnection, 'connectionId'>
+  connection: Omit<UserEmailConnection, 'createdAt' | 'updatedAt'>
 ): Promise<UserEmailConnection> {
   const connectionId = getConnectionId(connection.userId, connection.provider);
   

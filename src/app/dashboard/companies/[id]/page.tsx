@@ -1106,7 +1106,6 @@ function ContactsTab({ company, leads, onEmailClick }: { company: any; leads: an
       await removeContactMutation.mutateAsync({
         clientId: company.id,
         contactId: deletingContact.id,
-        contactName: deletingContact.name,
       });
       setDeletingContact(null);
     } catch (err: any) {

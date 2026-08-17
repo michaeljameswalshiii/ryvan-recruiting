@@ -15,13 +15,13 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
   if (!session?.tenantId || !session?.userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const { id } = await Promise.resolve(params);
+  const { id } = await params;
   const run = await getGoalRun(session.tenantId, id);
   if (!run || !canViewGoalRun(run, session.userId)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -37,13 +37,13 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
   if (!session?.tenantId || !session?.userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const { id } = await Promise.resolve(params);
+  const { id } = await params;
 
   let body: Record<string, unknown>;
   try {

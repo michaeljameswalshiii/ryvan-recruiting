@@ -69,6 +69,7 @@ export const sequenceEnrollmentSchema = z.object({
   candidateId: z.string().min(1),
   candidateName: z.string().optional(),
   candidateEmail: z.string().optional(),
+  enrolledByUserId: z.string().optional(),
   jobId: z.string().optional(),
   jobTitle: z.string().optional(),
   status: sequenceEnrollmentStatusSchema.default('active'),

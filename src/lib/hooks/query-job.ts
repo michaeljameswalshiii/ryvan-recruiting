@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { 
   getJobs, 
@@ -35,6 +35,8 @@ export const jobKeys = {
  * Get all jobs for the current tenant
  * Uses server action for proper session handling
  */
+export function useJobs(includeStats: true): UseQueryResult<{ jobs: any[]; stats: unknown }, Error>;
+export function useJobs(includeStats?: false): UseQueryResult<any[], Error>;
 export function useJobs(includeStats = false) {
   return useQuery({
     queryKey: includeStats ? [...jobKeys.lists(), { includeStats }] : jobKeys.lists(),
@@ -44,16 +46,17 @@ export function useJobs(includeStats = false) {
       console.log('[useJobs] Raw result:', JSON.stringify(result).slice(0, 1000));
       
       // If there's an error, throw it
-      if (result.error) {
+      if ('error' in result && result.error) {
         console.error('[useJobs] Server error:', result.error);
         throw new Error(result.error);
       }
       
       // Return the jobs - empty array is OK, not an error
-      const jobs = result.jobs || [];
-      console.log('[useJobs] Jobs count:', jobs.length, 'Stats:', result.stats);
+      const jobs = 'jobs' in result && Array.isArray(result.jobs) ? result.jobs : [];
+      const stats = 'stats' in result ? result.stats : undefined;
+      console.log('[useJobs] Jobs count:', jobs.length, 'Stats:', stats);
       
-      return includeStats ? { jobs, stats: result.stats } : jobs;
+      return includeStats ? { jobs, stats } : jobs;
     },
     staleTime: 0, // immediate UI - mutations refresh active queries
     retry: 2,
@@ -68,7 +71,7 @@ export function useJob(jobId: string) {
     queryKey: jobKeys.detail(jobId),
     queryFn: async () => {
       const result = await getJobByIdAction(jobId);
-      if (result.error) {
+      if ('error' in result && result.error) {
         throw new Error(result.error);
       }
       return result.job;
@@ -471,7 +474,8 @@ export function useJobsForCandidate(candidateId: string) {
         throw new Error(result.error);
       }
       // Filter jobs that have this candidate linked (use 'candidates' field as per schema)
-      const jobs = (result.jobs || []).filter((job: any) => 
+      const allJobs = 'jobs' in result && Array.isArray(result.jobs) ? result.jobs : [];
+      const jobs = allJobs.filter((job: any) =>
         job.candidates?.some((lc: any) => lc.candidateId === candidateId)
       );
       return jobs;
@@ -491,11 +495,12 @@ export function useJobsForCompany(companyId: string) {
     queryKey: [...jobKeys.lists(), { companyId }],
     queryFn: async () => {
       const result = await getJobs(false);
-      if (result.error) {
+      if ('error' in result && result.error) {
         throw new Error(result.error);
       }
       // Filter jobs for this company
-      const jobs = (result.jobs || []).filter((job: any) => 
+      const allJobs = 'jobs' in result && Array.isArray(result.jobs) ? result.jobs : [];
+      const jobs = allJobs.filter((job: any) =>
         job.companyId === companyId
       );
       return jobs;

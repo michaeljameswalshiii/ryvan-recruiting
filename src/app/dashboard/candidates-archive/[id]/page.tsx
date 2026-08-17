@@ -168,7 +168,7 @@ export default function CandidateDetailPage() {
 
       {/* Status Badge */}
       <div className="flex gap-2">
-        <Badge variant={lead.status === "accepted" ? "default" : "secondary"}>
+        <Badge variant={lead.status === "accept" ? "default" : "secondary"}>
           {lead.status || "New"}
         </Badge>
         <Badge variant="outline">{lead.source || "Direct"}</Badge>

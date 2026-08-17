@@ -61,6 +61,8 @@ import { recordMatchesQuery } from '@/lib/tags';
 
 type SortKey = 'last_activity' | 'name' | 'added' | 'stage' | 'contacts';
 
+type CompanyListRecord = Record<string, any>;
+
 type StageBucket =
   | 'all'
   | 'identification'
@@ -144,7 +146,7 @@ function getProgressIndex(stage: string): number {
   const s = stage.toLowerCase();
   if (s === 'lost') return 0;
   for (let i = PROGRESS_STEPS.length - 1; i >= 0; i--) {
-    if (PROGRESS_STEPS[i].match.includes(s) || PROGRESS_STEPS[i].key === s) {
+    if ((PROGRESS_STEPS[i].match as readonly string[]).includes(s) || PROGRESS_STEPS[i].key === s) {
       return i + 1;
     }
   }
@@ -448,9 +450,11 @@ export function CompaniesClient() {
     }
   };
 
-  const companies = useMemo(() => {
-    if (Array.isArray(data)) return data;
-    if (data && Array.isArray((data as any).clients)) return (data as any).clients;
+  const companies = useMemo<CompanyListRecord[]>(() => {
+    if (Array.isArray(data)) return data as CompanyListRecord[];
+    if (data && Array.isArray((data as any).clients)) {
+      return (data as any).clients as CompanyListRecord[];
+    }
     return [];
   }, [data]);
 
@@ -481,7 +485,7 @@ export function CompaniesClient() {
       const assigned = ownerMap[String(c.id)] || ownerMap[String(c.PK)];
       return {
         raw: c,
-        id: c.id,
+        id: String(c.id || c.PK || ''),
         name: c.name || c.companyName || 'Unknown',
         industry: c.industry || '',
         domain: c.domain || c.website || c.url || '',

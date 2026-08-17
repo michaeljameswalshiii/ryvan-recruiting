@@ -190,6 +190,7 @@ export async function getAllLeadsWithLinkedJobs(
               jobTitle: job.title,
               companyName: job.companyName,
               stage: "sourced",
+              notes: [],
             });
           }
         }

@@ -104,9 +104,15 @@ console.log('[AppMigration] Total jobs:', allJobs.length);
     // Process first batch_size leads
     batch = batch.slice(0, batchSize);
 
-for (const lead of batch) {
+    for (const lead of batch) {
+      const leadId = lead.id;
+      if (!leadId) {
+        skipped++;
+        errors.push('Skipped candidate without an id');
+        continue;
+      }
       try {
-        lastProcessedId = lead.id;
+        lastProcessedId = leadId;
         
         // Skip if no linkedJobIds
         const linkedJobIds = lead.linkedJobIds || [];
@@ -138,7 +144,7 @@ for (const jobId of linkedJobIds) {
 
           // Get current stage from Job.candidates[]
           const jobCandidate = (job.candidates || []).find(
-            (c: any) => c.candidateId === lead.id
+            (c: any) => c.candidateId === leadId
           );
           
           // Map legacy stage to new APPLICATION_STAGE
@@ -163,14 +169,14 @@ for (const jobId of linkedJobIds) {
 
         // Update the lead with new linkedJobs
         // Keep linkedJobIds for backward compatibility
-        await updateLead(tenantId, lead.id, {
+        await updateLead(tenantId, leadId, {
           linkedJobs: newLinkedJobs,
         });
 
         migrated++;
-        console.log(`[AppMigration] Migrated lead ${lead.id}: ${newLinkedJobs.length} jobs`);
+        console.log(`[AppMigration] Migrated lead ${leadId}: ${newLinkedJobs.length} jobs`);
       } catch (err: any) {
-        const errorMsg = `Lead ${lead.id}: ${err.message}`;
+        const errorMsg = `Lead ${leadId}: ${err.message}`;
         console.error('[AppMigration] Error:', errorMsg);
         errors.push(errorMsg);
       }

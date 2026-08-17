@@ -288,10 +288,24 @@ export function getToolSchemas(): Array<{
     ...LIST_BUILDER_TOOLS.map((t) => ({
       name: t.name,
       description: t.description,
-      input_schema: t.schema as {
-        type: string;
-        properties: Record<string, { type: string; description: string }>;
-        required: string[];
+      input_schema: {
+        type: t.schema.type,
+        properties: Object.fromEntries(
+          Object.entries(t.schema.properties).map(([key, value]) => [
+            key,
+            {
+              type: value.type,
+              description:
+                'description' in value && value.description
+                  ? value.description
+                  : key.replace(/_/g, ' '),
+            },
+          ])
+        ) as Record<string, { type: string; description: string }>,
+        required:
+          'required' in t.schema && Array.isArray(t.schema.required)
+            ? [...t.schema.required]
+            : [],
       },
     })),
     {

@@ -297,7 +297,7 @@ function funnelIndex(stage: string): number {
     return -1;
   }
   for (let i = FUNNEL_STEPS.length - 1; i >= 0; i--) {
-    if (FUNNEL_STEPS[i].match.includes(s) || FUNNEL_STEPS[i].key === s) {
+    if ((FUNNEL_STEPS[i].match as readonly string[]).includes(s) || FUNNEL_STEPS[i].key === s) {
       return i;
     }
   }

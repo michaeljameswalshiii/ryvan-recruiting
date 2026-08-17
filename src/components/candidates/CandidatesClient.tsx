@@ -149,7 +149,9 @@ function stageLabel(stage: string) {
   const found = APPLICATION_STAGES.find((s) => s.value === stage);
   if (found) return found.label;
   // Pretty-print progress step labels
-  const step = PROGRESS_STEPS.find((p) => p.key === stage || p.match.includes(stage));
+  const step = PROGRESS_STEPS.find(
+    (p) => p.key === stage || (p.match as readonly string[]).includes(stage)
+  );
   if (step) return step.label;
   return stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -159,7 +161,7 @@ function getProgressIndex(stage: string): number {
   if (['rejected', 'not_interested', 'offer_declined', 'dnu', 'do_not_use'].includes(s))
     return 0;
   for (let i = PROGRESS_STEPS.length - 1; i >= 0; i--) {
-    if (PROGRESS_STEPS[i].match.includes(s) || PROGRESS_STEPS[i].key === s) {
+    if ((PROGRESS_STEPS[i].match as readonly string[]).includes(s) || PROGRESS_STEPS[i].key === s) {
       return i + 1; // 1-based step completed
     }
   }

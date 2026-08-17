@@ -99,7 +99,7 @@ export async function sendGmailEmail(
       },
     });
     
-    const messageId = response.data.id;
+    const messageId = response.data.id ?? undefined;
     
     console.log(`[EMAIL] Gmail email sent: ${messageId}`);
     

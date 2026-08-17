@@ -257,6 +257,7 @@ export async function getCandidateEvents(
       id: event.SK.replace('EVENT#', ''),
       entityId: event.entityId,
       entityType: 'candidate',
+      tenantId: event.tenantId,
       eventType: event.eventType as CandidateEventType,
       title: event.title,
       description: event.description,

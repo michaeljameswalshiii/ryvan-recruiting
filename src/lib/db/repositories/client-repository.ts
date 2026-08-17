@@ -182,7 +182,7 @@ export async function createClient(
   const doc = getDocClient();
   const now = new Date().toISOString();
   const id =
-    (typeof data.id === 'string' && data.id) ||
+    ('id' in data && typeof data.id === 'string' && data.id) ||
     generateId();
 
   const item = removeUndefinedDeep({

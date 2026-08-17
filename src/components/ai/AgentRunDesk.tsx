@@ -232,19 +232,20 @@ export function AgentRunDesk({
       });
       if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
-      if (data?.run?.id && runRef.current?.id === data.run.id) {
+      const currentRun = runRef.current;
+      if (data?.run?.id && currentRun && currentRun.id === data.run.id) {
         const next: AgentRunSnapshot = {
-          ...runRef.current,
+          ...currentRun,
           ...data.run,
           persisted: true,
           isOwner: true,
         };
         // Don't clobber in-flight status with paused from server mid-wave
         if (
-          runRef.current.status === 'running' ||
-          runRef.current.status === 'planning'
+          currentRun.status === 'running' ||
+          currentRun.status === 'planning'
         ) {
-          next.status = runRef.current.status;
+          next.status = currentRun.status;
         }
         runRef.current = next;
         setRun(next);

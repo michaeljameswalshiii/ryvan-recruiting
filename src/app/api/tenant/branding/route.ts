@@ -55,7 +55,6 @@ export async function POST(request: NextRequest) {
     const updated = await updateTenant(tenantId, {
       logo_url: url,
       // stash key for public proxy resolution
-      // @ts-expect-error optional field on tenant
       logo_s3_key: s3Key,
     } as Parameters<typeof updateTenant>[1] & { logo_s3_key?: string });
 

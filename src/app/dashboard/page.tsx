@@ -43,12 +43,9 @@ async function DashboardBody({ period }: { period: PeriodKey }) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?:
-    | Promise<{ period?: string }>
-    | { period?: string };
+  searchParams?: Promise<{ period?: string }>;
 }) {
-  const params =
-    searchParams instanceof Promise ? await searchParams : searchParams;
+  const params = await searchParams;
   const period = parsePeriod(params?.period);
 
   return (
