@@ -689,7 +689,7 @@ export default function JobDetailPage() {
               className="border-gray-200 bg-white text-gray-800 hover:bg-gray-50"
             />
             <BooleanGeneratorButton
-              jobId={job.id}
+              jobId={String(job.id || jobId)}
               jobTitle={job.title}
               className="border-gray-200 bg-white text-gray-800 hover:bg-gray-50"
             />

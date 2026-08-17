@@ -67,7 +67,9 @@ export function BooleanGeneratorButton({
     }
     try {
       if (!regenerate) {
-        const cachedRes = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/boolean`);
+        const cachedRes = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/boolean`, {
+          credentials: "include",
+        });
         const cached = (await cachedRes.json().catch(() => ({}))) as BooleanResponse;
         if (cachedRes.ok && cached.strings?.length) {
           applyPayload({ ...cached, cached: true });
@@ -77,6 +79,7 @@ export function BooleanGeneratorButton({
 
       const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/boolean`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ regenerate }),
       });
@@ -119,6 +122,7 @@ export function BooleanGeneratorButton({
     try {
       const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/boolean`, {
         method: "PATCH",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ strings: drafts }),
       });

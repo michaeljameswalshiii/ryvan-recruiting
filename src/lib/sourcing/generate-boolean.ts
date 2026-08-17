@@ -13,6 +13,7 @@ import {
   BOOLEAN_PROMPT_VERSION,
   BOOLEAN_SYSTEM_PROMPT,
   buildBooleanJobContext,
+  fallbackBooleanStrings,
   parseBooleanText,
   type BooleanCache,
   type BooleanString,
@@ -66,7 +67,11 @@ export async function generateJobBooleanStrings(params: {
       }
     );
     if (result.error && !result.text && !result.data) {
-      throw new Error(result.error);
+      console.warn("[boolean-generator] Claude failed, using tag fallback", result.error);
+      return {
+        cache: toCache(fallbackBooleanStrings(params.job), "fallback-tags"),
+        rawText: result.error,
+      };
     }
     model = result.modelId || "claude-sonnet-4-6";
     if (result.data) {
@@ -83,7 +88,10 @@ export async function generateJobBooleanStrings(params: {
 
   const strings = parseBooleanText(text);
   if (!strings.length) {
-    throw new Error("Boolean Generator returned no usable strings. Try again.");
+    return {
+      cache: toCache(fallbackBooleanStrings(params.job), model || "fallback-tags"),
+      rawText: text,
+    };
   }
   return { cache: toCache(strings, model), rawText: text };
 }

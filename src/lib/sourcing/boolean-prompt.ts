@@ -135,6 +135,139 @@ export function parseBooleanPayload(raw: unknown): BooleanString[] {
   return strings;
 }
 
+function quotePhrase(value: string): string {
+  const t = value.replace(/"/g, "").trim();
+  if (!t) return "";
+  return /\s/.test(t) ? `"${t}"` : t;
+}
+
+function uniqueLabels(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const t = value.replace(/\s+/g, " ").trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+}
+
+export function titleSynonyms(title?: string | null): string[] {
+  const cleaned = String(title || "")
+    .replace(/\bconfidential\b/gi, "")
+    .replace(/[—–|-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return [];
+  const out = [cleaned];
+  const ofMatch = cleaned.match(/^(.+?)\s+of\s+(.+)$/i);
+  if (ofMatch) out.push(`${ofMatch[2]} ${ofMatch[1]}`);
+  if (/^director of /i.test(cleaned)) {
+    out.push(`${cleaned.replace(/^director of /i, "")} Director`);
+  }
+  if (/^vp(?:\s+of)?\s+/i.test(cleaned)) {
+    out.push(cleaned.replace(/^vp(?:\s+of)?\s+/i, "Vice President of "));
+    out.push(cleaned.replace(/^vp(?:\s+of)?\s+/i, "VP "));
+  }
+  if (/^vice president(?:\s+of)?\s+/i.test(cleaned)) {
+    out.push(cleaned.replace(/^vice president(?:\s+of)?\s+/i, "VP "));
+  }
+  if (/\bplant manager\b/i.test(cleaned) === false && /operations/i.test(cleaned)) {
+    out.push("Plant Manager");
+  }
+  return uniqueLabels(out).slice(0, 6);
+}
+
+const GENERIC_TAGS = new Set([
+  "engineering",
+  "operations",
+  "management",
+  "leadership",
+  "manufacturing",
+]);
+
+export function differentiatingTags(tags?: string[] | null, limit = 5): string[] {
+  const labels = resolveJobTagLabels(tags);
+  const ranked = [
+    ...labels.filter((t) => !GENERIC_TAGS.has(t.toLowerCase())),
+    ...labels.filter((t) => GENERIC_TAGS.has(t.toLowerCase())),
+  ];
+  return uniqueLabels(ranked).slice(0, limit);
+}
+
+function orGroup(values: string[]): string {
+  const parts = uniqueLabels(values).map(quotePhrase).filter(Boolean);
+  if (!parts.length) return "";
+  return parts.length === 1 ? parts[0] : `(${parts.join(" OR ")})`;
+}
+
+/**
+ * Deterministic strings from title + tags so the modal still works if Claude is down.
+ */
+export function fallbackBooleanStrings(job: {
+  title?: string | null;
+  tags?: string[] | null;
+  location?: string | null;
+}): BooleanString[] {
+  const titles = titleSynonyms(job.title);
+  const skills = differentiatingTags(job.tags, 5);
+  const titleGroup = orGroup(titles);
+  const skillGroup = orGroup(skills.slice(0, 3));
+  const skillLoose = orGroup(skills);
+  const location = String(job.location || "").trim();
+  const locBit = location ? ` AND ${quotePhrase(location)}` : "";
+
+  const strings: BooleanString[] = [];
+  if (titleGroup) {
+    strings.push({
+      label: "Broad net",
+      platform: "LinkedIn",
+      query: skillGroup ? `${titleGroup} AND ${skillGroup}` : titleGroup,
+      notes: "Start here in LinkedIn Recruiter for volume.",
+    });
+    strings.push({
+      label: "Title synonyms",
+      platform: "LinkedIn",
+      query: titleGroup,
+      notes: "When the exact title is too narrow — swap titles only.",
+    });
+  }
+  if (titleGroup && skillGroup) {
+    strings.push({
+      label: "Tight / senior",
+      platform: "LinkedIn",
+      query: `${titleGroup} AND ${skillGroup} AND (Senior OR Director OR VP OR "Vice President") NOT intern NOT junior`,
+      notes: "Use when you only want seasoned operators.",
+    });
+  }
+  if (skillLoose) {
+    strings.push({
+      label: "Skills-heavy",
+      platform: "Indeed",
+      query: titleGroup ? `${titleGroup} AND ${skillLoose}` : skillLoose,
+      notes: "Shorter Indeed-friendly string built from the job tags.",
+    });
+    strings.push({
+      label: "Apollo keywords",
+      platform: "Apollo",
+      query: uniqueLabels([...titles.slice(0, 3), ...skills.slice(0, 4)]).join(", "),
+      notes: "Paste into Apollo people search; apply location as a filter.",
+    });
+  }
+  if (titleGroup) {
+    strings.push({
+      label: "Google / LinkedIn profiles",
+      platform: "Google",
+      query: `site:linkedin.com/in ${titleGroup}${skillGroup ? ` AND ${skillGroup}` : ""}${locBit}`,
+      notes: "X-ray search for public LinkedIn profiles.",
+    });
+  }
+  return strings.slice(0, 6);
+}
+
 export function parseBooleanText(text: string): BooleanString[] {
   const trimmed = String(text || "").trim();
   if (!trimmed) return [];

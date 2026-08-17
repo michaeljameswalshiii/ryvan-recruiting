@@ -108,7 +108,11 @@ export async function POST(request: NextRequest, context: RouteCtx) {
       jobId,
     });
 
-    await updateJob(tenantId, jobId, { booleanStrings: cache });
+    try {
+      await updateJob(tenantId, jobId, { booleanStrings: cache });
+    } catch (persistErr) {
+      console.warn("[boolean-generator] cache persist failed", persistErr);
+    }
 
     return NextResponse.json({
       cached: false,
