@@ -34,13 +34,6 @@ export async function POST(
       },
     });
 
-    if (!result?.success && result?.error) {
-      return NextResponse.json(
-        { error: result.error || 'Failed to log activity' },
-        { status: 400 }
-      );
-    }
-
     return NextResponse.json({ success: true, event: result.event });
   } catch (error: any) {
     console.error('Error creating activity event:', error);

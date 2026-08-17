@@ -317,16 +317,16 @@ export function DeskNextActions({
     );
   }
 
-  // ── Default amber desk strip ───────────────────────────────────────
+  // ── Desk strip (slate — no yellow) ─────────────────────────────────
   return (
     <section
-      data-ink-on-light className={`surface-light rounded-xl border border-amber-300 bg-amber-50 ${
+      data-ink-on-light className={`surface-light rounded-xl border border-slate-200 bg-slate-50 ${
         compact ? "p-3" : "p-4 shadow-sm"
       } ${className || ""}`}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <Zap className="h-4 w-4 shrink-0 text-amber-700" />
+          <Zap className="h-4 w-4 shrink-0 text-slate-600" />
           <span className="text-sm font-semibold text-slate-900">
             Next Actions
           </span>
@@ -432,7 +432,7 @@ export function DeskNextActions({
             return (
               <li
                 key={`${a.candidateId}-${a.kind}-${i}`}
-                className="group flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs"
+                className="group flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs"
               >
                 <div className="min-w-0">
                   <div className="truncate font-semibold text-slate-900">

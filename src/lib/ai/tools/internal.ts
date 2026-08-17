@@ -313,6 +313,9 @@ export async function executeInternalData(
           data = found || {
             error: 'Contact not found',
             id: contactId,
+            hint:
+              'This id is not on Contacts. Do not invent contact ids. ' +
+              'If the company exists, call create_contact with name + company_name (or company_id).',
           };
         }
         break;

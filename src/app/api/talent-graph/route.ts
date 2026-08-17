@@ -7,7 +7,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionTenantId } from "@/lib/server-auth";
-import { getSkillsGraphFresh } from "@/lib/db/repositories/skills-graph-repository";
+import {
+  getSkillsGraphFresh,
+  searchTalentGraphCandidates,
+} from "@/lib/db/repositories/skills-graph-repository";
 
 export const dynamic = "force-dynamic";
 
@@ -33,13 +36,35 @@ export async function GET(request: NextRequest) {
       rebuildParam === "true" ||
       rebuildParam === "yes";
 
-    const { graph, rebuilt } = await getSkillsGraphFresh(tenantId, {
+    const query = String(request.nextUrl.searchParams.get("q") || "").trim();
+    const selectedTags = [
+      ...request.nextUrl.searchParams.getAll("tag"),
+      ...(request.nextUrl.searchParams.get("tags") || "").split(","),
+    ]
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    const limit = Number(request.nextUrl.searchParams.get("limit") || 50);
+
+    const graphPromise = getSkillsGraphFresh(tenantId, {
       rebuild: forceRebuild,
     });
+    const searchPromise =
+      query || selectedTags.length > 0
+        ? searchTalentGraphCandidates(tenantId, {
+            query,
+            tags: selectedTags,
+            limit,
+          })
+        : Promise.resolve({ candidates: [], total: 0 });
+    const [{ graph, rebuilt }, search] = await Promise.all([
+      graphPromise,
+      searchPromise,
+    ]);
 
     return NextResponse.json({
       graph,
       rebuilt,
+      search,
       tenantId,
     });
   } catch (error) {

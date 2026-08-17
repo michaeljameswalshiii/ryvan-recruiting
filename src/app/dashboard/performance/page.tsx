@@ -42,6 +42,10 @@ function formatMs(ms?: number) {
   return `${Math.round(ms)} ms`;
 }
 
+function hasSamples(kpis?: OpsOverview["kpis"]) {
+  return Boolean(kpis && (kpis.requests > 0 || kpis.sampleSize > 0));
+}
+
 function formatWhen(iso?: string) {
   if (!iso) return "—";
   const date = new Date(iso);
@@ -192,6 +196,7 @@ export default function OperationsHealthPage() {
                 key={item.key}
                 type="button"
                 onClick={() => setRange(item.key)}
+                aria-pressed={range === item.key}
                 className={`rounded-md px-2.5 py-1.5 text-xs font-semibold ${
                   range === item.key
                     ? "bg-slate-900 text-white"
@@ -262,29 +267,29 @@ export default function OperationsHealthPage() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         <Kpi
           label="Error rate"
-          value={kpis ? `${kpis.errorRate.toFixed(1)}%` : "—"}
-          detail={kpis ? `${kpis.errors} errors / ${kpis.requests} requests` : "No samples yet"}
-          tone={kpis && kpis.errorRate >= 5 ? "red" : kpis && kpis.errorRate >= 1 ? "amber" : "green"}
+          value={hasSamples(kpis) ? `${kpis!.errorRate.toFixed(1)}%` : "—"}
+          detail={hasSamples(kpis) ? `${kpis!.errors} errors / ${kpis!.requests} requests` : "No samples yet"}
+          tone={!hasSamples(kpis) ? "slate" : kpis!.errorRate >= 5 ? "red" : kpis!.errorRate >= 1 ? "amber" : "green"}
         />
         <Kpi
           label="API p95"
           value={formatMs(kpis?.p95Ms)}
-          detail={kpis?.avgMs ? `Average ${formatMs(kpis.avgMs)}` : "From sampled API calls"}
+          detail={hasSamples(kpis) && kpis!.avgMs ? `Average ${formatMs(kpis!.avgMs)}` : "From sampled API calls"}
           tone={kpis && kpis.p95Ms >= 2000 ? "red" : kpis && kpis.p95Ms >= 800 ? "amber" : "slate"}
         />
         <Kpi
           label="Slow calls"
-          value={kpis ? String(kpis.slow) : "—"}
+          value={hasSamples(kpis) ? String(kpis!.slow) : "—"}
           detail="Requests over 2 seconds"
-          tone={kpis && kpis.slow > 0 ? "amber" : "green"}
+          tone={!hasSamples(kpis) ? "slate" : kpis!.slow > 0 ? "amber" : "green"}
         />
         <Kpi
           label="Page load"
-          value={formatMs(kpis?.navAvgMs)}
-          detail={kpis?.lcpAvgMs ? `LCP ${formatMs(kpis.lcpAvgMs)}` : "Browser navigation"}
+          value={hasSamples(kpis) ? formatMs(kpis!.navAvgMs) : "—"}
+          detail={hasSamples(kpis) && kpis!.lcpAvgMs ? `LCP ${formatMs(kpis!.lcpAvgMs)}` : "Browser navigation"}
         />
         <Kpi
           label="Live deploy"
@@ -332,7 +337,7 @@ export default function OperationsHealthPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1.4fr_.8fr]">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,.8fr)]">
         <Panel>
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="flex items-center gap-2 font-semibold">
@@ -343,7 +348,7 @@ export default function OperationsHealthPage() {
               First-party samples collected from people using Trio
             </p>
           </div>
-          <div className="h-64 p-4">
+          <div className="h-64 min-w-0 p-4">
             {data?.series?.some((p) => p.requests || p.errors) ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={data.series}>
@@ -418,7 +423,7 @@ export default function OperationsHealthPage() {
                 No clustered errors in this window.
               </p>
             ) : (
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[600px] text-sm">
                 <thead className="text-left text-[11px] uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="pb-2">Error</th>
@@ -475,7 +480,7 @@ export default function OperationsHealthPage() {
                 No API timings yet. Browse candidates, jobs, or texting, then refresh.
               </p>
             ) : (
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[520px] text-sm">
                 <thead className="text-left text-[11px] uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="pb-2">Route</th>
@@ -551,7 +556,11 @@ export default function OperationsHealthPage() {
               Scheduled jobs
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              Heartbeats written by each Vercel cron after it runs
+              Heartbeats from each Vercel cron. Turn schedules on or off in{" "}
+              <a href="/dashboard/ai-agents" className="font-semibold text-orange-700 hover:underline">
+                AI Agents
+              </a>
+              .
             </p>
           </div>
           <ul className="divide-y divide-slate-100 p-2">

@@ -17,6 +17,7 @@ export type FilterStatTone =
   | 'violet'
   | 'amber'
   | 'emerald'
+  | 'forest'
   | 'rose'
   | 'indigo'
   | 'slate';
@@ -63,6 +64,13 @@ const TONE_STYLES: Record<
     border: '#d1fae5',
     count: '#064e3b',
     ring: '#a7f3d0',
+  },
+  // Darker green than emerald — same family, still pastel (Placed / Closed Won)
+  forest: {
+    bg: '#d1fae5',
+    border: '#a7f3d0',
+    count: '#065f46',
+    ring: '#6ee7b7',
   },
   rose: {
     bg: '#fff1f2',

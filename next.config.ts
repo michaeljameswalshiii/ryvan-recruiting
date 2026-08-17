@@ -20,12 +20,6 @@ const nextConfig: NextConfig = {
     "all-the-cities",
     "zipcodes",
   ],
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
 };
 
 export default nextConfig;

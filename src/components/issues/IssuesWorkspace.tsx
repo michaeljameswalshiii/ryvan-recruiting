@@ -536,7 +536,11 @@ function IssueCard({
             Customer
             {issue.customerName ? `: ${issue.customerName}` : ""}
           </span>
-        ) : null}
+        ) : (
+          <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+            TRIO
+          </span>
+        )}
       </div>
       {issue.linkedEntity?.label ? (
         <div className="mb-1 truncate text-[10px] text-blue-700">
@@ -656,7 +660,11 @@ function BacklogView({
                       Customer
                       {issue.customerName ? `: ${issue.customerName}` : ""}
                     </span>
-                  ) : null}
+                  ) : (
+                    <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                      TRIO
+                    </span>
+                  )}
                   {issue.tags && issue.tags.length > 0
                     ? issue.tags.slice(0, 3).map((t) => (
                         <span

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -17,9 +17,12 @@ import {
   Star,
   UserRound,
   MapPin,
+  Check,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SimpleDialog } from '@/components/ui/simple-dialog';
 import {
   DEFAULT_PAGE_SIZE,
   PaginationBar,
@@ -27,7 +30,7 @@ import {
 } from '@/components/ui/pagination-bar';
 import { FilterStatCards } from '@/components/ui/filter-stat-cards';
 import { useClients } from '@/lib/hooks/query-client';
-import { useAddContact, useRemoveContact } from '@/lib/hooks/contact-mutations';
+import { useAddContact, useRemoveContact, useUpdateContact } from '@/lib/hooks/contact-mutations';
 import { getDisplayPhone } from '@/lib/contacts/phone';
 import { useListColumns } from '@/lib/ui/use-list-columns';
 import { useAssignmentOwners } from '@/lib/hooks/use-assignment-owners';
@@ -115,6 +118,138 @@ function formatShortDate(value?: string) {
   }
 }
 
+type ContactField = 'email' | 'phone';
+type EditTarget = { rowKey: string; field: ContactField; mode: 'inline' | 'dialog' };
+
+function isLikelyEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isLikelyPhone(value: string) {
+  return value.replace(/\D/g, '').length >= 7;
+}
+
+function phoneUpdatePayload(raw: unknown, next: string) {
+  const contact = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const existing = Array.isArray(contact.phones)
+    ? contact.phones.filter(
+        (p): p is { number?: string; isPreferred?: boolean } =>
+          !!p && typeof p === 'object' && typeof (p as { number?: string }).number === 'string'
+      )
+    : [];
+  const kept = existing.filter((p) => (p.number || '').trim());
+  if (kept.length === 0) return { phone: next };
+  if (!next) return { phone: '', phones: [] };
+  const preferredIdx = kept.findIndex((p) => p.isPreferred);
+  const idx = preferredIdx >= 0 ? preferredIdx : 0;
+  return {
+    phone: next,
+    phones: kept.map((p, i) => (i === idx ? { ...p, number: next } : p)),
+  };
+}
+
+function InlineContactField({
+  kind,
+  value,
+  editing,
+  draft,
+  saving,
+  onStart,
+  onDraft,
+  onSave,
+  onCancel,
+}: {
+  kind: ContactField;
+  value: string;
+  editing: boolean;
+  draft: string;
+  saving: boolean;
+  onStart: () => void;
+  onDraft: (value: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  if (editing) {
+    return (
+      <form
+        className="flex min-w-[12rem] max-w-[18rem] items-center gap-1"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSave();
+        }}
+      >
+        <Input
+          autoFocus
+          type={kind === 'email' ? 'email' : 'tel'}
+          value={draft}
+          disabled={saving}
+          onChange={(e) => onDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              onCancel();
+            }
+          }}
+          onBlur={() => {
+            if (!saving) onSave();
+          }}
+          placeholder={kind === 'email' ? 'name@company.com' : 'Phone number'}
+          aria-label={kind === 'email' ? 'Email' : 'Phone'}
+          className="h-8 bg-white text-sm"
+        />
+        <Button
+          type="submit"
+          size="sm"
+          variant="ghost"
+          className="h-8 w-8 shrink-0 p-0"
+          disabled={saving}
+          title="Save"
+        >
+          <Check className="h-3.5 w-3.5 text-emerald-600" />
+        </Button>
+      </form>
+    );
+  }
+
+  if (value) {
+    return (
+      <div className="group/field flex min-w-0 max-w-full items-center gap-1">
+        <a
+          href={kind === 'email' ? `mailto:${value}` : `tel:${value}`}
+          className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600"
+          title={value}
+        >
+          {kind === 'email' ? (
+            <Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+          ) : (
+            <Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+          )}
+          <span className="truncate">{value}</span>
+        </a>
+        <button
+          type="button"
+          onClick={onStart}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 opacity-0 hover:bg-gray-100 hover:text-blue-600 group-hover/field:opacity-100 focus:opacity-100"
+          title={`Edit ${kind}`}
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onStart}
+      className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-blue-600"
+    >
+      <Plus className="h-3 w-3" />
+      Add {kind}
+    </button>
+  );
+}
+
 function formatRelativeActivity(value?: string) {
   if (!value) return '—';
   try {
@@ -138,12 +273,20 @@ export default function ContactInfoPage() {
   const { data: clientsData, isLoading, error, refetch } = useClients();
   const addContact = useAddContact();
   const removeContact = useRemoveContact();
+  const updateContact = useUpdateContact();
 
   const [search, setSearch] = useState('');
   const [bucket, setBucket] = useState<ContactBucket>('all');
   const [sortKey, setSortKey] = useState<SortKey>('last_activity');
   const [page, setPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<EditTarget | null>(null);
+  const [draft, setDraft] = useState('');
+  const [savingField, setSavingField] = useState(false);
+  const [overrides, setOverrides] = useState<
+    Record<string, Partial<Record<ContactField, string>>>
+  >({});
+  const savingFieldRef = useRef(false);
   const [showForm, setShowForm] = useState(false);
   const [newContact, setNewContact] = useState({
     name: '',
@@ -215,16 +358,29 @@ export default function ContactInfoPage() {
     return rows;
   }, [companies, ownerMap]);
 
+  const displayRows = useMemo(() => {
+    return enriched.map((c) => {
+      const rowKey = `${c.clientId}-${c.id}`;
+      const patch = overrides[rowKey];
+      if (!patch) return c;
+      return {
+        ...c,
+        email: patch.email ?? c.email,
+        phone: patch.phone ?? c.phone,
+      };
+    });
+  }, [enriched, overrides]);
+
   const stats = useMemo(() => {
     const counts = {
-      all: enriched.length,
+      all: displayRows.length,
       primary: 0,
       with_email: 0,
       with_phone: 0,
       missing_email: 0,
       missing_phone: 0,
     };
-    for (const c of enriched) {
+    for (const c of displayRows) {
       if (c.isPrimary) counts.primary++;
       if (c.email) counts.with_email++;
       else counts.missing_email++;
@@ -232,11 +388,11 @@ export default function ContactInfoPage() {
       else counts.missing_phone++;
     }
     return counts;
-  }, [enriched]);
+  }, [displayRows]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = enriched.filter((c) => {
+    let list = displayRows.filter((c) => {
       switch (bucket) {
         case 'primary':
           if (!c.isPrimary) return false;
@@ -281,7 +437,7 @@ export default function ContactInfoPage() {
     });
 
     return list;
-  }, [enriched, search, bucket, sortKey]);
+  }, [displayRows, search, bucket, sortKey]);
 
   useEffect(() => {
     setPage(1);
@@ -326,8 +482,75 @@ export default function ContactInfoPage() {
     }
   };
 
+  const startFieldEdit = (
+    rowKey: string,
+    field: ContactField,
+    current: string,
+    mode: 'inline' | 'dialog' = 'inline'
+  ) => {
+    setOpenMenuId(null);
+    setEditing({ rowKey, field, mode });
+    setDraft(current);
+  };
+
+  const cancelFieldEdit = () => {
+    if (savingField) return;
+    setEditing(null);
+    setDraft('');
+  };
+
+  const saveFieldEdit = async (
+    contact: { id: string; clientId: string; email: string; phone: string; raw: unknown }
+  ) => {
+    if (!editing || savingField) return;
+    const next = draft.trim();
+    const current = editing.field === 'email' ? contact.email : contact.phone;
+    if (next === current) {
+      cancelFieldEdit();
+      return;
+    }
+    if (editing.field === 'email' && next && !isLikelyEmail(next)) {
+      toast.error('Enter a valid email');
+      return;
+    }
+    if (editing.field === 'phone' && next && !isLikelyPhone(next)) {
+      toast.error('Enter a valid phone number');
+      return;
+    }
+
+    const rowKey = `${contact.clientId}-${contact.id}`;
+    if (savingFieldRef.current) return;
+    savingFieldRef.current = true;
+    setSavingField(true);
+    try {
+      await updateContact.mutateAsync({
+        clientId: contact.clientId,
+        contactId: contact.id,
+        contactData:
+          editing.field === 'email'
+            ? { email: next }
+            : phoneUpdatePayload(contact.raw, next),
+      });
+      setOverrides((prev) => ({
+        ...prev,
+        [rowKey]: { ...prev[rowKey], [editing.field]: next },
+      }));
+      setEditing(null);
+      setDraft('');
+    } catch {
+      // useUpdateContact already toasts
+    } finally {
+      savingFieldRef.current = false;
+      setSavingField(false);
+    }
+  };
+
   const detailHref = (c: { id: string; clientId: string }) =>
     `/dashboard/contact-info/${c.id}?companyId=${c.clientId}`;
+
+  const editingRow = editing
+    ? displayRows.find((c) => `${c.clientId}-${c.id}` === editing.rowKey)
+    : undefined;
 
   const statCards = [
     {
@@ -342,7 +565,7 @@ export default function ContactInfoPage() {
       label: 'Primary',
       sub: 'Main contacts',
       count: stats.primary,
-      tone: 'amber' as const,
+      tone: 'indigo' as const,
     },
     {
       key: 'with_email',
@@ -623,7 +846,7 @@ export default function ContactInfoPage() {
                                 {c.name}
                               </Link>
                               {c.isPrimary && (
-                                <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 shrink-0">
+                                <span className="inline-flex items-center gap-0.5 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-800 shrink-0">
                                   <Star className="h-2.5 w-2.5" />
                                   Primary
                                 </span>
@@ -659,34 +882,41 @@ export default function ContactInfoPage() {
                           case 'email':
                             return (
                               <td key={colId} className={listTd}>
-                                {c.email ? (
-                                  <a
-                                    href={`mailto:${c.email}`}
-                                    className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600 min-w-0 max-w-full"
-                                  >
-                                    <Mail className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                                    <span className="truncate">{c.email}</span>
-                                  </a>
-                                ) : (
-                                  <span className="text-sm text-gray-400 italic">—</span>
-                                )}
+                                <InlineContactField
+                                  kind="email"
+                                  value={c.email}
+                                  editing={
+                                    editing?.rowKey === rowKey &&
+                                    editing.field === 'email' &&
+                                    editing.mode === 'inline'
+                                  }
+                                  draft={draft}
+                                  saving={savingField}
+                                  onStart={() => startFieldEdit(rowKey, 'email', c.email)}
+                                  onDraft={setDraft}
+                                  onSave={() => void saveFieldEdit(c)}
+                                  onCancel={cancelFieldEdit}
+                                />
                               </td>
                             );
                           case 'phone':
                             return (
                               <td key={colId} className={listTd}>
-                                {c.phone ? (
-                                  <a
-                                    href={`tel:${c.phone}`}
-                                    className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600 min-w-0 max-w-full"
-                                    title={c.phone}
-                                  >
-                                    <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                                    <span className="truncate">{c.phone}</span>
-                                  </a>
-                                ) : (
-                                  <span className="text-sm text-gray-400 italic">—</span>
-                                )}
+                                <InlineContactField
+                                  kind="phone"
+                                  value={c.phone}
+                                  editing={
+                                    editing?.rowKey === rowKey &&
+                                    editing.field === 'phone' &&
+                                    editing.mode === 'inline'
+                                  }
+                                  draft={draft}
+                                  saving={savingField}
+                                  onStart={() => startFieldEdit(rowKey, 'phone', c.phone)}
+                                  onDraft={setDraft}
+                                  onSave={() => void saveFieldEdit(c)}
+                                  onCancel={cancelFieldEdit}
+                                />
                               </td>
                             );
                           case 'added':
@@ -768,7 +998,7 @@ export default function ContactInfoPage() {
                             <MoreHorizontal className="h-4 w-4 text-gray-500" />
                           </Button>
                           {openMenuId === rowKey && (
-                            <div className="absolute right-0 top-9 z-20 w-44 rounded-lg border border-gray-200 bg-white shadow-lg py-1 text-left">
+                            <div className="absolute right-0 top-9 z-20 w-48 rounded-lg border border-gray-200 bg-white shadow-lg py-1 text-left">
                               <button
                                 type="button"
                                 className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
@@ -778,6 +1008,22 @@ export default function ContactInfoPage() {
                                 }}
                               >
                                 <Eye className="h-3.5 w-3.5" /> View
+                              </button>
+                              <button
+                                type="button"
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
+                                onClick={() => startFieldEdit(rowKey, 'email', c.email, 'dialog')}
+                              >
+                                <Mail className="h-3.5 w-3.5" />
+                                {c.email ? 'Edit email' : 'Add email'}
+                              </button>
+                              <button
+                                type="button"
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50"
+                                onClick={() => startFieldEdit(rowKey, 'phone', c.phone, 'dialog')}
+                              >
+                                <Phone className="h-3.5 w-3.5" />
+                                {c.phone ? 'Edit phone' : 'Add phone'}
                               </button>
                               <button
                                 type="button"
@@ -809,6 +1055,57 @@ export default function ContactInfoPage() {
             </table>
         </DataListTable>
       )}
+
+      <SimpleDialog
+        open={!!(editing?.mode === 'dialog' && editingRow)}
+        onOpenChange={(open) => {
+          if (!open) cancelFieldEdit();
+        }}
+        title={
+          editing?.field === 'phone'
+            ? editingRow?.phone
+              ? 'Edit phone'
+              : 'Add phone'
+            : editingRow?.email
+              ? 'Edit email'
+              : 'Add email'
+        }
+        description={
+          editingRow
+            ? `${editingRow.name}${editingRow.companyName ? ` · ${editingRow.companyName}` : ''}`
+            : undefined
+        }
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={cancelFieldEdit} disabled={savingField}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={savingField || !editingRow}
+              onClick={() => editingRow && void saveFieldEdit(editingRow)}
+            >
+              {savingField ? 'Saving…' : 'Save'}
+            </Button>
+          </>
+        }
+      >
+        <Input
+          autoFocus
+          type={editing?.field === 'phone' ? 'tel' : 'email'}
+          value={draft}
+          disabled={savingField}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (editingRow) void saveFieldEdit(editingRow);
+            }
+          }}
+          placeholder={editing?.field === 'phone' ? 'Phone number' : 'name@company.com'}
+        />
+      </SimpleDialog>
     </div>
   );
 }

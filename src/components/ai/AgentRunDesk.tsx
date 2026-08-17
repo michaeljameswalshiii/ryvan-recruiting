@@ -232,19 +232,20 @@ export function AgentRunDesk({
       });
       if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
-      if (data?.run?.id && runRef.current?.id === data.run.id) {
+      const currentRun = runRef.current;
+      if (data?.run?.id && currentRun && currentRun.id === data.run.id) {
         const next: AgentRunSnapshot = {
-          ...runRef.current,
+          ...currentRun,
           ...data.run,
           persisted: true,
           isOwner: true,
         };
         // Don't clobber in-flight status with paused from server mid-wave
         if (
-          runRef.current.status === 'running' ||
-          runRef.current.status === 'planning'
+          currentRun.status === 'running' ||
+          currentRun.status === 'planning'
         ) {
-          next.status = runRef.current.status;
+          next.status = currentRun.status;
         }
         runRef.current = next;
         setRun(next);
@@ -887,7 +888,7 @@ export function AgentRunDesk({
 
   return (
     <div
-      className={`flex h-full min-h-0 flex-col ${
+      className={`flex h-full min-h-0 flex-col overflow-x-hidden ${
         dark ? 'bg-slate-950 text-slate-100' : 'bg-slate-100/80 text-slate-900'
       }`}
     >
@@ -1026,11 +1027,11 @@ export function AgentRunDesk({
 
       {/* ── Fill job / source candidates ────────────────────────── */}
       {deskTab === 'fill' && (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-hidden">
           <AgentWorkbench
             variant="full"
             defaultMode="research"
-            theme={dark ? 'dark' : 'light'}
+            theme="light"
             hideChrome
             focusFillRunId={
               deskTab === 'fill' ? focusRunId || undefined : undefined
@@ -1374,6 +1375,11 @@ export function AgentRunDesk({
                       {!!s.toolsUsed?.length && (
                         <span className="ml-1 text-slate-500">
                           ({s.toolsUsed.slice(0, 4).join(', ')})
+                        </span>
+                      )}
+                      {s.toolsUsed?.some((t) => /apollo/i.test(String(t))) && (
+                        <span className="ml-1 rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800">
+                          Looked up in Apollo
                         </span>
                       )}
                     </span>

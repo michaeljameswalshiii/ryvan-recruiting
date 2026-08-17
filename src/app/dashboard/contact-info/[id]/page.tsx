@@ -87,9 +87,9 @@ export default function ContactInfoDetailPage() {
     };
   }, [companies, id, companyIdParam]);
 
-  // Load open jobs for company
+  // Load jobs assigned to this specific hiring manager/contact.
   useEffect(() => {
-    if (!companyId) {
+    if (!companyId || !contact) {
       setCompanyJobs([]);
       return;
     }
@@ -104,12 +104,20 @@ export default function ContactInfoDetailPage() {
           : Array.isArray(data)
             ? data
             : [];
-        const open = jobs.filter(
-          (j: any) =>
-            String(j.companyId) === String(companyId) &&
-            String(j.status || 'Open').toLowerCase() !== 'closed'
-        );
-        if (!cancelled) setCompanyJobs(open);
+        const normalize = (value: unknown) =>
+          String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        const contactName = normalize(contact.name);
+        const assigned = jobs.filter((j: any) => {
+          if (String(j.companyId || j.clientId || '') !== String(companyId)) {
+            return false;
+          }
+          const managerId =
+            j.hiringManagerContactId || j.hiring_manager_contact_id || '';
+          if (managerId) return String(managerId) === String(id);
+          // Legacy jobs may only have the hiring manager's name.
+          return normalize(j.hiringManagerName || j.hiring_manager_name) === contactName;
+        });
+        if (!cancelled) setCompanyJobs(assigned);
       } catch {
         if (!cancelled) setCompanyJobs([]);
       }
@@ -117,7 +125,7 @@ export default function ContactInfoDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [companyId]);
+  }, [companyId, contact, id]);
 
   if (isLoading) {
     return (

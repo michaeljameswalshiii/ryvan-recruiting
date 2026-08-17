@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/searchable-select';
 import { TagEditor } from '@/components/shared/TagEditor';
 import { mergeManualAndGenerated, tagsFromRecord } from '@/lib/tags';
+import { SalaryRangeFields } from '@/components/job/SalaryRangeFields';
 
 interface Job {
   id: string;
@@ -307,15 +308,7 @@ export default function NewJobPage() {
           />
         </div>
 
-        <div className="grid gap-2">
-          <Label htmlFor="salary">Salary Range</Label>
-          <Input
-            id="salary"
-            value={newJobSalary}
-            onChange={(e) => setNewJobSalary(e.target.value)}
-            placeholder="$120,000 - $150,000"
-          />
-        </div>
+        <SalaryRangeFields value={newJobSalary} onChange={setNewJobSalary} />
 
         <div className="grid gap-2">
           <Label htmlFor="employmentType">Employment Type</Label>

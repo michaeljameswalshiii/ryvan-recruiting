@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mammoth from 'mammoth';
+import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import { getSession } from '@/lib/server-auth';
 
 export const runtime = 'nodejs';
@@ -144,24 +146,43 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Spreadsheets — no parser installed; surface clear guidance
+    // Spreadsheets
     if (ext === 'xlsx' || ext === 'xls' || ext === 'xlsm') {
-      return NextResponse.json(
-        {
-          ok: false,
-          fileName,
-          error:
-            'Excel binary files are not parsed yet. Export as CSV (File → Save As → CSV) and upload that, or paste the relevant rows.',
-        },
-        { status: 422 }
-      );
+      if (ext !== 'xlsx' && ext !== 'xlsm') {
+        return NextResponse.json({ ok: false, fileName, error: 'Legacy .xls files are not supported. Save as .xlsx and upload again.' }, { status: 422 });
+      }
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer as any);
+      const sheets = workbook.worksheets.map((sheet) => {
+        const rows: string[] = [];
+        sheet.eachRow((row) => {
+          const values = Array.isArray(row.values) ? row.values.slice(1) : [];
+          rows.push(values.map((value) => String(value ?? '').replace(/\r?\n/g, ' ')).join('\t'));
+        });
+        return `## ${sheet.name}\n${rows.join('\n')}`;
+      });
+      const { text, truncated } = truncate(sheets.join('\n\n'));
+      return NextResponse.json({ ok: true, fileName, mimeType: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', charCount: text.length, truncated, text, format: 'tab-separated workbook text', sheets: workbook.worksheets.map((sheet) => sheet.name) });
+    }
+
+    // PowerPoint: extract slide titles and text from the OOXML package.
+    if (ext === 'pptx') {
+      const zip = await JSZip.loadAsync(buffer);
+      const slideNames = Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name)).sort();
+      const slides = await Promise.all(slideNames.map(async (name, index) => {
+        const xml = await zip.files[name].async('text');
+        const text = [...xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((match) => match[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')).join(' ').trim();
+        return `## Slide ${index + 1}\n${text}`;
+      }));
+      const { text, truncated } = truncate(slides.join('\n\n'));
+      return NextResponse.json({ ok: true, fileName, mimeType: file.type || 'application/vnd.openxmlformats-officedocument.presentationml.presentation', charCount: text.length, truncated, text, format: 'presentation text', slides: slideNames.length });
     }
 
     return NextResponse.json(
       {
         ok: false,
         fileName,
-        error: `Unsupported file type (.${ext || 'unknown'}). Supported: txt, md, csv, json, docx, pdf (best-effort).`,
+        error: `Unsupported file type (.${ext || 'unknown'}). Supported: txt, md, csv, json, docx, pdf, xlsx, xlsm, pptx.`,
       },
       { status: 415 }
     );

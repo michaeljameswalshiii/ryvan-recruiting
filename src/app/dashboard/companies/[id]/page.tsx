@@ -668,7 +668,7 @@ function OverviewTab({
               {primaryContact && (
                 <Badge
                   variant="secondary"
-                  className="ml-1 bg-yellow-100 text-yellow-800 normal-case tracking-normal"
+                  className="ml-1 bg-indigo-50 text-indigo-800 normal-case tracking-normal"
                 >
                   <Star className="h-3 w-3 mr-1" />
                   Primary
@@ -1106,7 +1106,6 @@ function ContactsTab({ company, leads, onEmailClick }: { company: any; leads: an
       await removeContactMutation.mutateAsync({
         clientId: company.id,
         contactId: deletingContact.id,
-        contactName: deletingContact.name,
       });
       setDeletingContact(null);
     } catch (err: any) {
@@ -1214,7 +1213,7 @@ function ContactsTab({ company, leads, onEmailClick }: { company: any; leads: an
                       )}
                     </h4>
                     {contact.isPrimary && (
-                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-xs">
+                      <Badge variant="secondary" className="bg-indigo-50 text-indigo-800 text-xs">
                         <Star className="h-3 w-3 mr-1" />
                         Primary
                       </Badge>

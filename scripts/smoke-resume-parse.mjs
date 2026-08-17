@@ -4,7 +4,7 @@ import { parseResumeText } from '../src/lib/candidates/resume-text-parser.ts';
 const sample = `
 JANE A. DOE
 Senior Software Engineer
-San Francisco, CA | jane.doe@email.com | (415) 555-1234
+San Francisco, CA | jane.doe@email.com | (415) 696-1234
 linkedin.com/in/janedoe
 
 PROFESSIONAL SUMMARY
@@ -38,7 +38,7 @@ console.log(JSON.stringify(r, null, 2));
 const checks = [
   ['name', r.name.toLowerCase().includes('jane')],
   ['email', r.email.includes('jane.doe')],
-  ['phone', r.phone.includes('415')],
+  ['phone', r.phone.includes('415') && r.phone.includes('696')],
   ['title', /engineer/i.test(r.title)],
   ['location', /francisco/i.test(r.location)],
   ['skills', r.skills.length >= 3],

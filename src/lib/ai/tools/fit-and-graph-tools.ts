@@ -137,6 +137,12 @@ export async function executeGetTalentGraph(
       count: s.count,
       placedCount: s.placedCount,
     }));
+    const topTags = (graph.tags || []).slice(0, 15).map((tag) => ({
+      tag: tag.tag,
+      facet: tag.facet,
+      count: tag.count,
+      placedCount: tag.placedCount,
+    }));
 
     const titleKeys = Object.keys(graph.byJobTitle || {}).slice(0, 8);
     const byJobTitleSample: Record<string, Array<{ skill: string; placedCount: number }>> =
@@ -152,6 +158,7 @@ export async function executeGetTalentGraph(
       data: {
         summary: {
           topSkills,
+          topTags,
           topPlacedSkills: topPlaced,
           byJobTitleSample,
           meta: graph.meta,
@@ -183,7 +190,7 @@ export const FIT_GRAPH_TOOLS: ToolDefinition[] = [
   {
     name: "get_talent_graph",
     description:
-      "Get a summary of the tenant talent skills graph: top skills across candidates, " +
+      "Get a summary of the tenant talent graph: top skills and controlled tags across candidates, " +
       "skills associated with placements/offers, and sample skills by job title. " +
       "Optional param: rebuild (boolean) to force rebuild.",
     execute: executeGetTalentGraph,

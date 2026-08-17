@@ -1071,29 +1071,29 @@ Make "optimizedQuery" as effective as possible for Apollo's search engine.`;
           <div>
             <p className="text-muted-foreground mb-1">Industries:</p>
             <div className="flex flex-wrap gap-1">
-              {expansionResult.industries.map((item: string, i: number) => (
+              {(expansionResult.industries ?? []).map((item: string, i: number) => (
                 <Badge key={i} variant="outline">{item}</Badge>
               ))}
             </div>
           </div>
         )}
 
-        {expansionResult.locations?.length > 0 && (
+        {(expansionResult.locations?.length ?? 0) > 0 && (
           <div>
             <p className="text-muted-foreground mb-1">Locations:</p>
             <div className="flex flex-wrap gap-1">
-              {expansionResult.locations.map((item: string, i: number) => (
+              {(expansionResult.locations ?? []).map((item: string, i: number) => (
                 <Badge key={i} variant="outline">{item}</Badge>
               ))}
             </div>
           </div>
         )}
 
-        {expansionResult.keywords?.length > 0 && (
+        {(expansionResult.keywords?.length ?? 0) > 0 && (
           <div>
             <p className="text-muted-foreground mb-1">Keywords:</p>
             <div className="flex flex-wrap gap-1">
-              {expansionResult.keywords.map((item: string, i: number) => (
+              {(expansionResult.keywords ?? []).map((item: string, i: number) => (
                 <Badge key={i} variant="secondary">{item}</Badge>
               ))}
             </div>

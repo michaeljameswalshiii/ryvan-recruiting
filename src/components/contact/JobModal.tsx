@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { SalaryRangeFields } from '@/components/job/SalaryRangeFields';
 
 type Job = {
   id?: string;
@@ -157,17 +158,10 @@ export default function JobModal({
             </div>
           </div>
 
-          {/* Salary Range */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Salary Range (optional)</label>
-            <input
-              type="text"
-              value={form.salaryRange || ''}
-              onChange={(e) => setForm({ ...form, salaryRange: e.target.value })}
-              placeholder="e.g. $120k - $180k"
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+          <SalaryRangeFields
+            value={form.salaryRange || ''}
+            onChange={(salaryRange) => setForm({ ...form, salaryRange })}
+          />
 
           {/* Status */}
           <div>

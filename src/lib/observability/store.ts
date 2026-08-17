@@ -410,6 +410,48 @@ export async function getRecentErrors(tenantId?: string | null): Promise<StoredE
   return mergeErrors(primary, legacy);
 }
 
+export async function clearRecentErrors(tenantId?: string | null): Promise<number> {
+  const { putItem } = await import("@/lib/db/dynamodb");
+  const scope = tenantId && tenantId !== "all" ? tenantId : "all";
+  const ids = [recentErrorsId(scope)];
+  if (scope === "all") ids.push(LEGACY_ERRORS_ID);
+  let cleared = 0;
+  const now = new Date().toISOString();
+  for (const id of ids) {
+    const items = await readErrorDoc(id);
+    cleared += items.length;
+    await putItem(table(), {
+      id,
+      type: "ops_errors",
+      items: [],
+      updatedAt: now,
+      clearedAt: now,
+    });
+  }
+  return cleared;
+}
+
+export async function clearRecentEvents(tenantId?: string | null): Promise<number> {
+  const { putItem } = await import("@/lib/db/dynamodb");
+  const scope = tenantId && tenantId !== "all" ? tenantId : "all";
+  const ids = [recentEventsId(scope)];
+  if (scope === "all") ids.push(LEGACY_EVENTS_ID);
+  let cleared = 0;
+  const now = new Date().toISOString();
+  for (const id of ids) {
+    const items = await readEventDoc(id);
+    cleared += items.length;
+    await putItem(table(), {
+      id,
+      type: "ops_events",
+      items: [],
+      updatedAt: now,
+      clearedAt: now,
+    });
+  }
+  return cleared;
+}
+
 export async function getCronHeartbeat(cronId: string): Promise<CronHeartbeat | null> {
   try {
     return await getItem<CronHeartbeat>(table(), { id: `ops-cron#${cronId}` });

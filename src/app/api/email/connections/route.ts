@@ -6,10 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/server-auth";
-import {
-  getUserEmailConnections,
-  getActiveEmailConnections,
-} from "@/lib/db/repositories/email-connection-repository";
+import { getUserEmailConnections } from "@/lib/db/repositories/email-connection-repository";
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,7 +24,14 @@ export async function GET(request: NextRequest) {
     }
 
     const connections = await getUserEmailConnections(userId);
-    const activeConnections = await getActiveEmailConnections(userId);
+    const activeConnections = connections
+      .filter(
+        (c) => c.status === "active" && (!c.expiresAt || c.expiresAt > Date.now())
+      )
+      .map((c) => ({
+        provider: c.provider,
+        emailAddress: c.emailAddress,
+      }));
 
     const safeConnections = connections.map((c) => ({
       provider: c.provider,

@@ -20,10 +20,23 @@ import {
   getToolSchemas,
   type ToolContext,
 } from "@/lib/ai/tools";
+import { applyApolloPrefire } from "@/lib/ai/apollo-intent";
+import {
+  crmWriteNudgeForQuery,
+  maxIterationsFallback,
+  shouldNudgeCrmWrite,
+  shouldRetryCrmWrite,
+  toolLoopBudget,
+  withLinkedInCreateGuidance,
+} from "@/lib/ai/crm-write-loop";
 
 export const MANTLE_GROK_43 = "xai.grok-4.3";
 
-const MAX_ITERATIONS = 5;
+function usesCompletionTokens(model: string): boolean {
+  return /grok|xai\./i.test(model || "");
+}
+
+const DEFAULT_MAX_ITERATIONS = 6;
 
 function mantleRegion(): string {
   return (
@@ -144,11 +157,15 @@ async function invokeMantleChat(params: {
 }> {
   const region = mantleRegion();
   const url = `${mantleBaseUrl(region)}/chat/completions`;
+  const maxOut = params.maxTokens ?? 4096;
   const bodyObj: Record<string, unknown> = {
     model: params.model,
     messages: params.messages,
     temperature: params.temperature ?? 0.7,
-    max_tokens: params.maxTokens ?? 4096,
+    // AWS Grok 4.3 on Mantle rejects max_tokens — it wants max_completion_tokens.
+    ...(usesCompletionTokens(params.model)
+      ? { max_completion_tokens: maxOut }
+      : { max_tokens: maxOut }),
   };
   if (params.tools?.length) {
     bodyObj.tools = params.tools;
@@ -160,6 +177,19 @@ async function invokeMantleChat(params: {
 
   if (!res.ok) {
     const text = await res.text();
+    const usedCompletion = usesCompletionTokens(params.model);
+    if (
+      !usedCompletion &&
+      /max_tokens|max_completion_tokens/i.test(text) &&
+      /not supported|unsupported/i.test(text)
+    ) {
+      return invokeMantleChat({
+        ...params,
+        model: params.model.includes("xai.")
+          ? params.model
+          : `xai.${params.model}`,
+      });
+    }
     let msg = `Bedrock Mantle error (${res.status})`;
     try {
       const json = JSON.parse(text);
@@ -274,10 +304,17 @@ export async function runMantleGrokAgent(params: {
 }): Promise<{ text: string; toolsUsed: string[]; model: string }> {
   const model = params.model || MANTLE_GROK_43;
   const useTools = params.useTools !== false;
-  const systemPrompt =
+  const baseSystem =
     params.systemPrompt ||
     `You are a recruiting AI assistant on Grok 4.3 via Amazon Bedrock Mantle.
 Use tools when they improve the answer. Be concise and actionable.`;
+
+  const pre = await applyApolloPrefire(
+    params.query,
+    withLinkedInCreateGuidance(baseSystem, params.query),
+    params.toolContext
+  );
+  const maxIterations = toolLoopBudget(params.query, DEFAULT_MAX_ITERATIONS);
 
   const prior = (params.history || [])
     .filter((m) => m.role === "user" || m.role === "assistant")
@@ -285,19 +322,22 @@ Use tools when they improve the answer. Be concise and actionable.`;
     .slice(-20);
 
   const messages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
+    { role: "system", content: pre.systemPrompt },
     ...prior.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
     })),
-    { role: "user", content: params.query },
+    { role: "user", content: pre.query },
   ];
 
   const tools = useTools ? toOpenAITools() : undefined;
-  const toolsUsed = new Set<string>();
+  const toolsUsed = new Set<string>(pre.toolsUsed);
   let usedModel = model;
 
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
+  for (let i = 0; i < maxIterations; i++) {
+    if (shouldNudgeCrmWrite(params.query, i, maxIterations, toolsUsed)) {
+      messages.push({ role: "user", content: crmWriteNudgeForQuery(params.query) });
+    }
     const result = await invokeMantleChat({
       model,
       messages,
@@ -307,8 +347,20 @@ Use tools when they improve the answer. Be concise and actionable.`;
     const toolCalls = result.tool_calls || [];
 
     if (!toolCalls.length) {
+      const text = result.content || "No response";
+      if (
+        shouldRetryCrmWrite(params.query, toolsUsed) &&
+        i < maxIterations - 1
+      ) {
+        messages.push({ role: "assistant", content: text });
+        messages.push({
+          role: "user",
+          content: crmWriteNudgeForQuery(params.query),
+        });
+        continue;
+      }
       return {
-        text: result.content || "No response",
+        text,
         toolsUsed: Array.from(toolsUsed),
         model: usedModel,
       };
@@ -350,7 +402,7 @@ Use tools when they improve the answer. Be concise and actionable.`;
   }
 
   return {
-    text: "Maximum tool iterations reached. Please refine your query.",
+    text: maxIterationsFallback(params.query),
     toolsUsed: Array.from(toolsUsed),
     model: usedModel,
   };

@@ -44,7 +44,7 @@ export async function getAllPipeline(tenantId: string): Promise<Pipeline[]> {
   // Always DynamoDB — stage moves must reflect immediately (no warm-cache lag)
   console.log('[PIPELINE-REPO] Querying DynamoDB with table:', pipelineTable);
   try {
-    const pipeline = await queryItems<Pipeline>(
+    const { items: pipeline } = await queryItems<Pipeline>(
       pipelineTable,
       'tenant_id = :tenantId',
       { ':tenantId': tenantId }

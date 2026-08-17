@@ -304,9 +304,13 @@ export function scheduleCrmCacheInvalidation(
     forceAll?: boolean;
     soft?: boolean;
     delayMs?: number;
+    refetchType?: "active" | "all" | "none";
   }
 ): void {
-  const delayMs = options?.delayMs ?? 100;
+  const wroteCompanies = (toolsUsed || []).some((t) =>
+    /create_company|update_company|create_client|update_client/i.test(String(t))
+  );
+  const delayMs = wroteCompanies ? 0 : options?.delayMs ?? 100;
   const existing = pendingByClient.get(queryClient);
   if (existing) {
     cancelPending(existing);
@@ -326,11 +330,14 @@ export function scheduleCrmCacheInvalidation(
   const fire = () => {
     pendingByClient.delete(queryClient);
     const invOpts: CrmInvalidateOptions = {
-      forceClients,
+      forceClients: forceClients || wroteCompanies,
       forceAll,
       soft,
-      // When soft is false, active-only refetch keeps nav snappy
-      refetchType: soft ? 'none' : 'active',
+      // Company creates must refresh the Companies list even if that page
+      // is in the background. Other writes stay active-only so nav stays snappy.
+      refetchType: soft
+        ? "none"
+        : options?.refetchType || (wroteCompanies ? "all" : "active"),
     };
     void invalidateCrmCaches(queryClient, tools, invOpts);
   };

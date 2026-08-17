@@ -8,7 +8,7 @@
 
 import {
   getItem,
-  queryItems,
+  queryAllItems,
   putItem,
   deleteItem,
   updateItem,
@@ -58,14 +58,11 @@ export async function getAllJobs(tenantId: string): Promise<Job[]> {
 
   try {
     // Query from DynamoDB
-    const result = await queryItems<Job>(
+    const jobs = await queryAllItems<Job>(
       jobsTable,
       'tenant_id = :tenantId',
       { ':tenantId': tenantId }
     );
-
-    // GUARD: Ensure we always have an array - even if DynamoDB returns corrupted data
-    const jobs = Array.isArray(result?.items) ? result.items : [];
     console.log('[getAllJobs] Got jobs from DynamoDB:', jobs.length);
 
     return jobs;
@@ -383,6 +380,11 @@ export async function updateJob(
     updates.push('#fee_guarantee = :fee_guarantee');
     values[':fee_guarantee'] = data.fee_guarantee || '';
     names['#fee_guarantee'] = 'fee_guarantee';
+  }
+  if (data.booleanStrings !== undefined) {
+    updates.push('#booleanStrings = :booleanStrings');
+    values[':booleanStrings'] = data.booleanStrings;
+    names['#booleanStrings'] = 'booleanStrings';
   }
 
   if (updates.length === 0) {

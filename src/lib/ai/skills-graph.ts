@@ -4,6 +4,8 @@
  */
 
 import { normalizeSkill as fitNormalizeSkill, extractSkillsFromText } from "./fit-score";
+import { labelToId, mergeTaxonomy } from "@/lib/tags";
+import type { TagFacet, TenantTaxonomyOverrides } from "@/lib/tags";
 
 export { normalizeSkill } from "./fit-score";
 
@@ -13,10 +15,21 @@ export interface SkillNode {
   placedCount: number;
 }
 
+export interface TalentTagNode {
+  id: string;
+  tag: string;
+  facet: TagFacet | "other";
+  count: number;
+  placedCount: number;
+}
+
 export interface TenantSkillsGraph {
   skills: SkillNode[];
   topPlacedSkills: SkillNode[];
   byJobTitle: Record<string, SkillNode[]>;
+  /** Controlled/manual candidate tags, kept separate from legacy skills. */
+  tags?: TalentTagNode[];
+  byTagFacet?: Record<string, TalentTagNode[]>;
   /** ISO timestamp when snapshot was built */
   builtAt?: string;
   /** Total candidates / jobs scanned */
@@ -24,6 +37,7 @@ export interface TenantSkillsGraph {
     leadCount: number;
     jobCount: number;
     placedOutcomes: number;
+    tagAssignments?: number;
   };
 }
 
@@ -92,6 +106,7 @@ function bump(
 export function buildTenantSkillsSnapshot(
   leads: Array<{
     skills?: string[];
+    tags?: string[];
     title?: string;
     summary?: string;
     experience?: Array<{ title?: string; description?: string; [k: string]: unknown }>;
@@ -112,11 +127,43 @@ export function buildTenantSkillsSnapshot(
       candidateId?: string;
       stage?: string;
     }>;
-  }>
+  }>,
+  opts?: { tagTaxonomy?: TenantTaxonomyOverrides | null }
 ): TenantSkillsGraph {
   const global = new Map<string, MutableNode>();
   const byTitle = new Map<string, Map<string, MutableNode>>();
+  const tagNodes = new Map<string, TalentTagNode>();
   let placedOutcomes = 0;
+  let tagAssignments = 0;
+
+  const taxonomy = mergeTaxonomy(opts?.tagTaxonomy).filter((row) =>
+    row.objects.includes("candidate")
+  );
+  const taxonomyById = new Map(taxonomy.map((row) => [row.id, row]));
+
+  const describeTag = (raw: string) => {
+    const value = String(raw || "").trim();
+    const mappedId = labelToId(value, taxonomy);
+    const entry = mappedId ? taxonomyById.get(mappedId) : undefined;
+    return {
+      id: entry?.id || value.toLowerCase(),
+      tag: entry?.label || value,
+      facet: entry?.facet || ("other" as const),
+    };
+  };
+
+  const bumpTag = (raw: string, placed = false) => {
+    const descriptor = describeTag(raw);
+    if (!descriptor.id || !descriptor.tag) return;
+    const existing = tagNodes.get(descriptor.id) || {
+      ...descriptor,
+      count: 0,
+      placedCount: 0,
+    };
+    existing.count += 1;
+    if (placed) existing.placedCount += 1;
+    tagNodes.set(descriptor.id, existing);
+  };
 
   const ensureTitleMap = (title: string) => {
     const t = (title || "Unknown role").trim() || "Unknown role";
@@ -136,8 +183,15 @@ export function buildTenantSkillsSnapshot(
 
   for (const lead of leads) {
     const skills = skillListFromLead(lead);
+    const candidateTags = Array.from(
+      new Set((lead.tags || []).map((tag) => String(tag || "").trim()).filter(Boolean))
+    );
     for (const s of skills) {
       bump(global, s, { count: 1 });
+    }
+    for (const tag of candidateTags) {
+      bumpTag(tag);
+      tagAssignments += 1;
     }
 
     // From candidate-centric linkedJobs
@@ -152,6 +206,11 @@ export function buildTenantSkillsSnapshot(
       for (const s of skills) {
         bump(global, s, { placed: 1 });
         bump(map, s, { count: 1, placed: 1 });
+      }
+      for (const tag of candidateTags) {
+        const descriptor = describeTag(tag);
+        const node = tagNodes.get(descriptor.id);
+        if (node) node.placedCount += 1;
       }
     }
   }
@@ -191,15 +250,29 @@ export function buildTenantSkillsSnapshot(
     byJobTitle[title] = toSorted(map).slice(0, 30);
   }
 
+  const tags = Array.from(tagNodes.values()).sort(
+    (a, b) =>
+      b.count - a.count ||
+      b.placedCount - a.placedCount ||
+      a.tag.localeCompare(b.tag)
+  );
+  const byTagFacet: Record<string, TalentTagNode[]> = {};
+  for (const node of tags) {
+    (byTagFacet[node.facet] ||= []).push(node);
+  }
+
   return {
     skills: skills.slice(0, 200),
     topPlacedSkills,
     byJobTitle,
+    tags: tags.slice(0, 200),
+    byTagFacet,
     builtAt: new Date().toISOString(),
     meta: {
       leadCount: leads.length,
       jobCount: jobs.length,
       placedOutcomes,
+      tagAssignments,
     },
   };
 }

@@ -11,6 +11,7 @@
 
 import { ToolResult, ToolContext, ToolParams } from "./types";
 import { hostnameFrom } from "@/lib/ai/company-from-website";
+import { isLinkedInProfileUrl } from "@/lib/ai/crm-write-loop";
 
 export const FETCH_WEBSITE_TOOL_NAME = "fetch_website";
 export const FETCH_WEBSITE_TOOL_DESCRIPTION =
@@ -319,6 +320,27 @@ export async function executeFetchWebsite(
       success: false,
       error: "That host cannot be fetched for security reasons",
       data: { fetchFailed: true },
+    };
+  }
+
+  if (isLinkedInProfileUrl(parsed.toString())) {
+    return {
+      success: true,
+      data: {
+        url: parsed.toString(),
+        finalUrl: parsed.toString(),
+        title: "",
+        text: "",
+        truncated: false,
+        domain: hostnameFrom(parsed.hostname),
+        fetchFailed: true,
+        insufficientText: true,
+        groundingNote:
+          "LinkedIn profile pages cannot be scraped. Use Apollo (apollo_lookup / the APOLLO LOOKUP block) as source of truth. " +
+          "Do not retry fetch_website or web_search on this URL. " +
+          "If the user asked to create a company and contact, call create_company_with_primary_contact now.",
+      } satisfies FetchWebsiteResultData,
+      metadata: { skipped: "linkedin_profile" },
     };
   }
 

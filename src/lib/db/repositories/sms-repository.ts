@@ -4,7 +4,7 @@
  * @serverOnly
  */
 
-import { getItem, putItem, tableNames } from '../dynamodb';
+import { getItem, putItem, scanItems, tableNames } from '../dynamodb';
 import type {
   SmsTenantConfig,
   UpdateSmsConfigInput,
@@ -49,6 +49,42 @@ interface IdIndex {
   type: string;
   ids: string[];
   updatedAt: string;
+}
+
+export interface SmsConversationRoute {
+  id: string;
+  tenant_id: string;
+  type: 'sms_conversation_route';
+  destinationNumber: string;
+  phoneE164: string;
+  candidateId?: string;
+  candidateName?: string;
+  contactId?: string;
+  contactName?: string;
+  companyId?: string;
+  ownerUserId?: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  lastProviderMessageId?: string;
+  unreadCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+type SmsProviderRoute = {
+  id: string;
+  tenant_id: string;
+  type: 'sms_provider_route';
+  conversationKey: string;
+  createdAt: string;
+};
+
+function conversationRouteKey(destinationNumber: string, phoneE164: string) {
+  return `sms-route#${destinationNumber}#${phoneE164}`;
+}
+
+function providerRouteKey(providerMessageId: string) {
+  return `sms-provider-route#${providerMessageId}`;
 }
 
 async function getIndex(key: string): Promise<IdIndex | null> {
@@ -112,6 +148,189 @@ export async function getSmsConfig(tenantId: string): Promise<SmsTenantConfig> {
     /* fall through */
   }
   return defaultSmsConfig(tenantId);
+}
+
+export async function findSmsTenantByOriginationIdentity(
+  originationIdentity: string
+): Promise<string | null> {
+  const matches = await scanItems<SmsTenantConfig>(
+    tableNames.profiles,
+    '#type = :type AND originationIdentity = :identity',
+    { ':type': 'sms_tenant_config', ':identity': originationIdentity },
+    { '#type': 'type' }
+  );
+  return matches.find((item) => item.enabled)?.tenant_id || matches[0]?.tenant_id || null;
+}
+
+export async function getSmsConversationRoute(
+  destinationNumber: string,
+  phoneE164: string
+): Promise<SmsConversationRoute | null> {
+  try {
+    return await getItem<SmsConversationRoute>(tableNames.profiles, {
+      id: conversationRouteKey(destinationNumber, phoneE164),
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function getSmsConversationRouteByProviderMessageId(
+  providerMessageId: string
+): Promise<SmsConversationRoute | null> {
+  try {
+    const providerRoute = await getItem<SmsProviderRoute>(tableNames.profiles, {
+      id: providerRouteKey(providerMessageId),
+    });
+    if (!providerRoute?.conversationKey) return null;
+    return await getItem<SmsConversationRoute>(tableNames.profiles, {
+      id: providerRoute.conversationKey,
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveSmsConversationRoute(input: {
+  destinationNumber?: string;
+  phoneE164: string;
+  previousProviderMessageId?: string;
+}): Promise<SmsConversationRoute | null> {
+  if (input.previousProviderMessageId) {
+    const byMessage = await getSmsConversationRouteByProviderMessageId(
+      input.previousProviderMessageId
+    );
+    if (byMessage) return byMessage;
+  }
+  if (!input.destinationNumber) return null;
+  return getSmsConversationRoute(input.destinationNumber, input.phoneE164);
+}
+
+export async function upsertSmsConversationRoute(input: {
+  tenantId: string;
+  destinationNumber: string;
+  phoneE164: string;
+  candidateId?: string;
+  candidateName?: string;
+  contactId?: string;
+  contactName?: string;
+  companyId?: string;
+  ownerUserId?: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  providerMessageId?: string;
+}): Promise<SmsConversationRoute> {
+  const id = conversationRouteKey(input.destinationNumber, input.phoneE164);
+  const existing = await getItem<SmsConversationRoute>(tableNames.profiles, { id });
+  if (existing && existing.tenant_id !== input.tenantId) {
+    throw new Error('SMS conversation number pair belongs to another tenant');
+  }
+  const now = new Date().toISOString();
+  const route: SmsConversationRoute = {
+    id,
+    tenant_id: input.tenantId,
+    type: 'sms_conversation_route',
+    destinationNumber: input.destinationNumber,
+    phoneE164: input.phoneE164,
+    candidateId: input.candidateId || existing?.candidateId,
+    candidateName: input.candidateName || existing?.candidateName,
+    contactId: input.contactId || existing?.contactId,
+    contactName: input.contactName || existing?.contactName,
+    companyId: input.companyId || existing?.companyId,
+    // An explicit manager reassignment remains sticky when another user replies.
+    ownerUserId: existing?.ownerUserId || input.ownerUserId,
+    ownerName: existing?.ownerName || input.ownerName,
+    ownerEmail: existing?.ownerEmail || input.ownerEmail,
+    lastProviderMessageId:
+      input.providerMessageId || existing?.lastProviderMessageId,
+    unreadCount: existing?.unreadCount || 0,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+  await putItem(tableNames.profiles, route);
+  if (input.providerMessageId) {
+    await putItem(tableNames.profiles, {
+      id: providerRouteKey(input.providerMessageId),
+      tenant_id: input.tenantId,
+      type: 'sms_provider_route',
+      conversationKey: route.id,
+      createdAt: now,
+    } satisfies SmsProviderRoute);
+  }
+  return route;
+}
+
+export async function listSmsConversationRoutes(
+  tenantId: string
+): Promise<SmsConversationRoute[]> {
+  return scanItems<SmsConversationRoute>(
+    tableNames.profiles,
+    '#type = :type AND tenant_id = :tenantId',
+    { ':type': 'sms_conversation_route', ':tenantId': tenantId },
+    { '#type': 'type' }
+  );
+}
+
+export async function assignSmsConversationRoute(input: {
+  tenantId: string;
+  conversationKey: string;
+  ownerUserId?: string;
+  ownerName?: string;
+  ownerEmail?: string;
+}): Promise<SmsConversationRoute | null> {
+  const existing = await getItem<SmsConversationRoute>(tableNames.profiles, {
+    id: input.conversationKey,
+  });
+  if (!existing || existing.tenant_id !== input.tenantId) return null;
+  const next: SmsConversationRoute = {
+    ...existing,
+    ownerUserId: input.ownerUserId,
+    ownerName: input.ownerName,
+    ownerEmail: input.ownerEmail,
+    updatedAt: new Date().toISOString(),
+  };
+  await putItem(tableNames.profiles, next);
+  return next;
+}
+
+export async function incrementSmsConversationUnread(
+  conversationKey: string
+): Promise<void> {
+  const existing = await getItem<SmsConversationRoute>(tableNames.profiles, {
+    id: conversationKey,
+  });
+  if (!existing) return;
+  await putItem(tableNames.profiles, {
+    ...existing,
+    unreadCount: (existing.unreadCount || 0) + 1,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function markSmsConversationRead(input: {
+  tenantId: string;
+  conversationKey: string;
+  userId: string;
+  canReadAll: boolean;
+}): Promise<boolean> {
+  const existing = await getItem<SmsConversationRoute>(tableNames.profiles, {
+    id: input.conversationKey,
+  });
+  if (
+    !existing ||
+    existing.tenant_id !== input.tenantId ||
+    (existing.ownerUserId
+      ? existing.ownerUserId !== input.userId
+      : !input.canReadAll)
+  ) {
+    return false;
+  }
+  await putItem(tableNames.profiles, {
+    ...existing,
+    unreadCount: 0,
+    updatedAt: new Date().toISOString(),
+  });
+  return true;
 }
 
 export async function updateSmsConfig(

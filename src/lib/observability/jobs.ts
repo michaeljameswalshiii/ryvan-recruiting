@@ -5,6 +5,7 @@
 
 import type { JobHealth, OpsStatus } from "./types";
 import { getCronHeartbeat } from "./store";
+import { getPlatformAgentControls } from "@/lib/agents/platform-control";
 
 export const CRON_CATALOG = [
   {
@@ -39,9 +40,23 @@ export const CRON_CATALOG = [
 
 export async function getJobHealth(): Promise<JobHealth[]> {
   const now = Date.now();
+  const controls = await getPlatformAgentControls();
   return Promise.all(
     CRON_CATALOG.map(async (job) => {
+      const enabled = controls.agents[job.id]?.enabled === true;
       const beat = await getCronHeartbeat(job.id);
+      if (!enabled) {
+        return {
+          id: job.id,
+          label: job.label,
+          schedule: job.schedule,
+          status: "unknown" as const,
+          lastRunAt: beat?.lastRunAt,
+          durationMs: beat?.durationMs,
+          detail: "Schedule is off — manage in AI Agents",
+          stale: false,
+        };
+      }
       if (!beat?.lastRunAt) {
         return {
           id: job.id,
@@ -51,8 +66,9 @@ export async function getJobHealth(): Promise<JobHealth[]> {
           detail: "No heartbeat yet — will appear after the next scheduled run",
         };
       }
+      const skipped = (beat.detail || "").includes("Schedule off");
       const age = now - Date.parse(beat.lastRunAt);
-      const stale = Number.isFinite(age) && age > job.staleAfterMs;
+      const stale = !skipped && Number.isFinite(age) && age > job.staleAfterMs;
       let status: OpsStatus = beat.status === "error" ? "incident" : "healthy";
       if (stale && status === "healthy") status = "degraded";
       return {

@@ -2,8 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJobEvents, recordJobEvent } from '@/lib/events/job-events';
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const jobId = params.id;
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: jobId } = await params;
   console.log(`[Events API] GET request for job ${jobId}`);
 
   try {
@@ -20,8 +20,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 // === SUPER DIAGNOSTIC TEST POST ===
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const jobId = params.id;
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: jobId } = await params;
   console.log(`[TEST POST] Started for job ${jobId}`);
 
   try {

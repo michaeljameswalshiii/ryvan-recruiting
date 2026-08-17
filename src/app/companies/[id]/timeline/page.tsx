@@ -1,13 +1,12 @@
 ﻿import CompanyTimeline from '@/components/company-timeline';
 import { BackToDashboard } from '@/components/ui/BackToDashboard';
-import Link from 'next/link';
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function CompanyTimelinePage({ params }: Props) {
-  const companyId = params.id;
+  const { id: companyId } = await params;
 
   return (
     <div className="max-w-4xl mx-auto p-6">

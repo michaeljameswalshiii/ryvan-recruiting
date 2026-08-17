@@ -9,26 +9,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tableNames } from '@/lib/db/dynamodb';
 import { processListBuilderBatch } from '@/lib/list-builder/runner';
+import { recordCronHeartbeat } from '@/lib/observability/store';
+import { cronAuthorized, skipIfScheduleOff } from '@/lib/agents/cron-gate';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-function authorize(request: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    if (process.env.NODE_ENV !== 'production') return true;
-    return false;
-  }
-  const auth = request.headers.get('authorization') || '';
-  const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
-  const header = request.headers.get('x-cron-secret') || '';
-  return bearer === secret || header === secret;
-}
-
 async function handle(request: NextRequest) {
-  if (!authorize(request)) {
+  if (!cronAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const skipped = await skipIfScheduleOff(request, 'list-builder-run');
+  if (skipped) return skipped;
 
   let processed = 0;
   let errors = 0;
@@ -72,18 +64,38 @@ async function handle(request: NextRequest) {
     }
   } catch (err) {
     console.error('[cron/list-builder] scan', err);
+    await recordCronHeartbeat({
+      cronId: 'list-builder-run',
+      label: 'List builder',
+      schedule: 'Every 5 minutes',
+      path: '/api/cron/list-builder-run',
+      status: 'error',
+      durationMs: Date.now() - started,
+      detail: String(err),
+    });
     return NextResponse.json(
       { error: 'Scan failed', detail: String(err) },
       { status: 500 }
     );
   }
 
+  const elapsedMs = Date.now() - started;
+  await recordCronHeartbeat({
+    cronId: 'list-builder-run',
+    label: 'List builder',
+    schedule: 'Every 5 minutes',
+    path: '/api/cron/list-builder-run',
+    status: errors > 0 ? 'error' : 'ok',
+    durationMs: elapsedMs,
+    detail: `${processed} processed · ${doneCount} done · ${errors} errors`,
+  });
+
   return NextResponse.json({
     ok: true,
     processed,
     errors,
     done: doneCount,
-    elapsedMs: Date.now() - started,
+    elapsedMs,
   });
 }
 

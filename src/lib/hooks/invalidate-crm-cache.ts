@@ -22,6 +22,7 @@ import { pipelineKeys } from './query-pipeline';
 const CLIENT_TOOLS = new Set([
   'create_company',
   'update_company',
+  'create_company_with_primary_contact',
   'create_contact',
   'update_contact',
   'create_client',
@@ -51,6 +52,7 @@ const JOB_TOOLS = new Set([
  */
 export const CRM_FALLBACK_WRITE_TOOLS = [
   'create_company',
+  'create_company_with_primary_contact',
   'create_contact',
   'create_candidate',
   'create_job',
@@ -183,9 +185,15 @@ export async function invalidateCrmCaches(
       ch.postMessage({
         type: 'crm-invalidate',
         toolsUsed,
+        clients: touched.clients,
         at: Date.now(),
       });
       ch.close();
+    }
+    if (typeof window !== 'undefined' && touched.clients) {
+      window.dispatchEvent(
+        new CustomEvent('trio-companies-changed', { detail: { toolsUsed } })
+      );
     }
   } catch {
     /* ignore */

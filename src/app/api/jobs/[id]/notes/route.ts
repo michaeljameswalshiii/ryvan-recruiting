@@ -2,8 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addNoteToJob, getJobEvents } from '@/lib/events/job-events';
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const jobId = params.id;
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: jobId } = await params;
   console.log(`[Job Notes API] POST for job ${jobId}`);
 
   try {

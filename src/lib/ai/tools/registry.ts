@@ -9,6 +9,11 @@
 import { ToolDefinition, ToolParams, ToolContext, ToolResult } from "./types";
 import { executeApolloSearch, APOLLO_TOOL_NAME, APOLLO_TOOL_DESCRIPTION } from "./apollo";
 import { executeApolloCompanySearch, APOLLO_COMPANY_TOOL_NAME, APOLLO_COMPANY_TOOL_DESCRIPTION } from "./apollo-company";
+import {
+  executeApolloLookup,
+  APOLLO_LOOKUP_TOOL_NAME,
+  APOLLO_LOOKUP_TOOL_DESCRIPTION,
+} from "./apollo-lookup";
 import { executeTavilySearch, TAVILY_TOOL_NAME, TAVILY_TOOL_DESCRIPTION } from "./tavily";
 import {
   executeFetchWebsite,
@@ -26,6 +31,14 @@ import { FIT_GRAPH_TOOLS } from "./fit-and-graph-tools";
 import { SEQUENCE_TOOLS } from "./sequence-tools";
 import { PLAYBOOK_TOOLS } from "./playbook-tools";
 import { SCREEN_TOOLS } from "./screen-tools";
+import {
+  executeGeneratePresentation,
+  executeGenerateImage,
+  GENERATE_PRESENTATION_TOOL_NAME,
+  GENERATE_PRESENTATION_TOOL_DESCRIPTION,
+  GENERATE_IMAGE_TOOL_NAME,
+  GENERATE_IMAGE_TOOL_DESCRIPTION,
+} from "./visual";
 import { LIST_BUILDER_TOOLS } from "./list-builder-tools";
 import {
   executeAgentCoreWebSearch,
@@ -73,6 +86,12 @@ function initializeRegistry(): void {
     description: APOLLO_COMPANY_TOOL_DESCRIPTION,
     execute: executeApolloCompanySearch,
   };
+
+  TOOL_REGISTRY[APOLLO_LOOKUP_TOOL_NAME] = {
+    name: APOLLO_LOOKUP_TOOL_NAME,
+    description: APOLLO_LOOKUP_TOOL_DESCRIPTION,
+    execute: executeApolloLookup,
+  };
   
   // Tavily search tool
   TOOL_REGISTRY[TAVILY_TOOL_NAME] = {
@@ -114,6 +133,17 @@ function initializeRegistry(): void {
     name: GENERATE_FILE_TOOL_NAME,
     description: GENERATE_FILE_TOOL_DESCRIPTION,
     execute: executeGenerateFile,
+  };
+
+  TOOL_REGISTRY[GENERATE_PRESENTATION_TOOL_NAME] = {
+    name: GENERATE_PRESENTATION_TOOL_NAME,
+    description: GENERATE_PRESENTATION_TOOL_DESCRIPTION,
+    execute: executeGeneratePresentation,
+  };
+  TOOL_REGISTRY[GENERATE_IMAGE_TOOL_NAME] = {
+    name: GENERATE_IMAGE_TOOL_NAME,
+    description: GENERATE_IMAGE_TOOL_DESCRIPTION,
+    execute: executeGenerateImage,
   };
 
   // CRM write tools (create/update candidate, company, job, stages, link)
@@ -283,6 +313,7 @@ export async function executeTool(
     let execParams = safeParams;
     if (safeContext.agentWriteApproved) {
       const writeTools = new Set([
+        "create_company_with_primary_contact",
         "create_company",
         "update_company",
         "create_contact",
@@ -298,6 +329,12 @@ export async function executeTool(
       if (writeTools.has(toolName)) {
         execParams = { ...safeParams, confirmed: true };
       }
+    } else if (
+      safeContext.repairMissingContact &&
+      (toolName === "create_contact" ||
+        toolName === "create_company_with_primary_contact")
+    ) {
+      execParams = { ...safeParams, confirmed: true };
     }
     const result = await tool.execute(execParams, safeContext);
     // Never echo a different tenant back from tools
@@ -337,6 +374,7 @@ export async function executeTool(
  */
 export const TOOL_NAMES = {
   apollo: APOLLO_TOOL_NAME,
+  apolloLookup: APOLLO_LOOKUP_TOOL_NAME,
   apolloCompany: APOLLO_COMPANY_TOOL_NAME,
   tavily: TAVILY_TOOL_NAME,
   webSearch: AGENTCORE_WEB_SEARCH_TOOL_NAME,

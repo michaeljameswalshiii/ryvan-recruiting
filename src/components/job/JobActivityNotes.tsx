@@ -416,7 +416,7 @@ export function JobActivityNotes({
         )}
       </div>
 
-      <div className="flex flex-col items-start sm:flex-row gap-2 mb-5">
+      <div className="flex flex-col items-stretch sm:flex-row sm:items-end gap-2 mb-5">
         <select
           value={noteType}
           onChange={(e) => setNoteType(e.target.value)}
@@ -433,7 +433,7 @@ export function JobActivityNotes({
           onChange={(e) => setNewNote(e.target.value)}
           placeholder="Optional note detail..."
           rows={3}
-          className="min-h-[76px] w-full flex-1 resize-y rounded-md border border-input bg-white px-3 py-2 text-sm"
+          className="min-h-[76px] w-full min-w-0 flex-1 resize-y rounded-md border border-input bg-white px-3 py-2 text-sm"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();

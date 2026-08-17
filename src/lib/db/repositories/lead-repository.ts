@@ -8,6 +8,7 @@
 import {
   getItem,
   queryItems,
+  queryAllItems,
   putItem,
   deleteItem,
   updateItem,
@@ -19,12 +20,14 @@ import {
   type CreateLeadInput,
   type UpdateLeadInput,
   type LinkedJob,
-  APPLICATION_STAGES,
-  APPLICATION_STAGE_VALUES,
+  mapLegacyStageToApplicationStage,
+  isValidApplicationStage,
   type JobNote,
 } from "../../schemas/lead";
 import { assignDefaultOwnerOnCreate } from "@/lib/ownership/default-owner";
 import { getJobById, getAllJobs } from "./job-repository";
+
+export { mapLegacyStageToApplicationStage, isValidApplicationStage };
 
 // Pipeline stages that show in the UI pipeline
 // Also include legacy statuses for backward compatibility with migrated data
@@ -43,45 +46,6 @@ export const PIPELINE_STAGES = [
 // ============================================================================
 // NEW: Application-centric model helpers
 // ============================================================================
-
-/**
- * Map legacy job stage to new APPLICATION_STAGES
- * Handles backward compatibility during migration
- * Per task spec: sourced -> left_message -> text -> email -> other -> contacted -> pre_screened -> submitted -> interviewing -> offer_out -> offer_accepted -> offer_declined -> placed -> rejected -> not_interested
- */
-export function mapLegacyStageToApplicationStage(legacyStage: string): string {
-  const stageMapping: Record<string, string> = {
-    Applied: "sourced",
-    Screening: "pre_screened",
-    Interviewing: "interviewing",
-    Offered: "offer_out",
-    Placed: "placed",
-    Rejected: "rejected",
-    Withdrawn: "not_interested",
-    // Legacy lead statuses
-    identification: "sourced",
-    outreach: "contacted",
-    conversation: "pre_screened",
-    presented: "submitted",
-    interview: "interviewing",
-    accept: "offer_accepted",
-    new: "sourced",
-    converted: "placed",
-    contacted: "contacted",
-    qualified: "pre_screened",
-    interested: "contacted",
-    not_interested: "not_interested",
-  };
-
-  return stageMapping[legacyStage] || "sourced";
-}
-
-/**
- * Validate if a stage value is a valid APPLICATION_STAGE
- */
-export function isValidApplicationStage(stage: string): boolean {
-  return APPLICATION_STAGE_VALUES.includes(stage as any);
-}
 
 /**
  * Generate a new UUID for notes
@@ -112,12 +76,11 @@ function generateId(): string {
 export async function getAllLeads(tenantId: string): Promise<Lead[]> {
   try {
     // Always query DynamoDB so creates/unlinks/stage changes show immediately
-    const result = await queryItems<Lead>(leadsTable, "tenant_id = :tenantId", {
-      ":tenantId": tenantId,
-    });
-
-    // GUARD: Ensure we always have an array - even if DynamoDB returns corrupted data
-    const leads = Array.isArray(result.items) ? result.items : [];
+    const leads = await queryAllItems<Lead>(
+      leadsTable,
+      "tenant_id = :tenantId",
+      { ":tenantId": tenantId },
+    );
 
     console.log("[getAllLeads] tenant=", tenantId, "count=", leads.length);
 
@@ -185,11 +148,18 @@ export async function getAllLeadsWithLinkedJobs(
         if (!alreadyIncluded) {
           const job = jobsMap.get(jobId);
           if (job) {
+            const fromJob = (job.candidates || []).find(
+              (c: { candidateId?: string }) => c.candidateId === lead.id,
+            );
             linkedJobs.push({
-              jobId: job.id,
+              jobId: job.id || jobId,
               jobTitle: job.title,
               companyName: job.companyName,
-              stage: "sourced",
+              stage:
+                fromJob?.stage ||
+                lead.status ||
+                "sourced",
+              notes: [],
             });
           }
         }
@@ -217,7 +187,7 @@ export async function getLeadsByStatus(
     leadsTable,
     "tenant_id = :tenantId AND #status = :status",
     { ":tenantId": tenantId, ":status": status },
-    { "#status": "status" },
+    { expressionNames: { "#status": "status" } },
   );
   return result.items || [];
 }
@@ -297,16 +267,24 @@ export async function createLead(
     lead.resume_key = lead.resume_url;
     lead.resume_s3_key = lead.resume_url;
   }
-  if (extra.summary) lead.summary = extra.summary;
-  if (extra.skills) lead.skills = extra.skills;
-  if (Array.isArray(extra.tags)) lead.tags = extra.tags;
-  if (extra.experience) lead.experience = extra.experience;
-  if (extra.education) lead.education = extra.education;
-  if (extra.certifications) lead.certifications = extra.certifications;
-  if (extra.salary_requirements) {
+  if (typeof extra.summary === "string") lead.summary = extra.summary;
+  if (Array.isArray(extra.skills)) {
+    lead.skills = extra.skills.filter((skill): skill is string => typeof skill === "string");
+  }
+  if (Array.isArray(extra.tags)) {
+    lead.tags = extra.tags.filter((tag): tag is string => typeof tag === "string");
+  }
+  if (Array.isArray(extra.experience)) lead.experience = extra.experience;
+  if (Array.isArray(extra.education)) lead.education = extra.education;
+  if (Array.isArray(extra.certifications)) {
+    lead.certifications = extra.certifications.filter(
+      (certification): certification is string => typeof certification === "string",
+    );
+  }
+  if (typeof extra.salary_requirements === "string") {
     lead.salary_requirements = extra.salary_requirements;
   }
-  if (extra.full_address) lead.full_address = extra.full_address;
+  if (typeof extra.full_address === "string") lead.full_address = extra.full_address;
   if (extra.company != null && String(extra.company).trim()) {
     lead.company = String(extra.company).trim();
   }
@@ -533,7 +511,7 @@ export async function getLeadByEmail(
 
   // Try to use GSI first (EmailIndex)
   try {
-    const leads = await queryItems<Lead>(
+    const { items: leads } = await queryItems<Lead>(
       leadsTable,
       "tenant_id = :tenantId AND email = :email",
       { ":tenantId": tenantId, ":email": normalizedEmail },

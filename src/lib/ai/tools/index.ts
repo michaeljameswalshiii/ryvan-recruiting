@@ -272,10 +272,14 @@ export function getToolSchemas(): Array<{
         properties: {
           data_type: {
             type: "string",
-            description: "leads | candidates | clients | jobs | pipeline",
+            description: "leads | candidates | clients | contacts | jobs | pipeline",
           },
           action: { type: "string", description: "list, get, or count" },
           id: { type: "string", description: "id when action is get" },
+          company_id: {
+            type: "string",
+            description: "Optional company id to filter or resolve contacts",
+          },
         },
         required: ["data_type"],
       },
@@ -288,10 +292,24 @@ export function getToolSchemas(): Array<{
     ...LIST_BUILDER_TOOLS.map((t) => ({
       name: t.name,
       description: t.description,
-      input_schema: t.schema as {
-        type: string;
-        properties: Record<string, { type: string; description: string }>;
-        required: string[];
+      input_schema: {
+        type: t.schema.type,
+        properties: Object.fromEntries(
+          Object.entries(t.schema.properties).map(([key, value]) => [
+            key,
+            {
+              type: value.type,
+              description:
+                'description' in value && value.description
+                  ? value.description
+                  : key.replace(/_/g, ' '),
+            },
+          ])
+        ) as Record<string, { type: string; description: string }>,
+        required:
+          'required' in t.schema && Array.isArray(t.schema.required)
+            ? [...t.schema.required]
+            : [],
       },
     })),
     {
@@ -550,8 +568,6 @@ export function formatToolResultsForAI(results: Record<string, ToolResult>): {
     const data = results.apollo.data as { candidates?: unknown[] };
     if (data.candidates?.length) {
       hasData = true;
-      // Import format function from apollo module
-      const { formatApolloCandidate } = require("./apollo");
       const formatted = data.candidates.slice(0, 10).map((p: unknown) => 
         typeof p === 'object' ? formatApolloCandidate(p as any) : String(p)
       );
@@ -564,7 +580,6 @@ export function formatToolResultsForAI(results: Record<string, ToolResult>): {
     const data = results.tavily.data as { results?: unknown[] };
     if (data.results?.length) {
       hasData = true;
-      const { formatTavilyResult } = require("./tavily");
       const formatted = data.results.map((r: unknown, i: number) => 
         typeof r === 'object' ? formatTavilyResult(r as any, i) : String(r)
       );

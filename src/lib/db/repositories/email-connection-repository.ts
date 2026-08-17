@@ -20,7 +20,33 @@ const region = process.env.AWS_REGION || 'us-east-1';
 const emailConnectionsTable = process.env.DYNAMODB_EMAIL_CONNECTIONS_TABLE || 'turnkey-email-connections';
 
 // DynamoDB client
-const client = new DynamoDBClient({ region });
+function isMissingTable(error: unknown): boolean {
+  const name =
+    error && typeof error === "object" && "name" in error
+      ? String((error as { name?: string }).name)
+      : "";
+  const message = error instanceof Error ? error.message : String(error || "");
+  return (
+    name === "ResourceNotFoundException" ||
+    /Requested resource not found/i.test(message)
+  );
+}
+
+function getClient(): DynamoDBClient {
+  const accessKeyId =
+    process.env.AWS_ACCESS_KEY_ID || process.env.MY_AWS_ACCESS_KEY_ID;
+  const secretAccessKey =
+    process.env.AWS_SECRET_ACCESS_KEY || process.env.MY_AWS_SECRET_ACCESS_KEY;
+  return new DynamoDBClient({
+    region,
+    credentials:
+      accessKeyId && secretAccessKey
+        ? { accessKeyId, secretAccessKey }
+        : undefined,
+  });
+}
+
+const client = getClient();
 
 /**
  * Get an email connection by user ID and provider
@@ -36,13 +62,20 @@ export async function getEmailConnection(
     Key: marshall({ connectionId }),
   });
   
-  const response = await client.send(command);
-  
-  if (!response.Item) {
-    return null;
+  try {
+    const response = await client.send(command);
+    if (!response.Item) return null;
+    return unmarshall(response.Item) as unknown as UserEmailConnection;
+  } catch (error) {
+    if (isMissingTable(error)) {
+      console.warn(
+        "[email-connections] table missing; treating as no connection",
+        emailConnectionsTable
+      );
+      return null;
+    }
+    throw error;
   }
-  
-  return unmarshall(response.Item) as unknown as UserEmailConnection;
 }
 
 /**
@@ -65,7 +98,7 @@ export async function getUserEmailConnections(
  * Save an email connection
  */
 export async function saveEmailConnection(
-  connection: Omit<UserEmailConnection, 'connectionId'>
+  connection: Omit<UserEmailConnection, 'createdAt' | 'updatedAt'>
 ): Promise<UserEmailConnection> {
   const connectionId = getConnectionId(connection.userId, connection.provider);
   

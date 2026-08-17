@@ -7,6 +7,15 @@ import {
   getToolSchemas,
   type ToolContext,
 } from '@/lib/ai/tools';
+import { applyApolloPrefire } from '@/lib/ai/apollo-intent';
+import {
+  crmWriteNudgeForQuery,
+  maxIterationsFallback,
+  shouldNudgeCrmWrite,
+  shouldRetryCrmWrite,
+  toolLoopBudget,
+  withLinkedInCreateGuidance,
+} from '@/lib/ai/crm-write-loop';
 
 export type ClaudeContent =
   | { type: 'text'; text: string }
@@ -20,7 +29,7 @@ interface AnthropicMessage {
 
 const DEFAULT_MODEL =
   process.env.ANTHROPIC_BYOK_MODEL || 'claude-sonnet-4-20250514';
-const MAX_ITERATIONS = 5;
+const DEFAULT_MAX_ITERATIONS = 6;
 
 async function invokeAnthropic(params: {
   apiKey: string;
@@ -232,14 +241,26 @@ Never infer Brazil from "br" inside a domain brand (structuralbr.com is not Braz
 Use tools when they help. Be concise and actionable.`;
 
   const tools = useTools ? getToolSchemas() : [];
-  let messages: AnthropicMessage[] = [{ role: 'user', content: query }];
-  const toolsUsed = new Set<string>();
+  const pre = await applyApolloPrefire(
+    query,
+    withLinkedInCreateGuidance(systemPrompt, query),
+    toolContext
+  );
+  const toolsUsed = new Set<string>(pre.toolsUsed);
+  let messages: AnthropicMessage[] = [{ role: 'user', content: pre.query }];
+  const maxIterations = toolLoopBudget(query, DEFAULT_MAX_ITERATIONS);
 
-  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
+    if (shouldNudgeCrmWrite(query, iteration, maxIterations, toolsUsed)) {
+      messages = [
+        ...messages,
+        { role: 'user', content: crmWriteNudgeForQuery(query) },
+      ];
+    }
     const result = await invokeAnthropic({
       apiKey,
       model,
-      system: systemPrompt,
+      system: pre.systemPrompt,
       messages,
       tools: useTools ? tools : undefined,
     });
@@ -255,8 +276,20 @@ Use tools when they help. Be concise and actionable.`;
         (c): c is ClaudeContent & { type: 'text' } =>
           typeof c === 'object' && c.type === 'text'
       );
+      const text = textBlock?.text || 'No response';
+      if (
+        shouldRetryCrmWrite(query, toolsUsed) &&
+        iteration < maxIterations - 1
+      ) {
+        messages = [
+          ...messages,
+          { role: 'assistant', content },
+          { role: 'user', content: crmWriteNudgeForQuery(query) },
+        ];
+        continue;
+      }
       return {
-        text: textBlock?.text || 'No response',
+        text,
         toolsUsed: Array.from(toolsUsed),
         model,
       };
@@ -291,7 +324,7 @@ Use tools when they help. Be concise and actionable.`;
   }
 
   return {
-    text: 'Maximum tool iterations reached. Please refine your query.',
+    text: maxIterationsFallback(query),
     toolsUsed: Array.from(toolsUsed),
     model,
   };

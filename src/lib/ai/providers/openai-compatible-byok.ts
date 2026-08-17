@@ -6,8 +6,17 @@ import {
   getToolSchemas,
   type ToolContext,
 } from '@/lib/ai/tools';
+import { applyApolloPrefire } from '@/lib/ai/apollo-intent';
+import {
+  crmWriteNudgeForQuery,
+  maxIterationsFallback,
+  shouldNudgeCrmWrite,
+  shouldRetryCrmWrite,
+  toolLoopBudget,
+  withLinkedInCreateGuidance,
+} from '@/lib/ai/crm-write-loop';
 
-const MAX_ITERATIONS = 5;
+const DEFAULT_MAX_ITERATIONS = 6;
 
 type ChatMessage =
   | { role: 'system'; content: string }
@@ -313,14 +322,23 @@ Never infer Brazil from "br" inside a domain brand (structuralbr.com is not Braz
 Use tools when they help. Be concise and actionable.`;
 
   const tools = useTools ? toOpenAITools() : undefined;
+  const pre = await applyApolloPrefire(
+    query,
+    withLinkedInCreateGuidance(systemPrompt, query),
+    toolContext
+  );
+  const maxIterations = toolLoopBudget(query, DEFAULT_MAX_ITERATIONS);
   const messages: ChatMessage[] = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: query },
+    { role: 'system', content: pre.systemPrompt },
+    { role: 'user', content: pre.query },
   ];
-  const toolsUsed = new Set<string>();
+  const toolsUsed = new Set<string>(pre.toolsUsed);
   let usedModel = model;
 
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
+  for (let i = 0; i < maxIterations; i++) {
+    if (shouldNudgeCrmWrite(query, i, maxIterations, toolsUsed)) {
+      messages.push({ role: 'user', content: crmWriteNudgeForQuery(query) });
+    }
     const result = await invokeCompatible({
       apiKey,
       baseUrl,
@@ -332,8 +350,17 @@ Use tools when they help. Be concise and actionable.`;
 
     const toolCalls = result.tool_calls || [];
     if (toolCalls.length === 0) {
+      const text = result.content || 'No response';
+      if (
+        shouldRetryCrmWrite(query, toolsUsed) &&
+        i < maxIterations - 1
+      ) {
+        messages.push({ role: 'assistant', content: text });
+        messages.push({ role: 'user', content: crmWriteNudgeForQuery(query) });
+        continue;
+      }
       return {
-        text: result.content || 'No response',
+        text,
         toolsUsed: Array.from(toolsUsed),
         model: usedModel,
       };
@@ -375,7 +402,7 @@ Use tools when they help. Be concise and actionable.`;
   }
 
   return {
-    text: 'Maximum tool iterations reached. Please refine your query.',
+    text: maxIterationsFallback(query),
     toolsUsed: Array.from(toolsUsed),
     model: usedModel,
   };

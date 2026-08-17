@@ -61,6 +61,8 @@ import { recordMatchesQuery } from '@/lib/tags';
 
 type SortKey = 'last_activity' | 'name' | 'added' | 'stage' | 'contacts';
 
+type CompanyListRecord = Record<string, any>;
+
 type StageBucket =
   | 'all'
   | 'identification'
@@ -144,7 +146,7 @@ function getProgressIndex(stage: string): number {
   const s = stage.toLowerCase();
   if (s === 'lost') return 0;
   for (let i = PROGRESS_STEPS.length - 1; i >= 0; i--) {
-    if (PROGRESS_STEPS[i].match.includes(s) || PROGRESS_STEPS[i].key === s) {
+    if ((PROGRESS_STEPS[i].match as readonly string[]).includes(s) || PROGRESS_STEPS[i].key === s) {
       return i + 1;
     }
   }
@@ -156,8 +158,8 @@ function getProgressColor(step: number, stage?: string) {
   if (stage && String(stage).toLowerCase() === 'known_user') {
     return 'bg-purple-500';
   }
-  if (step >= 5) return 'bg-emerald-500';
-  if (step >= 4) return 'bg-amber-500';
+  if (step >= 5) return 'bg-emerald-600';
+  if (step >= 4) return 'bg-indigo-400';
   if (step >= 3) return 'bg-violet-500';
   if (step >= 2) return 'bg-sky-500';
   return 'bg-slate-400';
@@ -167,11 +169,11 @@ function stageBadgeClasses(stage: string) {
   const s = stage.toLowerCase();
   if (s === 'lost' || s === 'dnu') return 'bg-rose-50 text-rose-700 border-rose-200';
   if (s === 'closed_won' || s === 'client')
-    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    return 'bg-emerald-100 text-emerald-800 border-emerald-300';
   if (s === 'known_user')
     return 'bg-purple-50 text-purple-800 border-purple-200';
   if (['proposal', 'meeting', 'presented'].includes(s))
-    return 'bg-amber-50 text-amber-800 border-amber-200';
+    return 'bg-indigo-50 text-indigo-700 border-indigo-200';
   if (s === 'conversation') return 'bg-violet-50 text-violet-700 border-violet-200';
   if (s === 'outreach') return 'bg-sky-50 text-sky-700 border-sky-200';
   return 'bg-slate-50 text-slate-700 border-slate-200';
@@ -448,9 +450,11 @@ export function CompaniesClient() {
     }
   };
 
-  const companies = useMemo(() => {
-    if (Array.isArray(data)) return data;
-    if (data && Array.isArray((data as any).clients)) return (data as any).clients;
+  const companies = useMemo<CompanyListRecord[]>(() => {
+    if (Array.isArray(data)) return data as CompanyListRecord[];
+    if (data && Array.isArray((data as any).clients)) {
+      return (data as any).clients as CompanyListRecord[];
+    }
     return [];
   }, [data]);
 
@@ -481,7 +485,7 @@ export function CompaniesClient() {
       const assigned = ownerMap[String(c.id)] || ownerMap[String(c.PK)];
       return {
         raw: c,
-        id: c.id,
+        id: String(c.id || c.PK || ''),
         name: c.name || c.companyName || 'Unknown',
         industry: c.industry || '',
         domain: c.domain || c.website || c.url || '',
@@ -640,14 +644,14 @@ export function CompaniesClient() {
       label: 'In Progress',
       sub: 'Presented → proposal',
       count: stats.active,
-      tone: 'amber' as const,
+      tone: 'indigo' as const,
     },
     {
       key: 'closed_won',
       label: 'Closed Won',
       sub: 'Clients',
       count: stats.closed_won,
-      tone: 'emerald' as const,
+      tone: 'forest' as const,
     },
     {
       key: 'lost',

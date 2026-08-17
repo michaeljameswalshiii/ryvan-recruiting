@@ -353,6 +353,7 @@ export async function runFillReqPlaybook(params: {
             {
               id: p.id || name,
               name,
+              status: 'new',
               email: p.email,
               title: p.title,
               skills: [],

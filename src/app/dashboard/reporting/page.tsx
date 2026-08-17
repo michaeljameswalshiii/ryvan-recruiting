@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic';
 
 function parsePeriod(raw?: string): PeriodKey {
   if (raw === '7' || raw === '30' || raw === '90' || raw === 'ytd') return raw;
-  return '30';
+  return 'ytd';
 }
 
 function parseTab(raw?: string): ReportingTab {
@@ -109,9 +109,9 @@ async function ReportingBody({
 export default async function ReportingDashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ period?: string; tab?: string }> | { period?: string; tab?: string };
+  searchParams?: Promise<{ period?: string; tab?: string }>;
 }) {
-  const params = searchParams instanceof Promise ? await searchParams : searchParams;
+  const params = await searchParams;
   const period = parsePeriod(params?.period);
   const tab = parseTab(params?.tab);
 

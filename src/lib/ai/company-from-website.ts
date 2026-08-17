@@ -138,4 +138,5 @@ COMPANY FROM WEBSITE — grounding rules (critical):
 4. Extract name, industry, location, phone, description ONLY from returned page title/text (or user-pasted text).
 5. When calling create_company after a successful fetch, set website_fetch_failed:false and page_supports_brazil:true only if the page text supports Brazil.
 6. When fetch failed, set website_fetch_failed:true and leave industry/city/state/description empty.
+7. LinkedIn profile URLs (linkedin.com/in/...) are people, not company websites. Do NOT fetch_website them. Use Apollo, then create_company_with_primary_contact.
 `.trim();

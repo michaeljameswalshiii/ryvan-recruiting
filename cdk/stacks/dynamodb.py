@@ -189,6 +189,19 @@ class DataStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,
         )
 
+        # Email OAuth connections (Gmail / Outlook refresh tokens)
+        self.email_connections_table = dynamodb.Table(
+            self,
+            "EmailConnections",
+            table_name="turnkey-email-connections",
+            partition_key=dynamodb.Attribute(
+                name="connectionId",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
         # GSI for status filtering
         self.issues_table.add_global_secondary_index(
             index_name="TenantStatusIndex",

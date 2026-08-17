@@ -27,10 +27,10 @@ export const APPLICATION_STAGES = [
   { value: "interviewing", label: "Interviewing", color: "amber" },
   { value: "second_interview", label: "2nd Interview", color: "amber" },
   { value: "third_interview", label: "3rd Interview", color: "amber" },
-  { value: "offer_out", label: "Offer Out", color: "amber" },
-  { value: "offer_accepted", label: "Offer Accepted", color: "green" },
+  { value: "offer_out", label: "Offer Out", color: "emerald" },
+  { value: "offer_accepted", label: "Offer Accepted", color: "emerald" },
   { value: "offer_declined", label: "Offer Declined", color: "red" },
-  { value: "placed", label: "Placed", color: "emerald" },
+  { value: "placed", label: "Placed", color: "green" },
   { value: "rejected", label: "Rejected", color: "red" },
   { value: "not_interested", label: "Not Interested", color: "gray" },
   { value: "dnu", label: "DNU", color: "slate" },
@@ -65,37 +65,78 @@ export function isValidApplicationStage(
   return APPLICATION_STAGE_VALUES.includes(stage as ApplicationStage);
 }
 
+function stageKey(raw: string): string {
+  return String(raw)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+}
+
 /**
- * Map legacy job candidate stages to new application stages
+ * Map stored / legacy / note-type stage labels onto APPLICATION_STAGES.
+ * "2nd Interview" and "2nd_interview" must become second_interview — the list
+ * mapper used to fall through to "sourced", which hid those candidates from
+ * the Interviewing filter card.
  */
 export function mapLegacyStageToApplicationStage(legacyStage: string): string {
-  const mapping: Record<string, string> = {
-    Applied: "applied",
+  if (!legacyStage) return "sourced";
+  const raw = String(legacyStage).trim();
+  if (isValidApplicationStage(raw)) return raw;
+
+  const key = stageKey(raw);
+  if (isValidApplicationStage(key)) return key;
+
+  const aliases: Record<string, string> = {
     applied: "applied",
-    Screening: "pre_screened",
-    Interviewing: "interviewing",
-    Offered: "offer_out",
-    Placed: "placed",
-    Rejected: "rejected",
-    Withdrawn: "not_interested",
-    // Legacy lead statuses
+    application: "applied",
+    screening: "pre_screened",
+    pre_screen: "pre_screened",
+    prescreened: "pre_screened",
+    interviewing: "interviewing",
+    interview: "interviewing",
+    interviews: "interviewing",
+    first_interview: "interviewing",
+    "1st_interview": "interviewing",
+    "1stinterview": "interviewing",
+    second_interview: "second_interview",
+    "2nd_interview": "second_interview",
+    "2ndinterview": "second_interview",
+    secondinterview: "second_interview",
+    third_interview: "third_interview",
+    "3rd_interview": "third_interview",
+    "3rdinterview": "third_interview",
+    thirdinterview: "third_interview",
+    offered: "offer_out",
+    offer: "offer_out",
+    offer_out: "offer_out",
+    placed: "placed",
+    rejected: "rejected",
+    withdrawn: "not_interested",
     identification: "sourced",
-    Identified: "sourced",
     identified: "sourced",
+    sourced: "sourced",
     outreach: "contacted",
     conversation: "pre_screened",
     presented: "submitted",
-    interview: "interviewing",
     accept: "offer_accepted",
     new: "sourced",
     converted: "placed",
     qualified: "pre_screened",
     interested: "interested",
-    Interested: "interested",
     not_interested: "not_interested",
+    left_message: "left_message",
+    lm: "left_message",
   };
 
-  return mapping[legacyStage] || "sourced";
+  if (aliases[key]) return aliases[key];
+
+  if (key.includes("interview")) {
+    if (key.includes("2nd") || key.includes("second")) return "second_interview";
+    if (key.includes("3rd") || key.includes("third")) return "third_interview";
+    return "interviewing";
+  }
+
+  return "sourced";
 }
 
 // ============================================================================

@@ -374,6 +374,121 @@ export async function enrichPeopleByIds(
   };
 }
 
+export type PersonMatchDetail = {
+  linkedin_url?: string;
+  email?: string;
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+  organization_name?: string;
+  domain?: string;
+};
+
+function splitPersonName(name: string): { first_name?: string; last_name?: string } {
+  const parts = String(name || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+  if (!parts.length) return {};
+  if (parts.length === 1) return { first_name: parts[0] };
+  return { first_name: parts[0], last_name: parts.slice(1).join(" ") };
+}
+
+function toMatchDetail(input: PersonMatchDetail): Record<string, string> {
+  const out: Record<string, string> = {};
+  const linkedin = String(input.linkedin_url || "").trim();
+  const email = String(input.email || "").trim();
+  const org = String(input.organization_name || "").trim();
+  const domain = String(input.domain || "").trim();
+  let first = String(input.first_name || "").trim();
+  let last = String(input.last_name || "").trim();
+  if ((!first || !last) && input.name) {
+    const split = splitPersonName(input.name);
+    first = first || split.first_name || "";
+    last = last || split.last_name || "";
+  }
+  if (linkedin) out.linkedin_url = linkedin;
+  if (email) out.email = email;
+  if (first) out.first_name = first;
+  if (last) out.last_name = last;
+  if (org) out.organization_name = org;
+  if (domain) out.domain = domain;
+  return out;
+}
+
+/**
+ * Match/enrich one or more people by LinkedIn URL, email, or name + company.
+ * Docs: POST /v1/people/bulk_match
+ */
+export async function matchPeople(
+  details: PersonMatchDetail[],
+  auth?: ApolloAuthContext,
+  options?: { revealPersonalEmails?: boolean; revealPhoneNumber?: boolean }
+): Promise<{
+  people: ApolloPerson[];
+  creditsConsumed?: number;
+  error?: string;
+  keySource?: ApolloKeySource;
+  httpStatus?: number;
+}> {
+  const cleaned = (details || [])
+    .map(toMatchDetail)
+    .filter((row) => Object.keys(row).length > 0)
+    .slice(0, 10);
+  if (!cleaned.length) {
+    return { people: [], error: "Need a LinkedIn URL, email, or name to look up" };
+  }
+
+  const keyInfo = await resolveApiKeyDetailed(auth);
+  if (keyInfo.apiKey.length <= 10) {
+    return {
+      people: [],
+      error: "Apollo not configured",
+      keySource: "none",
+    };
+  }
+
+  const qs = new URLSearchParams();
+  if (options?.revealPersonalEmails) qs.set("reveal_personal_emails", "true");
+  if (options?.revealPhoneNumber) qs.set("reveal_phone_number", "true");
+  const path =
+    "/people/bulk_match" + (qs.toString() ? `?${qs.toString()}` : "");
+
+  const result = await apolloFetch(
+    path,
+    { details: cleaned },
+    { apiKey: keyInfo.apiKey }
+  );
+
+  if (!result.ok) {
+    return {
+      people: [],
+      error: result.error || `Apollo lookup failed (${result.status})`,
+      keySource: keyInfo.source,
+      httpStatus: result.status,
+    };
+  }
+
+  const matches =
+    result.data?.matches ||
+    result.data?.people ||
+    (Array.isArray(result.data) ? result.data : []);
+  const people = (Array.isArray(matches) ? matches : [])
+    .filter(Boolean)
+    .map(mapPerson);
+
+  return {
+    people,
+    creditsConsumed:
+      typeof result.data?.credits_consumed === "number"
+        ? result.data.credits_consumed
+        : people.length,
+    keySource: keyInfo.source,
+    httpStatus: result.status,
+  };
+}
+
 export function mapOrganization(o: any): ApolloCompany {
   const city = o?.city || o?.organization_city;
   const state = o?.state || o?.organization_state;

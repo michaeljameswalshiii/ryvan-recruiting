@@ -7,6 +7,7 @@ import {
   extractSkillsFromText,
   formatFitSummary,
   type FitScoreResult,
+  type FitGrade,
   type FitCandidateInput,
 } from "@/lib/ai/fit-score";
 import { getItem, updateItem, jobsTable } from "@/lib/db/dynamodb";
@@ -422,17 +423,37 @@ export async function runPersistedFitScore(
         typeof existingScore === "number" &&
         Date.now() - new Date(stamped).getTime() < recentMs
       ) {
+        const grade = (fromJob?.fitGrade || fromLead?.fitGrade || "C") as FitGrade;
+        const domainGrade = (fromJob?.fitDomainGrade || fromLead?.fitDomainGrade || grade) as FitGrade;
+        const toolGrade = (fromJob?.fitToolGrade || fromLead?.fitToolGrade || grade) as FitGrade;
         return {
           candidateId,
           candidateName: lead.name,
           fit: {
             score: existingScore,
-            grade: fromJob?.fitGrade || fromLead?.fitGrade || "C",
+            grade,
+            domainFit: {
+              score: fromJob?.fitDomainScore ?? fromLead?.fitDomainScore ?? existingScore,
+              grade: domainGrade,
+            },
+            toolReadiness: {
+              score: fromJob?.fitToolScore ?? fromLead?.fitToolScore ?? existingScore,
+              grade: toolGrade,
+              applicable: (fromJob?.fitToolApplicable ?? fromLead?.fitToolApplicable) !== false,
+            },
+            dimensions: [],
             reasons: fromJob?.fitReasons || fromLead?.fitReasons || [],
             strengths: fromJob?.fitStrengths || fromLead?.fitStrengths || [],
             gaps: fromJob?.fitGaps || fromLead?.fitGaps || [],
+            skillsMatched: [],
+            skillsMissing: [],
+            toolsMatched: [],
+            toolsMissing: [],
             summary: fromJob?.fitSummary || fromLead?.fitSummary,
-          } as FitScoreResult,
+            scoringVersion: (fromJob as any)?.fitScoringVersion || fromLead?.fitScoringVersion || "v2",
+            verifyBeforeAdvancing: (fromJob as any)?.fitVerify || fromLead?.fitVerify,
+            rubric: (fromJob as any)?.fitFactors || fromLead?.fitFactors,
+          },
           persisted: true,
         };
       }

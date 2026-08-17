@@ -81,12 +81,19 @@ export default function NewCandidatePage() {
   useEffect(() => {
     const draft = loadResumeDraft();
     if (draft?.form) {
+      const draftSkills = Array.isArray(draft.form.skills)
+        ? draft.form.skills.join(', ')
+        : draft.form.skills || '';
+      const draftTags = Array.isArray(draft.form.tags)
+        ? draft.form.tags.join(', ')
+        : draft.form.tags || '';
       setFormData((prev) => ({
         ...prev,
         ...draft.form,
+        skills: draftSkills,
         status: prev.status,
         source: draft.form.source || 'resume',
-        tags: draft.form.tags || prev.tags,
+        tags: draftTags || prev.tags,
       }));
       setResumeFileName(draft.fileName || draft.form.resume_file_name || '');
       setParsedFromResume(true);

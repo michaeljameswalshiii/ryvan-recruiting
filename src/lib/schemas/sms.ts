@@ -122,6 +122,12 @@ export const smsMessageSchema = z.object({
   segments: z.number().int().min(1).default(1),
   provider: z.enum(['aws', 'simulated']).default('aws'),
   providerMessageId: z.string().optional(),
+  /** Durable owner used to route replies and scope recruiter inboxes. */
+  ownerUserId: z.string().optional(),
+  ownerName: z.string().optional(),
+  ownerEmail: z.string().optional(),
+  conversationKey: z.string().optional(),
+  originationIdentity: z.string().optional(),
   errorMessage: z.string().optional(),
   createdBy: z.string().optional(),
   createdAt: z.string(),

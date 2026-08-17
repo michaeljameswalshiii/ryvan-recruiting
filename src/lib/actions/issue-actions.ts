@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { v4 as uuidv4 } from "uuid";
 import {
   getSessionTenantId,
+  getSession,
   getSessionUserId,
   getSessionUserEmail,
 } from "../server-auth";
@@ -17,6 +18,8 @@ import {
   getIssueAttachmentUrl,
   storeIssueAttachment,
 } from "../aws/issue-attachments";
+import { isSiteAdmin } from "../roles";
+import { PLATFORM_TENANT_ID, ensurePlatformTenant } from "../platform-tenant";
 
 function revalidateIssue(id: string) {
   revalidatePath("/dashboard/issues");
@@ -38,15 +41,22 @@ async function actorFromSession() {
 }
 
 export async function createIssueAction(data: CreateIssueInput) {
-  const tenantId = await getSessionTenantId();
+  const session = await getSession();
+  const allTenants =
+    !!session &&
+    isSiteAdmin(session.role) &&
+    (!session.tenantScope || session.tenantScope === "all");
+  const tenantId = allTenants ? PLATFORM_TENANT_ID : await getSessionTenantId();
   if (!tenantId) {
     return { error: "Unauthorized — select a tenant first" };
   }
 
   try {
+    if (allTenants) await ensurePlatformTenant();
     const actor = await actorFromSession();
     let keyPrefix = "ISS";
     try {
+      if (allTenants) throw new Error("platform scope uses ISS");
       const { getTenantById } = await import(
         "@/lib/db/repositories/tenant-repository"
       );
@@ -78,8 +88,8 @@ export async function createIssueAction(data: CreateIssueInput) {
 export async function listIssuesAction(
   statusOrFilters?: string | IssueListFilters
 ) {
-  const tenantId = await getSessionTenantId();
-  if (!tenantId) {
+  const session = await getSession();
+  if (!session) {
     return { issues: [] };
   }
 
@@ -96,7 +106,17 @@ export async function listIssuesAction(
       filters.mineName = actor.byName;
     }
 
-    const issues = await issueRepository.listByTenant(tenantId, filters);
+    const allTenants =
+      isSiteAdmin(session.role) &&
+      (!session.tenantScope || session.tenantScope === "all");
+    const tenantId = allTenants
+      ? null
+      : session.tenantScope || session.tenantId;
+    const issues = tenantId
+      ? await issueRepository.listByTenant(tenantId, filters)
+      : allTenants
+        ? await issueRepository.listAll(filters)
+        : [];
     return { issues };
   } catch (error: any) {
     return { error: error?.message || "Failed to list issues" };

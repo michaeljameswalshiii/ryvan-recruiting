@@ -1,3 +1,7 @@
+# Never upload install/cache trees — .vercelignore replaces .gitignore
+node_modules/
+.git/
+
 # Local ops — never ship to Vercel build context
 scripts/
 cdk/

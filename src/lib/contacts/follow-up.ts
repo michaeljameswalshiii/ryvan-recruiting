@@ -138,8 +138,30 @@ export function parseDateFromNoteText(
   if (/\btoday\b/i.test(t)) return startOfDay(relativeTo);
   if (/\bnext week\b/i.test(t)) return addDays(relativeTo, 7);
   if (/\bin a week\b/i.test(t)) return addDays(relativeTo, 7);
+  const inWeeks = t.match(/\bin\s+(\d+)\s+weeks?\b/i);
+  if (inWeeks) return addDays(relativeTo, Number(inWeeks[1]) * 7);
+  if (/\bin\s+two\s+weeks?\b/i.test(t)) return addDays(relativeTo, 14);
+  if (/\bin\s+three\s+weeks?\b/i.test(t)) return addDays(relativeTo, 21);
   const inDays = t.match(/\bin\s+(\d+)\s+days?\b/i);
   if (inDays) return addDays(relativeTo, Number(inDays[1]));
+
+  const weekday = t.match(
+    /\bnext\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i
+  );
+  if (weekday) {
+    const days = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ];
+    const target = days.indexOf(weekday[1].toLowerCase());
+    const delta = ((target - relativeTo.getDay() + 7) % 7) || 7;
+    return addDays(relativeTo, delta);
+  }
 
   return null;
 }

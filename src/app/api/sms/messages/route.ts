@@ -6,18 +6,20 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionTenantId } from '@/lib/server-auth';
+import { getSession, getSessionTenantId } from '@/lib/server-auth';
 import {
   listMessagesForCandidate,
   listMessagesForContact,
   listRecentMessages,
   getConsent,
   getSmsConfig,
+  listSmsConversationRoutes,
 } from '@/lib/db/repositories/sms-repository';
 import { getLeadById } from '@/lib/db/repositories/lead-repository';
 import { getContactById } from '@/lib/db/repositories/contact-repository';
 import { normalizeToE164 } from '@/lib/sms/phone';
 import { getDisplayPhone, getPhoneByType } from '@/lib/contacts/phone';
+import { isTenantAdminOrAbove } from '@/lib/roles';
 
 function contactSmsPhone(contact: {
   phone?: string;
@@ -35,17 +37,70 @@ function contactSmsPhone(contact: {
 
 export async function GET(request: NextRequest) {
   try {
-    const tenantId = await getSessionTenantId();
-    if (!tenantId) {
+    const [session, tenantId] = await Promise.all([
+      getSession(),
+      getSessionTenantId(),
+    ]);
+    if (!session || !tenantId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const candidateId = request.nextUrl.searchParams.get('candidateId');
     const contactId = request.nextUrl.searchParams.get('contactId');
     const companyId = request.nextUrl.searchParams.get('companyId');
+    const canViewAll = isTenantAdminOrAbove(session.role);
 
     if (!candidateId && !contactId) {
-      const messages = await listRecentMessages(tenantId, 40);
-      return NextResponse.json({ messages });
+      const requestedScope = request.nextUrl.searchParams.get('scope');
+      const scope = canViewAll && requestedScope === 'all'
+        ? 'all'
+        : canViewAll && requestedScope === 'unassigned'
+          ? 'unassigned'
+          : 'my';
+      const [allMessages, routes] = await Promise.all([
+        listRecentMessages(tenantId, 500),
+        listSmsConversationRoutes(tenantId),
+      ]);
+
+      const routeForMessage = (message: (typeof allMessages)[number]) =>
+        routes.find((route) => route.id === message.conversationKey) ||
+        routes.find(
+          (route) =>
+            route.phoneE164 === message.phoneE164 &&
+            (!message.originationIdentity ||
+              route.destinationNumber === message.originationIdentity)
+        ) ||
+        routes.find(
+          (route) =>
+            (!!message.candidateId && route.candidateId === message.candidateId) ||
+            (!!message.contactId && route.contactId === message.contactId)
+        );
+
+      const messages = allMessages.filter((message) => {
+        if (scope === 'all') return true;
+        const ownerUserId = routeForMessage(message)?.ownerUserId ||
+          message.ownerUserId || message.createdBy;
+        return scope === 'unassigned'
+          ? !ownerUserId
+          : ownerUserId === session.userId;
+      });
+      const visibleRoutes = routes.filter((route) =>
+        scope === 'all'
+          ? true
+          : scope === 'unassigned'
+            ? !route.ownerUserId
+            : route.ownerUserId === session.userId
+      );
+      return NextResponse.json({
+        messages,
+        routes: visibleRoutes,
+        scope,
+        canViewAll,
+        currentUserId: session.userId,
+        unreadCount: visibleRoutes.reduce(
+          (total, route) => total + (route.unreadCount || 0),
+          0
+        ),
+      });
     }
 
     const config = await getSmsConfig(tenantId);
@@ -85,6 +140,28 @@ export async function GET(request: NextRequest) {
       } catch {
         /* ignore */
       }
+    }
+
+    if (!canViewAll) {
+      const routes = await listSmsConversationRoutes(tenantId);
+      messages = messages.filter((message) => {
+        const route =
+          routes.find((item) => item.id === message.conversationKey) ||
+          routes.find(
+            (item) =>
+              item.phoneE164 === message.phoneE164 &&
+              (!message.originationIdentity ||
+                item.destinationNumber === message.originationIdentity)
+          ) ||
+          routes.find(
+            (item) =>
+              (!!message.candidateId && item.candidateId === message.candidateId) ||
+              (!!message.contactId && item.contactId === message.contactId)
+          );
+        const ownerUserId = route?.ownerUserId ||
+          message.ownerUserId || message.createdBy;
+        return ownerUserId === session.userId;
+      });
     }
 
     return NextResponse.json({ messages, consent, phoneE164 });

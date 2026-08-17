@@ -44,6 +44,7 @@ import JobEditModal from "@/components/job/JobEditModal";
 import { JobActivityNotes } from "@/components/job/JobActivityNotes";
 import { FitScoreBadge, type FitGrade } from "@/components/job/FitScoreBadge";
 import { FillReqPlaybookButton } from "@/components/job/FillReqPlaybookButton";
+import { BooleanGeneratorButton } from "@/components/job/BooleanGeneratorButton";
 import { JobHiringManagerCard } from "@/components/job/JobHiringManagerCard";
 import { JobDescriptionPreview } from "@/components/job/JobDescriptionPreview";
 import { Button } from "@/components/ui/button";
@@ -685,6 +686,13 @@ export default function JobDetailPage() {
             <FillReqPlaybookButton
               jobId={job.id}
               jobTitle={job.title}
+              className="border-gray-200 bg-white text-gray-800 hover:bg-gray-50"
+            />
+            <BooleanGeneratorButton
+              jobId={String(job.id || jobId)}
+              jobTitle={job.title}
+              location={job.location}
+              tags={jobTags}
               className="border-gray-200 bg-white text-gray-800 hover:bg-gray-50"
             />
           </div>

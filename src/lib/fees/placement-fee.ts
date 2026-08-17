@@ -114,12 +114,23 @@ export function parseSalaryBounds(salaryRange?: string | null): {
   return { low: single, high: single };
 }
 
-function formatDollars(n: number): string {
-  return `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+function isHourlySalary(value?: string | null): boolean {
+  return /(?:per\s*)?(?:hour|hr\b|hourly)/i.test(String(value || ''));
+}
+
+function formatDollars(n: number, hourly = false): string {
+  return `$${n.toLocaleString("en-US", {
+    minimumFractionDigits: hourly && n % 1 ? 2 : 0,
+    maximumFractionDigits: hourly ? 2 : 0,
+  })}`;
 }
 
 /** Compact salary for the job toolbar, e.g. "$70,000–$85,000". */
 export function formatSalaryToolbar(salaryRange?: string | null): string {
+  const raw = String(salaryRange || '').trim();
+  if (/\bper\s+(?:hour|year)\b/i.test(raw)) {
+    return raw.replace(/\s+per\s+hour\b/i, ' /hr').replace(/\s+per\s+year\b/i, ' /yr');
+  }
   const { low, high } = parseSalaryBounds(salaryRange);
   if (low == null && high == null) {
     return String(salaryRange || "").trim();
@@ -147,7 +158,12 @@ export function commissionFromFee(
     return null;
   }
   const { high, low } = parseSalaryBounds(salaryRange);
-  const basis = low ?? high;
+  const rawBasis = low ?? high;
+  const basis = rawBasis == null
+    ? null
+    : isHourlySalary(salaryRange)
+      ? rawBasis * 2080
+      : rawBasis;
   if (basis == null) return null;
   return Math.round(basis * (feePercent / 100));
 }

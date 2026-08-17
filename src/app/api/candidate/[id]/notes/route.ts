@@ -79,7 +79,7 @@ export async function POST(
       companyName: scopedCompany,
       stageUpdated,
       previousStage,
-      newStage: newStage || stageToStore,
+      newStage: stageToStore,
       autoStageSync: stageUpdated,
       actorUserId: session.userId,
       actorEmail: session.email,
@@ -98,7 +98,8 @@ export async function POST(
       stageUpdated,
       previousStage,
       status: newStage || stageToStore || undefined,
-      stageLabel: newStage ? stageDisplayLabel(newStage) : undefined,
+      applicationStage: stageToStore || undefined,
+      stageLabel: stageToStore ? stageDisplayLabel(stageToStore) : undefined,
       jobId: scopedJobId || undefined,
       jobTitle: scopedJobTitle || undefined,
     });

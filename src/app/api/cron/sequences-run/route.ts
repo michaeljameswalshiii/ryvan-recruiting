@@ -17,27 +17,18 @@ import {
   listEnrollments,
 } from "@/lib/db/repositories/sequence-repository";
 import { runEnrollmentStep } from "@/lib/sequences/runner";
+import { recordCronHeartbeat } from "@/lib/observability/store";
+import { cronAuthorized, skipIfScheduleOff } from "@/lib/agents/cron-gate";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function authorize(request: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    // Allow in non-prod without secret for local testing only
-    if (process.env.NODE_ENV !== "production") return true;
-    return false;
-  }
-  const auth = request.headers.get("authorization") || "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  const header = request.headers.get("x-cron-secret") || "";
-  return bearer === secret || header === secret;
-}
-
 async function handle(request: NextRequest) {
-  if (!authorize(request)) {
+  if (!cronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const skipped = await skipIfScheduleOff(request, "sequences-run");
+  if (skipped) return skipped;
 
   const limitPerTenant = Math.min(
     parseInt(request.nextUrl.searchParams.get("limit") || "15", 10) || 15,
@@ -130,6 +121,16 @@ async function handle(request: NextRequest) {
       errors: errors.slice(0, 5),
     });
   }
+
+  await recordCronHeartbeat({
+    cronId: "sequences-run",
+    label: "Sequences",
+    schedule: "Hourly",
+    path: "/api/cron/sequences-run",
+    status: totalFail > 0 && totalOk === 0 ? "error" : "ok",
+    durationMs: 0,
+    detail: `${totalOk} ok · ${totalFail} fail · ${slice.length} tenants`,
+  });
 
   return NextResponse.json({
     success: true,

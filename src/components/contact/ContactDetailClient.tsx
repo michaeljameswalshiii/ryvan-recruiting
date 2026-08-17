@@ -18,6 +18,9 @@ import {
   ExternalLink,
   Check,
   X,
+  LayoutGrid,
+  List,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -135,6 +138,10 @@ export default function ContactDetailClient({
   const companyId = contact.companyId || contact.clientId || '';
   const contactId = contact.id || '';
   const companyJobs = Array.isArray(rawJobs) ? rawJobs : [];
+  const [jobFilter, setJobFilter] = useState<'open' | 'all' | 'closed'>('open');
+  const [jobView, setJobView] = useState<'list' | 'cards'>('list');
+  const [jobSearch, setJobSearch] = useState('');
+  const [selectedJobId, setSelectedJobId] = useState('');
 
   const displayPhone = getDisplayPhone(contact);
   const displayPhoneType = getDisplayPhoneType(contact);
@@ -197,6 +204,33 @@ export default function ContactDetailClient({
     )
   );
   const [savingTags, setSavingTags] = useState(false);
+
+  const openJobs = useMemo(
+    () =>
+      companyJobs.filter(
+        (job: any) => String(job.status || 'Open').toLowerCase() !== 'closed'
+      ),
+    [companyJobs]
+  );
+  const visibleJobs = useMemo(() => {
+    const query = jobSearch.trim().toLowerCase();
+    const filtered = companyJobs.filter((job: any) => {
+      const closed = String(job.status || 'Open').toLowerCase() === 'closed';
+      if (jobFilter === 'open' && closed) return false;
+      if (jobFilter === 'closed' && !closed) return false;
+      if (!query) return true;
+      return [job.title, job.location, job.status, job.employmentType]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query));
+    });
+    return filtered.sort((a: any, b: any) =>
+      String(a.title || '').localeCompare(String(b.title || ''))
+    );
+  }, [companyJobs, jobFilter, jobSearch]);
+  const selectedJob = useMemo(
+    () => companyJobs.find((job: any) => String(job.id) === selectedJobId),
+    [companyJobs, selectedJobId]
+  );
 
   const removeContact = useRemoveContact();
   const updateContact = useUpdateContact();
@@ -535,7 +569,7 @@ export default function ContactDetailClient({
   const tabs = [
     { id: 'overview' as const, label: 'Overview' },
     { id: 'timeline' as const, label: 'Timeline' },
-    { id: 'jobs' as const, label: 'Open Jobs' },
+    { id: 'jobs' as const, label: 'Jobs' },
     { id: 'company' as const, label: 'Company' },
     { id: 'files' as const, label: 'Files' },
   ];
@@ -557,15 +591,15 @@ export default function ContactDetailClient({
   return (
     <div className="w-full min-w-0 space-y-5 pb-10">
       {/* ── Header ───────────────────────────────────────────────── */}
-      <div data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+      <div data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
           <div className="flex items-start gap-4 min-w-0">
-            <div className="h-16 w-16 shrink-0 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xl font-semibold shadow-sm">
+            <div className="h-12 w-12 shrink-0 rounded-full bg-emerald-600 text-white flex items-center justify-center text-base font-semibold shadow-sm">
               {getInitials(form.name || contact.name)}
             </div>
             <div className="min-w-0 space-y-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-semibold tracking-tight text-gray-900 truncate">
+                <h1 className="text-xl font-semibold tracking-tight text-gray-900 truncate">
                   {form.name || contact.name || 'Unknown'}
                 </h1>
                 <CopyTextButton
@@ -573,7 +607,7 @@ export default function ContactDetailClient({
                   label="name"
                 />
                 {(form.isPrimary || contact.isPrimary) && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-800">
                     <Star className="h-3 w-3" /> Primary
                   </span>
                 )}
@@ -750,7 +784,7 @@ export default function ContactDetailClient({
                   </button>
                 )}
               </div>
-              <div className="pt-1 max-w-xl">
+              <div className="hidden pt-1 max-w-xl">
                 <TagEditor
                   value={tags}
                   onChange={(next) => void saveTags(next)}
@@ -903,7 +937,40 @@ export default function ContactDetailClient({
       {/* ── Overview ─────────────────────────────────────────────── */}
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-12">
-          <div className="flex h-full min-h-0 flex-col xl:col-span-7">
+          <div className="flex h-full min-h-0 flex-col gap-5 xl:col-span-7">
+            <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  Jobs for {form.name || contact.name}
+                </h2>
+                <button type="button" onClick={() => setActiveTab('jobs')} className="text-xs font-medium text-blue-600 hover:underline">
+                  View all
+                </button>
+              </div>
+              <select
+                value={selectedJobId}
+                onChange={(e) => setSelectedJobId(e.target.value)}
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm"
+              >
+                <option value="">Select a job to view…</option>
+                {companyJobs.map((job: any) => (
+                  <option key={job.id} value={job.id}>
+                    {job.title || 'Untitled job'} · {job.status || 'Open'}
+                  </option>
+                ))}
+              </select>
+              {selectedJob ? (
+                <Link href={`/dashboard/jobs/${selectedJob.id}`} className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5 hover:bg-blue-50">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-gray-900">{selectedJob.title || 'Untitled job'}</div>
+                    <div className="text-xs text-gray-500">{selectedJob.status || 'Open'}{selectedJob.location ? ` · ${selectedJob.location}` : ''}</div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-blue-600" />
+                </Link>
+              ) : companyJobs.length === 0 ? (
+                <p className="mt-2 text-xs text-gray-500">No jobs are assigned to this hiring manager.</p>
+              ) : null}
+            </section>
             {/* Notes & activity — primary content (header already shows contact identity) */}
             <section
               data-ink-on-light
@@ -1046,7 +1113,7 @@ export default function ContactDetailClient({
 
           {/* Right column — same top/bottom as notes card */}
           <div className="flex h-full min-h-0 flex-col gap-5 xl:col-span-5">
-            {contactId && companyId ? (
+            {false && contactId && companyId ? (
               <EntitySmsPanel
                 entity="contact"
                 entityId={contactId}
@@ -1057,7 +1124,7 @@ export default function ContactDetailClient({
             ) : null}
             <section data-ink-on-light className="flex-1 bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-4">
-                Quick Stats
+                Overview & Actions
               </h2>
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between gap-3">
@@ -1080,9 +1147,9 @@ export default function ContactDetailClient({
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Open jobs at company</span>
+                  <span className="text-gray-500">Open jobs for this manager</span>
                   <span className="font-medium tabular-nums">
-                    {companyJobs.length}
+                    {openJobs.length}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1147,13 +1214,28 @@ export default function ContactDetailClient({
                   </span>
                 </div>
               </div>
+              <div className="mt-5 border-t border-gray-100 pt-4">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Quick actions</div>
+                <div className="space-y-2 text-sm">
+                  {companyHref ? <Link href={companyHref} className="block font-medium text-blue-600 hover:underline">Open company page</Link> : null}
+                  <button type="button" onClick={() => setActiveTab('jobs')} className="block font-medium text-blue-600 hover:underline">View hiring manager jobs</button>
+                  <Link href="/dashboard/contact-info" className="block font-medium text-blue-600 hover:underline">All contacts</Link>
+                </div>
+              </div>
+              <div className="mt-5 border-t border-gray-100 pt-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Tags</div>
+                  <span className="text-xs text-gray-400">{savingTags ? 'Saving…' : '+ Add tag'}</span>
+                </div>
+                <TagEditor value={tags} onChange={(next) => void saveTags(next)} objectType="contact" disabled={savingTags} placeholder="Add tag…" />
+              </div>
             </section>
 
-            {companyJobs.length > 0 && (
+            {false && openJobs.length > 0 && (
               <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-                    Open Jobs at {companyName}
+                    Open Jobs for {form.name || contact.name}
                   </h2>
                   <Link
                     href={companyHref || '/dashboard/jobs'}
@@ -1163,7 +1245,7 @@ export default function ContactDetailClient({
                   </Link>
                 </div>
                 <div className="space-y-2">
-                  {companyJobs.slice(0, 5).map((job: any) => (
+                  {openJobs.slice(0, 5).map((job: any) => (
                     <Link
                       key={job.id}
                       href={`/dashboard/jobs/${job.id}`}
@@ -1185,7 +1267,21 @@ export default function ContactDetailClient({
               </section>
             )}
 
-            <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+            <section data-ink-on-light className="hidden bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Tags</h2>
+                <span className="text-xs text-gray-400">{savingTags ? 'Saving…' : 'Edit'}</span>
+              </div>
+              <TagEditor
+                value={tags}
+                onChange={(next) => void saveTags(next)}
+                objectType="contact"
+                disabled={savingTags}
+                placeholder="Add tag…"
+              />
+            </section>
+
+            <section data-ink-on-light className="hidden bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">
                 Quick links
               </h2>
@@ -1326,31 +1422,56 @@ export default function ContactDetailClient({
       {/* ── Jobs ─────────────────────────────────────────────────── */}
       {activeTab === 'jobs' && (
         <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-gray-900">
-              Open Jobs at {companyName}
-            </h2>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => router.push('/dashboard/jobs')}
-            >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">
+                Jobs for {form.name || contact.name}
+              </h2>
+              <p className="text-xs text-gray-500 mt-1">
+                Hiring manager at {companyName} · {companyJobs.length} total
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/jobs')}>
               <Briefcase className="h-4 w-4 mr-1.5" /> Browse jobs
             </Button>
           </div>
-          {companyJobs.length === 0 ? (
+          <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap gap-1 rounded-lg bg-gray-50 p-1">
+              {(['open', 'all', 'closed'] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setJobFilter(filter)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize ${jobFilter === filter ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                >
+                  {filter} ({filter === 'open' ? openJobs.length : filter === 'closed' ? companyJobs.length - openJobs.length : companyJobs.length})
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="relative min-w-0 flex-1 lg:w-56">
+                <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+                <Input value={jobSearch} onChange={(e) => setJobSearch(e.target.value)} placeholder="Search these jobs" className="h-8 pl-8 text-xs" />
+              </div>
+              <div className="flex rounded-md border border-gray-200 p-0.5">
+                <button type="button" onClick={() => setJobView('list')} className={`rounded p-1.5 ${jobView === 'list' ? 'bg-gray-100 text-blue-700' : 'text-gray-400'}`} aria-label="List view"><List className="h-4 w-4" /></button>
+                <button type="button" onClick={() => setJobView('cards')} className={`rounded p-1.5 ${jobView === 'cards' ? 'bg-gray-100 text-blue-700' : 'text-gray-400'}`} aria-label="Card view"><LayoutGrid className="h-4 w-4" /></button>
+              </div>
+            </div>
+          </div>
+          {visibleJobs.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-12">
-              No open jobs for this company.
+              {companyJobs.length ? 'No jobs match this view.' : 'No jobs are assigned to this hiring manager.'}
             </p>
           ) : (
-            <div className="space-y-2">
-              {companyJobs.map((job: any) => (
+            <div className={jobView === 'cards' ? 'grid gap-3 sm:grid-cols-2' : 'space-y-2'}>
+              {visibleJobs.map((job: any) => (
                 <Link
                   key={job.id}
                   href={`/dashboard/jobs/${job.id}`}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-4 py-3 hover:bg-gray-50"
+                  className={`flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-4 py-3 hover:bg-gray-50 ${jobView === 'cards' ? 'min-h-24 flex-col items-start' : ''}`}
                 >
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-medium text-gray-900">
                       {job.title || 'Untitled job'}
                     </div>

@@ -151,7 +151,11 @@ export function artifactsFromToolPayload(
     return out;
   }
 
-  if (toolName === 'create_company' || toolName === 'update_company') {
+  if (
+    toolName === 'create_company' ||
+    toolName === 'update_company' ||
+    toolName === 'create_company_with_primary_contact'
+  ) {
     const company = (d.company || d) as Record<string, unknown>;
     const id = String(company.id || d.id || '');
     const name = String(company.name || d.name || 'Company');
@@ -167,8 +171,13 @@ export function artifactsFromToolPayload(
     }
   }
 
-  if (toolName === 'create_contact' || toolName === 'update_contact') {
-    const c = (d.contact || d) as Record<string, unknown>;
+  if (
+    toolName === 'create_contact' ||
+    toolName === 'update_contact' ||
+    toolName === 'create_company_with_primary_contact'
+  ) {
+    const nested = d.primary_contact as Record<string, unknown> | undefined;
+    const c = (nested?.contact || d.contact || (nested && !d.contact ? nested : d)) as Record<string, unknown>;
     const id = String(c.id || d.id || '');
     const name = String(c.name || c.fullName || 'Contact');
     push({

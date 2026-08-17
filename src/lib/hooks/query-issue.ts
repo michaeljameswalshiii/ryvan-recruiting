@@ -311,12 +311,13 @@ export function useBulkUpdateIssueStatus() {
       status: string;
     }) => {
       const result = await bulkUpdateIssueStatusAction(ids, status);
-      if (result.error) throw new Error(result.error);
+      if ('error' in result && result.error) throw new Error(result.error);
       return result;
     },
     onSuccess: (result) => {
+      const updated = 'updated' in result ? result.updated : 0;
       toast.success(
-        `Updated ${result.updated || 0} work item${(result.updated || 0) === 1 ? "" : "s"}`
+        `Updated ${updated || 0} work item${(updated || 0) === 1 ? "" : "s"}`
       );
       invalidateIssue(queryClient);
     },

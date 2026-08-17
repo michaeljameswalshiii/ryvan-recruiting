@@ -3,6 +3,7 @@ import {
   putItem,
   getItem,
   queryItems,
+  scanItems,
   updateItem,
   deleteItem,
   tableNames,
@@ -209,6 +210,71 @@ function toDbItem(issue: Issue, tenantId: string) {
   };
 }
 
+function applyIssueFilters(items: Issue[], filters?: IssueListFilters | string): Issue[] {
+  const f: IssueListFilters =
+    typeof filters === "string" ? { status: filters } : filters || {};
+
+  let filtered = items;
+
+  if (f.status) {
+    const st = normalizeIssueStatus(f.status);
+    filtered = filtered.filter((i) => i.status === st);
+  }
+  if (f.type) {
+    const ty = normalizeIssueType(f.type);
+    filtered = filtered.filter((i) => normalizeIssueType(i.issueType) === ty);
+  }
+  if (f.priority) {
+    filtered = filtered.filter((i) => Number(i.priority) === Number(f.priority));
+  }
+  if (f.assignee) {
+    const a = f.assignee.toLowerCase();
+    filtered = filtered.filter(
+      (i) =>
+        String(i.assigneeName || "").toLowerCase().includes(a) ||
+        String(i.assigneeId || "").toLowerCase().includes(a) ||
+        (i.assignedTo || []).some((x) => String(x).toLowerCase().includes(a))
+    );
+  }
+  if (f.customerRequest) filtered = filtered.filter((i) => !!i.customerRequest);
+  if (f.q) {
+    const q = f.q.toLowerCase();
+    filtered = filtered.filter(
+      (i) =>
+        i.title?.toLowerCase().includes(q) ||
+        i.description?.toLowerCase().includes(q) ||
+        i.issueId?.toLowerCase().includes(q) ||
+        String(i.customerName || "").toLowerCase().includes(q) ||
+        (i.tags || []).some((t) => t.toLowerCase().includes(q))
+    );
+  }
+  if (f.mine) {
+    const uid = (f.mineUserId || "").toLowerCase();
+    const email = (f.mineEmail || "").toLowerCase();
+    const name = (f.mineName || "").toLowerCase();
+    filtered = filtered.filter((i) => {
+      const an = String(i.assigneeName || "").toLowerCase();
+      const aid = String(i.assigneeId || "").toLowerCase();
+      const assigned = (i.assignedTo || []).map((x) => String(x).toLowerCase());
+      return (
+        (!!uid && (aid === uid || assigned.includes(uid))) ||
+        (!!email && (an.includes(email) || assigned.some((x) => x.includes(email)))) ||
+        (!!name && (an.includes(name) || assigned.some((x) => x.includes(name))))
+      );
+    });
+  }
+
+  filtered.sort((a, b) => {
+    const ra = a.rank || "";
+    const rb = b.rank || "";
+    if (ra && rb && ra !== rb) return ra < rb ? -1 : 1;
+    if (ra && !rb) return -1;
+    if (!ra && rb) return 1;
+    return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
+  });
+  return filtered;
+}
+
 export type HistoryActor = {
   byId?: string;
   byName?: string;
@@ -301,91 +367,19 @@ export const issueRepository = {
     filters?: IssueListFilters | string
   ): Promise<Issue[]> {
     // Legacy: second arg was status string
-    const f: IssueListFilters =
-      typeof filters === "string"
-        ? { status: filters }
-        : filters || {};
-
     const result = await queryItems<any>(
       tableNames.issues,
       "tenant_id = :tenantId",
       { ":tenantId": tenantId }
     );
 
-    let items = (result.items || []).map(mapItem);
+    return applyIssueFilters((result.items || []).map(mapItem), filters);
+  },
 
-    if (f.status) {
-      const st = normalizeIssueStatus(f.status);
-      items = items.filter((i) => i.status === st);
-    }
-    if (f.type) {
-      const ty = normalizeIssueType(f.type);
-      items = items.filter((i) => normalizeIssueType(i.issueType) === ty);
-    }
-    if (f.priority) {
-      items = items.filter((i) => Number(i.priority) === Number(f.priority));
-    }
-    if (f.assignee) {
-      const a = f.assignee.toLowerCase();
-      items = items.filter(
-        (i) =>
-          String(i.assigneeName || "")
-            .toLowerCase()
-            .includes(a) ||
-          String(i.assigneeId || "")
-            .toLowerCase()
-            .includes(a) ||
-          (i.assignedTo || []).some((x) =>
-            String(x).toLowerCase().includes(a)
-          )
-      );
-    }
-    if (f.customerRequest) {
-      items = items.filter((i) => !!i.customerRequest);
-    }
-    if (f.q) {
-      const q = f.q.toLowerCase();
-      items = items.filter(
-        (i) =>
-          i.title?.toLowerCase().includes(q) ||
-          i.description?.toLowerCase().includes(q) ||
-          i.issueId?.toLowerCase().includes(q) ||
-          String(i.customerName || "")
-            .toLowerCase()
-            .includes(q) ||
-          (i.tags || []).some((t) => t.toLowerCase().includes(q))
-      );
-    }
-    if (f.mine) {
-      const uid = (f.mineUserId || "").toLowerCase();
-      const email = (f.mineEmail || "").toLowerCase();
-      const name = (f.mineName || "").toLowerCase();
-      items = items.filter((i) => {
-        const an = String(i.assigneeName || "").toLowerCase();
-        const aid = String(i.assigneeId || "").toLowerCase();
-        const assigned = (i.assignedTo || []).map((x) => String(x).toLowerCase());
-        if (uid && (aid === uid || assigned.includes(uid))) return true;
-        if (email && (an.includes(email) || assigned.some((x) => x.includes(email))))
-          return true;
-        if (name && (an.includes(name) || assigned.some((x) => x.includes(name))))
-          return true;
-        return false;
-      });
-    }
-
-    // Rank first when present, else updatedAt
-    items.sort((a, b) => {
-      const ra = a.rank || "";
-      const rb = b.rank || "";
-      if (ra && rb && ra !== rb) return ra < rb ? -1 : 1;
-      if (ra && !rb) return -1;
-      if (!ra && rb) return 1;
-      return (
-        new Date(b.updatedAt || b.createdAt).getTime() -
-        new Date(a.updatedAt || a.createdAt).getTime()
-      );
-    });
-    return items;
+  /** Site-admin aggregate view across every customer tenant. */
+  async listAll(filters?: IssueListFilters | string): Promise<Issue[]> {
+    const items = await scanItems<any>(tableNames.issues);
+    return applyIssueFilters(items.map(mapItem), filters);
   },
 
   /**
