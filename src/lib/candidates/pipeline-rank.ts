@@ -21,6 +21,8 @@ const PIPELINE_ORDER = [
   "interview",
   "second_interview",
   "third_interview",
+  "2nd_interview",
+  "3rd_interview",
   "offer_out",
   "offer",
   "offer_accepted",

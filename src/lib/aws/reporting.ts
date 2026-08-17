@@ -6,11 +6,12 @@
  */
 
 import { getSession, getSessionTenantId } from '../server-auth';
-import { queryItems, leadsTable, eventsTable } from '../db/dynamodb';
+import { queryItems, queryAllItems, leadsTable, eventsTable } from '../db/dynamodb';
 import { getAllClients } from '../db/repositories/client-repository';
 import { getAllJobs } from '../db/repositories/job-repository';
 import { getAllTenants } from '../db/repositories/tenant-repository';
 import { isSiteAdmin } from '../roles';
+import { mapLegacyStageToApplicationStage } from '../schemas/lead';
 
 // ============================================================================
 // Types
@@ -115,6 +116,8 @@ export interface ReportingStats {
 
   placementsKpi: KpiDelta;
   interviewsKpi: KpiDelta;
+  submittedKpi: KpiDelta;
+  offersKpi: KpiDelta;
   candidatesAddedKpi: KpiDelta;
   openJobsKpi: KpiDelta;
   companiesAddedKpi: KpiDelta;
@@ -183,7 +186,14 @@ const FUNNEL_STEPS = [
   {
     key: 'interviewing',
     label: 'Interviewing',
-    match: ['interviewing', 'interview'],
+    match: [
+      'interviewing',
+      'interview',
+      'second_interview',
+      'third_interview',
+      '2nd_interview',
+      '3rd_interview',
+    ],
   },
   {
     key: 'offer_out',
@@ -243,6 +253,32 @@ function periodDays(key: PeriodKey): number {
   return 30;
 }
 
+function periodBounds(key: PeriodKey, now = new Date()): {
+  start: Date;
+  end: Date;
+  prevStart: Date;
+  prevEnd: Date;
+  days: number;
+} {
+  if (key === 'ytd') {
+    const start = new Date(now.getFullYear(), 0, 1);
+    start.setHours(0, 0, 0, 0);
+    const prevStart = new Date(now.getFullYear() - 1, 0, 1);
+    prevStart.setHours(0, 0, 0, 0);
+    const prevEnd = new Date(start.getTime() - 1);
+    const days = Math.max(
+      1,
+      Math.ceil((now.getTime() - start.getTime()) / 86400000)
+    );
+    return { start, end: now, prevStart, prevEnd, days };
+  }
+  const days = periodDays(key);
+  const start = new Date(now.getTime() - days * 86400000);
+  const prevStart = new Date(start.getTime() - days * 86400000);
+  const prevEnd = new Date(start.getTime() - 1);
+  return { start, end: now, prevStart, prevEnd, days };
+}
+
 function periodLabel(key: PeriodKey): string {
   if (key === '7') return 'Last 7 days';
   if (key === '90') return 'Last 90 days';
@@ -280,15 +316,68 @@ function inRange(iso: string | undefined, start: Date, end: Date): boolean {
 
 function normalizeCandidateStage(raw?: string): string {
   if (!raw) return 'sourced';
-  return String(raw).trim().toLowerCase().replace(/\s+/g, '_');
+  return mapLegacyStageToApplicationStage(raw);
 }
 
 function getPrimaryStage(candidate: any): string {
   const linked = Array.isArray(candidate.linkedJobs) ? candidate.linkedJobs : [];
-  if (linked.length > 0 && linked[0]?.stage) {
-    return normalizeCandidateStage(linked[0].stage);
+  const stages: string[] = [];
+  const statusRaw = candidate.status || candidate.stage;
+  if (statusRaw) stages.push(normalizeCandidateStage(statusRaw));
+  for (const job of linked) {
+    if (job?.stage) stages.push(normalizeCandidateStage(job.stage));
   }
-  return normalizeCandidateStage(candidate.status || candidate.stage || 'sourced');
+  if (stages.length === 0) return 'sourced';
+
+  const statusNorm = statusRaw ? normalizeCandidateStage(statusRaw) : '';
+  if (
+    ['rejected', 'not_interested', 'offer_declined', 'withdrawn'].includes(
+      statusNorm
+    )
+  ) {
+    return statusNorm;
+  }
+
+  let best = stages[0];
+  let bestIdx = funnelIndex(best);
+  for (const stage of stages) {
+    if (
+      ['rejected', 'not_interested', 'offer_declined', 'withdrawn'].includes(
+        stage
+      )
+    ) {
+      continue;
+    }
+    const idx = funnelIndex(stage);
+    if (idx > bestIdx) {
+      best = stage;
+      bestIdx = idx;
+    }
+  }
+  return best;
+}
+
+function latestTimestamp(...values: Array<string | undefined | null>): string | undefined {
+  const dates = values.filter((value): value is string => Boolean(value)).sort();
+  return dates.at(-1);
+}
+
+function getStageActivityAt(candidate: any): string | undefined {
+  const linked = Array.isArray(candidate.linkedJobs) ? candidate.linkedJobs : [];
+  const linkedDates = linked.flatMap((job: any) => [
+    job?.stageUpdatedAt,
+    job?.stage_updated_at,
+    job?.modifiedAt,
+    job?.modified_at,
+  ]);
+  return latestTimestamp(
+    ...linkedDates,
+    candidate?.modified_at,
+    candidate?.modifiedAt,
+    candidate?.updated_at,
+    candidate?.created_at,
+    candidate?.createdAt
+  );
 }
 
 function funnelIndex(stage: string): number {
@@ -305,7 +394,23 @@ function funnelIndex(stage: string): number {
 }
 
 function isPlaced(stage: string): boolean {
-  return ['placed', 'converted', 'hired'].includes(stage.toLowerCase());
+  const s = stage.toLowerCase();
+  return ['placed', 'converted', 'hired', 'accept'].includes(s);
+}
+
+function isSubmittedStage(stage: string): boolean {
+  return [
+    'pre_screened',
+    'submitted',
+    'presented',
+    'conversation',
+    'qualified',
+  ].includes(stage.toLowerCase());
+}
+
+function isOfferStage(stage: string): boolean {
+  const s = stage.toLowerCase();
+  return s === 'offer_out' || s === 'offer_accepted' || s === 'offer' || s === 'offered';
 }
 
 function isInterviewingOrBeyond(stage: string): boolean {
@@ -438,7 +543,7 @@ function calculateAvgDays(
 // ============================================================================
 
 export async function getReportingStats(
-  period: PeriodKey = '30'
+  period: PeriodKey = 'ytd'
 ): Promise<ReportingStats> {
   const session = await getSession();
   const allTenants =
@@ -453,17 +558,20 @@ export async function getReportingStats(
       : [];
   if (!tenantIds.length) return getEmptyStats(period);
 
-  const days = periodDays(period);
   const now = new Date();
-  const periodStart = new Date(now.getTime() - days * 86400000);
-  const prevStart = new Date(periodStart.getTime() - days * 86400000);
-  const prevEnd = new Date(periodStart.getTime() - 1);
+  const {
+    start: periodStart,
+    end: periodEnd,
+    prevStart,
+    prevEnd,
+    days,
+  } = periodBounds(period, now);
 
   try {
     const tenantData = await Promise.all(
       tenantIds.map(async (tenantId) => {
         const [leadsRaw, jobs, companies] = await Promise.all([
-          queryItems<any>(leadsTable, 'tenant_id = :tenantId', {
+          queryAllItems<any>(leadsTable, 'tenant_id = :tenantId', {
             ':tenantId': tenantId,
           }),
           getAllJobs(tenantId).catch(() => [] as any[]),
@@ -485,7 +593,12 @@ export async function getReportingStats(
     const candidates = leads.map((c) => {
       const stage = getPrimaryStage(c);
       const created = c.created_at || c.createdAt;
-      const modified = c.modified_at || c.modifiedAt || c.updated_at || created;
+      const modified =
+        getStageActivityAt(c) ||
+        c.modified_at ||
+        c.modifiedAt ||
+        c.updated_at ||
+        created;
       const interview = getCandidateInterviewState(c);
       return {
         raw: c,
@@ -503,17 +616,34 @@ export async function getReportingStats(
 
     // Period cohorts
     const addedThisPeriod = candidates.filter((c) =>
-      inRange(c.created, periodStart, now)
+      inRange(c.created, periodStart, periodEnd)
     );
     const addedPrevPeriod = candidates.filter((c) =>
       inRange(c.created, prevStart, prevEnd)
     );
 
-    const placedThisPeriod = candidates.filter(
-      (c) => isPlaced(c.stage) && inRange(c.modified, periodStart, now)
+    const submittedNow = candidates.filter((c) => isSubmittedStage(c.stage));
+    const offersNow = candidates.filter((c) => isOfferStage(c.stage));
+    const placedNow = candidates.filter((c) => isPlaced(c.stage));
+
+    const submittedThisPeriod = submittedNow.filter((c) =>
+      inRange(c.modified, periodStart, periodEnd)
     );
-    const placedPrevPeriod = candidates.filter(
-      (c) => isPlaced(c.stage) && inRange(c.modified, prevStart, prevEnd)
+    const submittedPrevPeriod = submittedNow.filter((c) =>
+      inRange(c.modified, prevStart, prevEnd)
+    );
+    const offersThisPeriod = offersNow.filter((c) =>
+      inRange(c.modified, periodStart, periodEnd)
+    );
+    const offersPrevPeriod = offersNow.filter((c) =>
+      inRange(c.modified, prevStart, prevEnd)
+    );
+    const placedThisPeriod =
+      period === 'ytd'
+        ? placedNow
+        : placedNow.filter((c) => inRange(c.modified, periodStart, periodEnd));
+    const placedPrevPeriod = placedNow.filter((c) =>
+      inRange(c.modified, prevStart, prevEnd)
     );
 
     const inMotion = candidates.filter((c) => {
@@ -524,7 +654,8 @@ export async function getReportingStats(
     // Interviews: currently in interview stage (stock) + period activity for delta
     const interviewsNow = candidates.filter((c) => c.interviewing).length;
     const interviewsThisPeriod = candidates.filter(
-      (c) => c.interviewing && inRange(c.interviewUpdatedAt, periodStart, now)
+      (c) =>
+        c.interviewing && inRange(c.interviewUpdatedAt, periodStart, periodEnd)
     ).length;
     const interviewsPrevPeriod = candidates.filter(
       (c) => c.interviewing && inRange(c.interviewUpdatedAt, prevStart, prevEnd)
@@ -569,7 +700,7 @@ export async function getReportingStats(
     const candidatesOverTime = buildTimeSeries(
       candidates.map((c) => ({ created_at: c.created })),
       periodStart,
-      now
+      periodEnd
     );
     const previousCandidatesOverTime = buildTimeSeries(
       candidates.map((c) => ({ created_at: c.created })),
@@ -581,7 +712,7 @@ export async function getReportingStats(
         created_at: co.created_at || co.createdAt,
       })),
       periodStart,
-      now
+      periodEnd
     );
 
     // Source quality
@@ -687,7 +818,7 @@ export async function getReportingStats(
     }
 
     const companiesAddedThisPeriod = safeCompanies.filter((co) =>
-      inRange(co.created_at || co.createdAt, periodStart, now)
+      inRange(co.created_at || co.createdAt, periodStart, periodEnd)
     ).length;
     const companiesAddedPrevPeriod = safeCompanies.filter((co) =>
       inRange(co.created_at || co.createdAt, prevStart, prevEnd)
@@ -804,10 +935,22 @@ export async function getReportingStats(
       avgTimeToFill,
 
       placementsKpi: {
-        value: placedThisPeriod.length,
+        value: placedNow.length,
         previous: placedPrevPeriod.length,
         deltaPct: deltaPct(placedThisPeriod.length, placedPrevPeriod.length),
         label: 'Placements',
+      },
+      submittedKpi: {
+        value: submittedNow.length,
+        previous: submittedPrevPeriod.length,
+        deltaPct: deltaPct(submittedThisPeriod.length, submittedPrevPeriod.length),
+        label: 'Submittals',
+      },
+      offersKpi: {
+        value: offersNow.length,
+        previous: offersPrevPeriod.length,
+        deltaPct: deltaPct(offersThisPeriod.length, offersPrevPeriod.length),
+        label: 'Offers',
       },
       interviewsKpi: {
         // Stock count of candidates currently interviewing; delta from period activity
@@ -866,7 +1009,8 @@ export async function getReportingStats(
 
       periodDays: days,
       periodLabel: periodLabel(period),
-      previousPeriodLabel: `Prior ${days} days`,
+      previousPeriodLabel:
+        period === 'ytd' ? 'Prior year' : `Prior ${days} days`,
       lastUpdated: now.toISOString(),
     };
   } catch (error) {
@@ -1000,7 +1144,7 @@ async function getRecentEventsSafe(candidateIds: string[]): Promise<EventData[]>
   return allEvents.slice(0, 20);
 }
 
-function getEmptyStats(period: PeriodKey = '30'): ReportingStats {
+function getEmptyStats(period: PeriodKey = 'ytd'): ReportingStats {
   const days = periodDays(period);
   return {
     totalCandidates: 0,
@@ -1012,6 +1156,8 @@ function getEmptyStats(period: PeriodKey = '30'): ReportingStats {
     avgTimeToFill: 0,
     placementsKpi: { value: 0, previous: 0, deltaPct: 0, label: 'Placements' },
     interviewsKpi: { value: 0, previous: 0, deltaPct: 0, label: 'Interviews' },
+    submittedKpi: { value: 0, previous: 0, deltaPct: 0, label: 'Submittals' },
+    offersKpi: { value: 0, previous: 0, deltaPct: 0, label: 'Offers' },
     candidatesAddedKpi: { value: 0, previous: 0, deltaPct: 0, label: 'New candidates' },
     openJobsKpi: { value: 0, previous: 0, deltaPct: 0, label: 'Open jobs' },
     companiesAddedKpi: { value: 0, previous: 0, deltaPct: 0, label: 'New companies' },

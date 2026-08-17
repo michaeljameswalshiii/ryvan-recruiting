@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Plus,
@@ -157,13 +157,17 @@ function stageLabel(stage: string) {
 }
 
 function getProgressIndex(stage: string): number {
-  const s = stage.toLowerCase();
+  const s = normalizeStage(stage).toLowerCase();
   if (['rejected', 'not_interested', 'offer_declined', 'dnu', 'do_not_use'].includes(s))
     return 0;
   for (let i = PROGRESS_STEPS.length - 1; i >= 0; i--) {
     if ((PROGRESS_STEPS[i].match as readonly string[]).includes(s) || PROGRESS_STEPS[i].key === s) {
       return i + 1; // 1-based step completed
     }
+  }
+  if (s.includes('interview') && !s.includes('offer')) {
+    const interviewIdx = PROGRESS_STEPS.findIndex((p) => p.key === 'interviewing');
+    return interviewIdx >= 0 ? interviewIdx + 1 : 5;
   }
   return 1;
 }
@@ -233,7 +237,10 @@ function stageBadgeClasses(stage: string) {
       'interview',
       'second_interview',
       'third_interview',
-    ].includes(s)
+      '2nd_interview',
+      '3rd_interview',
+    ].includes(s) ||
+    (s.includes('interview') && !s.includes('offer'))
   ) {
     return 'bg-violet-50 text-violet-700 border-violet-200';
   }
@@ -267,6 +274,16 @@ const LIST_STAGE_OPTIONS = APPLICATION_STAGES.map((s) => ({
   label: s.label,
 }));
 
+function parseStageBucket(raw?: string | null): StageBucket {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'submitted' || s === 'submittal' || s === 'submittals') return 'submitted';
+  if (s === 'interviewing' || s === 'interview' || s === 'interviews') return 'interviewing';
+  if (s === 'offer_out' || s === 'offer' || s === 'offers') return 'offer_out';
+  if (s === 'placed' || s === 'placement' || s === 'placements') return 'placed';
+  if (s === 'rejected') return 'rejected';
+  return 'all';
+}
+
 function matchesBucket(stage: string, bucket: StageBucket): boolean {
   if (bucket === 'all') return true;
   const s = stage.toLowerCase();
@@ -274,9 +291,9 @@ function matchesBucket(stage: string, bucket: StageBucket): boolean {
     case 'submitted':
       return ['submitted', 'pre_screened', 'presented', 'conversation', 'qualified'].includes(s);
     case 'interviewing':
-      return ['interviewing', 'interview'].includes(s);
+      return s.includes('interview') && !s.includes('offer');
     case 'offer_out':
-      return ['offer_out', 'offer_accepted', 'offer'].includes(s);
+      return ['offer_out', 'offer_accepted', 'offer', 'offered'].includes(s);
     case 'placed':
       return ['placed', 'accept', 'converted', 'hired'].includes(s);
     case 'rejected':
@@ -391,12 +408,15 @@ const CANDIDATE_COLUMNS_KEY = 'trio.candidates.tableColumns.v3';
 
 export function CandidatesClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: leads = [], isLoading, error, refetch, isFetching } = useLeads();
   const deleteLeadMutation = useDeleteLead();
   const updateLeadStatusMutation = useUpdateLeadStatus();
 
   const [search, setSearch] = useState('');
-  const [bucket, setBucket] = useState<StageBucket>('all');
+  const [bucket, setBucket] = useState<StageBucket>(() =>
+    parseStageBucket(searchParams.get('stage'))
+  );
   const [sortKey, setSortKey] = useState<SortKey>('last_activity');
   const [showResumeCard, setShowResumeCard] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -420,6 +440,22 @@ export function CandidatesClient() {
   const [bulkStage, setBulkStage] = useState('');
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setBucket(parseStageBucket(searchParams.get('stage')));
+  }, [searchParams]);
+
+  const selectBucket = (next: StageBucket) => {
+    setBucket(next);
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === 'all') params.delete('stage');
+    else params.set('stage', next);
+    const qs = params.toString();
+    router.replace(qs ? `/dashboard/candidates?${qs}` : '/dashboard/candidates', {
+      scroll: false,
+    });
+  };
+
   const columns = useListColumns(CANDIDATE_COLUMNS_KEY, CANDIDATE_COLUMN_DEFS);
   const col = columns.col;
   const { data: ownerMap = {} } = useAssignmentOwners('candidate');
@@ -697,7 +733,7 @@ export function CandidatesClient() {
     {
       key: 'interviewing',
       label: 'Interviewing',
-      sub: 'In process',
+      sub: '1st, 2nd & 3rd interviews',
       count: stats.interviewing,
       tone: 'violet' as const,
     },
@@ -807,7 +843,7 @@ export function CandidatesClient() {
       <FilterStatCards
         cards={statCards}
         activeKey={bucket}
-        onSelect={(key) => setBucket(key as StageBucket)}
+        onSelect={(key) => selectBucket(key as StageBucket)}
         className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3"
       />
 
@@ -930,7 +966,7 @@ export function CandidatesClient() {
           </p>
           <div className="flex justify-center gap-2">
             {bucket !== 'all' && (
-              <Button variant="outline" onClick={() => setBucket('all')}>
+              <Button variant="outline" onClick={() => selectBucket('all')}>
                 Clear filter
               </Button>
             )}

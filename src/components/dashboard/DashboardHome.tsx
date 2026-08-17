@@ -114,11 +114,15 @@ export function DashboardHome({
   const funnelMax = Math.max(...stats.funnel.map((f) => f.count), 1);
 
   // KPI set: Open Jobs · Submittals · Interviews · Offers · Placements
-  // (same card chrome; metrics + drill links aligned to each page)
+  // Counts match the Candidates stage buckets the cards drill into.
   const submittedCount =
-    stats.funnel.find((step) => step.key === 'submitted')?.count ?? 0;
+    stats.submittedKpi?.value ??
+    stats.funnel.find((step) => step.key === 'submitted')?.count ??
+    0;
   const offersCount =
-    stats.funnel.find((step) => step.key === 'offer_out')?.count ?? 0;
+    stats.offersKpi?.value ??
+    stats.funnel.find((step) => step.key === 'offer_out')?.count ??
+    0;
   const kpis = [
     {
       title: 'Open Jobs',
@@ -128,19 +132,19 @@ export function DashboardHome({
       icon: Briefcase,
       color: 'text-blue-600',
       bg: 'bg-blue-100',
-      cardClass: '!border-blue-200 !bg-blue-50',
+      cardClass: 'border-blue-200 bg-blue-50',
       href: '/dashboard/jobs',
     },
     {
       title: 'Submittals',
       value: submittedCount,
-      delta: null,
-      sub: 'submitted or beyond',
+      delta: stats.submittedKpi?.deltaPct ?? null,
+      sub: 'currently submitted',
       icon: TrendingUp,
       color: 'text-violet-700',
       bg: 'bg-violet-100',
-      cardClass: '!border-violet-200 !bg-violet-50',
-      href: '/dashboard/candidates',
+      cardClass: 'border-violet-200 bg-violet-50',
+      href: '/dashboard/candidates?stage=submitted',
     },
     {
       title: 'Interviews',
@@ -150,19 +154,19 @@ export function DashboardHome({
       icon: Users,
       color: 'text-amber-700',
       bg: 'bg-amber-100',
-      cardClass: '!border-amber-200 !bg-amber-50',
-      href: '/dashboard/candidates',
+      cardClass: 'border-amber-200 bg-amber-50',
+      href: '/dashboard/candidates?stage=interviewing',
     },
     {
       title: 'Offers',
       value: offersCount,
-      delta: null,
-      sub: 'offer stage or beyond',
+      delta: stats.offersKpi?.deltaPct ?? null,
+      sub: 'currently on offer',
       icon: Building2,
       color: 'text-emerald-700',
       bg: 'bg-emerald-100',
-      cardClass: '!border-emerald-200 !bg-emerald-50',
-      href: '/dashboard/candidates',
+      cardClass: 'border-emerald-200 bg-emerald-50',
+      href: '/dashboard/candidates?stage=offer_out',
     },
     {
       title: 'Placements',
@@ -172,8 +176,8 @@ export function DashboardHome({
       icon: Target,
       color: 'text-green-700',
       bg: 'bg-green-100',
-      cardClass: '!border-green-200 !bg-green-50',
-      href: '/dashboard/candidates',
+      cardClass: 'border-green-200 bg-green-50',
+      href: '/dashboard/candidates?stage=placed',
     },
   ];
 
@@ -210,47 +214,32 @@ export function DashboardHome({
         </div>
       </div>
 
-      {/* KPI cards */}
+      {/* KPI cards — whole card is the drill-down, not expand-in-place */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
         {kpis.map((c) => (
-          <DashboardCard
+          <Link
             key={c.title}
-            title={c.title}
-            className={`overflow-hidden ${c.cardClass}`}
-            expandedChildren={
-              <div className="flex min-h-[320px] flex-col items-center justify-center text-center">
-                <div className={`mb-5 rounded-2xl p-4 ${c.bg}`}>
-                  <c.icon className={`h-8 w-8 ${c.color}`} />
-                </div>
-                <div className="text-6xl font-semibold tabular-nums text-slate-900">
-                  {Number(c.value).toLocaleString()}
-                </div>
-                <p className="mt-3 text-sm font-medium text-slate-600">{c.sub}</p>
-                <div className="mt-4 flex items-center gap-3 text-sm text-slate-500">
-                  <span>Compared with the prior period</span>
-                  <DeltaBadge deltaPct={c.delta} />
-                </div>
-                <Link href={c.href} className="mt-8 text-sm font-semibold text-blue-600 hover:underline">
-                  Open {c.title.toLowerCase()} details
-                </Link>
-              </div>
-            }
+            href={c.href}
+            className={`block overflow-hidden rounded-2xl border shadow-sm transition-opacity hover:opacity-90 ${c.cardClass}`}
           >
-          <Link href={c.href} className="block hover:opacity-90 transition-opacity">
-            <div className="flex items-start justify-between gap-2">
-              <div className={`p-2 rounded-xl ${c.bg}`}>
-                <c.icon className={`h-4 w-4 ${c.color}`} />
+            <div className="flex items-center border-b border-black/5 px-5 py-3">
+              <h2 className="text-base font-semibold text-gray-900">{c.title}</h2>
+            </div>
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-2">
+                <div className={`p-2 rounded-xl ${c.bg}`}>
+                  <c.icon className={`h-4 w-4 ${c.color}`} />
+                </div>
+                <DeltaBadge deltaPct={c.delta} />
               </div>
-              <DeltaBadge deltaPct={c.delta} />
-            </div>
-            <div className="mt-3 text-2xl font-semibold tabular-nums text-slate-900">
-              {Number(c.value).toLocaleString()}
-            </div>
-            <div className="mt-0.5 truncate text-[11px] font-medium text-slate-600">
-              {c.sub}
+              <div className="mt-3 text-2xl font-semibold tabular-nums text-slate-900">
+                {Number(c.value).toLocaleString()}
+              </div>
+              <div className="mt-0.5 truncate text-[11px] font-medium text-slate-600">
+                {c.sub}
+              </div>
             </div>
           </Link>
-          </DashboardCard>
         ))}
       </div>
 

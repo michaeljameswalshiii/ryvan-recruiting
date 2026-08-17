@@ -13,13 +13,13 @@ import {
 import { getLeadById, updateLead } from '@/lib/db/repositories/lead-repository';
 import { updateCandidateStageInJob } from '@/lib/db/repositories/job-repository';
 import { stageFromNoteType } from '@/lib/candidates/note-type-stage';
+import { mapLegacyStageToApplicationStage } from '@/lib/schemas/lead';
 
-/** Normalize status strings for equality checks */
+/** Canonical APPLICATION_STAGES value for equality / persistence. */
 export function normStatus(s: string | null | undefined): string {
-  return String(s || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '_');
+  const raw = String(s || '').trim();
+  if (!raw) return '';
+  return mapLegacyStageToApplicationStage(raw);
 }
 
 /**
@@ -186,6 +186,10 @@ export async function setCandidatePipelineStage(
       presented: 5,
       interviewing: 6,
       interview: 6,
+      second_interview: 6,
+      third_interview: 6,
+      '2nd_interview': 6,
+      '3rd_interview': 6,
       offer_out: 7,
       offer: 7,
       placed: 8,

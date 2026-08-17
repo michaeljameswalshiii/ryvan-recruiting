@@ -179,7 +179,17 @@ function canonicalProgressStage(value?: string | null) {
   if (["submitted", "presented", "pre_screened"].includes(stage)) {
     return "submitted";
   }
-  if (["interviewing", "interview", "second_interview", "third_interview"].includes(stage)) {
+  if (
+    [
+      "interviewing",
+      "interview",
+      "second_interview",
+      "third_interview",
+      "2nd_interview",
+      "3rd_interview",
+    ].includes(stage) ||
+    (stage.includes("interview") && !stage.includes("offer"))
+  ) {
     return "interviewing";
   }
   if (["offer_out", "offered"].includes(stage)) return "offer_out";

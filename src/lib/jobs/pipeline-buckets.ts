@@ -28,6 +28,12 @@ export const PIPELINE_BUCKETS = [
       'interview',
       'second_interview',
       'third_interview',
+      '2nd_interview',
+      '3rd_interview',
+      '2nd interview',
+      '3rd interview',
+      'second interview',
+      'third interview',
     ],
     bg: 'bg-violet-50',
     text: 'text-violet-800',
@@ -86,7 +92,12 @@ export function candidateMatchesBucket(
 ): boolean {
   if (bucket.match === null) return true;
   const s = String(stage || '').toLowerCase();
-  return bucket.match.some((m) => s === m.toLowerCase());
+  if (bucket.match.some((m) => s === m.toLowerCase())) return true;
+  // "2nd Interview" / "2nd_interview" must still hit the interviewing bucket
+  if (bucket.key === 'interviewing' && s.includes('interview') && !s.includes('offer')) {
+    return true;
+  }
+  return false;
 }
 
 export function pipelineHref(jobId: string, stage?: PipelineBucketKey | null): string {

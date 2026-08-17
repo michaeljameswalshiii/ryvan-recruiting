@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic';
 
 function parsePeriod(raw?: string): PeriodKey {
   if (raw === '7' || raw === '30' || raw === '90' || raw === 'ytd') return raw;
-  return '30';
+  return 'ytd';
 }
 
 function parseTab(raw?: string): ReportingTab {

@@ -223,6 +223,32 @@ export async function queryItems<T>(
 }
 
 /**
+ * Query every page for a partition. Use this for "get all X for tenant"
+ * — a single Query stops at 1MB and silently drops later items.
+ */
+export async function queryAllItems<T>(
+  table: string,
+  keyCondition: string,
+  expressionValues: Record<string, any>,
+  options?: {
+    expressionNames?: Record<string, string>;
+    ScanIndexForward?: boolean;
+  }
+): Promise<T[]> {
+  const items: T[] = [];
+  let exclusiveStartKey: Record<string, any> | undefined;
+  do {
+    const page = await queryItems<T>(table, keyCondition, expressionValues, {
+      ...options,
+      ExclusiveStartKey: exclusiveStartKey,
+    });
+    items.push(...page.items);
+    exclusiveStartKey = page.lastEvaluatedKey;
+  } while (exclusiveStartKey);
+  return items;
+}
+
+/**
  * Put a single item
  * CRITICAL: removeUndefinedValues to prevent DynamoDB GSI errors with empty strings
  */
