@@ -48,6 +48,13 @@ import {
   APOLLO_ASSISTANT_RULES,
   maybePrefireApolloLookup,
 } from "@/lib/ai/apollo-intent";
+import {
+  CRM_WRITE_NOW_NUDGE,
+  maxIterationsFallback,
+  shouldNudgeCrmWrite,
+  toolLoopBudget,
+  withLinkedInCreateGuidance,
+} from "@/lib/ai/crm-write-loop";
 import { formatApolloLookupForModel } from "@/lib/ai/tools/apollo-lookup";
 import {
   getDecryptedAnthropicKey,
@@ -419,7 +426,7 @@ const MODEL_CONFIG = {
   maxTokens: 4096,
   temperature: 0.7,
   // topP: 0.95,  // Removed - cannot use with temperature
-  maxIterations: 5,
+  maxIterations: 8,
 };
 
 /**
@@ -1214,6 +1221,7 @@ Use tools when they improve the answer. Be concise and actionable.`;
   if (prefire.didRun) {
     systemPrompt += `\n\n${APOLLO_ASSISTANT_RULES}`;
   }
+  systemPrompt = withLinkedInCreateGuidance(systemPrompt, query);
   let crmMutated = false;
   let modelId = options?.modelId || MODEL_GROK_43;
   if (!toolContext.generatedFiles) toolContext.generatedFiles = [];
@@ -1234,7 +1242,14 @@ Use tools when they improve the answer. Be concise and actionable.`;
     },
   ];
 
-  for (let i = 0; i < MODEL_CONFIG.maxIterations; i++) {
+  const grokMaxIter = toolLoopBudget(query, MODEL_CONFIG.maxIterations);
+  for (let i = 0; i < grokMaxIter; i++) {
+    if (shouldNudgeCrmWrite(query, i, grokMaxIter, toolsUsed)) {
+      converseMessages.push({
+        role: "user",
+        content: [{ text: CRM_WRITE_NOW_NUDGE }],
+      });
+    }
     const result = await invokeGrokBedrockConverse(
       converseMessages,
       systemPrompt,
@@ -1291,7 +1306,7 @@ Use tools when they improve the answer. Be concise and actionable.`;
   }
 
   return {
-    text: "Maximum tool iterations reached. Please refine your query.",
+    text: maxIterationsFallback(query),
     toolsUsed: Array.from(toolsUsed),
     modelId,
     crmMutated,
@@ -1794,6 +1809,7 @@ Rules:
   if (prefire.didRun) {
     systemPrompt += `\n\n${APOLLO_ASSISTANT_RULES}`;
   }
+  systemPrompt = withLinkedInCreateGuidance(systemPrompt, query);
   let crmMutated = false;
   let modelId = options?.modelId || DEFAULT_MODEL;
   if (!toolContext.generatedFiles) toolContext.generatedFiles = [];
@@ -1837,8 +1853,11 @@ Rules:
   ];
 
   // General chat: fewer tool iterations (crash/timeout prevention).
-  // Agent desk can go higher for multi-step goals.
-  const defaultIters = options?.agentMode ? 8 : 4;
+  // Create-from-LinkedIn / CRM writes get a higher budget so research cannot
+  // consume every round before create_company_with_primary_contact.
+  const defaultIters = options?.agentMode
+    ? 8
+    : toolLoopBudget(query, 6);
   const MAX_ITERATIONS = Math.min(
     12,
     Math.max(3, options?.maxIterations ?? defaultIters)
@@ -1846,6 +1865,12 @@ Rules:
   let iteration = 0;
 
   while (iteration < MAX_ITERATIONS) {
+    if (shouldNudgeCrmWrite(query, iteration, MAX_ITERATIONS, toolsUsed)) {
+      messages.push({
+        role: "user",
+        content: CRM_WRITE_NOW_NUDGE,
+      });
+    }
     console.log(`[MCP] Iteration ${iteration + 1}/${MAX_ITERATIONS} (history=${prior.length})`);
 
     const result = await invokeClaude(messages, tools, systemPrompt, modelId, options?.imageAttachments || []);
@@ -1947,7 +1972,7 @@ Rules:
   return {
     text: options?.agentMode
       ? "Wave complete — more tool iterations may be needed. Click Continue on the Agent Desk if the goal is not done.\nGOAL_CONTINUE"
-      : "Maximum iterations reached. Please refine your query.",
+      : maxIterationsFallback(query),
     toolsUsed: Array.from(toolsUsed),
     modelId,
     crmMutated,
@@ -2853,7 +2878,7 @@ ${pageContext}`
             typeof agentGoal === "string" && agentGoal.trim()
               ? agentGoal.trim()
               : lastUserQuery,
-          maxIterations: agentMode ? 10 : 5,
+          maxIterations: agentMode ? 10 : toolLoopBudget(lastUserQuery, 6),
           imageAttachments,
         });
         completion = agentResult.text;
@@ -2949,7 +2974,7 @@ ${pageContext}`
             ? agentMaxIterations
             : agentMode
               ? 10
-            : 5,
+            : toolLoopBudget(lastUserQuery, 6),
         imageAttachments,
       });
       completion = agentResult.text;

@@ -8,6 +8,13 @@ import {
   type ToolContext,
 } from '@/lib/ai/tools';
 import { applyApolloPrefire } from '@/lib/ai/apollo-intent';
+import {
+  CRM_WRITE_NOW_NUDGE,
+  maxIterationsFallback,
+  shouldNudgeCrmWrite,
+  toolLoopBudget,
+  withLinkedInCreateGuidance,
+} from '@/lib/ai/crm-write-loop';
 
 const XAI_BASE = 'https://api.x.ai/v1';
 /** Default xAI model — Grok 4.3 preferred for agentic / tool work */
@@ -17,7 +24,7 @@ export const GROK_DEFAULT_MODEL =
   process.env.GROK_PLATFORM_MODEL ||
   'grok-4.3';
 const DEFAULT_MODEL = GROK_DEFAULT_MODEL;
-const MAX_ITERATIONS = 5;
+const DEFAULT_MAX_ITERATIONS = 6;
 
 type ChatMessage =
   | { role: 'system'; content: string }
@@ -245,7 +252,12 @@ Never infer Brazil from "br" inside a domain brand (structuralbr.com is not Braz
 Use tools when they help. Be concise and actionable.`;
 
   const tools = useTools ? toOpenAITools() : undefined;
-  const pre = await applyApolloPrefire(query, systemPrompt, toolContext);
+  const pre = await applyApolloPrefire(
+    query,
+    withLinkedInCreateGuidance(systemPrompt, query),
+    toolContext
+  );
+  const maxIterations = toolLoopBudget(query, DEFAULT_MAX_ITERATIONS);
   const prior = (params.history || [])
     .filter((m) => m.role === 'user' || m.role === 'assistant')
     .filter((m) => typeof m.content === 'string' && m.content.trim().length > 0)
@@ -262,7 +274,10 @@ Use tools when they help. Be concise and actionable.`;
   const toolsUsed = new Set<string>(pre.toolsUsed);
   let usedModel = model;
 
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
+  for (let i = 0; i < maxIterations; i++) {
+    if (shouldNudgeCrmWrite(query, i, maxIterations, toolsUsed)) {
+      messages.push({ role: 'user', content: CRM_WRITE_NOW_NUDGE });
+    }
     const result = await invokeGrok({
       apiKey,
       model,
@@ -316,7 +331,7 @@ Use tools when they help. Be concise and actionable.`;
   }
 
   return {
-    text: 'Maximum tool iterations reached. Please refine your query.',
+    text: maxIterationsFallback(query),
     toolsUsed: Array.from(toolsUsed),
     model: usedModel,
   };

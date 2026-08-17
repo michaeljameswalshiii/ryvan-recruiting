@@ -20,6 +20,14 @@ import {
   getToolSchemas,
   type ToolContext,
 } from "@/lib/ai/tools";
+import { applyApolloPrefire } from "@/lib/ai/apollo-intent";
+import {
+  CRM_WRITE_NOW_NUDGE,
+  maxIterationsFallback,
+  shouldNudgeCrmWrite,
+  toolLoopBudget,
+  withLinkedInCreateGuidance,
+} from "@/lib/ai/crm-write-loop";
 
 export const MANTLE_GROK_43 = "xai.grok-4.3";
 
@@ -27,7 +35,7 @@ function usesCompletionTokens(model: string): boolean {
   return /grok|xai\./i.test(model || "");
 }
 
-const MAX_ITERATIONS = 5;
+const DEFAULT_MAX_ITERATIONS = 6;
 
 function mantleRegion(): string {
   return (
@@ -295,10 +303,17 @@ export async function runMantleGrokAgent(params: {
 }): Promise<{ text: string; toolsUsed: string[]; model: string }> {
   const model = params.model || MANTLE_GROK_43;
   const useTools = params.useTools !== false;
-  const systemPrompt =
+  const baseSystem =
     params.systemPrompt ||
     `You are a recruiting AI assistant on Grok 4.3 via Amazon Bedrock Mantle.
 Use tools when they improve the answer. Be concise and actionable.`;
+
+  const pre = await applyApolloPrefire(
+    params.query,
+    withLinkedInCreateGuidance(baseSystem, params.query),
+    params.toolContext
+  );
+  const maxIterations = toolLoopBudget(params.query, DEFAULT_MAX_ITERATIONS);
 
   const prior = (params.history || [])
     .filter((m) => m.role === "user" || m.role === "assistant")
@@ -306,19 +321,22 @@ Use tools when they improve the answer. Be concise and actionable.`;
     .slice(-20);
 
   const messages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
+    { role: "system", content: pre.systemPrompt },
     ...prior.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
     })),
-    { role: "user", content: params.query },
+    { role: "user", content: pre.query },
   ];
 
   const tools = useTools ? toOpenAITools() : undefined;
-  const toolsUsed = new Set<string>();
+  const toolsUsed = new Set<string>(pre.toolsUsed);
   let usedModel = model;
 
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
+  for (let i = 0; i < maxIterations; i++) {
+    if (shouldNudgeCrmWrite(params.query, i, maxIterations, toolsUsed)) {
+      messages.push({ role: "user", content: CRM_WRITE_NOW_NUDGE });
+    }
     const result = await invokeMantleChat({
       model,
       messages,
@@ -371,7 +389,7 @@ Use tools when they improve the answer. Be concise and actionable.`;
   }
 
   return {
-    text: "Maximum tool iterations reached. Please refine your query.",
+    text: maxIterationsFallback(params.query),
     toolsUsed: Array.from(toolsUsed),
     model: usedModel,
   };

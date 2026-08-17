@@ -397,7 +397,7 @@ export const CREATE_COMPANY_DESCRIPTION =
 export const CREATE_COMPANY_WITH_PRIMARY_CONTACT_TOOL =
   "create_company_with_primary_contact";
 export const CREATE_COMPANY_WITH_PRIMARY_CONTACT_DESCRIPTION =
-  "Create a client company and its primary company contact in Trio. Use for a complete company + primary contact workflow. Preview first, then confirmed:true.";
+  "Create a client company and its primary company contact in Trio. Use for a complete company + primary contact workflow, including when the user pastes a LinkedIn /in/ URL after Apollo lookup. Preview first, then confirmed:true.";
 
 export async function executeCreateCompanyWithPrimaryContact(
   params: unknown,

@@ -159,4 +159,5 @@ export const APOLLO_ASSISTANT_RULES = `Apollo people intel (required):
 - Use apollo / apollo_company_search to find a list of people or companies.
 - Use source_candidates to fill a job req. Use web_search only if Apollo returns nothing.
 - If an [APOLLO LOOKUP — already ran] block is in the user message, use it. Do not claim you cannot access LinkedIn or Apollo.
-- When you use Apollo results, say you looked them up in Apollo.`;
+- When you use Apollo results, say you looked them up in Apollo.
+- LinkedIn /in/ URLs are people. Do not fetch_website or web_search them. If the user asked to create a company and contact, call create_company_with_primary_contact from the Apollo match.`;
