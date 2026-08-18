@@ -9,7 +9,9 @@ import {
   Star,
   Save,
   ExternalLink,
+  Link2,
 } from "lucide-react";
+import { INVOICE_MERGE_FIELDS } from "@/lib/invoices/merge-fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,6 +41,11 @@ type Template = {
   default_fee_type?: "percent" | "flat";
   default_fee_percent?: number;
   default_fee_flat?: number;
+  source_kind?: "built_in" | "google_doc" | "docx" | "pdf";
+  source_url?: string | null;
+  source_file_key?: string | null;
+  source_file_name?: string | null;
+  source_file_type?: string | null;
 };
 
 type InvoiceRow = {
@@ -67,6 +74,11 @@ const emptyForm = (): Partial<Template> => ({
   default_fee_type: "percent",
   default_fee_percent: 20,
   default_fee_flat: 0,
+  source_kind: "built_in",
+  source_url: "",
+  source_file_key: null,
+  source_file_name: null,
+  source_file_type: null,
 });
 
 export function InvoiceTemplatesSettings() {
@@ -77,6 +89,8 @@ export function InvoiceTemplatesSettings() {
   const [orgName, setOrgName] = useState("");
   const [editing, setEditing] = useState<Partial<Template> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [checkingDoc, setCheckingDoc] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -109,6 +123,17 @@ export function InvoiceTemplatesSettings() {
       toast.error("Template name required");
       return;
     }
+    if (editing.source_kind === "google_doc" && !editing.source_url?.trim()) {
+      toast.error("Paste a Google Doc link");
+      return;
+    }
+    if (
+      (editing.source_kind === "docx" || editing.source_kind === "pdf") &&
+      !editing.source_file_key
+    ) {
+      toast.error("Upload a Word or PDF file first");
+      return;
+    }
     setSaving(true);
     try {
       const isNew = !editing.id;
@@ -134,6 +159,23 @@ export function InvoiceTemplatesSettings() {
           default_fee_type: editing.default_fee_type || "percent",
           default_fee_percent: editing.default_fee_percent ?? 20,
           default_fee_flat: editing.default_fee_flat,
+          source_kind: editing.source_kind || "built_in",
+          source_url:
+            editing.source_kind === "google_doc"
+              ? editing.source_url || null
+              : null,
+          source_file_key:
+            editing.source_kind === "docx" || editing.source_kind === "pdf"
+              ? editing.source_file_key || null
+              : null,
+          source_file_name:
+            editing.source_kind === "docx" || editing.source_kind === "pdf"
+              ? editing.source_file_name || null
+              : null,
+          source_file_type:
+            editing.source_kind === "docx" || editing.source_kind === "pdf"
+              ? editing.source_file_type || null
+              : null,
         }),
       });
       const data = await res.json();
@@ -148,6 +190,69 @@ export function InvoiceTemplatesSettings() {
       toast.error("Save failed");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const sourceLabel = (t: Partial<Template>) => {
+    if (t.source_kind === "google_doc") return "Google Doc";
+    if (t.source_kind === "docx") return t.source_file_name || "Word file";
+    if (t.source_kind === "pdf") return t.source_file_name || "PDF file";
+    return "Trio layout";
+  };
+
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/invoice-templates/file", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Upload failed");
+        return;
+      }
+      setEditing((p) => ({
+        ...p,
+        source_kind: data.file.kind,
+        source_file_key: data.file.key,
+        source_file_name: data.file.name,
+        source_file_type: data.file.type,
+        source_url: "",
+      }));
+      toast.success("Template file uploaded");
+    } catch {
+      toast.error("Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const checkGoogleDoc = async () => {
+    const url = editing?.source_url?.trim();
+    if (!url) {
+      toast.error("Paste a Google Doc link first");
+      return;
+    }
+    setCheckingDoc(true);
+    try {
+      const res = await fetch(
+        `/api/invoice-templates/file?url=${encodeURIComponent(url)}`,
+        { credentials: "include" }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Could not open that Google Doc");
+        return;
+      }
+      toast.success(data.message || "Google Doc is readable");
+    } catch {
+      toast.error("Could not check that Google Doc");
+    } finally {
+      setCheckingDoc(false);
     }
   };
 
@@ -198,8 +303,10 @@ export function InvoiceTemplatesSettings() {
               Invoice templates
             </CardTitle>
             <CardDescription>
-              Brand variations for placement invoices. Org logo from Settings →
-              Organization is the default; override per template if needed.
+              Use Trio&apos;s layout, or attach the Google Doc / Word / PDF
+              invoice you already use. Put merge fields like{" "}
+              <code className="text-[11px]">{"{{client_name}}"}</code> in the
+              file.
             </CardDescription>
           </div>
           <Button
@@ -233,7 +340,7 @@ export function InvoiceTemplatesSettings() {
 
           {templates.length === 0 && !editing && (
             <p className="text-sm text-slate-600">
-              No templates yet. Create one to set fee defaults, colors, and payment terms.
+              No templates yet. Create one and attach your Google Doc, Word, or PDF invoice.
             </p>
           )}
 
@@ -257,7 +364,8 @@ export function InvoiceTemplatesSettings() {
                     {t.default_fee_type === "flat"
                       ? `$${t.default_fee_flat || 0} flat`
                       : `${t.default_fee_percent ?? 20}%`}
-                    {t.logo_url ? " · Custom logo" : " · Org logo"}
+                    {" · "}
+                    {sourceLabel(t)}
                   </p>
                 </div>
                 <div className="flex gap-1 shrink-0">
@@ -295,6 +403,115 @@ export function InvoiceTemplatesSettings() {
                       setEditing((p) => ({ ...p, name: e.target.value }))
                     }
                   />
+                </div>
+                <div className="sm:col-span-2 space-y-2">
+                  <Label>Invoice document</Label>
+                  <select
+                    className="h-10 w-full rounded-md border px-3 text-sm"
+                    value={editing.source_kind || "built_in"}
+                    onChange={(e) =>
+                      setEditing((p) => ({
+                        ...p,
+                        source_kind: e.target.value as Template["source_kind"],
+                      }))
+                    }
+                  >
+                    <option value="built_in">Trio layout (built-in PDF)</option>
+                    <option value="google_doc">Google Doc template</option>
+                    <option value="docx">Uploaded Word (.docx)</option>
+                    <option value="pdf">Uploaded PDF</option>
+                  </select>
+                  {(editing.source_kind || "built_in") === "google_doc" && (
+                    <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                      <Label>Google Doc link</Label>
+                      <Input
+                        value={editing.source_url || ""}
+                        onChange={(e) =>
+                          setEditing((p) => ({
+                            ...p,
+                            source_url: e.target.value,
+                          }))
+                        }
+                        placeholder="https://docs.google.com/document/d/…"
+                      />
+                      <p className="text-[11px] text-slate-500">
+                        Share the doc as <strong>Anyone with the link can view</strong>.
+                        In the doc, type merge fields such as{" "}
+                        <code>{"{{client_name}}"}</code>,{" "}
+                        <code>{"{{total}}"}</code>,{" "}
+                        <code>{"{{invoice_number}}"}</code>,{" "}
+                        <code>{"{{candidate_name}}"}</code>.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={checkingDoc}
+                          onClick={() => void checkGoogleDoc()}
+                        >
+                          {checkingDoc ? (
+                            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                          ) : (
+                            <Link2 className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          Test link
+                        </Button>
+                        {editing.source_url ? (
+                          <Button size="sm" variant="ghost" asChild>
+                            <a
+                              href={editing.source_url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                              Open doc
+                            </a>
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+                  {(editing.source_kind === "docx" ||
+                    editing.source_kind === "pdf") && (
+                    <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                      <Label>Upload Word or PDF</Label>
+                      <input
+                        type="file"
+                        accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        className="block w-full text-sm"
+                        disabled={uploading}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void uploadFile(f);
+                          e.target.value = "";
+                        }}
+                      />
+                      {editing.source_file_name ? (
+                        <p className="text-xs text-slate-600">
+                          Attached: {editing.source_file_name}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-500">
+                          Word files can use {"{{merge}}"} fields. A PDF keeps
+                          your layout; Trio stamps invoice number, client, and
+                          total at the top (or fills PDF form fields if present).
+                        </p>
+                      )}
+                      {uploading ? (
+                        <p className="inline-flex items-center gap-1 text-xs text-slate-500">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Uploading…
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
+                  {(editing.source_kind || "built_in") !== "built_in" && (
+                    <p className="text-[11px] text-slate-500">
+                      Available fields:{" "}
+                      {INVOICE_MERGE_FIELDS.map((f) => `{{${f}}}`).join(" ")}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label>Header</Label>

@@ -13,7 +13,7 @@ import {
   isAuthError,
 } from "@/lib/tenant-guard";
 import { getInvoice } from "@/lib/db/repositories/invoice-repository";
-import { buildInvoicePdf } from "@/lib/invoices/pdf";
+import { renderInvoiceFile } from "@/lib/invoices/render";
 
 export const dynamic = "force-dynamic";
 
@@ -35,22 +35,20 @@ export async function GET(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const pdf = await buildInvoicePdf(invoice);
-    const filename = `${invoice.invoice_number || id}.pdf`;
+    const file = await renderInvoiceFile(invoice, tenantId);
 
-    return new NextResponse(new Uint8Array(pdf), {
+    return new NextResponse(new Uint8Array(file.buffer), {
       status: 200,
       headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Type": file.contentType,
+        "Content-Disposition": `attachment; filename="${file.filename}"`,
         "Cache-Control": "no-store",
       },
     });
   } catch (e) {
+    const message =
+      e instanceof Error ? e.message : "Failed to generate invoice file";
     console.error("[invoices pdf]", e);
-    return NextResponse.json(
-      { error: "Failed to generate PDF" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

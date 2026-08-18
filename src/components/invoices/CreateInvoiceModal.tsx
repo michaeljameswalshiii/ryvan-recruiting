@@ -16,6 +16,7 @@ type Template = {
   default_fee_type?: "percent" | "flat";
   default_fee_percent?: number;
   default_fee_flat?: number;
+  source_kind?: "built_in" | "google_doc" | "docx" | "pdf";
 };
 
 type Props = {
@@ -106,6 +107,35 @@ export function CreateInvoiceModal({
   const candidateName =
     candidates.find((c) => c.id === candidateId)?.name || undefined;
 
+  const selectedTemplate = templates.find((t) => t.id === templateId);
+  const usesCustomDoc =
+    selectedTemplate?.source_kind === "google_doc" ||
+    selectedTemplate?.source_kind === "docx" ||
+    selectedTemplate?.source_kind === "pdf";
+
+  const downloadInvoiceFile = async (id: string) => {
+    const res = await fetch(`/api/invoices/${id}/pdf`, {
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error || "Download failed");
+      return;
+    }
+    const blob = await res.blob();
+    const header = res.headers.get("content-disposition") || "";
+    const match = header.match(/filename="([^"]+)"/);
+    const name = match?.[1] || "invoice.pdf";
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(href);
+  };
+
   const create = async (downloadAfter: boolean) => {
     if (!clientName.trim()) {
       toast.error("Client name is required");
@@ -146,7 +176,7 @@ export function CreateInvoiceModal({
       onCreated?.(inv);
       toast.success(`Invoice ${inv.invoice_number} created (Draft)`);
       if (downloadAfter) {
-        window.open(`/api/invoices/${inv.id}/pdf`, "_blank");
+        await downloadInvoiceFile(inv.id);
       }
     } catch {
       toast.error("Failed to create invoice");
@@ -182,7 +212,7 @@ export function CreateInvoiceModal({
                 : companyName
                   ? ` for ${companyName}`
                   : ""}{" "}
-              · logged on company activity · PDF download
+              · logged on company activity · download invoice
             </p>
           </div>
           <button
@@ -206,17 +236,13 @@ export function CreateInvoiceModal({
                 {companyId
                   ? "Logged on this company timeline / notes. "
                   : ""}
-                Manage status under Company Settings → Invoices or download the PDF now.
+                Manage status under Company Settings → Invoices or download the invoice now.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={() =>
-                  window.open(`/api/invoices/${createdId}/pdf`, "_blank")
-                }
-              >
+              <Button onClick={() => void downloadInvoiceFile(createdId)}>
                 <Download className="h-4 w-4 mr-2" />
-                Download PDF
+                Download invoice
               </Button>
               <Button variant="outline" onClick={onClose}>
                 Done
@@ -283,7 +309,16 @@ export function CreateInvoiceModal({
               />
               {templates.length === 0 && (
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Tip: create branded templates under Company Settings → Invoices.
+                  Tip: attach your Google Doc or Word invoice under Company Settings → Invoices.
+                </p>
+              )}
+              {usesCustomDoc && (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Uses your {selectedTemplate?.source_kind === "google_doc"
+                    ? "Google Doc"
+                    : selectedTemplate?.source_kind === "pdf"
+                      ? "PDF"
+                      : "Word"} template. Trio fills {"{{client_name}}"}, {"{{total}}"}, {"{{invoice_number}}"} and the other merge fields.
                 </p>
               )}
             </div>
@@ -373,7 +408,7 @@ export function CreateInvoiceModal({
                 ) : (
                   <Download className="h-4 w-4 mr-2" />
                 )}
-                Create & download PDF
+                {usesCustomDoc ? "Create & download invoice" : "Create & download PDF"}
               </Button>
               <Button
                 variant="outline"

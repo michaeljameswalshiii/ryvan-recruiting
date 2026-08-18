@@ -10,6 +10,22 @@ export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 export const FEE_TYPES = ["percent", "flat"] as const;
 export type FeeType = (typeof FEE_TYPES)[number];
 
+export const INVOICE_SOURCE_KINDS = [
+  "built_in",
+  "google_doc",
+  "docx",
+  "pdf",
+] as const;
+export type InvoiceSourceKind = (typeof INVOICE_SOURCE_KINDS)[number];
+
+export const invoiceSourceFields = {
+  source_kind: z.enum(INVOICE_SOURCE_KINDS).optional(),
+  source_url: z.string().max(2000).optional().nullable(),
+  source_file_key: z.string().max(500).optional().nullable(),
+  source_file_name: z.string().max(260).optional().nullable(),
+  source_file_type: z.string().max(120).optional().nullable(),
+};
+
 export const invoiceLineItemSchema = z.object({
   description: z.string().min(1).max(500),
   quantity: z.number().min(0).default(1),
@@ -37,6 +53,7 @@ export const invoiceTemplateSchema = z.object({
   default_fee_type: z.enum(FEE_TYPES).optional(),
   default_fee_percent: z.number().min(0).max(100).optional(),
   default_fee_flat: z.number().min(0).optional(),
+  ...invoiceSourceFields,
   created_at: z.string().optional(),
   updated_at: z.string().optional(),
 });
@@ -58,6 +75,7 @@ export const createInvoiceTemplateSchema = z.object({
   default_fee_type: z.enum(FEE_TYPES).optional(),
   default_fee_percent: z.number().min(0).max(100).optional(),
   default_fee_flat: z.number().min(0).optional(),
+  ...invoiceSourceFields,
 });
 
 export type CreateInvoiceTemplateInput = z.infer<
@@ -111,6 +129,7 @@ export const invoiceSchema = z.object({
   sent_at: z.string().optional(),
   paid_at: z.string().optional(),
   voided_at: z.string().optional(),
+  ...invoiceSourceFields,
 });
 
 export type Invoice = z.infer<typeof invoiceSchema>;
