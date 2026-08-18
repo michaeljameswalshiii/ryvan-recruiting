@@ -1227,33 +1227,47 @@ function ContactsTab({ company, leads, onEmailClick }: { company: any; leads: an
                     <p className="text-sm text-slate-600">{contact.title}</p>
                   )}
                   
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {contact.email && onEmailClick ? (
-                      <button 
-                        onClick={() => onEmailClick(contact)}
-                        className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                        title="Click to send email"
-                      >
-                        <Mail className="h-3 w-3" />
-                        {contact.email}
-                      </button>
-                    ) : contact.email && (
-                      <a 
-                        href={`mailto:${contact.email}`}
-                        className="flex items-center gap-1 text-sm text-primary hover:underline"
-                      >
-                        <Mail className="h-3 w-3" />
-                        {contact.email}
-                      </a>
+                  <div className="flex flex-col gap-1 mt-3">
+                    {contact.email && (
+                      <span className="inline-flex items-center gap-0.5 min-w-0">
+                        {onEmailClick ? (
+                          <button
+                            type="button"
+                            onClick={() => onEmailClick(contact)}
+                            className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer min-w-0"
+                            title="Click to send email"
+                          >
+                            <Mail className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{contact.email}</span>
+                          </button>
+                        ) : (
+                          <a
+                            href={`mailto:${contact.email}`}
+                            className="flex items-center gap-1 text-sm text-primary hover:underline min-w-0"
+                          >
+                            <Mail className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{contact.email}</span>
+                          </a>
+                        )}
+                        <CopyTextButton value={contact.email} label="email" />
+                      </span>
                     )}
                     {(contact.preferredPhone || contact.phone || contact.phones?.[0]?.number) && (
-                      <a 
-                        href={`tel:${contact.preferredPhone || contact.phone || contact.phones?.[0]?.number}`}
-                        className="flex items-center gap-1 text-sm text-primary hover:underline"
-                      >
-                        <Phone className="h-3 w-3" />
-                        {contact.preferredPhone || contact.phone || contact.phones?.[0]?.number}
-                      </a>
+                      <span className="inline-flex items-center gap-0.5 min-w-0">
+                        <a
+                          href={`tel:${contact.preferredPhone || contact.phone || contact.phones?.[0]?.number}`}
+                          className="flex items-center gap-1 text-sm text-primary hover:underline min-w-0"
+                        >
+                          <Phone className="h-3 w-3 shrink-0" />
+                          <span className="truncate">
+                            {contact.preferredPhone || contact.phone || contact.phones?.[0]?.number}
+                          </span>
+                        </a>
+                        <CopyTextButton
+                          value={contact.preferredPhone || contact.phone || contact.phones?.[0]?.number}
+                          label="phone"
+                        />
+                      </span>
                     )}
                   </div>
 
