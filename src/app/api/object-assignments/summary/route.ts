@@ -32,29 +32,40 @@ export async function GET(request: NextRequest) {
     const assignments = await listObjectAssignmentsForType(tenantId, objectType);
     const owners: Record<string, { name: string; email?: string; userId?: string }> =
       {};
+
+    const putOwner = (
+      objectId: string | undefined,
+      name: string,
+      row: (typeof assignments)[number],
+      overwrite = false,
+    ) => {
+      const keys = new Set<string>();
+      const raw = String(objectId || "").trim();
+      if (!raw || !name) return;
+      keys.add(raw);
+      const tail = raw.includes("#") ? raw.split("#").pop() : "";
+      if (tail) keys.add(tail);
+      for (const key of keys) {
+        if (!overwrite && owners[key]) continue;
+        owners[key] = {
+          name,
+          email: row.userEmail,
+          userId: row.userId,
+        };
+      }
+    };
+
     for (const row of assignments) {
-      if (!row.objectId || owners[row.objectId]) continue;
       if (row.role && row.role !== "owner" && row.role !== "account_manager") {
         continue;
       }
       const name = String(row.userName || row.userEmail || "").trim();
-      if (!name) continue;
-      owners[row.objectId] = {
-        name,
-        email: row.userEmail,
-        userId: row.userId,
-      };
+      putOwner(row.objectId, name, row);
     }
     // Fill remaining from any role if no owner/account_manager yet
     for (const row of assignments) {
-      if (!row.objectId || owners[row.objectId]) continue;
       const name = String(row.userName || row.userEmail || "").trim();
-      if (!name) continue;
-      owners[row.objectId] = {
-        name,
-        email: row.userEmail,
-        userId: row.userId,
-      };
+      putOwner(row.objectId, name, row, false);
     }
 
     return NextResponse.json({ owners });

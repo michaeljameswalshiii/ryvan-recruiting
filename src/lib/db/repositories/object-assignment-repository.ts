@@ -56,38 +56,77 @@ function assignmentSK(userId: string) {
   return `ASSIGNMENT#${userId}`;
 }
 
+/** Prod CDK names this TenantEventsIndex; some local tables used GSI1. */
+const TENANT_ASSIGNMENT_INDEXES = ["TenantEventsIndex", "GSI1"] as const;
+
+function tenantIdsToTry(tenantId: string): string[] {
+  const list = [tenantId];
+  if (tenantId.startsWith("tenant-")) {
+    const bare = tenantId.replace(/^tenant-/, "");
+    if (bare && !list.includes(bare)) list.push(bare);
+  } else if (!list.includes(`tenant-${tenantId}`)) {
+    list.push(`tenant-${tenantId}`);
+  }
+  return list;
+}
+
+function isAssignmentForType(
+  row: ObjectAssignment,
+  objectType: AssignableObjectType,
+): boolean {
+  if (row.objectType === objectType) return true;
+  const sk = String(row.GSI1SK || "");
+  return sk.startsWith("ASSIGNMENT#") && sk.includes(`#${objectType}#`);
+}
+
 /** All assignments of one object type for a tenant (list Owner columns). */
 export async function listObjectAssignmentsForType(
   tenantId: string,
   objectType: AssignableObjectType,
 ): Promise<ObjectAssignment[]> {
   const items: ObjectAssignment[] = [];
-  let startKey: Record<string, unknown> | undefined;
-  try {
-    do {
-      const response = await getDocClient().send(
-        new QueryCommand({
-          TableName: eventsTable,
-          IndexName: "GSI1",
-          KeyConditionExpression: "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)",
-          ExpressionAttributeValues: {
-            ":pk": `TENANT#${tenantId}`,
-            ":prefix": "ASSIGNMENT#",
-          },
-          ExclusiveStartKey: startKey,
-        }),
-      );
-      for (const item of response.Items || []) {
-        const row = item as ObjectAssignment;
-        if (row.tenantId === tenantId && row.objectType === objectType) {
-          items.push(row);
-        }
+  const seen = new Set<string>();
+
+  for (const tid of tenantIdsToTry(tenantId)) {
+    let queried = false;
+    for (const indexName of TENANT_ASSIGNMENT_INDEXES) {
+      try {
+        let startKey: Record<string, unknown> | undefined;
+        do {
+          const response = await getDocClient().send(
+            new QueryCommand({
+              TableName: eventsTable,
+              IndexName: indexName,
+              KeyConditionExpression:
+                "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)",
+              ExpressionAttributeValues: {
+                ":pk": `TENANT#${tid}`,
+                ":prefix": "ASSIGNMENT#",
+              },
+              ExclusiveStartKey: startKey,
+            }),
+          );
+          queried = true;
+          for (const item of response.Items || []) {
+            const row = item as ObjectAssignment;
+            const key = `${row.PK || ""}#${row.SK || ""}#${row.objectId || ""}#${row.userId || ""}`;
+            if (seen.has(key)) continue;
+            if (!isAssignmentForType(row, objectType)) continue;
+            seen.add(key);
+            items.push(row);
+          }
+          startKey = response.LastEvaluatedKey as
+            | Record<string, unknown>
+            | undefined;
+        } while (startKey);
+        if (queried) break;
+      } catch (err) {
+        console.warn(
+          `[listObjectAssignmentsForType] index=${indexName} tenant=${tid}`,
+          err,
+        );
       }
-      startKey = response.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey);
-  } catch (err) {
-    console.warn("[listObjectAssignmentsForType]", err);
-    return [];
+    }
   }
   return items;
 }

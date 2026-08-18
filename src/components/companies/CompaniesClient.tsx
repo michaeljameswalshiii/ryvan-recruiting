@@ -252,9 +252,33 @@ function locationLine(company: any): string {
   return parts.join(', ');
 }
 
-function ownerNameFromRecord(record: any, assigned?: { name?: string }): string {
+function ownerLookupKeys(record: any): string[] {
+  const keys = [
+    record?.id,
+    record?.PK,
+    record?.companyId,
+    record?.clientId,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  for (const key of [...keys]) {
+    if (key.includes('#')) {
+      const tail = key.split('#').pop();
+      if (tail) keys.push(tail);
+    }
+  }
+  return [...new Set(keys)];
+}
+
+function ownerNameFromRecord(
+  record: any,
+  ownerMap: Record<string, { name?: string }>,
+): string {
+  for (const key of ownerLookupKeys(record)) {
+    const name = String(ownerMap[key]?.name || '').trim();
+    if (name) return name;
+  }
   return (
-    assigned?.name ||
     record?.ownerName ||
     record?.accountOwner ||
     record?.owner ||
@@ -482,7 +506,6 @@ export function CompaniesClient() {
       const primary = getPrimaryContact(c);
       const added = c.created_at || c.createdAt;
       const lastActivity = c.modified_at || c.modifiedAt || c.updated_at || c.updatedAt || added;
-      const assigned = ownerMap[String(c.id)] || ownerMap[String(c.PK)];
       return {
         raw: c,
         id: String(c.id || c.PK || ''),
@@ -496,7 +519,7 @@ export function CompaniesClient() {
         primary,
         added,
         lastActivity,
-        ownerName: ownerNameFromRecord(c, assigned),
+        ownerName: ownerNameFromRecord(c, ownerMap),
         openJobs:
           openJobsByCompany[String(c.id)] ??
           (typeof c.open_jobs_posted === 'number' ? c.open_jobs_posted : 0),
