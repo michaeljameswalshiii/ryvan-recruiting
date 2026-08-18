@@ -56,6 +56,7 @@ import {
   shouldNudgeCrmWrite,
   toolLoopBudget,
   withLinkedInCreateGuidance,
+  WRITE_CONFIRM_PROMPT_RULES,
 } from "@/lib/ai/crm-write-loop";
 import { formatApolloLookupForModel } from "@/lib/ai/tools/apollo-lookup";
 import {
@@ -212,12 +213,7 @@ IMPORTANT entity rules:
 - Never say someone is a company contact unless create_contact returned status "created" with a real contact id.
 - If the user says the company is already there but the person is not on Contacts / "no contact was posted": immediately call create_contact with name + company_name. Do not look up invented contact ids. Do not create a second company.
 
-CRITICAL confirmation rules for ALL write tools:
-1. First call the tool WITHOUT confirmed (or confirmed:false). You will get status "needs_confirmation" and a preview.
-2. Show the user a clear summary of what will change and ask them to confirm.
-3. Only after the user explicitly agrees (yes / confirm / go ahead / do it / ok / sure), call the SAME tool again with the same fields AND confirmed:true.
-4. NEVER claim data was saved until a tool returns status created/updated/linked/stage_updated in the tool result JSON.
-5. If the user only says "yes" or "ok", you STILL must re-invoke the write tool with confirmed:true — do not answer from memory.
+${WRITE_CONFIRM_PROMPT_RULES}
 6. NEVER invent candidate_id, company_id, contact_id, or job_id — look them up with internal_data first.
 7. Tenant isolation is automatic from the session; do not ask for tenant id.
 8. After a successful create/update tool result, tell the user the record is saved and that lists refresh automatically.

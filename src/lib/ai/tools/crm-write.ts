@@ -23,6 +23,7 @@ import {
   matchCompanyByName,
 } from "../../db/repositories/client-repository";
 import { phonesFromWorkAndMobile } from "../../contacts/phone";
+import { confirmGateMessage } from "../crm-write-loop";
 import {
   createJob,
   updateJob,
@@ -82,9 +83,7 @@ function confirmGate(
     data: {
       status: "needs_confirmation",
       action,
-      message:
-        "Do NOT invent that this was saved. Show the user this preview and ask them to confirm. " +
-        "When they say yes, call this tool again with the same fields and confirmed: true.",
+      message: confirmGateMessage(action),
       preview,
     },
     metadata: { needs_confirmation: true, action },
@@ -437,8 +436,7 @@ export async function executeCreateCompanyWithPrimaryContact(
       data: {
         status: "needs_confirmation",
         action: CREATE_COMPANY_WITH_PRIMARY_CONTACT_TOOL,
-        message:
-          "Do NOT claim these records were saved. Show this preview and ask the user to confirm. Then call this same tool with confirmed:true.",
+        message: confirmGateMessage(CREATE_COMPANY_WITH_PRIMARY_CONTACT_TOOL),
         preview: {
           company: {
             name: existingCompany?.name || companyName,

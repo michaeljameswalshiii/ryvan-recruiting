@@ -6,6 +6,7 @@
  */
 
 import { ToolResult, ToolContext, ToolParams } from "./types";
+import { confirmGateMessage } from "../crm-write-loop";
 import {
   listSequences,
   enrollCandidate,
@@ -49,9 +50,7 @@ function confirmGate(
     data: {
       status: "needs_confirmation",
       action,
-      message:
-        "Do NOT invent that this was saved. Show the user this preview and ask them to confirm. " +
-        "When they say yes, call this tool again with the same fields and confirmed: true.",
+      message: confirmGateMessage(action),
       preview,
     },
     metadata: { needs_confirmation: true, action },

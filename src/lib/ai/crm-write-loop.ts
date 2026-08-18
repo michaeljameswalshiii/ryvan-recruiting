@@ -154,6 +154,43 @@ COMPANY EXISTS / CONTACT MISSING:
 - Never invent a contact_id. Never claim a contact was posted unless create_contact returned status "created" with an id.
 `.trim();
 
+/** Exact user-facing line for contact/company create previews. */
+export const CONTACT_COMPANY_CONFIRM_LINE =
+  "**Does this look correct? Confirm and I'll create the contact/company**";
+
+/** Fallback line for other write previews (candidate, job, updates). */
+export const GENERIC_WRITE_CONFIRM_LINE =
+  "**Does this look correct? Confirm and I'll save this.**";
+
+export function userFacingConfirmLine(action?: string): string {
+  if (/contact|company/i.test(String(action || ""))) {
+    return CONTACT_COMPANY_CONFIRM_LINE;
+  }
+  return GENERIC_WRITE_CONFIRM_LINE;
+}
+
+export function confirmGateMessage(action: string): string {
+  return (
+    "Do NOT invent that this was saved. Show the user this preview. " +
+    `End your message with exactly this bold line and nothing about how to reply: ${userFacingConfirmLine(action)} ` +
+    "Do not list yes / confirm / go ahead. Those words still confirm if the user types them. " +
+    "When they confirm, call this tool again with the same fields and confirmed: true."
+  );
+}
+
+export const WRITE_CONFIRM_PROMPT_RULES = `
+CRITICAL confirmation rules for ALL write tools:
+1. First call the tool WITHOUT confirmed (or confirmed:false). You will get status "needs_confirmation" and a preview.
+2. Show the user a clear summary of what will change. Then end with this exact bold line (contact or company creates):
+   ${CONTACT_COMPANY_CONFIRM_LINE}
+   For other writes (candidate, job, update), end with:
+   ${GENERIC_WRITE_CONFIRM_LINE}
+   Do NOT list reply options such as yes / confirm / go ahead. Do not write "Reply **yes**, **confirm**, or **go ahead**".
+3. Only after the user agrees (yes / confirm / go ahead / do it / ok / sure still count), call the SAME tool again with the same fields AND confirmed:true.
+4. NEVER claim data was saved until a tool returns status created/updated/linked/stage_updated in the tool result JSON.
+5. If the user only says "yes" or "ok", you STILL must re-invoke the write tool with confirmed:true — do not answer from memory.
+`.trim();
+
 export function withLinkedInCreateGuidance(
   systemPrompt: string,
   query: string
