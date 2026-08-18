@@ -41,9 +41,7 @@ import {
   ListColumnPicker,
   listTd,
   listTdActions,
-  listTdNameFlush,
   listTh,
-  listThNameFlush,
   listThRight,
 } from '@/components/ui/data-list-table';
 import { recordMatchesQuery } from '@/lib/tags';
@@ -812,11 +810,20 @@ export default function ContactInfoPage() {
             <table className={LIST_TABLE_CLASS}>
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
-                  <th className={listThNameFlush}>
+                  <th className="sticky top-0 left-0 z-[11] bg-gray-50 text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[19rem] min-w-[19rem] overflow-hidden">
                     Contact
                   </th>
                   {columns.visibleIds.map((id) => (
-                    <th key={id} className={listTh}>
+                    <th
+                      key={id}
+                      className={
+                        id === 'last_activity'
+                          ? `${listTh} w-[5.25rem] max-w-[5.25rem] px-2`
+                          : id === 'owner'
+                            ? `${listTh} w-[3.25rem] max-w-[3.25rem] px-2 text-center`
+                            : listTh
+                      }
+                    >
                       {CONTACT_COLUMN_DEFS.find((d) => d.id === id)?.label}
                     </th>
                   ))}
@@ -830,7 +837,7 @@ export default function ContactInfoPage() {
                   const rowKey = `${c.clientId}-${c.id}`;
                   return (
                     <tr key={rowKey} className="group hover:bg-gray-50/80 transition-colors">
-                      <td className={listTdNameFlush()}>
+                      <td className="sticky left-0 z-[5] px-4 py-3.5 w-[19rem] min-w-[19rem] overflow-hidden bg-white group-hover:bg-gray-50/80">
                         <div className="flex items-center gap-3 min-w-0">
                           <div
                             className={`h-9 w-9 shrink-0 rounded-full ${avatarColor(c.name)} text-white flex items-center justify-center text-xs font-semibold`}
@@ -841,15 +848,16 @@ export default function ContactInfoPage() {
                             <div className="flex items-center gap-1.5 min-w-0">
                               <Link
                                 href={detailHref(c)}
-                                className="font-medium text-sm text-blue-600 hover:text-blue-700 hover:underline truncate"
+                                title={c.name}
+                                className="font-medium text-sm text-blue-600 hover:text-blue-700 hover:underline whitespace-nowrap"
                               >
                                 {c.name}
                               </Link>
                               {c.isPrimary && (
-                                <span className="inline-flex items-center gap-0.5 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-800 shrink-0">
-                                  <Star className="h-2.5 w-2.5" />
-                                  Primary
-                                </span>
+                                <Star
+                                  className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500"
+                                  aria-label="Primary contact"
+                                />
                               )}
                             </div>
                             <div className="text-xs text-gray-500 truncate">
@@ -932,27 +940,26 @@ export default function ContactInfoPage() {
                             return (
                               <td
                                 key={colId}
-                                className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
+                                className={`${listTd} w-[5.25rem] max-w-[5.25rem] px-2 text-xs text-gray-600 whitespace-nowrap`}
                               >
                                 {formatRelativeActivity(c.lastActivity)}
                               </td>
                             );
                           case 'owner':
                             return (
-                              <td key={colId} className={listTd}>
+                              <td
+                                key={colId}
+                                className={`${listTd} w-[3.25rem] max-w-[3.25rem] px-2`}
+                              >
                                 {c.ownerName ? (
-                                  <span className="inline-flex items-center gap-2 min-w-0">
-                                    <span
-                                      className={`h-7 w-7 shrink-0 rounded-full ${avatarColor(c.ownerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
-                                    >
-                                      {getInitials(c.ownerName)}
-                                    </span>
-                                    <span className="truncate text-sm text-gray-800">
-                                      {c.ownerName}
-                                    </span>
+                                  <span
+                                    title={c.ownerName}
+                                    className={`mx-auto h-7 w-7 rounded-full ${avatarColor(c.ownerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
+                                  >
+                                    {getInitials(c.ownerName)}
                                   </span>
                                 ) : (
-                                  <span className="text-sm text-gray-400">—</span>
+                                  <span className="block text-center text-sm text-gray-400">—</span>
                                 )}
                               </td>
                             );

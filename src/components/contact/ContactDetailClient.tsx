@@ -21,7 +21,10 @@ import {
   LayoutGrid,
   List,
   Search,
+  Plus,
 } from 'lucide-react';
+import JobModal from '@/components/contact/JobModal';
+import { useCreateJob } from '@/lib/hooks/query-job';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -137,11 +140,19 @@ export default function ContactDetailClient({
     propCompanyName || contact.companyName || contact.company?.name || 'Unknown Company';
   const companyId = contact.companyId || contact.clientId || '';
   const contactId = contact.id || '';
-  const companyJobs = Array.isArray(rawJobs) ? rawJobs : [];
+  const [companyJobs, setCompanyJobs] = useState<any[]>(() =>
+    Array.isArray(rawJobs) ? rawJobs : []
+  );
   const [jobFilter, setJobFilter] = useState<'open' | 'all' | 'closed'>('open');
   const [jobView, setJobView] = useState<'list' | 'cards'>('list');
   const [jobSearch, setJobSearch] = useState('');
   const [selectedJobId, setSelectedJobId] = useState('');
+  const [showJobModal, setShowJobModal] = useState(false);
+  const createJobMutation = useCreateJob();
+
+  useEffect(() => {
+    setCompanyJobs(Array.isArray(rawJobs) ? rawJobs : []);
+  }, [rawJobs]);
 
   const displayPhone = getDisplayPhone(contact);
   const displayPhoneType = getDisplayPhoneType(contact);
@@ -231,6 +242,51 @@ export default function ContactDetailClient({
     () => companyJobs.find((job: any) => String(job.id) === selectedJobId),
     [companyJobs, selectedJobId]
   );
+
+  const handleCreateJob = async (data: {
+    title: string;
+    location?: string;
+    description?: string;
+    salaryRange?: string;
+    employmentType?: string;
+    status?: string;
+  }) => {
+    if (!companyId) {
+      toast.error('This contact is not linked to a company.');
+      return;
+    }
+    try {
+      const result = await createJobMutation.mutateAsync({
+        title: data.title,
+        companyId: String(companyId),
+        companyName,
+        location: data.location,
+        description: data.description,
+        salaryRange: data.salaryRange,
+        employmentType: data.employmentType,
+        status: data.status || 'Open',
+        hiringManagerContactId: String(contactId),
+        hiringManagerName: form.name || contact.name,
+        hiringManagerTitle: form.title || contact.title,
+        hiringManagerEmail: form.email || contact.email,
+        hiringManagerPhone:
+          form.workPhone || form.mobilePhone || displayPhone || undefined,
+      });
+      const created = (result as { job?: any })?.job;
+      if (created?.id) {
+        setCompanyJobs((prev) => {
+          if (prev.some((job: any) => String(job.id) === String(created.id))) {
+            return prev;
+          }
+          return [created, ...prev];
+        });
+        setSelectedJobId(String(created.id));
+      }
+      setShowJobModal(false);
+    } catch {
+      // useCreateJob already toasts
+    }
+  };
 
   const removeContact = useRemoveContact();
   const updateContact = useUpdateContact();
@@ -943,9 +999,20 @@ export default function ContactDetailClient({
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
                   Jobs for {form.name || contact.name}
                 </h2>
-                <button type="button" onClick={() => setActiveTab('jobs')} className="text-xs font-medium text-blue-600 hover:underline">
-                  View all
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowJobModal(true)}
+                    disabled={!companyId}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline disabled:text-gray-400 disabled:no-underline"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add job
+                  </button>
+                  <button type="button" onClick={() => setActiveTab('jobs')} className="text-xs font-medium text-blue-600 hover:underline">
+                    View all
+                  </button>
+                </div>
               </div>
               <select
                 value={selectedJobId}
@@ -1431,9 +1498,19 @@ export default function ContactDetailClient({
                 Hiring manager at {companyName} · {companyJobs.length} total
               </p>
             </div>
-            <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/jobs')}>
-              <Briefcase className="h-4 w-4 mr-1.5" /> Browse jobs
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => setShowJobModal(true)}
+                disabled={!companyId}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <Plus className="h-4 w-4 mr-1.5" /> Add job
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/jobs')}>
+                <Briefcase className="h-4 w-4 mr-1.5" /> Browse jobs
+              </Button>
+            </div>
           </div>
           <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap gap-1 rounded-lg bg-gray-50 p-1">
@@ -1460,9 +1537,20 @@ export default function ContactDetailClient({
             </div>
           </div>
           {visibleJobs.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-12">
-              {companyJobs.length ? 'No jobs match this view.' : 'No jobs are assigned to this hiring manager.'}
-            </p>
+            <div className="py-12 text-center">
+              <p className="text-sm text-gray-500">
+                {companyJobs.length ? 'No jobs match this view.' : 'No jobs are assigned to this hiring manager.'}
+              </p>
+              {!companyJobs.length && companyId ? (
+                <Button
+                  size="sm"
+                  className="mt-4 bg-blue-600 hover:bg-blue-700"
+                  onClick={() => setShowJobModal(true)}
+                >
+                  <Plus className="h-4 w-4 mr-1.5" /> Add job
+                </Button>
+              ) : null}
+            </div>
           ) : (
             <div className={jobView === 'cards' ? 'grid gap-3 sm:grid-cols-2' : 'space-y-2'}>
               {visibleJobs.map((job: any) => (
@@ -1651,6 +1739,16 @@ export default function ContactDetailClient({
           </div>
         </div>
       )}
+
+      <JobModal
+        isOpen={showJobModal}
+        onClose={() => setShowJobModal(false)}
+        contactId={contactId}
+        companyReadOnly
+        defaultCompany={companyName}
+        isLoading={createJobMutation.isPending}
+        onSave={(data) => void handleCreateJob(data)}
+      />
 
       <SendEmailModal
         open={emailOpen}

@@ -21,6 +21,8 @@ interface JobModalProps {
   onClose: () => void;
   job?: Job | null;
   contactId?: string;
+  companyReadOnly?: boolean;
+  defaultCompany?: string;
   onSave: (data: Job) => void;
   isLoading?: boolean;
 }
@@ -46,12 +48,14 @@ export default function JobModal({
   onClose,
   job,
   contactId,
+  companyReadOnly = false,
+  defaultCompany = '',
   onSave,
   isLoading = false,
 }: JobModalProps) {
   const [form, setForm] = useState<Job>({
     title: '',
-    company: '',
+    company: defaultCompany,
     location: '',
     description: '',
     salaryRange: '',
@@ -64,7 +68,7 @@ export default function JobModal({
       setForm({
         id: job.id,
         title: job.title || '',
-        company: job.company || '',
+        company: job.company || defaultCompany,
         location: job.location || '',
         description: job.description || '',
         salaryRange: job.salaryRange || '',
@@ -74,7 +78,7 @@ export default function JobModal({
     } else {
       setForm({
         title: '',
-        company: '',
+        company: defaultCompany,
         location: '',
         description: '',
         salaryRange: '',
@@ -82,7 +86,7 @@ export default function JobModal({
         status: 'Open',
       });
     }
-  }, [job]);
+  }, [job, defaultCompany, isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,7 +132,10 @@ export default function JobModal({
               value={form.company || ''}
               onChange={(e) => setForm({ ...form, company: e.target.value })}
               placeholder="Company name"
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              readOnly={companyReadOnly}
+              className={`w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                companyReadOnly ? 'bg-gray-50 text-gray-700' : ''
+              }`}
             />
           </div>
 
