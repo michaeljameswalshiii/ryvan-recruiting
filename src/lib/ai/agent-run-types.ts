@@ -17,6 +17,7 @@ export type AgentArtifactKind =
   | 'contact'
   | 'candidate'
   | 'job'
+  | 'list_builder'
   | 'apollo_hit'
   | 'note'
   | 'error'
@@ -140,6 +141,39 @@ export function artifactsFromToolPayload(
   const d = (root.data && typeof root.data === 'object'
     ? root.data
     : root) as Record<string, unknown>;
+
+  if (
+    toolName === 'start_list_builder' ||
+    toolName === 'list_builder_status' ||
+    toolName === 'list_builder_control'
+  ) {
+    const job = (d.job && typeof d.job === 'object' ? d.job : d) as Record<
+      string,
+      unknown
+    >;
+    const id = String(job.id || d.id || '');
+    const found = job.found ?? job.results;
+    const foundN = Array.isArray(found) ? found.length : Number(found || 0);
+    const target = job.targetSize || job.target || '';
+    const status = String(job.status || d.status || 'running');
+    push({
+      id: id || undefined,
+      kind: 'list_builder',
+      title:
+        status === 'started' || status === 'running' || status === 'queued'
+          ? 'List builder running'
+          : `List builder · ${status}`,
+      subtitle: [
+        Number.isFinite(foundN) ? `${foundN} found` : null,
+        target ? `target ${target}` : null,
+        job.geography ? String(job.geography) : null,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      href: id ? `/dashboard/list-builder/${id}` : '/dashboard/ai-assistant',
+      meta: { tool: toolName, id, status },
+    });
+  }
 
   if (d.status === 'needs_confirmation') {
     push({

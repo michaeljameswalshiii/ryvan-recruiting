@@ -58,6 +58,10 @@ import {
   withLinkedInCreateGuidance,
   WRITE_CONFIRM_PROMPT_RULES,
 } from "@/lib/ai/crm-write-loop";
+import {
+  isMarketSourcingGoal,
+  MARKET_SOURCING_RULES,
+} from "@/lib/ai/goal-routing";
 import { formatApolloLookupForModel } from "@/lib/ai/tools/apollo-lookup";
 import {
   getDecryptedAnthropicKey,
@@ -1800,16 +1804,23 @@ ${goal}
 
 Rules:
 1. Make MAXIMUM progress this turn — use tools in parallel when possible.
-2. Prefer batches: create up to 5–8 companies/contacts per wave when the user approved writes.
+2. ${
+      isMarketSourcingGoal(goal)
+        ? "This is a MARKET LIST goal. Call start_list_builder once. Do not create CRM companies/contacts. The user reviews and imports later."
+        : "For named companies the user listed, preview then create after write approval (up to 5–8 per wave)."
+    }
 3. ${
-      toolContext.agentWriteApproved
-        ? "WRITE APPROVED: CRM write tools are pre-approved for this run. Always pass confirmed:true. Do NOT ask for another yes."
-        : "WRITE NOT YET APPROVED: Preview writes only (no confirmed:true). End by asking the user to click Approve writes on the Agent Desk, then continue."
+      isMarketSourcingGoal(goal)
+        ? "Do not ask for Approve writes. A list-builder job is not a CRM write."
+        : toolContext.agentWriteApproved
+          ? "WRITE APPROVED: CRM write tools are pre-approved for this run. Always pass confirmed:true. Do NOT ask for another yes."
+          : "WRITE NOT YET APPROVED: Preview writes only (no confirmed:true). End by asking the user to click Approve writes on the Agent Desk, then continue."
     }
 4. After tools, summarize what was done and whether the GOAL is complete or more waves are needed.
 5. End with a clear status line: either "GOAL_COMPLETE" or "GOAL_CONTINUE" on its own line.
 6. Do not invent CRM ids — only use ids returned by tools.
-7. For Apollo/list sourcing, use the appropriate search tools then create CRM records from results.`;
+7. For industry + location sourcing, start_list_builder is the right tool. Only create CRM records for named companies the user already picked.
+${isMarketSourcingGoal(goal) ? `\n${MARKET_SOURCING_RULES}` : ""}`;
   }
 
   const tools = getToolSchemasForBedrock();

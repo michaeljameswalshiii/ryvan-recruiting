@@ -513,7 +513,7 @@ export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
                   className="w-full rounded-xl border border-dashed border-slate-200 px-3 py-4 text-left text-xs text-slate-500 transition hover:border-violet-300 hover:bg-violet-50/50 hover:text-slate-700"
                 >
                   <Bot className="mb-1 h-4 w-4 text-slate-400" />
-                  Multi-step CRM goal agent
+                  Custom CRM tasks (named companies, research)
                 </button>
               ) : (
                 <ul className="space-y-1.5">
@@ -570,7 +570,7 @@ export function ActiveRunsRail({ onOpenWorkspace, className = '' }: Props) {
                       onClick={() => onOpenWorkspace('goal')}
                       className="w-full rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-violet-700 hover:bg-violet-50"
                     >
-                      Open goal agent →
+                      Open custom task →
                     </button>
                   </li>
                 </ul>

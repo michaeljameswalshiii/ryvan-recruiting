@@ -59,13 +59,18 @@ import {
   saveAgentRun,
 } from '@/lib/ai/agent-run-history';
 import { AgentWorkbench } from '@/components/ai/AgentWorkbench';
+import {
+  composeMarketSourcingGoal,
+  isMarketSourcingGoal,
+  MARKET_REACH_OPTIONS,
+} from '@/lib/ai/goal-routing';
 
 type DeskTab = 'companies' | 'fill' | 'goal';
 
 const GOAL_EXAMPLES = [
   'Create CRM companies for: Grace Aerospace, Matrix Composites, Primus Pipe & Tube, Becker Avionics (minimal if websites fail)',
-  'Search Apollo for HVAC companies in Florida, then create the top 5 as CRM companies',
   'Research this company website and create a company record if solid',
+  'Add the hiring manager at Kimre if they are not already on Contacts',
 ];
 
 function nowIso() {
@@ -102,6 +107,8 @@ function kindIcon(kind: AgentArtifact['kind']) {
       return Search;
     case 'job':
       return Briefcase;
+    case 'list_builder':
+      return Building2;
     case 'error':
       return AlertTriangle;
     default:
@@ -141,6 +148,10 @@ export function AgentRunDesk({
     focusedGoalRef.current = null;
   }, [initialRunId, initialTab]);
   const [goal, setGoal] = useState('');
+  const [marketIndustry, setMarketIndustry] = useState('');
+  const [marketLocation, setMarketLocation] = useState('');
+  const [marketCount, setMarketCount] = useState('25');
+  const [marketReach, setMarketReach] = useState<string[]>(['Owner / founder']);
   const [run, setRun] = useState<AgentRunSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [reply, setReply] = useState('');
@@ -593,21 +604,42 @@ export function AgentRunDesk({
   };
 
   const startRun = async () => {
-    const g = goal.trim();
+    const composed = composeMarketSourcingGoal({
+      industry: marketIndustry,
+      location: marketLocation,
+      targetCount: Number(marketCount) || 25,
+      reach: marketReach,
+      extra: goal,
+    });
+    const g = (composed || goal).trim();
     if (!g || busy) return;
     abortRef.current = false;
+    const market = isMarketSourcingGoal(g);
     const base = emptyAgentRun(g, { visibility: defaultVisibility });
     base.status = 'running';
     base.wave = 1;
     base.messages = [{ role: 'user', content: g }];
     base.isOwner = true;
+    base.artifacts = [
+      {
+        id: newAgentId('art'),
+        kind: market ? 'list_builder' : 'note',
+        title: market ? 'Starting list builder' : 'Planning',
+        subtitle: market
+          ? 'Searching this market in the background. You review and import — nothing is written to CRM yet.'
+          : 'Working on your goal…',
+        at: nowIso(),
+      },
+    ];
     setRun(base);
     runRef.current = base;
     setBusy(true);
     setReply('');
 
     appendStep({
-      title: 'Wave 1 — working toward goal',
+      title: market
+        ? 'Wave 1 — start company list builder'
+        : 'Wave 1 — working toward goal',
       detail: g.slice(0, 160),
       status: 'running',
     });
@@ -843,12 +875,19 @@ export function AgentRunDesk({
     abortRef.current = true;
     setRun(null);
     setGoal('');
+    setMarketIndustry('');
+    setMarketLocation('');
+    setMarketCount('25');
+    setMarketReach(['Owner / founder']);
     setReply('');
     setBusy(false);
     refreshPast();
   };
 
   const companies = (run?.artifacts || []).filter((a) => a.kind === 'company');
+  const listBuilderJobs = (run?.artifacts || []).filter(
+    (a) => a.kind === 'list_builder'
+  );
   const apolloHits = (run?.artifacts || []).filter((a) => a.kind === 'apollo_hit');
   const people = (run?.artifacts || []).filter(
     (a) => a.kind === 'contact' || a.kind === 'candidate'
@@ -923,19 +962,19 @@ export function AgentRunDesk({
                 }`}
               >
                 {deskTab === 'companies'
-                  ? 'Company list builder'
+                  ? 'Find companies for BD'
                   : deskTab === 'fill'
                     ? 'Fill a job'
-                    : 'Goal agent'}
+                    : 'Custom CRM tasks'}
               </h1>
               <p
                 className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}
               >
                 {deskTab === 'companies'
-                  ? 'Background agent finds companies with email or phone'
+                  ? 'Recommended: source a market, then review and import'
                   : deskTab === 'fill'
                     ? 'Source real candidates for a careers URL or JD'
-                    : 'Multi-step CRM goals with mid-run chat'}
+                    : 'Named companies, research a site, or other one-off CRM work'}
               </p>
             </div>
           </div>
@@ -953,7 +992,7 @@ export function AgentRunDesk({
                 <Building2 className="h-3.5 w-3.5" />
               )}
               {tabBtn('fill', 'Fill job', <Briefcase className="h-3.5 w-3.5" />)}
-              {tabBtn('goal', 'Goal agent', <Bot className="h-3.5 w-3.5" />)}
+              {tabBtn('goal', 'Custom task', <Bot className="h-3.5 w-3.5" />)}
             </div>
             {deskTab === 'fill' && (
               <Button
@@ -1060,12 +1099,12 @@ export function AgentRunDesk({
             <p
               className={`text-sm font-medium ${dark ? 'text-slate-100' : 'text-slate-800'}`}
             >
-              Multi-step CRM goals
+              Custom CRM tasks
             </p>
             <p
               className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}
             >
-              Interactive chat mid-run · approve writes once · history saved
+              Market lists go to list builder · named work stays here
             </p>
           </div>
           {run && (
@@ -1088,19 +1127,115 @@ export function AgentRunDesk({
                 : 'border-slate-200 bg-slate-50/80'
             }`}
           >
+            {!run && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between gap-2">
+                  <label
+                    className={`text-[11px] font-semibold uppercase tracking-wide ${
+                      dark ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
+                    Source a market
+                  </label>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      dark
+                        ? 'bg-violet-500/15 text-violet-200'
+                        : 'bg-violet-50 text-violet-800'
+                    }`}
+                  >
+                    Review before import
+                  </span>
+                </div>
+                <p
+                  className={`mt-1 text-[11px] ${
+                    dark ? 'text-slate-500' : 'text-slate-500'
+                  }`}
+                >
+                  Industry + location starts a list-builder job. Nothing is
+                  written to Companies until you import.
+                </p>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <input
+                    value={marketIndustry}
+                    onChange={(e) => setMarketIndustry(e.target.value)}
+                    placeholder="Industry — HVAC, aerospace…"
+                    className={`h-9 rounded-lg border px-2.5 text-sm ${
+                      dark
+                        ? 'border-white/10 bg-slate-950 text-slate-100 placeholder:text-slate-500'
+                        : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400'
+                    }`}
+                  />
+                  <input
+                    value={marketLocation}
+                    onChange={(e) => setMarketLocation(e.target.value)}
+                    placeholder="Location — Florida, Tampa…"
+                    className={`h-9 rounded-lg border px-2.5 text-sm ${
+                      dark
+                        ? 'border-white/10 bg-slate-950 text-slate-100 placeholder:text-slate-500'
+                        : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400'
+                    }`}
+                  />
+                  <input
+                    type="number"
+                    min={5}
+                    max={100}
+                    value={marketCount}
+                    onChange={(e) => setMarketCount(e.target.value)}
+                    placeholder="How many"
+                    className={`h-9 rounded-lg border px-2.5 text-sm ${
+                      dark
+                        ? 'border-white/10 bg-slate-950 text-slate-100 placeholder:text-slate-500'
+                        : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400'
+                    }`}
+                  />
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {MARKET_REACH_OPTIONS.map((opt) => {
+                    const on = marketReach.includes(opt);
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() =>
+                          setMarketReach((prev) =>
+                            on
+                              ? prev.filter((x) => x !== opt)
+                              : [...prev, opt]
+                          )
+                        }
+                        className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+                          on
+                            ? 'border-violet-400 bg-violet-600 text-white'
+                            : dark
+                              ? 'border-white/10 text-slate-300 hover:bg-white/10'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <label
               className={`text-[11px] font-semibold uppercase tracking-wide ${
                 dark ? 'text-slate-400' : 'text-slate-500'
               }`}
             >
-              Goal
+              {run ? 'Goal' : 'Or a custom CRM task'}
             </label>
             <textarea
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               rows={2}
               disabled={busy || (!!run && run.status === 'running')}
-              placeholder="What should the agent accomplish? e.g. Search Apollo for X, create companies…"
+              placeholder={
+                marketIndustry || marketLocation
+                  ? 'Optional notes for this market…'
+                  : 'Named companies, research a website, or another one-off task…'
+              }
               className={`mt-1.5 w-full resize-y rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 disabled:opacity-70 ${
                 dark
                   ? 'border-white/10 bg-slate-950 text-slate-100 placeholder:text-slate-500 focus:border-violet-500/40 focus:ring-violet-500/20'
@@ -1176,7 +1311,14 @@ export function AgentRunDesk({
                 <Button
                   type="button"
                   className="bg-violet-700 hover:bg-violet-800"
-                  disabled={busy || !goal.trim()}
+                  disabled={
+                    busy ||
+                    !(
+                      goal.trim() ||
+                      marketIndustry.trim() ||
+                      marketLocation.trim()
+                    )
+                  }
                   onClick={() => void startRun()}
                 >
                   {busy ? (
@@ -1184,7 +1326,9 @@ export function AgentRunDesk({
                   ) : (
                     <Play className="h-4 w-4 mr-2" />
                   )}
-                  Start run
+                  {marketIndustry.trim() || marketLocation.trim()
+                    ? 'Start list'
+                    : 'Start run'}
                 </Button>
               ) : (
                 <>
@@ -1475,10 +1619,21 @@ export function AgentRunDesk({
             <p
               className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}
             >
-              CRM creates + Apollo / search hits from this run
+              Progress, list-builder jobs, and CRM records from this run
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-2 text-[11px]">
+            {listBuilderJobs.length > 0 && (
+              <span
+                className={`rounded-full px-2 py-0.5 ${
+                  dark
+                    ? 'bg-amber-500/15 text-amber-200'
+                    : 'bg-amber-50 text-amber-800'
+                }`}
+              >
+                List builder
+              </span>
+            )}
             {companies.length > 0 && (
               <span
                 className={`rounded-full px-2 py-0.5 ${
@@ -1527,7 +1682,7 @@ export function AgentRunDesk({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 space-y-2">
-          {!run || run.artifacts.length === 0 ? (
+          {!run ? (
             <div
               className={`rounded-xl border border-dashed px-4 py-12 text-center ${
                 dark ? 'border-white/10' : 'border-slate-200'
@@ -1539,12 +1694,48 @@ export function AgentRunDesk({
               <p
                 className={`mt-2 text-sm ${dark ? 'text-slate-400' : 'text-slate-500'}`}
               >
-                Apollo hits and CRM records appear here as the agent works.
+                Start a market list or a custom task. Progress shows here.
               </p>
               <p
                 className={`mt-1 text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}
               >
-                Tip: mention “search Apollo” or “find companies” in your goal.
+                Industry + location uses Company list builder — review before
+                import.
+              </p>
+            </div>
+          ) : run.artifacts.length === 0 && busy ? (
+            <div
+              className={`rounded-xl border border-dashed px-4 py-12 text-center ${
+                dark ? 'border-white/10' : 'border-slate-200'
+              }`}
+            >
+              <Loader2 className="mx-auto h-7 w-7 animate-spin text-violet-500" />
+              <p
+                className={`mt-2 text-sm ${dark ? 'text-slate-300' : 'text-slate-600'}`}
+              >
+                Planning…
+              </p>
+              <p
+                className={`mt-1 text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}
+              >
+                {isMarketSourcingGoal(run.goal)
+                  ? 'Starting a background list-builder job for this market.'
+                  : 'Picking tools and working the first wave.'}
+              </p>
+            </div>
+          ) : run.artifacts.length === 0 ? (
+            <div
+              className={`rounded-xl border border-dashed px-4 py-12 text-center ${
+                dark ? 'border-white/10' : 'border-slate-200'
+              }`}
+            >
+              <Search
+                className={`mx-auto h-7 w-7 ${dark ? 'text-slate-600' : 'text-slate-300'}`}
+              />
+              <p
+                className={`mt-2 text-sm ${dark ? 'text-slate-400' : 'text-slate-500'}`}
+              >
+                No records yet from this run.
               </p>
             </div>
           ) : (
@@ -1599,7 +1790,9 @@ export function AgentRunDesk({
                     >
                       {a.kind === 'apollo_hit'
                         ? 'Apollo / search'
-                        : a.kind.replace(/_/g, ' ')}
+                        : a.kind === 'list_builder'
+                          ? 'Review & import'
+                          : a.kind.replace(/_/g, ' ')}
                     </div>
                   </div>
                 </div>

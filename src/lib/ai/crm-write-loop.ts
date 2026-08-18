@@ -3,6 +3,8 @@
  * does not burn the tool-iteration budget on fetch_website / extra search.
  */
 
+import { withMarketSourcingGuidance } from "./goal-routing";
+
 export const LINKEDIN_PROFILE_RE =
   /https?:\/\/(?:[\w.-]+\.)?linkedin\.com\/in\/[A-Za-z0-9_%-]+\/?/i;
 
@@ -202,5 +204,5 @@ export function withLinkedInCreateGuidance(
   if (wantsMissingContactPosted(query)) {
     next = `${next}\n\n${MISSING_CONTACT_RULES}`;
   }
-  return next;
+  return withMarketSourcingGuidance(next, query);
 }
