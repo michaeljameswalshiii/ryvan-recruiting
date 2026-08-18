@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
     const actor = {
-      userId: gate.auth.keyId || "mcp",
+      userId: gate.auth.userId || gate.auth.keyId || "mcp",
       email: `mcp:${gate.auth.keyName || "key"}`,
     };
     const company = await createClient(

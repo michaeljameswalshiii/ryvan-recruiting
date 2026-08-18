@@ -40,6 +40,7 @@ import { FilterStatCards } from '@/components/ui/filter-stat-cards';
 import { useTheme } from '@/components/ThemeProvider';
 import { useListColumns } from '@/lib/ui/use-list-columns';
 import { useAssignmentOwners } from '@/lib/hooks/use-assignment-owners';
+import { displayOwnerName } from '@/lib/ownership/machine-actor';
 import { useJobs } from '@/lib/hooks/query-job';
 import { normalizeJobStatus } from '@/lib/jobs/status';
 import { toWebsiteHref, websiteLabel } from '@/lib/ui/website-href';
@@ -52,9 +53,11 @@ import {
   listTdActions,
   listTdCheck,
   listTdName,
+  listTdOwner,
   listTh,
   listThCheck,
   listThName,
+  listThOwner,
   listThRight,
 } from '@/components/ui/data-list-table';
 import { recordMatchesQuery } from '@/lib/tags';
@@ -275,15 +278,15 @@ function ownerNameFromRecord(
   ownerMap: Record<string, { name?: string }>,
 ): string {
   for (const key of ownerLookupKeys(record)) {
-    const name = String(ownerMap[key]?.name || '').trim();
+    const name = displayOwnerName(ownerMap[key]?.name);
     if (name) return name;
   }
-  return (
+  return displayOwnerName(
     record?.ownerName ||
-    record?.accountOwner ||
-    record?.owner ||
-    record?.createdByName ||
-    ''
+      record?.accountOwner ||
+      record?.owner ||
+      record?.createdByName ||
+      ''
   );
 }
 
@@ -335,7 +338,7 @@ const COMPANY_COLUMN_DEFS: {
 }[] = [
   { id: 'primary_contact', label: 'Primary Contact', defaultOn: true },
   { id: 'stage', label: 'Stage & Progress', defaultOn: true },
-  { id: 'account_owner', label: 'Account Owner', defaultOn: true, isNew: true },
+  { id: 'account_owner', label: 'Account Rep', defaultOn: true, isNew: true },
   { id: 'open_jobs', label: 'Open Jobs #', defaultOn: true, isNew: true },
   { id: 'fee_agreement', label: 'Fee Agreement', defaultOn: true, isNew: true },
   { id: 'industry', label: 'Industry', defaultOn: false },
@@ -983,7 +986,11 @@ export function CompaniesClient() {
                     Company
                   </th>
                   {columns.visibleIds.map((id) => (
-                    <th key={id} className={listTh}>
+                    <th
+                      key={id}
+                      className={id === 'account_owner' ? listThOwner : listTh}
+                      title={COMPANY_COLUMN_DEFS.find((d) => d.id === id)?.label}
+                    >
                       {COMPANY_COLUMN_DEFS.find((d) => d.id === id)?.label}
                     </th>
                   ))}
@@ -1211,20 +1218,16 @@ export function CompaniesClient() {
                           );
                         case 'account_owner':
                           return (
-                            <td key={colId} className={listTd}>
+                            <td key={colId} className={listTdOwner}>
                               {c.ownerName ? (
-                                <span className="inline-flex items-center gap-2 min-w-0">
-                                  <span
-                                    className={`h-7 w-7 shrink-0 rounded-full ${avatarColor(c.ownerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
-                                  >
-                                    {getInitials(c.ownerName)}
-                                  </span>
-                                  <span className="truncate text-sm text-gray-800">
-                                    {c.ownerName}
-                                  </span>
+                                <span
+                                  title={c.ownerName}
+                                  className={`mx-auto h-7 w-7 rounded-full ${avatarColor(c.ownerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
+                                >
+                                  {getInitials(c.ownerName)}
                                 </span>
                               ) : (
-                                <span className="text-sm text-gray-400">—</span>
+                                <span className="block text-center text-sm text-gray-400">—</span>
                               )}
                             </td>
                           );

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Loader2, Plus, UserRound } from "lucide-react";
+import { displayOwnerName, isMachineActorId } from "@/lib/ownership/machine-actor";
 
 type ObjectType = "candidate" | "company" | "job" | "contact";
 type Member = { id: string; full_name: string; email: string };
@@ -95,15 +96,26 @@ export function AccountRepPill({
   }, [open]);
 
   const current =
+    assignments.find((row) => {
+      if (isMachineActorId(row.userId) || isMachineActorId(row.userName)) {
+        return false;
+      }
+      return (
+        row.role === assignmentRole ||
+        row.role === "owner" ||
+        row.role === "account_manager"
+      );
+    }) ||
     assignments.find(
-      (row) => row.role === assignmentRole || row.role === "owner" || row.role === "account_manager"
-    ) || assignments[0];
+      (row) => !isMachineActorId(row.userId) && !isMachineActorId(row.userName)
+    );
   const currentId = current?.userId || "";
-  const currentName =
+  const currentName = displayOwnerName(
     current?.userName ||
-    current?.userEmail ||
-    members.find((m) => m.id === currentId)?.full_name ||
-    "";
+      current?.userEmail ||
+      members.find((m) => m.id === currentId)?.full_name ||
+      ""
+  );
 
   const assign = async (userId: string) => {
     if (!userId || userId === currentId) {

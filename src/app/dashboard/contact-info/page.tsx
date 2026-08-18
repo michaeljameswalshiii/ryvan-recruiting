@@ -34,6 +34,7 @@ import { useAddContact, useRemoveContact, useUpdateContact } from '@/lib/hooks/c
 import { getDisplayPhone } from '@/lib/contacts/phone';
 import { useListColumns } from '@/lib/ui/use-list-columns';
 import { useAssignmentOwners } from '@/lib/hooks/use-assignment-owners';
+import { displayOwnerName } from '@/lib/ownership/machine-actor';
 import {
   DataListTable,
   LIST_PAGE_CLASS,
@@ -41,7 +42,9 @@ import {
   ListColumnPicker,
   listTd,
   listTdActions,
+  listTdOwner,
   listTh,
+  listThOwner,
   listThRight,
 } from '@/components/ui/data-list-table';
 import { recordMatchesQuery } from '@/lib/tags';
@@ -343,12 +346,13 @@ export default function ContactInfoPage() {
           location:
             [contact.city, contact.state].filter(Boolean).join(', ') ||
             [company.city, company.state].filter(Boolean).join(', '),
-          ownerName:
+          ownerName: displayOwnerName(
             ownerMap[String(contact.id)]?.name ||
-            contact.ownerName ||
-            contact.accountOwner ||
-            contact.createdByName ||
-            '',
+              contact.ownerName ||
+              contact.accountOwner ||
+              contact.createdByName ||
+              ''
+          ),
           raw: contact,
         });
       }
@@ -818,11 +822,12 @@ export default function ContactInfoPage() {
                       key={id}
                       className={
                         id === 'last_activity'
-                          ? `${listTh} w-[5.25rem] max-w-[5.25rem] px-2`
+                          ? `${listTh} w-[5.25rem] max-w-[5.25rem] px-2 leading-[1.15] whitespace-normal`
                           : id === 'owner'
-                            ? `${listTh} w-[3.25rem] max-w-[3.25rem] px-2 text-center`
+                            ? listThOwner
                             : listTh
                       }
+                      title={CONTACT_COLUMN_DEFS.find((d) => d.id === id)?.label}
                     >
                       {CONTACT_COLUMN_DEFS.find((d) => d.id === id)?.label}
                     </th>
@@ -947,10 +952,7 @@ export default function ContactInfoPage() {
                             );
                           case 'owner':
                             return (
-                              <td
-                                key={colId}
-                                className={`${listTd} w-[3.25rem] max-w-[3.25rem] px-2`}
-                              >
+                              <td key={colId} className={listTdOwner}>
                                 {c.ownerName ? (
                                   <span
                                     title={c.ownerName}

@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
       );
     }
     const actor = {
-      userId: gate.auth.keyId || "mcp",
+      userId: gate.auth.userId || gate.auth.keyId || "mcp",
       email: `mcp:${gate.auth.keyName || "key"}`,
     };
     const updated = await addContactToClient(

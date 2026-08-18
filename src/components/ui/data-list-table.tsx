@@ -115,6 +115,11 @@ export function DataListTable({
 export const listTh =
   "text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 sticky top-0 z-[8] overflow-hidden";
 
+/** Compact owner / account-rep column: avatar only, label wraps instead of clipping. */
+export const LIST_OWNER_COL_WIDTH = "w-[5.5rem] max-w-[5.5rem] px-2";
+
+export const listThOwner = `${listTh} ${LIST_OWNER_COL_WIDTH} text-center leading-[1.15] whitespace-normal`;
+
 export const listThRight =
   "text-right px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 sticky top-0 right-0 z-[12] shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)] w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem]";
 
@@ -129,6 +134,8 @@ export const listThNameFlush =
   "sticky top-0 left-0 z-[11] bg-gray-50 text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-[13rem] min-w-[13rem] overflow-hidden";
 
 export const listTd = "px-4 py-3.5 overflow-hidden";
+
+export const listTdOwner = `${listTd} ${LIST_OWNER_COL_WIDTH}`;
 
 export function listTdCheck(selected: boolean) {
   return `sticky left-0 z-[5] px-3 py-3.5 align-middle w-10 min-w-10 max-w-10 ${

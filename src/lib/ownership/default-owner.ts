@@ -14,7 +14,13 @@ import {
   type AssignableObjectType,
   type AssignmentRole,
 } from "@/lib/db/repositories/object-assignment-repository";
-import { getProfileById } from "@/lib/db/repositories/profile-repository";
+import {
+  getProfileByEmail,
+  getProfileById,
+  getProfilesByTenant,
+} from "@/lib/db/repositories/profile-repository";
+import { isMachineActorId } from "@/lib/ownership/machine-actor";
+import { normalizeRole } from "@/lib/roles";
 
 export type TenantOwnershipSettings = {
   /** When true, new records get defaultOwnerUserId (if valid) instead of the creator. */
@@ -65,6 +71,53 @@ export function defaultAssignmentRole(
  * - Otherwise the creator.
  * - Returns null if nobody can be resolved.
  */
+function profileAsOwner(
+  profile: {
+    id?: string;
+    full_name?: string;
+    email?: string;
+    tenant_id?: string;
+    status?: string;
+  } | null,
+  tenantId: string,
+  source: "fixed" | "creator",
+) {
+  if (!profile?.id) return null;
+  if (profile.tenant_id && profile.tenant_id !== tenantId) return null;
+  if (profile.status && profile.status !== "active" && profile.status !== "invited") {
+    return null;
+  }
+  const name = String(profile.full_name || profile.email || "").trim();
+  if (!name || isMachineActorId(name) || isMachineActorId(profile.id)) return null;
+  return {
+    userId: profile.id,
+    userName: name,
+    userEmail: profile.email || "",
+    source,
+  };
+}
+
+async function firstTeammateOwner(tenantId: string) {
+  const profiles = await getProfilesByTenant(tenantId);
+  const usable = (profiles || []).filter(
+    (p) =>
+      p?.id &&
+      (!p.status || p.status === "active") &&
+      !isMachineActorId(p.id) &&
+      !isMachineActorId(p.full_name || p.email),
+  );
+  usable.sort((a, b) => {
+    const rank = (role?: string) => {
+      const r = normalizeRole(role || "user");
+      if (r === "company_admin") return 0;
+      if (r === "site_admin") return 1;
+      return 2;
+    };
+    return rank(a.role) - rank(b.role);
+  });
+  return profileAsOwner(usable[0] || null, tenantId, "fixed");
+}
+
 export async function resolveDefaultOwnerUser(input: {
   tenantId: string;
   actorUserId: string;
@@ -81,45 +134,20 @@ export async function resolveDefaultOwnerUser(input: {
 
   if (settings.useFixedDefaultOwner && settings.defaultOwnerUserId) {
     const fixed = await getProfileById(settings.defaultOwnerUserId);
-    if (
-      fixed &&
-      fixed.tenant_id === input.tenantId &&
-      (!fixed.status || fixed.status === "active")
-    ) {
-      return {
-        userId: fixed.id,
-        userName: fixed.full_name || fixed.email || fixed.id,
-        userEmail: fixed.email || "",
-        source: "fixed",
-      };
-    }
+    const asOwner = profileAsOwner(fixed, input.tenantId, "fixed");
+    if (asOwner) return asOwner;
   }
 
-  const creator = await getProfileById(input.actorUserId);
-  if (
-    creator &&
-    creator.tenant_id === input.tenantId &&
-    (!creator.status || creator.status === "active" || creator.status === "invited")
-  ) {
-    return {
-      userId: creator.id,
-      userName: creator.full_name || creator.email || creator.id,
-      userEmail: creator.email || "",
-      source: "creator",
-    };
+  const actorId = String(input.actorUserId || "").trim();
+  if (actorId && !isMachineActorId(actorId)) {
+    const creator = actorId.includes("@")
+      ? await getProfileByEmail(actorId)
+      : await getProfileById(actorId);
+    const asOwner = profileAsOwner(creator, input.tenantId, "creator");
+    if (asOwner) return asOwner;
   }
 
-  // Profile missing (edge case) — still assign actor by id so the record has an owner.
-  if (input.actorUserId) {
-    return {
-      userId: input.actorUserId,
-      userName: input.actorUserId,
-      userEmail: "",
-      source: "creator",
-    };
-  }
-
-  return null;
+  return firstTeammateOwner(input.tenantId);
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   listObjectAssignmentsForType,
   type AssignableObjectType,
 } from "@/lib/db/repositories/object-assignment-repository";
+import { displayOwnerName } from "@/lib/ownership/machine-actor";
 
 function parseObjectType(value: string | null): AssignableObjectType | null {
   if (!value) return null;
@@ -59,12 +60,12 @@ export async function GET(request: NextRequest) {
       if (row.role && row.role !== "owner" && row.role !== "account_manager") {
         continue;
       }
-      const name = String(row.userName || row.userEmail || "").trim();
+      const name = displayOwnerName(row.userName || row.userEmail);
       putOwner(row.objectId, name, row);
     }
     // Fill remaining from any role if no owner/account_manager yet
     for (const row of assignments) {
-      const name = String(row.userName || row.userEmail || "").trim();
+      const name = displayOwnerName(row.userName || row.userEmail);
       putOwner(row.objectId, name, row, false);
     }
 

@@ -153,6 +153,8 @@ export type ValidatedMcpKey = {
   tenantId: string;
   keyId: string;
   keyName: string;
+  /** Human who authorized the OAuth client or created the API key. */
+  userId?: string;
 };
 
 /**
@@ -202,6 +204,7 @@ export async function validateMcpApiKey(
     tenantId,
     keyId: match.id,
     keyName: match.name,
+    userId: match.created_by || undefined,
   };
 }
 
@@ -265,6 +268,7 @@ export async function resolveMcpApiKey(
           tenantId: tid,
           keyId: match.id,
           keyName: match.name,
+          userId: match.created_by || undefined,
         };
       }
     }

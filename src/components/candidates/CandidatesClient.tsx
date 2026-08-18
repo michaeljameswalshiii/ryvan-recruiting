@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useListColumns } from '@/lib/ui/use-list-columns';
 import { useAssignmentOwners } from '@/lib/hooks/use-assignment-owners';
+import { displayOwnerName } from '@/lib/ownership/machine-actor';
 import {
   DataListTable,
   LIST_PAGE_CLASS,
@@ -28,9 +29,11 @@ import {
   listTdActions,
   listTdCheck,
   listTdName,
+  listTdOwner,
   listTh,
   listThCheck,
   listThName,
+  listThOwner,
   listThRight,
 } from '@/components/ui/data-list-table';
 import { Button } from '@/components/ui/button';
@@ -396,7 +399,7 @@ const CANDIDATE_COLUMN_DEFS: {
   isNew?: boolean;
 }[] = [
   { id: 'linked_job', label: 'Linked Job', defaultOn: true },
-  { id: 'owner', label: 'Owner', defaultOn: true, isNew: true },
+  { id: 'owner', label: 'Account Rep', defaultOn: true, isNew: true },
   { id: 'source', label: 'Source', defaultOn: true },
   { id: 'stage', label: 'Stage & Progress', defaultOn: true },
   { id: 'added', label: 'Added', defaultOn: true },
@@ -484,12 +487,13 @@ export function CandidatesClient() {
         location,
         added,
         lastActivity,
-        ownerName:
+        ownerName: displayOwnerName(
           assigned?.name ||
-          c.ownerName ||
-          c.accountOwner ||
-          c.createdByName ||
-          '',
+            c.ownerName ||
+            c.accountOwner ||
+            c.createdByName ||
+            ''
+        ),
         tags: listFromUnknown(c.tags),
         skills: listFromUnknown(c.skills),
         company: String(c.company || c.companyName || '').trim(),
@@ -1020,7 +1024,11 @@ export function CandidatesClient() {
                     Candidate
                   </th>
                   {columns.visibleIds.map((id) => (
-                    <th key={id} className={listTh}>
+                    <th
+                      key={id}
+                      className={id === 'owner' ? listThOwner : listTh}
+                      title={CANDIDATE_COLUMN_DEFS.find((d) => d.id === id)?.label}
+                    >
                       {CANDIDATE_COLUMN_DEFS.find((d) => d.id === id)?.label}
                     </th>
                   ))}
@@ -1209,20 +1217,16 @@ export function CandidatesClient() {
                             );
                           case 'owner':
                             return (
-                              <td key={colId} className={listTd}>
+                              <td key={colId} className={listTdOwner}>
                                 {c.ownerName ? (
-                                  <span className="inline-flex items-center gap-2 min-w-0">
-                                    <span
-                                      className={`h-7 w-7 shrink-0 rounded-full ${avatarColor(c.ownerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
-                                    >
-                                      {getInitials(c.ownerName)}
-                                    </span>
-                                    <span className="truncate text-sm text-gray-800">
-                                      {c.ownerName}
-                                    </span>
+                                  <span
+                                    title={c.ownerName}
+                                    className={`mx-auto h-7 w-7 rounded-full ${avatarColor(c.ownerName)} text-white text-[10px] font-semibold flex items-center justify-center`}
+                                  >
+                                    {getInitials(c.ownerName)}
                                   </span>
                                 ) : (
-                                  <span className="text-sm text-gray-400">—</span>
+                                  <span className="block text-center text-sm text-gray-400">—</span>
                                 )}
                               </td>
                             );

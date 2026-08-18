@@ -575,6 +575,7 @@ export async function validateMcpOAuthAccessToken(token: string): Promise<{
   tenantId: string;
   keyId: string;
   keyName: string;
+  userId?: string;
 } | null> {
   try {
     const payload = await verifyOAuthJwt(token, oauthMcpResource());
@@ -585,6 +586,7 @@ export async function validateMcpOAuthAccessToken(token: string): Promise<{
       tenantId: payload.tenantId,
       keyId: found.client.id,
       keyName: found.client.name,
+      userId: payload.userId || undefined,
     };
   } catch {
     return null;

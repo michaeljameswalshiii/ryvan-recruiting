@@ -32,6 +32,7 @@ import { FilterStatCards } from '@/components/ui/filter-stat-cards';
 import { useTheme } from '@/components/ThemeProvider';
 import { useListColumns } from '@/lib/ui/use-list-columns';
 import { useAssignmentOwners } from '@/lib/hooks/use-assignment-owners';
+import { displayOwnerName } from '@/lib/ownership/machine-actor';
 import { isJobOpenForCareers } from '@/lib/jobs/status';
 import {
   DataListTable,
@@ -208,11 +209,12 @@ export function JobListView({ jobs }: JobListViewProps) {
         lastActivity,
         posted,
         isPosted,
-        ownerName:
+        ownerName: displayOwnerName(
           assigned?.name ||
-          (j as any).ownerName ||
-          (j as any).createdByName ||
-          '',
+            (j as any).ownerName ||
+            (j as any).createdByName ||
+            ''
+        ),
       };
     });
   }, [jobs, ownerMap]);

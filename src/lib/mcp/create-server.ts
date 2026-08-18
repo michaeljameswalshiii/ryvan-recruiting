@@ -156,7 +156,10 @@ export function createTrioMcpServer(auth: ValidatedMcpKey): McpServer {
 
   const tenantId = auth.tenantId;
   const actor = `mcp:${auth.keyName}`;
-  const actorUser = { userId: auth.keyId || "mcp", email: actor };
+  const actorUser = {
+    userId: auth.userId || auth.keyId || "mcp",
+    email: actor,
+  };
 
   server.tool(
     "trio_help",
