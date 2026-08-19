@@ -61,6 +61,7 @@ import {
   getStageLabel,
 } from '@/lib/schemas/lead';
 import { noteTypeFromStage } from '@/lib/candidates/note-type-stage';
+import { userEnteredNoteText } from '@/lib/candidates/user-note';
 import { recordMatchesQuery } from '@/lib/tags';
 
 type SortKey = 'last_activity' | 'name' | 'added' | 'stage';
@@ -360,6 +361,21 @@ function candidateLocation(candidate: any): string {
   return parts.join(', ');
 }
 
+/** Drop ZIP so the Location column can stay narrow. */
+function compactLocation(value: string): string {
+  return value.replace(/\s+\d{5}(?:-\d{4})?\s*$/, '').trim();
+}
+
+function candidateThClass(id: CandidateColumnId): string {
+  if (id === 'owner') return listThOwner;
+  if (id === 'location') return `${listTh} w-[7.25rem] max-w-[7.25rem]`;
+  if (id === 'last_note') return `${listTh} w-[34%]`;
+  if (id === 'source' || id === 'last_activity' || id === 'added') {
+    return `${listTh} w-[6.5rem] max-w-[7rem] whitespace-nowrap`;
+  }
+  return listTh;
+}
+
 function listFromUnknown(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.map((item) => String(item ?? '').trim()).filter(Boolean);
@@ -489,7 +505,7 @@ export function CandidatesClient() {
         location,
         added,
         lastActivity,
-        lastNote: String(c.last_note || c.lastNote || c.notes || '').trim(),
+        lastNote: userEnteredNoteText(c.last_note || c.lastNote || ''),
         ownerName: displayOwnerName(
           assigned?.name ||
             c.ownerName ||
@@ -1030,7 +1046,7 @@ export function CandidatesClient() {
                   {columns.visibleIds.map((id) => (
                     <th
                       key={id}
-                      className={id === 'owner' ? listThOwner : listTh}
+                      className={candidateThClass(id)}
                       title={CANDIDATE_COLUMN_DEFS.find((d) => d.id === id)?.label}
                     >
                       {CANDIDATE_COLUMN_DEFS.find((d) => d.id === id)?.label}
@@ -1124,7 +1140,10 @@ export function CandidatesClient() {
                             );
                           case 'source':
                             return (
-                              <td key={colId} className={`${listTd} text-sm text-gray-700 truncate`}>
+                              <td
+                                key={colId}
+                                className={`${listTd} w-[6.5rem] max-w-[7rem] text-sm text-gray-700 truncate`}
+                              >
                                 {c.source || 'Manual'}
                               </td>
                             );
@@ -1192,18 +1211,18 @@ export function CandidatesClient() {
                             return (
                               <td
                                 key={colId}
-                                className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
+                                className={`${listTd} w-[6.5rem] max-w-[7rem] text-sm text-gray-600 whitespace-nowrap`}
                               >
                                 {formatShortDate(c.added)}
                               </td>
                             );
                           case 'last_note':
                             return (
-                              <td key={colId} className={`${listTd} max-w-[220px]`}>
+                              <td key={colId} className={`${listTd} w-[34%]`}>
                                 {c.lastNote ? (
                                   <span
                                     title={c.lastNote}
-                                    className="line-clamp-2 text-sm leading-snug text-slate-700"
+                                    className="line-clamp-2 text-sm leading-snug text-slate-700 break-words"
                                   >
                                     {c.lastNote}
                                   </span>
@@ -1216,18 +1235,26 @@ export function CandidatesClient() {
                             return (
                               <td
                                 key={colId}
-                                className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
+                                className={`${listTd} w-[6.5rem] max-w-[7rem] text-sm text-gray-600 whitespace-nowrap`}
                               >
                                 {formatRelativeActivity(c.lastActivity)}
                               </td>
                             );
                           case 'location':
                             return (
-                              <td key={colId} className={`${listTd} text-sm text-gray-700`}>
+                              <td
+                                key={colId}
+                                className={`${listTd} w-[7.25rem] max-w-[7.25rem] text-sm text-gray-700`}
+                              >
                                 {c.location ? (
-                                  <span className="inline-flex items-center gap-1 min-w-0">
+                                  <span
+                                    className="inline-flex items-center gap-1 min-w-0 max-w-full"
+                                    title={c.location}
+                                  >
                                     <MapPin className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                                    <span className="truncate">{c.location}</span>
+                                    <span className="truncate">
+                                      {compactLocation(c.location)}
+                                    </span>
                                   </span>
                                 ) : (
                                   '—'

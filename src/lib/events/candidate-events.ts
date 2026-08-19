@@ -28,6 +28,10 @@ import {
   ACTIVITY_NOTE_TYPES,
   normalizeNoteTypeLabel,
 } from '@/lib/candidates/note-type-stage';
+import {
+  isUserEnteredActivityNote,
+  userEnteredNoteText,
+} from '@/lib/candidates/user-note';
 
 // ============================================================================
 // Constants & Configuration
@@ -168,12 +172,19 @@ export async function recordEvent(
 
     await putItem(eventsTable, event);
 
-    if (eventType === 'NOTE') {
-      const noteText = String(
-        details.description ||
-          (details.metadata as { noteText?: string } | undefined)?.noteText ||
+    if (
+      isUserEnteredActivityNote({
+        eventType,
+        createdBy,
+        description: details.description,
+        metadata: details.metadata,
+      })
+    ) {
+      const noteText = userEnteredNoteText(
+        (details.metadata as { noteText?: string } | undefined)?.noteText ||
+          details.description ||
           ''
-      ).trim();
+      );
       if (noteText) {
         try {
           const { setLeadLastNote } = await import(
@@ -205,7 +216,7 @@ export async function recordEvent(
  */
 export async function getLatestNotesByCandidate(
   tenantId: string,
-  limit = 400
+  limit = 1200
 ): Promise<Record<string, string>> {
   if (!tenantId) return {};
   try {
@@ -224,14 +235,12 @@ export async function getLatestNotesByCandidate(
     for (const ev of events) {
       const id = String(ev.entityId || '').trim();
       if (!id || out[id]) continue;
-      if (String(ev.eventType || '').toUpperCase() !== 'NOTE') continue;
-      const text = String(
+      if (!isUserEnteredActivityNote(ev)) continue;
+      const text = userEnteredNoteText(
         (ev.metadata as { noteText?: string } | undefined)?.noteText ||
           ev.description ||
           ''
-      )
-        .replace(/\s+/g, ' ')
-        .trim();
+      );
       if (text) out[id] = text;
     }
     return out;
@@ -440,10 +449,19 @@ export async function updateCandidateEvent(
     );
 
     const resolvedId = sk.replace('EVENT#', '');
-    const latestText = String(
+    const latestText = userEnteredNoteText(
       (meta as { noteText?: string }).noteText || description || ''
-    ).trim();
-    if (latestText && existing.tenantId) {
+    );
+    if (
+      latestText &&
+      existing.tenantId &&
+      isUserEnteredActivityNote({
+        eventType: existing.eventType,
+        createdBy: existing.createdBy,
+        description,
+        metadata: meta,
+      })
+    ) {
       try {
         const { setLeadLastNote } = await import(
           '../db/repositories/lead-repository'

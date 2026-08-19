@@ -25,6 +25,7 @@ import {
   type JobNote,
 } from "../../schemas/lead";
 import { assignDefaultOwnerOnCreate } from "@/lib/ownership/default-owner";
+import { userEnteredNoteText } from "@/lib/candidates/user-note";
 import { getJobById, getAllJobs } from "./job-repository";
 
 export { mapLegacyStageToApplicationStage, isValidApplicationStage };
@@ -170,17 +171,18 @@ export async function getAllLeadsWithLinkedJobs(
       }
     }
 
-    const storedLast = String(
+    const storedLast = userEnteredNoteText(
       (lead as { last_note?: string }).last_note || "",
-    ).trim();
-    const profileNotes = String(lead.notes || "").trim();
-    const fromEvents = latestNotes[String(lead.id || "")] || "";
+    );
+    const fromEvents = userEnteredNoteText(
+      latestNotes[String(lead.id || "")] || "",
+    );
 
     return {
       ...lead,
       linkedJobIds: safeLinkedJobIds,
       linkedJobs,
-      last_note: storedLast || fromEvents || profileNotes || "",
+      last_note: storedLast || fromEvents || "",
     };
   });
 
