@@ -10,6 +10,7 @@ import {
   Calendar,
   Filter,
   Gauge,
+  GripVertical,
   LineChart,
   Plus,
   Share2,
@@ -20,6 +21,23 @@ import {
   Users,
   Wallet,
 } from 'lucide-react';
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { useListColumns } from '@/lib/ui/use-list-columns';
+import { ListColumnPicker } from '@/components/ui/data-list-table';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,15 +54,12 @@ import type { ReportingStats } from '@/lib/aws/reporting';
 import { formatMoney } from '@/lib/invoices/fee';
 import {
   REPORT_CATALOG,
-  REPORT_CATEGORIES,
   isReportId,
   type ReportCategory,
   type ReportDefinition,
   type ReportId,
   type ReportTone,
 } from '@/lib/reporting/report-catalog';
-
-type LibraryFilter = 'all' | ReportCategory;
 
 type CustomReport = {
   id: string;
@@ -109,6 +124,94 @@ function reportIcon(id: ReportId | string) {
   }
 }
 
+function SortableReportCard({
+  report,
+  href,
+  onShare,
+}: {
+  report: ReportDefinition;
+  href: string;
+  onShare: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: report.id });
+  const Icon = reportIcon(isReportId(report.id) ? report.id : 'funnel');
+  const tone = TONE[report.tone];
+  return (
+    <article
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      data-ink-on-light
+      className={`flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${
+        isDragging ? 'z-10 ring-2 ring-blue-200' : ''
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="cursor-grab touch-none rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+            aria-label={`Move ${report.title}`}
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          <div className={`rounded-xl p-2.5 ${tone.icon}`}>
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+        <span
+          className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${tone.badge}`}
+        >
+          {report.category}
+        </span>
+      </div>
+      <h3 className="mt-3 text-base font-semibold text-slate-900">
+        {report.title}
+      </h3>
+      <p className="mt-1.5 flex-1 text-sm leading-relaxed text-slate-600">
+        {report.description}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {report.chips.map((chip) => (
+          <span
+            key={chip}
+            className={`rounded-full border px-2 py-0.5 text-[11px] ${tone.chip}`}
+          >
+            {chip}
+          </span>
+        ))}
+      </div>
+      <div className="mt-4 flex items-center justify-between">
+        <button
+          type="button"
+          className="text-sm font-medium text-blue-700 hover:underline"
+          onClick={onShare}
+        >
+          Share
+        </button>
+        <Link
+          href={href}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+          aria-label={`Open ${report.title}`}
+        >
+          <ArrowUpRight className="h-4 w-4" />
+        </Link>
+      </div>
+    </article>
+  );
+}
+
 function loadCustom(): CustomReport[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -145,7 +248,6 @@ export function ReportLibrary({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [filter, setFilter] = useState<LibraryFilter>('all');
   const [custom, setCustom] = useState<CustomReport[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -172,7 +274,7 @@ export function ReportLibrary({
       : null;
   const customActive = custom.find((c) => c.id === reportId);
 
-  const cards = useMemo(() => {
+  const allReports = useMemo(() => {
     const extras: ReportDefinition[] = custom.map((c) => {
       const base = REPORT_CATALOG.find((r) => r.id === c.basedOn)!;
       return {
@@ -183,10 +285,42 @@ export function ReportLibrary({
         description: `Custom view based on ${base.title}.`,
       };
     });
-    return [...REPORT_CATALOG, ...extras].filter(
-      (r) => filter === 'all' || r.category === filter
-    );
-  }, [custom, filter]);
+    return [...REPORT_CATALOG, ...extras];
+  }, [custom]);
+
+  const reportDefs = useMemo(
+    () =>
+      allReports.map((r) => ({
+        id: String(r.id),
+        label: r.title,
+        defaultOn: true,
+        isNew: !isReportId(r.id),
+      })),
+    [allReports]
+  );
+  const columns = useListColumns<string>(
+    'trio.reporting.libraryReports.v1',
+    reportDefs
+  );
+  const reportById = useMemo(
+    () => Object.fromEntries(allReports.map((r) => [r.id, r])),
+    [allReports]
+  );
+  const cards = columns.visibleIds
+    .map((id) => reportById[id])
+    .filter(Boolean);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+  const onCardDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = columns.order.indexOf(String(active.id));
+    const newIndex = columns.order.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    columns.reorder(arrayMove(columns.order, oldIndex, newIndex));
+  };
 
   if (reportId && (active || customActive)) {
     const def = active || REPORT_CATALOG.find((r) => r.id === customActive?.basedOn);
@@ -232,123 +366,83 @@ export function ReportLibrary({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            Report library
-          </span>
-          <div className="flex flex-wrap items-center gap-1">
-            {REPORT_CATEGORIES.map((c) => {
-              const on = filter === c.id;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setFilter(c.id)}
-                  className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-                    on
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  {c.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-slate-700"
-            onClick={() => setCreateOpen(true)}
-          >
-            <Plus className="mr-1 h-4 w-4" />
-            New custom report
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="bg-blue-600 text-white hover:bg-blue-700"
-            onClick={() =>
-              copyShareUrl(
-                `${pathname}?tab=library&period=${searchParams.get('period') || 'ytd'}`
-              )
-            }
-          >
-            <Share2 className="mr-1.5 h-4 w-4" />
-            Share reports
-          </Button>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ListColumnPicker
+          defs={reportDefs}
+          order={columns.order}
+          col={columns.col}
+          toggle={columns.toggle}
+          reorder={columns.reorder}
+          reset={columns.reset}
+          open={columns.open}
+          setOpen={columns.setOpen}
+          buttonLabel="Reports"
+          menuTitle="Edit reports"
+          alwaysOnNote="Drag to reorder. Uncheck a report to hide it from this library."
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-slate-700"
+          onClick={() => setCreateOpen(true)}
+        >
+          <Plus className="mr-1 h-4 w-4" />
+          New custom report
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          className="bg-blue-600 text-white hover:bg-blue-700"
+          onClick={() =>
+            copyShareUrl(
+              `${pathname}?tab=library&period=${searchParams.get('period') || 'ytd'}`
+            )
+          }
+        >
+          <Share2 className="mr-1.5 h-4 w-4" />
+          Share reports
+        </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map((report) => {
-          const Icon = reportIcon(isReportId(report.id) ? report.id : 'funnel');
-          const tone = TONE[report.tone];
-          const destTab = isReportId(report.id)
-            ? TAB_FOR_REPORT[report.id]
-            : TAB_FOR_REPORT[custom.find((c) => c.id === report.id)?.basedOn || 'funnel'];
-          const period = searchParams.get('period') || 'ytd';
-          const href = destTab
-            ? `${pathname}?tab=${destTab}&period=${period}`
-            : `${pathname}?tab=library&report=${report.id}&period=${period}`;
-          return (
-            <article
-              key={report.id}
-              data-ink-on-light
-              className="flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className={`rounded-xl p-2.5 ${tone.icon}`}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                <span
-                  className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${tone.badge}`}
-                >
-                  {report.category}
-                </span>
-              </div>
-              <h3 className="mt-3 text-base font-semibold text-slate-900">
-                {report.title}
-              </h3>
-              <p className="mt-1.5 flex-1 text-sm leading-relaxed text-slate-600">
-                {report.description}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {report.chips.map((chip) => (
-                  <span
-                    key={chip}
-                    className={`rounded-full border px-2 py-0.5 text-[11px] ${tone.chip}`}
-                  >
-                    {chip}
-                  </span>
-                ))}
-              </div>
-              <div className="mt-4 flex items-center justify-between">
-                <button
-                  type="button"
-                  className="text-sm font-medium text-blue-700 hover:underline"
-                  onClick={() =>
-                    copyShareUrl(href)
-                  }
-                >
-                  Share
-                </button>
-                <Link
-                  href={href}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
-                  aria-label={`Open ${report.title}`}
-                >
-                  <ArrowUpRight className="h-4 w-4" />
-                </Link>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+      {cards.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
+          No reports visible. Use Reports to turn some back on.
+        </p>
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={onCardDragEnd}
+        >
+          <SortableContext
+            items={cards.map((r) => r.id)}
+            strategy={rectSortingStrategy}
+          >
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {cards.map((report) => {
+                const destTab = isReportId(report.id)
+                  ? TAB_FOR_REPORT[report.id]
+                  : TAB_FOR_REPORT[
+                      custom.find((c) => c.id === report.id)?.basedOn || 'funnel'
+                    ];
+                const period = searchParams.get('period') || 'ytd';
+                const href = destTab
+                  ? `${pathname}?tab=${destTab}&period=${period}`
+                  : `${pathname}?tab=library&report=${report.id}&period=${period}`;
+                return (
+                  <SortableReportCard
+                    key={report.id}
+                    report={report}
+                    href={href}
+                    onShare={() => copyShareUrl(href)}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>

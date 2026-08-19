@@ -168,6 +168,24 @@ export async function recordEvent(
 
     await putItem(eventsTable, event);
 
+    if (eventType === 'NOTE') {
+      const noteText = String(
+        details.description ||
+          (details.metadata as { noteText?: string } | undefined)?.noteText ||
+          ''
+      ).trim();
+      if (noteText) {
+        try {
+          const { setLeadLastNote } = await import(
+            '../db/repositories/lead-repository'
+          );
+          await setLeadLastNote(tenantId, candidateId, noteText, timestamp);
+        } catch (err) {
+          console.warn('[EVENTS] last_note denormalize failed', err);
+        }
+      }
+    }
+
     return {
       success: true,
       eventId,
@@ -178,6 +196,48 @@ export async function recordEvent(
       success: false,
       error: error instanceof Error ? error.message : 'Failed to record event',
     };
+  }
+}
+
+/**
+ * Latest NOTE text per candidate for list columns.
+ * Uses tenant GSI; returns {} if the index is unavailable.
+ */
+export async function getLatestNotesByCandidate(
+  tenantId: string,
+  limit = 400
+): Promise<Record<string, string>> {
+  if (!tenantId) return {};
+  try {
+    const raw = await queryItems<CandidateEvent>(
+      eventsTable,
+      'GSI1PK = :pk AND begins_with(GSI1SK, :prefix)',
+      { ':pk': `TENANT#${tenantId}`, ':prefix': 'EVENT#' },
+      {
+        IndexName: 'GSI1',
+        ScanIndexForward: false,
+        limit,
+      }
+    );
+    const events = Array.isArray(raw) ? raw : raw?.items || [];
+    const out: Record<string, string> = {};
+    for (const ev of events) {
+      const id = String(ev.entityId || '').trim();
+      if (!id || out[id]) continue;
+      if (String(ev.eventType || '').toUpperCase() !== 'NOTE') continue;
+      const text = String(
+        (ev.metadata as { noteText?: string } | undefined)?.noteText ||
+          ev.description ||
+          ''
+      )
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (text) out[id] = text;
+    }
+    return out;
+  } catch (error) {
+    console.warn('[EVENTS] getLatestNotesByCandidate', error);
+    return {};
   }
 }
 
@@ -380,6 +440,24 @@ export async function updateCandidateEvent(
     );
 
     const resolvedId = sk.replace('EVENT#', '');
+    const latestText = String(
+      (meta as { noteText?: string }).noteText || description || ''
+    ).trim();
+    if (latestText && existing.tenantId) {
+      try {
+        const { setLeadLastNote } = await import(
+          '../db/repositories/lead-repository'
+        );
+        await setLeadLastNote(
+          existing.tenantId,
+          candidateId,
+          latestText,
+          new Date().toISOString()
+        );
+      } catch (err) {
+        console.warn('[EVENTS] last_note denormalize on edit failed', err);
+      }
+    }
     return {
       success: true,
       eventId: resolvedId,

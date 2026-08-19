@@ -118,6 +118,10 @@ export async function getAllLeadsWithLinkedJobs(
 ): Promise<(Lead & { linkedJobs: LinkedJob[] })[]> {
   const leads = await getAllLeads(tenantId);
 
+  const latestNotes = await import("@/lib/events/candidate-events")
+    .then((m) => m.getLatestNotesByCandidate(tenantId))
+    .catch(() => ({}) as Record<string, string>);
+
   // Get all jobs for the tenant to look up by ID
   const allJobs = await getAllJobs(tenantId);
   const jobsMap = new Map(allJobs.map((job) => [job.id, job]));
@@ -166,10 +170,17 @@ export async function getAllLeadsWithLinkedJobs(
       }
     }
 
+    const storedLast = String(
+      (lead as { last_note?: string }).last_note || "",
+    ).trim();
+    const profileNotes = String(lead.notes || "").trim();
+    const fromEvents = latestNotes[String(lead.id || "")] || "";
+
     return {
       ...lead,
       linkedJobIds: safeLinkedJobIds,
       linkedJobs,
+      last_note: storedLast || fromEvents || profileNotes || "",
     };
   });
 
@@ -455,6 +466,27 @@ export async function updateLead(
   await invalidateTenantCache(tenantId);
 
   return updated;
+}
+
+/** Denormalize the latest activity note onto the lead for list views. */
+export async function setLeadLastNote(
+  tenantId: string,
+  leadId: string,
+  note: string,
+  at = new Date().toISOString(),
+): Promise<void> {
+  const text = String(note || "").replace(/\s+/g, " ").trim();
+  if (!tenantId || !leadId || !text) return;
+  try {
+    await updateItem(
+      leadsTable,
+      { tenant_id: tenantId, id: leadId },
+      "SET last_note = :n, last_note_at = :t, modified_at = :t",
+      { ":n": text.slice(0, 2000), ":t": at },
+    );
+  } catch (error) {
+    console.warn("[setLeadLastNote]", error);
+  }
 }
 
 /**

@@ -196,12 +196,14 @@ export async function queryItems<T>(
     limit?: number;
     ScanIndexForward?: boolean;
     ExclusiveStartKey?: Record<string, any>;
+    IndexName?: string;
   }
 ): Promise<{ items: T[]; lastEvaluatedKey?: Record<string, any> }> {
   const client = getClient();
   
   const command = new QueryCommand({
     TableName: table,
+    IndexName: options?.IndexName,
     KeyConditionExpression: keyCondition,
     ExpressionAttributeValues: marshall(expressionValues),
     ExpressionAttributeNames: options?.expressionNames,

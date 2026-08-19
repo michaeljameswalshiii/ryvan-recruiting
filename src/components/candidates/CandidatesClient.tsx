@@ -388,6 +388,7 @@ type CandidateColumnId =
   | 'source'
   | 'stage'
   | 'added'
+  | 'last_note'
   | 'last_activity'
   | 'location'
   | 'owner';
@@ -398,16 +399,17 @@ const CANDIDATE_COLUMN_DEFS: {
   defaultOn: boolean;
   isNew?: boolean;
 }[] = [
+  { id: 'location', label: 'Location', defaultOn: true },
   { id: 'linked_job', label: 'Linked Job', defaultOn: true },
-  { id: 'owner', label: 'Account Rep', defaultOn: true, isNew: true },
-  { id: 'source', label: 'Source', defaultOn: true },
   { id: 'stage', label: 'Stage & Progress', defaultOn: true },
-  { id: 'added', label: 'Added', defaultOn: true },
+  { id: 'source', label: 'Source', defaultOn: true },
+  { id: 'last_note', label: 'Last Note', defaultOn: true, isNew: true },
   { id: 'last_activity', label: 'Last Activity', defaultOn: true },
-  { id: 'location', label: 'Location', defaultOn: false },
+  { id: 'owner', label: 'Account Rep', defaultOn: true },
+  { id: 'added', label: 'Added', defaultOn: false },
 ];
 
-const CANDIDATE_COLUMNS_KEY = 'trio.candidates.tableColumns.v3';
+const CANDIDATE_COLUMNS_KEY = 'trio.candidates.tableColumns.v4';
 
 export function CandidatesClient() {
   const router = useRouter();
@@ -487,6 +489,7 @@ export function CandidatesClient() {
         location,
         added,
         lastActivity,
+        lastNote: String(c.last_note || c.lastNote || c.notes || '').trim(),
         ownerName: displayOwnerName(
           assigned?.name ||
             c.ownerName ||
@@ -666,6 +669,7 @@ export function CandidatesClient() {
           c.linked?.company,
           c.company,
           c.location,
+          c.lastNote,
           c.ownerName,
           ...c.skills,
           ...c.experienceFields,
@@ -1191,6 +1195,21 @@ export function CandidatesClient() {
                                 className={`${listTd} text-sm text-gray-600 whitespace-nowrap`}
                               >
                                 {formatShortDate(c.added)}
+                              </td>
+                            );
+                          case 'last_note':
+                            return (
+                              <td key={colId} className={`${listTd} max-w-[220px]`}>
+                                {c.lastNote ? (
+                                  <span
+                                    title={c.lastNote}
+                                    className="line-clamp-2 text-sm leading-snug text-slate-700"
+                                  >
+                                    {c.lastNote}
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-gray-400">—</span>
+                                )}
                               </td>
                             );
                           case 'last_activity':

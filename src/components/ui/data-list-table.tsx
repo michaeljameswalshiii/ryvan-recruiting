@@ -172,6 +172,8 @@ type PickerProps<Id extends string> = {
   open: boolean;
   setOpen: (open: boolean) => void;
   alwaysOnNote?: string;
+  buttonLabel?: string;
+  menuTitle?: string;
 };
 
 function SortableColumnRow<Id extends string>({
@@ -256,6 +258,8 @@ export function ListColumnPicker<Id extends string>({
   open,
   setOpen,
   alwaysOnNote = "Name and Actions always stay on. Drag the handle to change order.",
+  buttonLabel = "Columns",
+  menuTitle = "Edit columns",
 }: PickerProps<Id>) {
   const byId = Object.fromEntries(defs.map((d) => [d.id, d])) as Record<
     Id,
@@ -284,10 +288,10 @@ export function ListColumnPicker<Id extends string>({
         onClick={() => setOpen(!open)}
         aria-expanded={open}
         aria-haspopup="menu"
-        title="Choose which columns appear and in what order"
+        title={`Choose which ${buttonLabel.toLowerCase()} appear and in what order`}
       >
         <Columns3 className="mr-1.5 h-4 w-4" />
-        Columns
+        {buttonLabel}
       </Button>
       {open && (
         <>
@@ -302,7 +306,7 @@ export function ListColumnPicker<Id extends string>({
             className="absolute right-0 top-10 z-40 w-80 rounded-xl border border-gray-200 bg-white p-3 shadow-xl text-slate-900"
           >
             <div className="mb-1 flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-slate-900">Edit columns</p>
+              <p className="text-sm font-semibold text-slate-900">{menuTitle}</p>
               <button
                 type="button"
                 onClick={reset}
@@ -311,9 +315,7 @@ export function ListColumnPicker<Id extends string>({
                 Reset
               </button>
             </div>
-            <p className="mb-3 text-[11px] text-slate-500">
-              Drag to reorder columns. {alwaysOnNote}
-            </p>
+            <p className="mb-3 text-[11px] text-slate-500">{alwaysOnNote}</p>
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
