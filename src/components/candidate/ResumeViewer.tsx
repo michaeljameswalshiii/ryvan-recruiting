@@ -1,6 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 import { Button } from "@/components/ui/button";
 import {
   Download,
@@ -31,7 +40,16 @@ interface ResumeViewerProps {
     resumeUrl: string;
     fileName?: string;
     fileKey?: string;
+    filledFields?: string[];
   } | null) => void;
+}
+
+export type ResumeViewerHandle = {
+  attachFile: (file: File) => Promise<void>;
+};
+
+function isFileDragEvent(e: { dataTransfer?: DataTransfer | null }) {
+  return Array.from(e.dataTransfer?.types || []).includes("Files");
 }
 
 function detectFileType(
@@ -90,15 +108,19 @@ function isS3ObjectKey(value?: string | null): boolean {
   return false;
 }
 
-export function ResumeViewer({
-  url,
-  fileName,
-  candidateId,
-  fileKey,
-  className,
-  onUrlUpdated,
-  onResumeChanged,
-}: ResumeViewerProps) {
+export const ResumeViewer = forwardRef<ResumeViewerHandle, ResumeViewerProps>(
+  function ResumeViewer(
+    {
+      url,
+      fileName,
+      candidateId,
+      fileKey,
+      className,
+      onUrlUpdated,
+      onResumeChanged,
+    },
+    ref
+  ) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fileType, setFileType] = useState<"pdf" | "docx" | "doc" | "unknown">(
@@ -112,6 +134,9 @@ export function ResumeViewer({
   const [uploading, setUploading] = useState(false);
   const [hasResume, setHasResume] = useState(!!(url || fileKey));
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadingRef = useRef(false);
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepthRef = useRef(0);
   const [zoom, setZoom] = useState(100);
   /** HTML preview for .docx (mammoth) — browsers cannot iframe Word files */
   const [docxHtml, setDocxHtml] = useState<string | null>(null);
@@ -312,57 +337,126 @@ export function ResumeViewer({
     }
   };
 
-  const handleReplaceFile = async (file: File | null | undefined) => {
-    if (!file || !candidateId) return;
-    const validation = validateResumeFileClient(file);
-    if (!validation.ok) {
-      toast.error(validation.error);
-      return;
-    }
-    setUploading(true);
-    setError(null);
-    try {
-      // Direct-to-S3 then finalize on server (avoids body size limits)
-      const { s3Key, contentType } = await uploadResumeToS3(file, {
-        candidateId,
-      });
-      const res = await fetch(`/api/candidate/${candidateId}/resume`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          s3Key,
-          fileName: file.name,
-          contentType,
-          parse: true,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Upload failed");
+  const handleReplaceFile = useCallback(
+    async (file: File | null | undefined) => {
+      if (!file || !candidateId) return;
+      const validation = validateResumeFileClient(file);
+      if (!validation.ok) {
+        toast.error(validation.error);
+        return;
       }
-      setDisplayName(data.resume_file_name || file.name);
-      setHasResume(true);
-      setHasTriedAutoRefresh(false);
-      setFileType(detectFileType(file.name, file.name));
-      onResumeChanged?.({
-        resumeUrl: data.resume_url || data.fileKey || s3Key,
-        fileName: data.resume_file_name || file.name,
-        fileKey: data.fileKey || data.resume_url || s3Key,
-      });
-      if (data.warning) {
-        toast.warning(data.warning);
-      } else {
-        toast.success("Resume uploaded");
+      if (uploadingRef.current) return;
+      uploadingRef.current = true;
+      setUploading(true);
+      setError(null);
+      setDragActive(false);
+      dragDepthRef.current = 0;
+      try {
+        // Direct-to-S3 then finalize on server (avoids body size limits)
+        const { s3Key, contentType } = await uploadResumeToS3(file, {
+          candidateId,
+        });
+        const res = await fetch(`/api/candidate/${candidateId}/resume`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            s3Key,
+            fileName: file.name,
+            contentType,
+            parse: true,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || "Upload failed");
+        }
+        const filledFields = Array.isArray(data.filledFields)
+          ? data.filledFields.filter(Boolean).map(String)
+          : [];
+        setDisplayName(data.resume_file_name || file.name);
+        setHasResume(true);
+        setHasTriedAutoRefresh(false);
+        setFileType(detectFileType(file.name, file.name));
+        onResumeChanged?.({
+          resumeUrl: data.resume_url || data.fileKey || s3Key,
+          fileName: data.resume_file_name || file.name,
+          fileKey: data.fileKey || data.resume_url || s3Key,
+          filledFields,
+        });
+        if (data.warning) {
+          toast.warning(data.warning);
+        } else if (filledFields.length) {
+          toast.success(
+            `Resume uploaded — filled ${filledFields.join(", ")}`
+          );
+        } else {
+          toast.success("Resume uploaded");
+        }
+        // Fetch signed URL for preview
+        await refreshUrl(true);
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to upload resume");
+      } finally {
+        uploadingRef.current = false;
+        setUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }
-      // Fetch signed URL for preview
-      await refreshUrl(true);
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to upload resume");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+    },
+    [candidateId, onResumeChanged, refreshUrl]
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      attachFile: async (file: File) => {
+        await handleReplaceFile(file);
+      },
+    }),
+    [handleReplaceFile]
+  );
+
+  const dropEnabled = Boolean(candidateId) && !uploading && !removing;
+
+  const onDragEnter = (e: DragEvent<HTMLDivElement>) => {
+    if (!dropEnabled || !isFileDragEvent(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current += 1;
+    setDragActive(true);
+  };
+
+  const onDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (!dropEnabled || !isFileDragEvent(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    setDragActive(true);
+  };
+
+  const onDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  };
+
+  const onDrop = (e: DragEvent<HTMLDivElement>) => {
+    if (!isFileDragEvent(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = 0;
+    setDragActive(false);
+    if (!dropEnabled) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) void handleReplaceFile(file);
+  };
+
+  const dropHandlers = {
+    onDragEnter,
+    onDragOver,
+    onDragLeave,
+    onDrop,
   };
 
   const zoomIn = () => setZoom((prev) => Math.min(prev + 25, 200));
@@ -427,35 +521,81 @@ export function ResumeViewer({
     </div>
   );
 
+  const dropOverlay =
+    dragActive && dropEnabled ? (
+      <div
+        className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-blue-500 bg-blue-50/95 px-6 text-center"
+        data-testid="resume-drop-overlay"
+      >
+        <Upload className="mb-3 h-10 w-10 text-blue-700" />
+        <p className="text-base font-semibold text-blue-900">
+          {hasResume ? "Drop to replace resume" : "Drop to attach resume"}
+        </p>
+        <p className="mt-1 text-sm text-blue-800">
+          PDF or Word resume / LinkedIn profile
+        </p>
+      </div>
+    ) : null;
+
+  let body: ReactNode;
+
   // Empty / no resume
   if (!hasResume && !currentUrl) {
-    return (
+    body = (
       <div
-        className={`flex flex-col items-center justify-center min-h-[280px] bg-gray-50 p-8 rounded-xl border border-dashed border-gray-200 ${className || ""}`}
+        role="button"
+        tabIndex={0}
+        aria-label="Upload resume by clicking or dragging a file"
+        data-testid="resume-empty-dropzone"
+        className={`flex min-h-[280px] flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-colors ${
+          dragActive
+            ? "border-blue-500 bg-blue-50"
+            : "border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50/40"
+        } ${uploading ? "pointer-events-none opacity-70" : "cursor-pointer"}`}
+        onClick={() => {
+          if (dropEnabled) fileInputRef.current?.click();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (dropEnabled) fileInputRef.current?.click();
+          }
+        }}
       >
-        <FileText className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-        <p className="text-gray-600 font-medium mb-1">No resume on file</p>
-        <p className="text-sm text-gray-400 mb-4 text-center max-w-sm">
-          Upload a PDF or Word resume to attach it to this candidate.
+        {uploading ? (
+          <Loader2 className="mx-auto mb-4 h-16 w-16 animate-spin text-blue-600" />
+        ) : (
+          <FileText
+            className={`mx-auto mb-4 h-16 w-16 ${
+              dragActive ? "text-blue-600" : "text-gray-400"
+            }`}
+          />
+        )}
+        <p className="mb-1 font-medium text-gray-600">
+          {uploading
+            ? "Uploading…"
+            : dragActive
+              ? "Drop resume to attach"
+              : "No resume on file"}
         </p>
-        {actionBar}
+        <p className="mb-4 max-w-sm text-center text-sm text-gray-400">
+          Drag &amp; drop a PDF or Word resume (or LinkedIn profile), or click
+          to upload.
+        </p>
+        <div onClick={(e) => e.stopPropagation()}>{actionBar}</div>
       </div>
     );
-  }
-
-  // Error without usable URL
-  if (error && !currentUrl) {
-    return (
-      <div
-        className={`flex flex-col items-center justify-center min-h-[280px] bg-gray-50 p-8 rounded-xl ${className || ""}`}
-      >
-        <AlertCircle className="h-16 w-16 mx-auto mb-4 text-red-400" />
-        <p className="text-red-600 mb-2 text-center">{error}</p>
-        <p className="text-sm text-gray-500 mb-4 text-center max-w-sm">
+  } else if (error && !currentUrl) {
+    // Error without usable URL
+    body = (
+      <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl bg-gray-50 p-8">
+        <AlertCircle className="mx-auto mb-4 h-16 w-16 text-red-400" />
+        <p className="mb-2 text-center text-red-600">{error}</p>
+        <p className="mb-4 max-w-sm text-center text-sm text-gray-500">
           The file may have been deleted or the link expired. Remove it and
           upload a new resume.
         </p>
-        <div className="flex flex-wrap gap-2 justify-center">
+        <div className="flex flex-wrap justify-center gap-2">
           {(candidateId || fileKey) && (
             <Button onClick={() => refreshUrl(true)} variant="outline" size="sm">
               <RefreshCw className="mr-2 h-4 w-4" />
@@ -466,13 +606,11 @@ export function ResumeViewer({
         </div>
       </div>
     );
-  }
-
-  // Word document — .docx rendered via mammoth; legacy .doc still download-only
-  if (fileType === "docx" || fileType === "doc") {
+  } else if (fileType === "docx" || fileType === "doc") {
+    // Word document — .docx rendered via mammoth; legacy .doc still download-only
     const isLegacyDoc = fileType === "doc";
-    return (
-      <div className={`flex flex-col h-full min-h-[320px] ${className || ""}`}>
+    body = (
+      <div className="flex h-full min-h-[320px] flex-col">
         <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-gray-100 border-b shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <FileType className="h-5 w-5 text-blue-500 shrink-0" />
@@ -566,11 +704,10 @@ export function ResumeViewer({
         </div>
       </div>
     );
-  }
-
-  // PDF
-  return (
-    <div className={`flex flex-col h-full min-h-[400px] ${className || ""}`}>
+  } else {
+    // PDF
+    body = (
+    <div className="flex h-full min-h-[400px] flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-gray-100 border-b shrink-0">
         <div className="flex items-center gap-2">
           {loading || isRefreshing || uploading ? (
@@ -679,5 +816,18 @@ export function ResumeViewer({
         )}
       </div>
     </div>
+    );
+  }
+
+  return (
+    <div
+      data-resume-drop-root
+      className={`relative h-full min-h-0 ${className || ""}`}
+      {...dropHandlers}
+    >
+      {body}
+      {dropOverlay}
+    </div>
   );
-}
+  }
+);

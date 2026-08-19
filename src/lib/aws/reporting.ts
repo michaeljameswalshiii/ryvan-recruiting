@@ -493,6 +493,13 @@ function sourceLabel(source: string): string {
   return source.charAt(0).toUpperCase() + source.slice(1).replace(/_/g, ' ');
 }
 
+function localDayKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function buildTimeSeries(
   items: Array<{ created_at?: string; createdAt?: string }>,
   start: Date,
@@ -502,7 +509,9 @@ function buildTimeSeries(
   for (const item of items) {
     const raw = item.created_at || item.createdAt;
     if (!raw || !inRange(raw, start, end)) continue;
-    const key = raw.split('T')[0];
+    const parsed = parseDate(raw);
+    if (!parsed) continue;
+    const key = localDayKey(parsed);
     map.set(key, (map.get(key) ?? 0) + 1);
   }
 
@@ -513,7 +522,7 @@ function buildTimeSeries(
   endDay.setHours(0, 0, 0, 0);
 
   while (cursor <= endDay) {
-    const key = cursor.toISOString().split('T')[0];
+    const key = localDayKey(cursor);
     series.push({ date: key, count: map.get(key) ?? 0 });
     cursor.setDate(cursor.getDate() + 1);
   }
@@ -592,7 +601,7 @@ export async function getReportingStats(
     // Enrich candidates
     const candidates = leads.map((c) => {
       const stage = getPrimaryStage(c);
-      const created = c.created_at || c.createdAt;
+      const created = c.created_at || c.createdAt || c.created;
       const modified =
         getStageActivityAt(c) ||
         c.modified_at ||
@@ -709,7 +718,7 @@ export async function getReportingStats(
     );
     const companiesOverTime = buildTimeSeries(
       safeCompanies.map((co) => ({
-        created_at: co.created_at || co.createdAt,
+        created_at: co.created_at || co.createdAt || co.created,
       })),
       periodStart,
       periodEnd

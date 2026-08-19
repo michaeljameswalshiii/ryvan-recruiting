@@ -5,7 +5,7 @@
  */
 
 import { Suspense } from 'react';
-import { BarChart3, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { getReportingStats, type PeriodKey } from '@/lib/aws/reporting';
 import {
   KPICards,
@@ -24,6 +24,7 @@ function parsePeriod(raw?: string): PeriodKey {
 
 function parseTab(raw?: string): ReportingTab {
   const valid: ReportingTab[] = [
+    'library',
     'overview',
     'pipeline',
     'jobs',
@@ -32,7 +33,7 @@ function parseTab(raw?: string): ReportingTab {
     'activity',
   ];
   if (raw && (valid as string[]).includes(raw)) return raw as ReportingTab;
-  return 'overview';
+  return 'library';
 }
 
 function PageSkeleton() {
@@ -56,9 +57,11 @@ function PageSkeleton() {
 async function ReportingBody({
   period,
   tab,
+  reportId,
 }: {
   period: PeriodKey;
   tab: ReportingTab;
+  reportId?: string;
 }) {
   const stats = await getReportingStats(period);
 
@@ -67,13 +70,12 @@ async function ReportingBody({
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900 flex items-center gap-2">
-            <BarChart3 className="h-7 w-7 text-blue-600" />
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
             Reporting
           </h1>
           <p className="text-sm text-gray-500">
-            Pipeline outcomes, jobs health, and what needs attention —{' '}
-            {stats.periodLabel}
+            Build, customize, and share recruiting reports. KPI cards drill into
+            detail.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -91,7 +93,7 @@ async function ReportingBody({
       </div>
 
       <KPICards stats={stats} />
-      <InsightsStrip insights={stats.insights} />
+      {tab !== 'library' && <InsightsStrip insights={stats.insights} />}
 
       <Suspense
         fallback={
@@ -100,7 +102,7 @@ async function ReportingBody({
           </div>
         }
       >
-        <ReportingTabs active={tab} stats={stats} />
+        <ReportingTabs active={tab} stats={stats} reportId={reportId} />
       </Suspense>
     </div>
   );
@@ -109,15 +111,16 @@ async function ReportingBody({
 export default async function ReportingDashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ period?: string; tab?: string }>;
+  searchParams?: Promise<{ period?: string; tab?: string; report?: string }>;
 }) {
   const params = await searchParams;
   const period = parsePeriod(params?.period);
   const tab = parseTab(params?.tab);
+  const reportId = params?.report;
 
   return (
     <Suspense fallback={<PageSkeleton />}>
-      <ReportingBody period={period} tab={tab} />
+      <ReportingBody period={period} tab={tab} reportId={reportId} />
     </Suspense>
   );
 }

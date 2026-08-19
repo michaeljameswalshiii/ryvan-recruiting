@@ -27,21 +27,22 @@ import {
   Legend,
 } from 'recharts';
 import {
-  Users,
   Briefcase,
-  TrendingUp,
   AlertTriangle,
   Building2,
-  ArrowUpRight,
-  ArrowDownRight,
-  Minus,
   Sparkles,
   Activity,
-  Target,
   UserRound,
+  Send,
+  FileText,
+  UserPlus,
+  Calendar,
 } from 'lucide-react';
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { toDisplayTrend } from '@/lib/reporting/display-trend';
 import { Badge } from '@/components/ui/badge';
+import { ReportLibrary } from '@/components/reporting/ReportLibrary';
 import { Button } from '@/components/ui/button';
 
 const COLORS = [
@@ -61,31 +62,6 @@ const PERIODS: { key: PeriodKey; label: string }[] = [
   { key: '90', label: '90d' },
   { key: 'ytd', label: 'YTD' },
 ];
-
-function DeltaBadge({ deltaPct }: { deltaPct: number | null }) {
-  if (deltaPct === null) {
-    return <span className="h-4" aria-hidden />;
-  }
-  if (deltaPct === 0) {
-    return (
-      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-gray-500">
-        <Minus className="h-3 w-3" /> 0%
-      </span>
-    );
-  }
-  if (deltaPct > 0) {
-    return (
-      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-emerald-600">
-        <ArrowUpRight className="h-3 w-3" /> {deltaPct}%
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-rose-600">
-      <ArrowDownRight className="h-3 w-3" /> {Math.abs(deltaPct)}%
-    </span>
-  );
-}
 
 function severityBadge(sev: AttentionItem['severity']) {
   if (sev === 'high')
@@ -140,75 +116,76 @@ export function PeriodSelector({ current }: { current: PeriodKey }) {
 // ─── KPI row ─────────────────────────────────────────────────────────────────
 
 export function KPICards({ stats }: { stats: ReportingStats }) {
+  const submitted = stats.submittedKpi?.value ?? 0;
+  const offers = stats.offersKpi?.value ?? 0;
   const cards = [
+    {
+      title: 'Open Jobs',
+      value: stats.openJobs,
+      sub: `${stats.jobs.emptyOpen} empty pipelines`,
+      icon: Briefcase,
+      href: '/dashboard/jobs',
+      card: 'border-slate-200 bg-white',
+      iconWrap: 'bg-slate-100 text-slate-600',
+    },
+    {
+      title: 'Submittals',
+      value: submitted,
+      sub: `${submitted} currently submitted`,
+      icon: Send,
+      href: '/dashboard/candidates?stage=submitted',
+      card: 'border-slate-200 bg-white',
+      iconWrap: 'bg-slate-100 text-slate-600',
+    },
     {
       title: 'Interviews',
       value: stats.interviewsKpi?.value ?? stats.interviews ?? 0,
-      delta: stats.interviewsKpi?.deltaPct ?? null,
       sub: `${stats.inMotion} in motion`,
-      icon: Users,
-      color: 'text-violet-600',
-      bg: 'bg-violet-50',
+      icon: Calendar,
+      href: '/dashboard/candidates?stage=interviewing',
+      card: 'border-slate-200 bg-white',
+      iconWrap: 'bg-slate-100 text-slate-600',
     },
     {
-      title: 'Open jobs',
-      value: stats.openJobs,
-      delta: stats.openJobsKpi.deltaPct,
-      sub: `${stats.jobs.emptyOpen} empty pipelines`,
-      icon: Briefcase,
-      color: 'text-blue-600',
-      bg: 'bg-blue-50',
-    },
-    {
-      title: 'New candidates',
-      value: stats.candidatesAddedKpi.value,
-      delta: stats.candidatesAddedKpi.deltaPct,
-      sub: stats.periodLabel,
-      icon: TrendingUp,
-      color: 'text-sky-600',
-      bg: 'bg-sky-50',
-    },
-    {
-      title: 'New companies',
-      value: stats.companiesAddedKpi?.value ?? 0,
-      delta: stats.companiesAddedKpi?.deltaPct ?? null,
-      sub: `${stats.companies.closedWon} closed won`,
-      icon: Building2,
-      color: 'text-indigo-600',
-      bg: 'bg-indigo-50',
+      title: 'Offers',
+      value: offers,
+      sub: 'currently on offer',
+      icon: FileText,
+      href: '/dashboard/candidates?stage=offer_out',
+      card: 'border-orange-100 bg-orange-50',
+      iconWrap: 'bg-orange-100 text-orange-700',
     },
     {
       title: 'Placements',
       value: stats.placementsKpi.value,
-      delta: stats.placementsKpi.deltaPct,
-      sub: `vs prior (${stats.placementsKpi.previous})`,
-      icon: Target,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50',
+      sub: `${stats.placementsKpi.previous} in prior period`,
+      icon: UserPlus,
+      href: '/dashboard/candidates?stage=placed',
+      card: 'border-emerald-100 bg-emerald-50',
+      iconWrap: 'bg-emerald-100 text-emerald-800',
     },
   ];
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
       {cards.map((c) => (
-        <div
+        <Link
           key={c.title}
-          className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm"
+          href={c.href}
+          data-ink-on-light
+          className={`block rounded-2xl border px-4 py-3.5 shadow-sm transition-opacity hover:opacity-90 ${c.card}`}
         >
           <div className="flex items-start justify-between gap-2">
-            <div className={`p-2 rounded-xl ${c.bg}`}>
-              <c.icon className={`h-4 w-4 ${c.color}`} />
+            <h2 className="text-sm font-semibold text-slate-800">{c.title}</h2>
+            <div className={`rounded-xl p-2 ${c.iconWrap}`}>
+              <c.icon className="h-4 w-4" />
             </div>
-            <DeltaBadge deltaPct={c.delta} />
           </div>
-          <div className="mt-3 text-2xl font-semibold tabular-nums text-gray-900">
+          <div className="mt-3 text-3xl font-semibold tabular-nums text-slate-900">
             {Number(c.value).toLocaleString()}
           </div>
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 mt-1">
-            {c.title}
-          </div>
-          <div className="text-[11px] text-gray-400 mt-0.5 truncate">{c.sub}</div>
-        </div>
+          <div className="mt-1 truncate text-[12px] text-slate-500">{c.sub}</div>
+        </Link>
       ))}
     </div>
   );
@@ -239,6 +216,7 @@ export function InsightsStrip({ insights }: { insights: string[] }) {
 // ─── Tabs shell ──────────────────────────────────────────────────────────────
 
 const TABS = [
+  { id: 'library', label: 'Library' },
   { id: 'overview', label: 'Overview' },
   { id: 'pipeline', label: 'Pipeline' },
   { id: 'jobs', label: 'Jobs' },
@@ -252,9 +230,11 @@ export type ReportingTab = (typeof TABS)[number]['id'];
 export function ReportingTabs({
   active,
   stats,
+  reportId,
 }: {
   active: ReportingTab;
   stats: ReportingStats;
+  reportId?: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -263,6 +243,7 @@ export function ReportingTabs({
   const setTab = (id: string) => {
     const next = new URLSearchParams(searchParams.toString());
     next.set('tab', id);
+    if (id !== 'library') next.delete('report');
     router.push(`${pathname}?${next.toString()}`, { scroll: false });
   };
 
@@ -287,6 +268,9 @@ export function ReportingTabs({
         </nav>
       </div>
 
+      {active === 'library' && (
+        <ReportLibrary stats={stats} reportId={reportId} />
+      )}
       {active === 'overview' && <OverviewTab stats={stats} />}
       {active === 'pipeline' && <PipelineTab stats={stats} />}
       {active === 'jobs' && <JobsTab stats={stats} />}
@@ -299,18 +283,8 @@ export function ReportingTabs({
 
 // ─── Overview ────────────────────────────────────────────────────────────────
 
-function OverviewTab({ stats }: { stats: ReportingStats }) {
-  const trend = stats.candidatesOverTime.map((d) => ({
-    date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    count: d.count,
-  }));
-  // downsample for readability
-  const displayTrend =
-    trend.length > 45
-      ? trend.filter((_, i) => i % 3 === 0)
-      : trend.length > 20
-        ? trend.filter((_, i) => i % 2 === 0)
-        : trend;
+export function OverviewTab({ stats }: { stats: ReportingStats }) {
+  const displayTrend = toDisplayTrend(stats.candidatesOverTime);
 
   return (
     <div className="space-y-4">
@@ -351,7 +325,7 @@ function OverviewTab({ stats }: { stats: ReportingStats }) {
   );
 }
 
-function FunnelCard({ funnel }: { funnel: FunnelStep[] }) {
+export function FunnelCard({ funnel }: { funnel: FunnelStep[] }) {
   const max = Math.max(...funnel.map((f) => f.count), 1);
   return (
     <Card className="rounded-2xl border-gray-200 shadow-sm">
@@ -400,7 +374,7 @@ function FunnelCard({ funnel }: { funnel: FunnelStep[] }) {
   );
 }
 
-function JobHealthSummary({ stats }: { stats: ReportingStats }) {
+export function JobHealthSummary({ stats }: { stats: ReportingStats }) {
   const j = stats.jobs;
   const chips = [
     { label: 'Open', value: j.open, color: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
@@ -513,7 +487,7 @@ function NeedsAttentionCard({ items }: { items: AttentionItem[] }) {
 
 // ─── Pipeline ────────────────────────────────────────────────────────────────
 
-function PipelineTab({ stats }: { stats: ReportingStats }) {
+export function PipelineTab({ stats }: { stats: ReportingStats }) {
   const stageData = stats.pipelineByStage.slice(0, 10).map((s) => ({
     name: s.label.length > 14 ? s.label.slice(0, 12) + '…' : s.label,
     full: s.label,
@@ -565,7 +539,7 @@ function PipelineTab({ stats }: { stats: ReportingStats }) {
 
 // ─── Jobs ────────────────────────────────────────────────────────────────────
 
-function JobsTab({ stats }: { stats: ReportingStats }) {
+export function JobsTab({ stats }: { stats: ReportingStats }) {
   const j = stats.jobs;
   const chartData = [
     { name: 'Open', count: j.open, fill: '#10b981' },
@@ -658,7 +632,7 @@ function JobsTab({ stats }: { stats: ReportingStats }) {
 
 // ─── Companies ───────────────────────────────────────────────────────────────
 
-function CompaniesTab({ stats }: { stats: ReportingStats }) {
+export function CompaniesTab({ stats }: { stats: ReportingStats }) {
   const c = stats.companies;
   const chartData = c.byStage.map((s) => ({
     name: s.label,
@@ -726,7 +700,7 @@ function CompaniesTab({ stats }: { stats: ReportingStats }) {
 
 // ─── Sources ─────────────────────────────────────────────────────────────────
 
-function SourcesTab({ stats }: { stats: ReportingStats }) {
+export function SourcesTab({ stats }: { stats: ReportingStats }) {
   const data = stats.sources.slice(0, 10);
 
   return (
@@ -811,7 +785,7 @@ function SourcesTab({ stats }: { stats: ReportingStats }) {
 
 // ─── Activity ────────────────────────────────────────────────────────────────
 
-function ActivityTab({ stats }: { stats: ReportingStats }) {
+export function ActivityTab({ stats }: { stats: ReportingStats }) {
   return (
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">

@@ -20,8 +20,12 @@ import {
   Tag,
   Trash2,
   Undo2,
+  Upload,
 } from "lucide-react";
-import { ResumeViewer } from "@/components/candidate/ResumeViewer";
+import {
+  ResumeViewer,
+  type ResumeViewerHandle,
+} from "@/components/candidate/ResumeViewer";
 import { LinkJobModal } from "@/components/candidate/LinkJobModal";
 import { SendEmailModal } from "@/components/email/send-email-modal";
 import { AccountRepPill } from "@/components/shared/AccountRepPill";
@@ -329,6 +333,8 @@ export function CandidateDetailClient({
   const [avatarUrl, setAvatarUrl] = useState(candidate?.avatarUrl || "");
   const [avatarBusy, setAvatarBusy] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const resumeViewerRef = useRef<ResumeViewerHandle>(null);
+  const [pageDragActive, setPageDragActive] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [noteType, setNoteType] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
@@ -346,6 +352,57 @@ export function CandidateDetailClient({
   const [emailConfigured, setEmailConfigured] = useState<boolean | null>(null);
   const [emailFromLabel, setEmailFromLabel] = useState("");
   const name = candidate?.name || "Unknown candidate";
+
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) =>
+      Array.from(e.dataTransfer?.types || []).includes("Files");
+
+    const onDragEnter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      setPageDragActive(true);
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    };
+    const onDragLeave = (e: DragEvent) => {
+      const leavingWindow =
+        e.relatedTarget == null ||
+        e.clientX <= 0 ||
+        e.clientY <= 0 ||
+        e.clientX >= window.innerWidth ||
+        e.clientY >= window.innerHeight;
+      if (leavingWindow) setPageDragActive(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      setPageDragActive(false);
+      const target = e.target as HTMLElement | null;
+      // The resume panel handles its own drop so we don't upload twice.
+      if (target?.closest?.("[data-resume-drop-root]")) return;
+      const file = e.dataTransfer?.files?.[0];
+      if (file) void resumeViewerRef.current?.attachFile(file);
+    };
+    const onDragEnd = () => {
+      setPageDragActive(false);
+    };
+
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    // Capture so a child stopPropagation cannot leave the overlay stuck
+    window.addEventListener("drop", onDrop, true);
+    window.addEventListener("dragend", onDragEnd);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop, true);
+      window.removeEventListener("dragend", onDragEnd);
+    };
+  }, []);
 
   // Detect connected Gmail/Outlook for full in-app send
   useEffect(() => {
@@ -816,7 +873,23 @@ export function CandidateDetailClient({
   };
 
   return (
-    <div className="min-w-0 bg-[#f7f8fa] text-slate-900">
+    <div className="relative min-w-0 bg-[#f7f8fa] text-slate-900">
+      {pageDragActive && (
+        <div
+          className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 px-4"
+          data-testid="candidate-resume-page-drop-overlay"
+        >
+          <div className="max-w-md rounded-2xl border-2 border-dashed border-blue-500 bg-white px-8 py-7 text-center shadow-2xl">
+            <Upload className="mx-auto mb-3 h-10 w-10 text-blue-700" />
+            <p className="text-lg font-semibold text-slate-900">
+              Drop resume or profile to attach to {name}
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              PDF, DOC, or DOCX — parsed into empty profile fields
+            </p>
+          </div>
+        </div>
+      )}
       <div className="mx-auto w-full max-w-none space-y-3">
         <div className="flex items-center px-1">
           <Link
@@ -1618,6 +1691,7 @@ export function CandidateDetailClient({
             </div>
             <div className="min-h-0 flex-1">
               <ResumeViewer
+                ref={resumeViewerRef}
                 url={resumeUrl}
                 fileName={resumeName}
                 fileKey={resumeKey}
@@ -1625,10 +1699,12 @@ export function CandidateDetailClient({
                 className="h-full min-h-0"
                 onUrlUpdated={setResumeUrl}
                 onResumeChanged={(info) => {
-                  if (!info) return;
-                  setResumeUrl(info.resumeUrl || "");
-                  setResumeName(info.fileName || "");
-                  setResumeKey(info.fileKey || info.resumeUrl || "");
+                  setResumeUrl(info?.resumeUrl || "");
+                  setResumeName(info?.fileName || "");
+                  setResumeKey(info?.fileKey || info?.resumeUrl || "");
+                  if (info?.filledFields?.length) {
+                    router.refresh();
+                  }
                 }}
               />
             </div>
