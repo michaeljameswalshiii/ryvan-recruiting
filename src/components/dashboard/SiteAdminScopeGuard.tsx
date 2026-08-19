@@ -14,6 +14,7 @@ const TENANT_REQUIRED_PREFIXES = [
   "/dashboard/sequences",
   "/dashboard/scheduling",
   "/dashboard/general-ai-usage",
+  "/dashboard/agent-ops",
   "/dashboard/settings",
 ];
 

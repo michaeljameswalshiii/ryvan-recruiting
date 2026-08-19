@@ -12,7 +12,8 @@
     "src/app/api/admin/ai-agents/run/route.ts": { "maxDuration": 120 },
     "src/app/api/admin/ai-agents/merge/route.ts": { "maxDuration": 30 },
     "src/app/api/agent/source-candidates/route.ts": { "maxDuration": 120 },
-    "src/app/api/cron/recruiter-agent-run/route.ts": { "maxDuration": 120 }
+    "src/app/api/cron/recruiter-agent-run/route.ts": { "maxDuration": 120 },
+    "src/app/api/agent-ops/summary/route.ts": { "maxDuration": 60 }
   },
   "crons": [
     {
