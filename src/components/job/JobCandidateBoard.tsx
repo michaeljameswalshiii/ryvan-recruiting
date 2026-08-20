@@ -19,6 +19,7 @@ import {
   ExternalLink,
   GripVertical,
   LayoutGrid,
+  List,
   List as ListIcon,
   Loader2,
   Mail,
@@ -186,6 +187,26 @@ export interface JobCandidateBoardProps {
   unlinkPending?: boolean;
   onOpenAddCandidate?: () => void;
 }
+
+type BoardView = 'cards' | 'kanban' | 'list';
+
+function columnForStage(stage?: string | null): PipelineBucketKey {
+  const bucket = PIPELINE_BUCKETS.find((candidateBucket) =>
+    candidateMatchesBucket(stage || undefined, candidateBucket),
+  );
+  return bucket?.key === 'attached' ? 'submitted' : (bucket?.key || 'submitted');
+}
+
+export function JobCandidateBoard({
+  jobId,
+  candidates,
+  stages,
+  fitByCandidate = {},
+  onStageChange,
+  stagePending = false,
+  onFit,
+  fitRescoringId = null,
+}: JobCandidateBoardProps) {
   const [view, setView] = useState<BoardView>('cards');
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -380,7 +401,7 @@ export interface JobCandidateBoardProps {
                 <div
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white ${avatarColor(name)}`}
                 >
-                  {initials(name)}
+                  {getInitials(name)}
                 </div>
                 <Link
                   href={`/dashboard/candidates/${id}?jobId=${encodeURIComponent(jobId)}`}
@@ -545,7 +566,7 @@ function CandidateCard({
           {...listeners}
           {...attributes}
         >
-          {initials(name)}
+          {getInitials(name)}
         </div>
         <div className="min-w-0 flex-1">
           <Link
