@@ -8,7 +8,6 @@ import {
   Building2,
   Calendar,
   ChevronDown,
-  DollarSign,
   ExternalLink,
   FileText,
   Globe,
@@ -22,7 +21,6 @@ import {
   Users,
   Paperclip,
   Copy,
-  Percent,
 } from "lucide-react";
 import {
   useJob,
@@ -762,17 +760,14 @@ export default function JobDetailPage() {
           <MetaField
             label="Salary"
             value={salaryLabel}
-            icon={<DollarSign className="h-3.5 w-3.5" />}
           />
           <MetaField
             label="Fee %"
             value={feeLabel}
-            icon={<Percent className="h-3.5 w-3.5" />}
           />
           <MetaField
             label="Commission"
             value={commissionLabel}
-            icon={<DollarSign className="h-3.5 w-3.5" />}
           />
           <MetaField
             label="Pipeline"
@@ -975,7 +970,8 @@ export default function JobDetailPage() {
           />
           <section
             data-ink-on-light
-            className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4"
+            className="hidden"
+            aria-hidden="true"
           >
             <div className="flex items-center justify-between gap-2 mb-3">
               <h2 className="text-sm font-semibold tracking-wide text-gray-800 uppercase flex items-center gap-2">
