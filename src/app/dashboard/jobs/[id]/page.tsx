@@ -862,7 +862,7 @@ export default function JobDetailPage() {
       {detailTab === "overview" ? (
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
         {/* ─── Main column ─── */}
-        <div className="xl:col-span-8 space-y-5">
+        <div className="xl:col-span-7 space-y-5">
           {/* Candidate pipeline — WIP tracker → dedicated pipeline page */}
           <section data-ink-on-light className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
@@ -952,7 +952,7 @@ export default function JobDetailPage() {
         </div>
 
         {/* ─── Right sidebar: hiring manager + JD preview + candidates ─── */}
-        <div className="xl:col-span-4 space-y-5">
+        <div className="xl:col-span-5 space-y-5">
           <JobHiringManagerCard
             jobId={job.id || jobId}
             companyId={job.companyId}

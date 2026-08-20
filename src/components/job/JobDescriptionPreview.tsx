@@ -13,8 +13,8 @@ type Props = {
 };
 
 /**
- * Compact job-description panel for the job detail sidebar.
- * Preview scrolls in a short window; Expand opens a large modal (resume-style).
+ * Job-description panel for the job detail sidebar.
+ * Preview stays roomy for reading; Expand opens a large modal (resume-style).
  */
 export function JobDescriptionPreview({
   description,
@@ -85,7 +85,7 @@ export function JobDescriptionPreview({
         </div>
 
         <div
-          className="relative max-h-[min(64vh,640px)] min-h-[200px] overflow-y-auto px-4 py-3 cursor-pointer"
+          className="relative max-h-[min(72vh,760px)] min-h-[360px] overflow-y-auto px-4 py-4 cursor-pointer"
           onClick={() => hasBody && setExpanded(true)}
           role={hasBody ? 'button' : undefined}
           tabIndex={hasBody ? 0 : undefined}
