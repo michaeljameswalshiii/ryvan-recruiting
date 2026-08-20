@@ -140,3 +140,19 @@ export {
   isSkillsGraphStale,
   searchTalentGraphCandidates,
 } from './skills-graph-repository';
+
+// Shared market-source pool (pre-decision search hits)
+export {
+  upsertMarketPerson,
+  upsertMarketCompany,
+  getMarketPerson,
+  getMarketCompany,
+  listMarketPeople,
+  listMarketCompanies,
+  countMarketSources,
+  rebuildMarketSourceIndexes,
+} from './market-source-repository';
+export type {
+  MarketPersonSummary,
+  MarketCompanySummary,
+} from './market-source-repository';

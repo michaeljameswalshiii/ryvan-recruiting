@@ -131,6 +131,20 @@ export async function POST(
       actorUserId: ctx.auth.userId,
       actorEmail: ctx.auth.email,
     });
+    if (ctx.objectType === "company") {
+      try {
+        const { updateClient } = await import(
+          "@/lib/db/repositories/client-repository"
+        );
+        await updateClient(ctx.tenantId, ctx.objectId, {
+          ownerName: profile.full_name || profile.email,
+          ownerUserId: profile.id,
+          accountOwner: profile.full_name || profile.email,
+        });
+      } catch (stampErr) {
+        console.warn("[POST object assignment] stamp company owner", stampErr);
+      }
+    }
     return NextResponse.json({ assignment });
   } catch (error) {
     console.error("[POST object assignment]", error);

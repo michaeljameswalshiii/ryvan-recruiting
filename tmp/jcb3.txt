@@ -1,0 +1,49 @@
+      <span>{g}</span>
+      {s != null && <span>· {s}</span>}
+    </span>
+  );
+}
+
+export interface JobCandidateBoardProps {
+  jobId: string;
+  candidates: any[];
+  allCandidates?: any[];
+  stages: string[];
+  fitByCandidate?: Record<string, any>;
+  onStageChange: (candidateIds: string[], stage: string) => void;
+  stagePending?: boolean;
+  onFit?: (candidateId: string) => void;
+  fitRescoringId?: string | null;
+  onUnlink?: (candidateId: string) => void;
+  unlinkPending?: boolean;
+  onOpenAddCandidate?: () => void;
+}
+  const [view, setView] = useState<BoardView>('cards');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
+  const toggle = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = (ids: string[], on: boolean) => {
+    setSelected(on ? new Set(ids) : new Set());
+  };
+
+  const moveSelectedTo = (stage: string, extraId?: string) => {
+    const ids = new Set(selected);
+    if (extraId) ids.add(extraId);
+    const list = Array.from(ids);
+    if (list.length === 0) return;
+    onStageChange(list, stage);
+    setSelected(new Set());
+  };
+

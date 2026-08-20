@@ -262,14 +262,19 @@ export async function createClient(
     })
   );
 
-  if (actor?.userId && item.id) {
-    await assignDefaultOwnerOnCreate({
+  if (item.id) {
+    const owner = await assignDefaultOwnerOnCreate({
       tenantId,
       objectType: 'company',
       objectId: String(item.id),
-      actorUserId: actor.userId,
-      actorEmail: actor.email,
+      actorUserId: actor?.userId,
+      actorEmail: actor?.email,
     });
+    if (owner) {
+      item.ownerName = owner.userName;
+      item.ownerUserId = owner.userId;
+      item.accountOwner = owner.userName;
+    }
   }
 
   return item;
@@ -606,14 +611,32 @@ export async function addContactToClient(
   );
   console.log('[addContactToClient] Success');
 
-  if (actor?.userId && newContact.id) {
-    await assignDefaultOwnerOnCreate({
+  if (newContact.id) {
+    const owner = await assignDefaultOwnerOnCreate({
       tenantId,
       objectType: 'contact',
       objectId: String(newContact.id),
-      actorUserId: actor.userId,
-      actorEmail: actor.email,
+      actorUserId: actor?.userId,
+      actorEmail: actor?.email,
     });
+    if (owner) {
+      const stampedContacts = (updated.contacts || []).map((existingContact) =>
+        existingContact.id === newContact.id
+          ? {
+              ...existingContact,
+              ownerName: owner.userName,
+              ownerUserId: owner.userId,
+              accountOwner: owner.userName,
+            }
+          : existingContact,
+      );
+      const stamped = await updateClient(
+        tenantId,
+        client.id,
+        { contacts: stampedContacts },
+      );
+      if (stamped) return stamped;
+    }
   }
 
   return updated;

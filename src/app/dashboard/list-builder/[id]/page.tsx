@@ -18,9 +18,13 @@ import {
   Phone,
   MapPin,
   ExternalLink,
+  Pencil,
+  RefreshCw,
   Sparkles,
+  ThumbsDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { SimpleDialog } from '@/components/ui/simple-dialog';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateCrmCaches } from '@/lib/hooks/invalidate-crm-cache';
@@ -41,6 +45,8 @@ type Row = {
   phone?: string;
   companyExists?: boolean;
   imported?: boolean;
+  rejected?: boolean;
+  rejectedReason?: string;
   notes?: string;
   sourceUrl?: string;
   contactCompleteness?: 'complete' | 'partial';
@@ -59,6 +65,10 @@ type Job = {
   targetSize: number;
   visibility?: 'private' | 'public';
   isOwner?: boolean;
+  parentJobId?: string;
+  revisedToJobId?: string;
+  reviewReason?: string;
+  industry?: string;
   progress: {
     found: number;
     target: number;
@@ -128,6 +138,15 @@ export default function ListBuilderResultsPage() {
   const [importProgress, setImportProgress] = useState<string | null>(null);
   const [sharingBusy, setSharingBusy] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [editOpen, setEditOpen] = useState(false);
+  const [reviseOpen, setReviseOpen] = useState(false);
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [editBrief, setEditBrief] = useState('');
+  const [editGeo, setEditGeo] = useState('');
+  const [editIndustry, setEditIndustry] = useState('');
+  const [editTarget, setEditTarget] = useState('50');
+  const [actionReason, setActionReason] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -149,7 +168,7 @@ export default function ListBuilderResultsPage() {
         new Set(
           keepable
             .filter((r) => {
-              if (r.imported) return false;
+              if (r.imported || r.rejected) return false;
               if (r.selected === false) return false;
               if (r.selected === true) return true;
               return isVerifiedRow(r);
@@ -242,8 +261,120 @@ export default function ListBuilderResultsPage() {
     }
   };
 
+  const openEditor = (mode: 'edit' | 'revise') => {
+    if (!job) return;
+    setEditBrief(job.brief || '');
+    setEditGeo(job.geography || '');
+    setEditIndustry(job.industry || '');
+    setEditTarget(String(job.targetSize || 50));
+    setActionReason('');
+    if (mode === 'edit') setEditOpen(true);
+    else setReviseOpen(true);
+  };
+
+  const patchJob = async (body: Record<string, unknown>) => {
+    const res = await fetch(`/api/list-builder/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Request failed');
+    }
+    return data;
+  };
+
+  const saveEdit = async () => {
+    setActionBusy(true);
+    try {
+      await patchJob({
+        action: 'update_search',
+        brief: editBrief,
+        geography: editGeo,
+        industry: editIndustry,
+        targetSize: Number(editTarget),
+      });
+      toast.success('Search details saved');
+      setEditOpen(false);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const runRevise = async () => {
+    setActionBusy(true);
+    try {
+      const data = await patchJob({
+        action: 'revise',
+        brief: editBrief,
+        geography: editGeo,
+        industry: editIndustry,
+        targetSize: Number(editTarget),
+        reason: actionReason,
+      });
+      toast.success('Revised search started');
+      setReviseOpen(false);
+      const nextId = data.job?.id;
+      if (nextId && nextId !== id) {
+        router.push(`/dashboard/list-builder/${nextId}`);
+        return;
+      }
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not revise');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const declineSearch = async () => {
+    setActionBusy(true);
+    try {
+      await patchJob({
+        action: 'reject_search',
+        reason: actionReason,
+      });
+      toast.success('Search declined — nothing imported, preference saved');
+      setDeclineOpen(false);
+      setActionReason('');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not decline');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const rejectRow = async (rowId: string) => {
+    try {
+      await patchJob({ action: 'reject_rows', rowIds: [rowId] });
+      setSelected((prev) => {
+        const n = new Set(prev);
+        n.delete(rowId);
+        return n;
+      });
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not reject');
+    }
+  };
+
+  const restoreRow = async (rowId: string) => {
+    try {
+      await patchJob({ action: 'restore_rows', rowIds: [rowId] });
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not restore');
+    }
+  };
+
   const rows = job?.results || [];
-  const selectable = rows.filter((r) => !r.imported);
+  const selectable = rows.filter((r) => !r.imported && !r.rejected);
   const selectedCount = useMemo(
     () => selectable.filter((r) => selected.has(r.id)).length,
     [selectable, selected]
@@ -418,6 +549,43 @@ export default function ListBuilderResultsPage() {
               leads
             </span>
             {job.isOwner !== false && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => openEditor('edit')}
+                  className="gap-2"
+                  title="Change the brief without starting a new run"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => openEditor('revise')}
+                  className="gap-2"
+                  title="Rewrite the search and run a new list"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Revise
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setActionReason('');
+                    setDeclineOpen(true);
+                  }}
+                  className="gap-2 text-rose-700 hover:bg-rose-50"
+                  title="Decline this search. Teaches the next run what not to find."
+                >
+                  <ThumbsDown className="h-4 w-4" />
+                  Decline
+                </Button>
+              </>
+            )}
+            {job.isOwner !== false && (
               <Button
                 type="button"
                 variant="outline"
@@ -463,6 +631,35 @@ export default function ListBuilderResultsPage() {
       </div>
 
       <div className="mx-auto max-w-6xl px-6 py-8">
+        {job.status === 'rejected' && (
+          <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+            This search was declined
+            {job.reviewReason ? ` — ${job.reviewReason}` : ''}. That label
+            trains the next list. Unlabeled lists do not.
+            {job.revisedToJobId ? (
+              <>
+                {' '}
+                <Link
+                  href={`/dashboard/list-builder/${job.revisedToJobId}`}
+                  className="font-semibold underline"
+                >
+                  Open the revised run
+                </Link>
+              </>
+            ) : null}
+          </div>
+        )}
+        {job.parentJobId && (
+          <p className="mb-4 text-xs text-slate-500">
+            Revised from an earlier search.{' '}
+            <Link
+              href={`/dashboard/list-builder/${job.parentJobId}`}
+              className="font-medium text-violet-700 hover:underline"
+            >
+              View original
+            </Link>
+          </p>
+        )}
         {/* Progress strip */}
         <div className="mb-6 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -592,14 +789,14 @@ export default function ListBuilderResultsPage() {
                     key={r.id}
                     className={`flex flex-col gap-3 px-4 py-4 transition sm:flex-row sm:items-center sm:justify-between ${
                       selected.has(r.id) ? 'bg-violet-50/40' : 'hover:bg-slate-50/80'
-                    } ${r.imported ? 'opacity-60' : ''}`}
+                    } ${r.imported || r.rejected ? 'opacity-60' : ''}`}
                   >
                     <div className="flex min-w-0 items-start gap-3">
                       <input
                         type="checkbox"
                         className="mt-1 h-4 w-4 rounded border-slate-300 text-violet-600"
-                        disabled={!!r.imported}
-                        checked={!r.imported && selected.has(r.id)}
+                        disabled={!!r.imported || !!r.rejected}
+                        checked={!r.imported && !r.rejected && selected.has(r.id)}
                         onChange={() => toggle(r.id)}
                       />
                       <div className="min-w-0">
@@ -653,6 +850,14 @@ export default function ListBuilderResultsPage() {
                           {r.imported && (
                             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-800 ring-1 ring-emerald-100">
                               Imported
+                            </span>
+                          )}
+                          {r.rejected && (
+                            <span
+                              className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 ring-1 ring-rose-100"
+                              title={r.rejectedReason || 'Rejected'}
+                            >
+                              Rejected
                             </span>
                           )}
                         </div>
@@ -742,12 +947,197 @@ export default function ListBuilderResultsPage() {
                         </div>
                       </div>
                     </div>
+                    {job.isOwner !== false && !r.imported && (
+                      <div className="shrink-0 sm:pl-3">
+                        {r.rejected ? (
+                          <button
+                            type="button"
+                            onClick={() => void restoreRow(r.id)}
+                            className="text-xs font-medium text-slate-600 hover:underline"
+                          >
+                            Undo reject
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void rejectRow(r.id)}
+                            className="text-xs font-medium text-rose-700 hover:underline"
+                            title="Reject this company. Teaches the next search."
+                          >
+                            Reject
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </li>
                 );
               })}
             </ul>
           </div>
         )}
+      </div>
+
+      <SimpleDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        title="Edit this search"
+        description="Updates the brief on this list. Does not re-run and does not train the model."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button disabled={actionBusy} onClick={() => void saveEdit()}>
+              {actionBusy ? 'Saving…' : 'Save'}
+            </Button>
+          </>
+        }
+      >
+        <SearchFields
+          brief={editBrief}
+          geo={editGeo}
+          industry={editIndustry}
+          target={editTarget}
+          onBrief={setEditBrief}
+          onGeo={setEditGeo}
+          onIndustry={setEditIndustry}
+          onTarget={setEditTarget}
+        />
+      </SimpleDialog>
+
+      <SimpleDialog
+        open={reviseOpen}
+        onOpenChange={setReviseOpen}
+        title="Revise and run again"
+        description="Starts a new search from this one. The old list stays. This trains the next run toward the new brief."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setReviseOpen(false)}>
+              Cancel
+            </Button>
+            <Button disabled={actionBusy} onClick={() => void runRevise()}>
+              {actionBusy ? 'Starting…' : 'Revise and run'}
+            </Button>
+          </>
+        }
+      >
+        <SearchFields
+          brief={editBrief}
+          geo={editGeo}
+          industry={editIndustry}
+          target={editTarget}
+          onBrief={setEditBrief}
+          onGeo={setEditGeo}
+          onIndustry={setEditIndustry}
+          onTarget={setEditTarget}
+        />
+        <label className="mt-3 block text-sm font-medium text-slate-700">
+          What should change?
+          <textarea
+            value={actionReason}
+            onChange={(e) => setActionReason(e.target.value)}
+            rows={2}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            placeholder="e.g. Too many national GCs — stay local, commercial only"
+          />
+        </label>
+      </SimpleDialog>
+
+      <SimpleDialog
+        open={declineOpen}
+        onOpenChange={setDeclineOpen}
+        title="Decline this search"
+        description="Nothing is imported. The next list-builder run will treat this market mix as a miss."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDeclineOpen(false)}>
+              Keep list
+            </Button>
+            <Button
+              disabled={actionBusy}
+              className="bg-rose-600 hover:bg-rose-500"
+              onClick={() => void declineSearch()}
+            >
+              {actionBusy ? 'Declining…' : 'Decline search'}
+            </Button>
+          </>
+        }
+      >
+        <label className="block text-sm font-medium text-slate-700">
+          Why is this off? (optional)
+          <textarea
+            value={actionReason}
+            onChange={(e) => setActionReason(e.target.value)}
+            rows={3}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            placeholder="e.g. Wrong geography, too large, not construction"
+          />
+        </label>
+      </SimpleDialog>
+    </div>
+  );
+}
+
+function SearchFields({
+  brief,
+  geo,
+  industry,
+  target,
+  onBrief,
+  onGeo,
+  onIndustry,
+  onTarget,
+}: {
+  brief: string;
+  geo: string;
+  industry: string;
+  target: string;
+  onBrief: (v: string) => void;
+  onGeo: (v: string) => void;
+  onIndustry: (v: string) => void;
+  onTarget: (v: string) => void;
+}) {
+  const field =
+    'mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm';
+  return (
+    <div className="space-y-3">
+      <label className="block text-sm font-medium text-slate-700">
+        Brief
+        <textarea
+          value={brief}
+          onChange={(e) => onBrief(e.target.value)}
+          rows={3}
+          className={field}
+        />
+      </label>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="block text-sm font-medium text-slate-700">
+          Geography
+          <input
+            value={geo}
+            onChange={(e) => onGeo(e.target.value)}
+            className={field}
+          />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">
+          Industry
+          <input
+            value={industry}
+            onChange={(e) => onIndustry(e.target.value)}
+            className={field}
+          />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">
+          Target size
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={target}
+            onChange={(e) => onTarget(e.target.value)}
+            className={field}
+          />
+        </label>
       </div>
     </div>
   );

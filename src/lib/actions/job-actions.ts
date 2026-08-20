@@ -574,7 +574,17 @@ export async function updateCandidateStageAction(jobId: string, candidateId: str
 
   try {
     const job = await updateCandidateStageInJob(tenantId, jobId, { candidateId, stage, notes });
-    // Sanitize the job to ensure JSON serializability
+    try {
+      const { setCandidatePipelineStage } = await import(
+        '@/lib/candidates/stage-sync'
+      );
+      await setCandidatePipelineStage(candidateId, stage, {
+        tenantId,
+        jobId,
+      });
+    } catch (syncErr) {
+      console.warn('[updateCandidateStageAction] candidate sync', syncErr);
+    }
     return { success: true, job: job ? sanitizeJob(job) : null };
   } catch (error: any) {
     return { error: error.message || 'Failed to update stage' };

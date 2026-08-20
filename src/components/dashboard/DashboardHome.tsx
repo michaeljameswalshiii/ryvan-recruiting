@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { DeskNextActions } from '@/components/desk/DeskNextActions';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
+import { toDisplayTrend } from '@/lib/reporting/display-trend';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#64748b'];
 
@@ -67,21 +68,6 @@ function DeltaBadge({ deltaPct }: { deltaPct: number | null }) {
       <ArrowDownRight className="h-3 w-3" /> {Math.abs(deltaPct)}%
     </span>
   );
-}
-
-function toDisplayTrend(
-  series: Array<{ date: string; count: number }>
-): Array<{ date: string; count: number }> {
-  const trend = series.map((d) => ({
-    date: new Date(d.date).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    }),
-    count: d.count,
-  }));
-  if (trend.length > 45) return trend.filter((_, i) => i % 3 === 0);
-  if (trend.length > 20) return trend.filter((_, i) => i % 2 === 0);
-  return trend;
 }
 
 export function DashboardHome({

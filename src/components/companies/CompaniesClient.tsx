@@ -284,8 +284,14 @@ function ownerNameFromRecord(
   return displayOwnerName(
     record?.ownerName ||
       record?.accountOwner ||
+      record?.account_owner ||
+      record?.accountRep ||
+      record?.account_rep ||
       record?.owner ||
       record?.createdByName ||
+      record?.created_by_name ||
+      record?.createdBy ||
+      record?.created_by ||
       ''
   );
 }
@@ -398,7 +404,6 @@ export function CompaniesClient() {
   const [page, setPage] = useState(1);
   const columns = useListColumns(COLUMNS_STORAGE_KEY, COMPANY_COLUMN_DEFS);
   const col = columns.col;
-  const { data: ownerMap = {} } = useAssignmentOwners('company');
   const { data: jobsData } = useJobs();
   const setColumnsOpen = columns.setOpen;
 
@@ -484,6 +489,16 @@ export function CompaniesClient() {
     }
     return [];
   }, [data]);
+
+  const companyIds = useMemo(
+    () =>
+      companies
+        .flatMap((c: any) => [c.id, c.PK, c.companyId, c.clientId])
+        .map((value) => String(value || '').trim())
+        .filter(Boolean),
+    [companies],
+  );
+  const { data: ownerMap = {} } = useAssignmentOwners('company', companyIds);
 
   const openJobsByCompany = useMemo(() => {
     const raw = Array.isArray(jobsData)

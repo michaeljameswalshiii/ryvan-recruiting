@@ -373,6 +373,8 @@ export function useLinkCandidateToJob() {
         jobKeys.all,
         jobKeys.detail(variables.jobId),
         leadKeysSafe(),
+        ['candidates'],
+        ['candidate', variables.candidateData.candidateId],
       ]);
     },
     onError: (error) => {
@@ -405,6 +407,8 @@ export function useUnlinkCandidateFromJob() {
         jobKeys.all,
         jobKeys.detail(variables.jobId),
         leadKeysSafe(),
+        ['candidates'],
+        ['candidate', variables.candidateId],
       ]);
     },
     onError: (error) => {
@@ -447,6 +451,8 @@ export function useUpdateCandidateStageInJob() {
         jobKeys.all,
         jobKeys.detail(variables.jobId),
         leadKeysSafe(),
+        ['candidates'],
+        ['candidate', variables.candidateId],
       ]);
     },
     onError: (error) => {

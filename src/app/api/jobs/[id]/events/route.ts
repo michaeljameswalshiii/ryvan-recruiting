@@ -1,6 +1,11 @@
 // src/app/api/jobs/[id]/events/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getJobEvents, recordJobEvent } from '@/lib/events/job-events';
+import {
+  getJobEvents,
+  recordJobEvent,
+  updateJobEvent,
+  deleteJobEvent,
+} from '@/lib/events/job-events';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: jobId } = await params;
@@ -54,4 +59,41 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: jobId } = await params;
+  const body = await request.json().catch(() => ({}));
+  const eventId = String(body.eventId || '').trim();
+  if (!eventId) {
+    return NextResponse.json({ error: 'eventId is required' }, { status: 400 });
+  }
+  const result = await updateJobEvent(jobId, eventId, {
+    noteText: body.noteText,
+    title: body.title,
+    description: body.description,
+  });
+  if (!result.success) {
+    return NextResponse.json({ error: result.error }, { status: 400 });
+  }
+  return NextResponse.json({ success: true });
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: jobId } = await params;
+  const eventId = String(request.nextUrl.searchParams.get('eventId') || '').trim();
+  if (!eventId) {
+    return NextResponse.json({ error: 'eventId is required' }, { status: 400 });
+  }
+  const result = await deleteJobEvent(jobId, eventId);
+  if (!result.success) {
+    return NextResponse.json({ error: result.error }, { status: 400 });
+  }
+  return NextResponse.json({ success: true });
 }

@@ -10,6 +10,7 @@
  */
 
 import { getItem, putItem, deleteItem, tableNames } from '../dynamodb';
+import { scheduleMarketSourceIngest } from '@/lib/market-source/schedule';
 import type {
   CreateListBuilderInput,
   ListBuilderJob,
@@ -222,6 +223,7 @@ export async function createListBuilderJob(
     ).toISOString(),
     seedCursor: 0,
     discoveryBatch: 0,
+    parentJobId: input.parentJobId || undefined,
   };
 
   // Store with short id in a field for API; Dynamo id is full key
@@ -420,7 +422,7 @@ export async function appendResults(
     seen.add(k);
     deduped.push(r);
   }
-  return updateListBuilderJob(tenantId, jobId, {
+  const updated = await updateListBuilderJob(tenantId, jobId, {
     results: deduped,
     progress: {
       ...job.progress,
@@ -428,6 +430,35 @@ export async function appendResults(
       target: job.targetSize,
     },
   });
+  scheduleMarketSourceIngest({
+    surface: 'company_list_builder',
+    query: job.brief,
+    location: job.geography,
+    runKey: `lb:${job.id}`,
+    companies: rows.map((r) => ({
+      name: r.companyName,
+      website: r.website,
+      city: r.city,
+      state: r.state,
+      industry: r.industry,
+      employeeCount: r.employeeCount,
+      companySize: r.companySize,
+      source: 'list_builder',
+    })),
+    people: rows
+      .filter((r) => r.contactName)
+      .map((r) => ({
+        name: r.contactName,
+        title: r.contactTitle,
+        company: r.companyName,
+        location: [r.city, r.state].filter(Boolean).join(', '),
+        email: r.email,
+        phone: r.phone,
+        source: 'list_builder',
+        role: 'contact' as const,
+      })),
+  });
+  return updated;
 }
 
 export async function setJobStatus(
@@ -444,7 +475,8 @@ export async function setJobStatus(
     status === 'completed' ||
     status === 'cancelled' ||
     status === 'failed' ||
-    status === 'awaiting_import'
+    status === 'awaiting_import' ||
+    status === 'rejected'
   ) {
     patch.completedAt = new Date().toISOString();
   }

@@ -248,6 +248,7 @@ export async function novaGroundingDiscoverBatch(params: {
   tenantId?: string;
   userId?: string;
   jobId?: string;
+  preferenceMemory?: string;
 }): Promise<NovaDiscoverResult> {
   const maxRounds = Math.min(Math.max(params.maxRounds ?? 2, 1), 3);
   const need = Math.min(Math.max(params.need, 4), 16);
@@ -269,7 +270,8 @@ Rules:
 - NEVER invent phone/email — omit if not found in sources
 - website should be the company official domain when known
 - Do not repeat: ${excludeList}
-- Max ${need} companies this response`;
+- Max ${need} companies this response
+${params.preferenceMemory ? `- Honor recruiter preference memory. Do not repeat rejected kinds of firms.` : ''}`;
 
   let allCandidates: DiscoverCandidate[] = [];
   let allUrls: string[] = [];
@@ -298,7 +300,9 @@ Batch #${params.batch} focus: ${params.focusKw} near ${params.focusCity}
 Progress: ${params.already}/${params.target} usable leads already kept.
 
 Search the web and return up to ${need} NEW companies as a JSON array.
-Emphasize ${params.focusKw} firms with contact info or company websites.`
+Emphasize ${params.focusKw} firms with contact info or company websites.${
+            params.preferenceMemory ? `\n\n${params.preferenceMemory}` : ''
+          }`
         : `Follow-up search (round ${round}): we still need more companies.
 
 Already have: ${alreadyNames.slice(0, 40).join(', ') || 'none'}

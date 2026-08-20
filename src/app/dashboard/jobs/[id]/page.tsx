@@ -42,6 +42,7 @@ import {
 } from "@/lib/fees/placement-fee";
 import JobEditModal from "@/components/job/JobEditModal";
 import { JobActivityNotes } from "@/components/job/JobActivityNotes";
+import { JobCandidateBoard } from "@/components/job/JobCandidateBoard";
 import { FitScoreBadge, type FitGrade } from "@/components/job/FitScoreBadge";
 import { FillReqPlaybookButton } from "@/components/job/FillReqPlaybookButton";
 import { BooleanGeneratorButton } from "@/components/job/BooleanGeneratorButton";
@@ -929,6 +930,21 @@ export default function JobDetailPage() {
               </div>
             </div>
           </section>
+
+          <JobCandidateBoard
+            jobId={jobId}
+            candidates={linkedCandidates}
+            stages={STAGES}
+            fitByCandidate={fitByCandidate}
+            stagePending={updateStage.isPending}
+            onFit={runFitForCandidate}
+            fitRescoringId={fitRescoringId}
+            onStageChange={(candidateIds, stage) => {
+              for (const candidateId of candidateIds) {
+                updateStage.mutate({ jobId, candidateId, stage });
+              }
+            }}
+          />
 
           {/* Activity & notes — main column (job + candidates + company) */}
           <JobActivityNotes

@@ -139,6 +139,20 @@ const STAGES = [
 function pick(arr, i) {
   return arr[i % arr.length];
 }
+
+/** Spread created_at across YTD so dashboard charts have a real curve. */
+function spreadCreatedAt(index, total, nowMs = Date.now()) {
+  const yearStart = new Date(new Date(nowMs).getFullYear(), 0, 1).getTime();
+  const span = Math.max(nowMs - yearStart, 14 * 86400000);
+  const u = (index + 0.5) / Math.max(total, 1);
+  const biased = Math.pow(u, 0.6);
+  const d = new Date(yearStart + biased * span);
+  d.setHours(8 + ((index * 7) % 10), (index * 13) % 60, (index * 17) % 60, 0);
+  if (d.getTime() > nowMs) {
+    d.setTime(nowMs - ((index % 12) + 1) * 3600000);
+  }
+  return d.toISOString();
+}
 function rand(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -294,7 +308,7 @@ async function seedDemo() {
             isPrimary: true,
           },
         ],
-        created_at: now,
+        created_at: spreadCreatedAt(n, COUNTS.companies),
         updated_at: now,
         modified_at: now,
       });
@@ -331,7 +345,7 @@ async function seedDemo() {
           isPrimary: true,
         },
       ],
-      created_at: now,
+      created_at: spreadCreatedAt(i, COUNTS.companies),
       updated_at: now,
       modified_at: now,
     });
@@ -364,7 +378,7 @@ async function seedDemo() {
       hiringManagerEmail: hm?.email,
       hiringManagerPhone: hm?.phone,
       candidates: [],
-      created_at: now,
+      created_at: spreadCreatedAt(i, COUNTS.jobs),
       modified_at: now,
     });
   }
@@ -421,7 +435,7 @@ async function seedDemo() {
       notes: `Demo candidate profile for ${title}.`,
       linkedJobs,
       linkedJobIds: linkedJobs.map((j) => j.jobId),
-      created_at: now,
+      created_at: spreadCreatedAt(i, COUNTS.candidates),
       modified_at: now,
     });
   }

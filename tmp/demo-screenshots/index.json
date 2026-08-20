@@ -1,0 +1,164 @@
+[
+  {
+    "slug": "01-dashboard",
+    "path": "/dashboard",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\01-dashboard-01-dashboard.png"
+  },
+  {
+    "slug": "02-candidates",
+    "path": "/dashboard/candidates",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\02-candidates-02-candidates.png"
+  },
+  {
+    "slug": "03-candidate-detail",
+    "path": "/dashboard/candidates/003016a5-51c4-44f6-8a95-ce6d03d645df",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\03-candidate-detail-03-candidate-detail.png"
+  },
+  {
+    "slug": "04-candidate-new",
+    "path": "/dashboard/candidates/new",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\04-candidate-new-04-candidate-new.png"
+  },
+  {
+    "slug": "05-companies",
+    "path": "/dashboard/companies",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\05-companies-05-companies.png"
+  },
+  {
+    "slug": "06-company-detail",
+    "path": "/dashboard/companies/0221a06c-24bf-443d-a033-a68cfd92bfbe",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\06-company-detail-06-company-detail.png"
+  },
+  {
+    "slug": "07-company-new",
+    "path": "/dashboard/companies/new",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\07-company-new-07-company-new.png"
+  },
+  {
+    "slug": "08-contacts",
+    "path": "/dashboard/contact-info",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\08-contacts-08-contacts.png"
+  },
+  {
+    "slug": "09-contact-detail",
+    "path": "/dashboard/contacts/64a79630-6025-4216-aebd-419818e2b010",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\09-contact-detail-09-contact-detail.png"
+  },
+  {
+    "slug": "10-jobs",
+    "path": "/dashboard/jobs",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\10-jobs-10-jobs.png"
+  },
+  {
+    "slug": "11-job-detail",
+    "path": "/dashboard/jobs/007312d1-e0bb-4d9e-8e87-577de45fdaf1",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\11-job-detail-11-job-detail.png"
+  },
+  {
+    "slug": "12-job-pipeline",
+    "path": "/dashboard/jobs/007312d1-e0bb-4d9e-8e87-577de45fdaf1/pipeline",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\12-job-pipeline-12-job-pipeline.png"
+  },
+  {
+    "slug": "13-job-new",
+    "path": "/dashboard/jobs/new",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\13-job-new-13-job-new.png"
+  },
+  {
+    "slug": "14-talent-graph",
+    "path": "/dashboard/talent-graph",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\14-talent-graph-14-talent-graph.png"
+  },
+  {
+    "slug": "15-sequences",
+    "path": "/dashboard/sequences",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\15-sequences-15-sequences.png"
+  },
+  {
+    "slug": "16-ai",
+    "path": "/dashboard/general-ai-usage",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\16-ai-16-ai.png"
+  },
+  {
+    "slug": "17-settings",
+    "path": "/dashboard/settings",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\17-settings-17-settings.png"
+  },
+  {
+    "slug": "18-company-settings",
+    "path": "/dashboard/settings/company",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\18-company-settings-18-company-settings.png"
+  },
+  {
+    "slug": "19-reporting",
+    "path": "/dashboard/reporting",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\19-reporting-19-reporting.png"
+  },
+  {
+    "slug": "20-pipeline",
+    "path": "/dashboard/pipeline",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\20-pipeline-20-pipeline.png"
+  },
+  {
+    "slug": "21-scheduling",
+    "path": "/dashboard/scheduling",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\21-scheduling-21-scheduling.png"
+  },
+  {
+    "slug": "22-list-builder",
+    "path": "/dashboard/list-builder",
+    "status": 404,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\22-list-builder-22-list-builder.png"
+  },
+  {
+    "slug": "23-list-builder-detail",
+    "path": "/dashboard/list-builder/438e788b-cd13-4fc5-a58e-328c7ad4979a",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\23-list-builder-detail-23-list-builder-detail.png"
+  },
+  {
+    "slug": "24-candidate-list-builder",
+    "path": "/dashboard/candidate-list-builder",
+    "status": 404,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\24-candidate-list-builder-24-candidate-list-builder.png"
+  },
+  {
+    "slug": "26-candidates-archive",
+    "path": "/dashboard/candidates-archive",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\26-candidates-archive-26-candidates-archive.png"
+  },
+  {
+    "slug": "27-ai-assistant",
+    "path": "/dashboard/ai-assistant",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\27-ai-assistant-27-ai-assistant.png"
+  },
+  {
+    "slug": "28-ai-agents",
+    "path": "/dashboard/ai-agents",
+    "status": 200,
+    "dest": "C:\\Users\\micha\\turnkey-optimization\\tmp\\demo-screenshots\\28-ai-agents-28-ai-agents.png"
+  }
+]

@@ -41,7 +41,7 @@ export async function importListBuilderRows(
   tenantId: string,
   jobId: string,
   rowIds: string[],
-  options?: { maxRows?: number }
+  options?: { maxRows?: number; actorUserId?: string }
 ): Promise<ImportListBuilderResult> {
   const job = await getListBuilderJob(tenantId, jobId);
   if (!job) {
@@ -228,7 +228,7 @@ export async function importListBuilderRows(
   }
 
   const remainingUnimported = updatedResults.filter(
-    (r) => !r.imported && isKeepableContact(r)
+    (r) => !r.imported && !r.rejected && isKeepableContact(r)
   ).length;
   const done = remainingUnimported === 0;
   // Only mark completed when nothing keepable left to import (batched imports)
@@ -250,6 +250,35 @@ export async function importListBuilderRows(
       lastMessage: batchNote,
     },
   });
+
+  if (importedCompanies > 0) {
+    const actor = options?.actorUserId || job.userId;
+    const accepted = updatedResults.filter(
+      (r) => r.imported && idSet.has(r.id)
+    );
+    if (actor && accepted.length > 0) {
+      try {
+        const { recordListBuilderFeedback } = await import(
+          '@/lib/db/repositories/list-builder-feedback-repository'
+        );
+        await recordListBuilderFeedback(tenantId, actor, {
+          action: 'accept',
+          jobId,
+          brief: job.brief,
+          geography: job.geography,
+          industry: job.industry,
+          examples: accepted.slice(0, 12).map((r) => ({
+            companyName: r.companyName,
+            industry: r.industry,
+            city: r.city,
+            state: r.state,
+          })),
+        });
+      } catch (err) {
+        console.warn('[list-builder import] preference memory failed', err);
+      }
+    }
+  }
 
   return {
     success: true,

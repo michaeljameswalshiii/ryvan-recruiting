@@ -1,0 +1,101 @@
+              <input
+                type="checkbox"
+                checked={allIds.length > 0 && allIds.every((id) => selected.has(id))}
+                onChange={(e) => toggleAll(allIds, e.target.checked)}
+              />
+              Select all
+            </label>
+            <span>Drop onto a stage chip below after selecting</span>
+          </div>
+          <div className="mb-3 flex flex-wrap gap-2">
+            {KANBAN_COLUMNS.map((col) => (
+              <StageDropChip
+                key={col.key}
+                id={col.key}
+                label={col.label}
+                disabled={stagePending}
+              />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {candidates.map((lc) => (
+              <CandidateCard
+                key={lc.candidateId}
+                lc={lc}
+                jobId={jobId}
+                selected={selected.has(String(lc.candidateId))}
+                onToggle={() => toggle(String(lc.candidateId))}
+                fit={fitByCandidate[lc.candidateId]}
+                onFit={onFit}
+                fitting={fitRescoringId === lc.candidateId}
+                stages={stages}
+                onStage={(stage) => onStageChange([String(lc.candidateId)], stage)}
+                stagePending={stagePending}
+              />
+            ))}
+          </div>
+        </DndContext>
+      ) : (
+        <ul className="divide-y divide-gray-100">
+          {candidates.map((lc) => {
+            const name = lc.candidateName || 'Unknown';
+            const id = String(lc.candidateId);
+            return (
+              <li key={id} className="flex items-center gap-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={selected.has(id)}
+                  onChange={() => toggle(id)}
+                />
+                <div
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white ${avatarColor(name)}`}
+                >
+                  {initials(name)}
+                </div>
+                <Link
+                  href={`/dashboard/candidates/${id}?jobId=${encodeURIComponent(jobId)}`}
+                  className="min-w-0 flex-1 truncate text-sm font-medium text-blue-600 hover:underline"
+                >
+                  {name}
+                </Link>
+                <select
+                  className="h-8 max-w-[10rem] rounded-lg border border-gray-200 bg-white px-2 text-xs"
+                  value={lc.stage || 'sourced'}
+                  onChange={(e) => onStageChange([id], e.target.value)}
+                  disabled={stagePending}
+                >
+                  {stages.map((s) => (
+                    <option key={s} value={s}>
+                      {getStageLabel(s)}
+                    </option>
+                  ))}
+                </select>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function StageDropChip({
+  id,
+  label,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  disabled?: boolean;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id, disabled });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
+        isOver
+          ? 'border-blue-500 bg-blue-50 text-blue-800'
+          : 'border-gray-200 bg-gray-50 text-gray-600'
+      }`}
+    >
+      Drop → {label}

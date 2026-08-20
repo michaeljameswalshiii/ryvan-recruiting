@@ -11,6 +11,7 @@ export const LIST_BUILDER_STATUSES = [
   'cancelled',
   'failed',
   'awaiting_import',
+  'rejected',
 ] as const;
 
 export type ListBuilderStatus = (typeof LIST_BUILDER_STATUSES)[number];
@@ -95,6 +96,9 @@ export interface ListBuilderResultRow {
   contactCompleteness?: ListBuilderContactCompleteness;
   selected?: boolean;
   imported?: boolean;
+  /** Explicit recruiter reject on this row. Unlabeled rows are not training data. */
+  rejected?: boolean;
+  rejectedReason?: string;
   importedCompanyId?: string;
   importedContactId?: string;
   createdAt: string;
@@ -156,6 +160,12 @@ export interface ListBuilderJob {
   discoveryBatch: number;
   /** Soft lock so concurrent tick/cron don't double-run a batch */
   lockedUntil?: string;
+  /** Job this list was revised from (new run). */
+  parentJobId?: string;
+  /** Newer job created when this list was revised. */
+  revisedToJobId?: string;
+  /** Why the owner declined / revised. Used as preference memory, not shown as a score. */
+  reviewReason?: string;
 }
 
 export interface CreateListBuilderInput {
@@ -167,6 +177,7 @@ export interface CreateListBuilderInput {
   visibility?: ListBuilderVisibility;
   seedRows?: ListBuilderSeedRow[];
   notifyChannels?: ListBuilderNotifyChannel[];
+  parentJobId?: string;
 }
 
 /** Defaults locked with product */

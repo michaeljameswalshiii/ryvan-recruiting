@@ -40,58 +40,77 @@ export async function renderInvoiceFile(
     "_"
   );
 
-  if (kind === "google_doc") {
-    if (!invoice.source_url) {
-      throw new Error("This template is missing a Google Doc link.");
-    }
-    const exported = await exportGoogleDocDocx(invoice.source_url);
-    const filled = await fillDocxBuffer(exported, vars);
+  const builtIn = async (): Promise<RenderedInvoice> => {
+    const pdf = await buildInvoicePdf(invoice);
     return {
-      buffer: filled,
-      contentType:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      filename: `${base}.docx`,
-      kind,
+      buffer: pdf,
+      contentType: "application/pdf",
+      filename: `${base}.pdf`,
+      kind: "built_in",
     };
+  };
+
+  if (kind === "google_doc") {
+    try {
+      if (!invoice.source_url) {
+        throw new Error("This template is missing a Google Doc link.");
+      }
+      const exported = await exportGoogleDocDocx(invoice.source_url);
+      const filled = await fillDocxBuffer(exported, vars);
+      return {
+        buffer: filled,
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename: `${base}.docx`,
+        kind,
+      };
+    } catch (err) {
+      console.warn("[renderInvoiceFile] google_doc fallback", err);
+      return builtIn();
+    }
   }
 
   if (kind === "docx") {
-    if (!invoice.source_file_key) {
-      throw new Error("This template is missing the uploaded Word file.");
+    try {
+      if (!invoice.source_file_key) {
+        throw new Error("This template is missing the uploaded Word file.");
+      }
+      const raw = await getInvoiceTemplateFile(invoice.source_file_key, tenantId);
+      const filled = await fillDocxBuffer(raw, vars);
+      return {
+        buffer: filled,
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename: `${base}.docx`,
+        kind,
+      };
+    } catch (err) {
+      console.warn("[renderInvoiceFile] docx fallback", err);
+      return builtIn();
     }
-    const raw = await getInvoiceTemplateFile(invoice.source_file_key, tenantId);
-    const filled = await fillDocxBuffer(raw, vars);
-    return {
-      buffer: filled,
-      contentType:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      filename: `${base}.docx`,
-      kind,
-    };
   }
 
   if (kind === "pdf") {
-    if (!invoice.source_file_key) {
-      throw new Error("This template is missing the uploaded PDF.");
+    try {
+      if (!invoice.source_file_key) {
+        throw new Error("This template is missing the uploaded PDF.");
+      }
+      const raw = await getInvoiceTemplateFile(invoice.source_file_key, tenantId);
+      const stamp = [invoice.invoice_number, invoice.client_name, vars.total]
+        .filter(Boolean)
+        .join("  ·  ");
+      const filled = await fillPdfBuffer(raw, vars, stamp);
+      return {
+        buffer: filled,
+        contentType: "application/pdf",
+        filename: `${base}.pdf`,
+        kind,
+      };
+    } catch (err) {
+      console.warn("[renderInvoiceFile] pdf fallback", err);
+      return builtIn();
     }
-    const raw = await getInvoiceTemplateFile(invoice.source_file_key, tenantId);
-    const stamp = [invoice.invoice_number, invoice.client_name, vars.total]
-      .filter(Boolean)
-      .join("  ·  ");
-    const filled = await fillPdfBuffer(raw, vars, stamp);
-    return {
-      buffer: filled,
-      contentType: "application/pdf",
-      filename: `${base}.pdf`,
-      kind,
-    };
   }
 
-  const pdf = await buildInvoicePdf(invoice);
-  return {
-    buffer: pdf,
-    contentType: "application/pdf",
-    filename: `${base}.pdf`,
-    kind: "built_in",
-  };
+  return builtIn();
 }

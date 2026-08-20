@@ -8,12 +8,15 @@ import { getSession } from '@/lib/server-auth';
 import {
   canManageListBuilderJob,
   canViewListBuilderJob,
+  createListBuilderJob,
   getListBuilderJob,
   setJobStatus,
   setListBuilderVisibility,
   updateListBuilderJob,
 } from '@/lib/db/repositories/list-builder-repository';
 import { processListBuilderBatch } from '@/lib/list-builder/runner';
+import { recordListBuilderFeedback } from '@/lib/db/repositories/list-builder-feedback-repository';
+import { LIST_BUILDER_DEFAULTS } from '@/lib/schemas/list-builder';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -95,7 +98,12 @@ export async function PATCH(
 
   // Anyone who can view may tick (advance) a public running job so shared queues keep moving
   if (action === 'tick' || action === 'process') {
-    if (job.status === 'paused' || job.status === 'cancelled') {
+    if (
+      job.status === 'paused' ||
+      job.status === 'cancelled' ||
+      job.status === 'rejected' ||
+      job.status === 'failed'
+    ) {
       return NextResponse.json({ job, message: 'Not runnable' });
     }
     try {
@@ -174,6 +182,182 @@ export async function PATCH(
       progress: { ...job.progress, lastMessage: 'Cancelled by user.' },
     });
     return NextResponse.json({ job: updated });
+  }
+
+  if (action === 'update_search') {
+    const brief = String(body.brief || job.brief).trim();
+    if (!brief) {
+      return NextResponse.json({ error: 'Brief is required' }, { status: 400 });
+    }
+    const targetSize =
+      body.targetSize != null && Number.isFinite(Number(body.targetSize))
+        ? Math.min(
+            Math.max(Math.floor(Number(body.targetSize)), 1),
+            LIST_BUILDER_DEFAULTS.maxResultsCap
+          )
+        : job.targetSize;
+    const updated = await updateListBuilderJob(session.tenantId, id, {
+      brief,
+      industry: body.industry != null ? String(body.industry).trim() : job.industry,
+      geography:
+        body.geography != null
+          ? String(body.geography).trim() || job.geography
+          : job.geography,
+      targetSize,
+    });
+    return NextResponse.json({ job: updated });
+  }
+
+  if (action === 'reject_search' || action === 'decline') {
+    const reason = String(body.reason || '').trim();
+    const examples = (job.results || [])
+      .filter((r) => !r.imported)
+      .slice(0, 12)
+      .map((r) => ({
+        companyName: r.companyName,
+        industry: r.industry,
+        city: r.city,
+        state: r.state,
+      }));
+    await recordListBuilderFeedback(session.tenantId, session.userId, {
+      action: 'reject',
+      jobId: id,
+      brief: job.brief,
+      geography: job.geography,
+      industry: job.industry,
+      reason: reason || undefined,
+      examples,
+    });
+    const updated = await setJobStatus(session.tenantId, id, 'rejected', {
+      reviewReason: reason || undefined,
+      progress: {
+        ...job.progress,
+        lastMessage: reason
+          ? `Declined: ${reason}`
+          : 'Declined — will not import this search.',
+      },
+    });
+    return NextResponse.json({ job: updated });
+  }
+
+  if (action === 'reject_rows' && Array.isArray(body.rowIds)) {
+    const ids = new Set(body.rowIds.map(String));
+    const reason = String(body.reason || '').trim();
+    const results = (job.results || []).map((r) =>
+      ids.has(r.id)
+        ? { ...r, rejected: true, rejectedReason: reason || r.rejectedReason, selected: false }
+        : r
+    );
+    const rejectedRows = results.filter((r) => ids.has(r.id));
+    if (rejectedRows.length > 0) {
+      await recordListBuilderFeedback(session.tenantId, session.userId, {
+        action: 'reject',
+        jobId: id,
+        brief: job.brief,
+        geography: job.geography,
+        industry: job.industry,
+        reason: reason || undefined,
+        examples: rejectedRows.slice(0, 12).map((r) => ({
+          companyName: r.companyName,
+          industry: r.industry,
+          city: r.city,
+          state: r.state,
+        })),
+      });
+    }
+    const updated = await updateListBuilderJob(session.tenantId, id, { results });
+    return NextResponse.json({ job: updated });
+  }
+
+  if (action === 'restore_rows' && Array.isArray(body.rowIds)) {
+    const ids = new Set(body.rowIds.map(String));
+    const results = (job.results || []).map((r) =>
+      ids.has(r.id) ? { ...r, rejected: false, rejectedReason: undefined } : r
+    );
+    const updated = await updateListBuilderJob(session.tenantId, id, { results });
+    return NextResponse.json({ job: updated });
+  }
+
+  if (action === 'revise') {
+    const brief = String(body.brief || '').trim();
+    if (!brief) {
+      return NextResponse.json(
+        { error: 'Describe how to revise the search.' },
+        { status: 400 }
+      );
+    }
+    const reason = String(body.reason || '').trim();
+    const { job: nextJob, error } = await createListBuilderJob(
+      session.tenantId,
+      session.userId,
+      {
+        brief,
+        industry:
+          body.industry != null
+            ? String(body.industry).trim()
+            : job.industry,
+        geography:
+          body.geography != null
+            ? String(body.geography).trim()
+            : job.geography,
+        targetSize:
+          body.targetSize != null && Number.isFinite(Number(body.targetSize))
+            ? Number(body.targetSize)
+            : job.targetSize,
+        visibility: job.visibility,
+        parentJobId: id,
+      }
+    );
+    if (error || !nextJob) {
+      return NextResponse.json(
+        { error: error || 'Could not start the revised search' },
+        { status: 400 }
+      );
+    }
+
+    await recordListBuilderFeedback(session.tenantId, session.userId, {
+      action: 'revise',
+      jobId: id,
+      brief: job.brief,
+      revisedBrief: brief,
+      geography: nextJob.geography,
+      industry: nextJob.industry,
+      reason: reason || undefined,
+      examples: (job.results || []).slice(0, 8).map((r) => ({
+        companyName: r.companyName,
+        industry: r.industry,
+        city: r.city,
+        state: r.state,
+      })),
+    });
+
+    if (['queued', 'running', 'paused'].includes(job.status)) {
+      await setJobStatus(session.tenantId, id, 'rejected', {
+        reviewReason: reason || `Revised toward: ${brief.slice(0, 160)}`,
+        revisedToJobId: nextJob.id,
+        progress: {
+          ...job.progress,
+          lastMessage: `Revised — new search started.`,
+        },
+      });
+    } else {
+      await updateListBuilderJob(session.tenantId, id, {
+        reviewReason: reason || `Revised toward: ${brief.slice(0, 160)}`,
+        revisedToJobId: nextJob.id,
+        progress: {
+          ...job.progress,
+          lastMessage: `Revised — new search started.`,
+        },
+      });
+    }
+
+    try {
+      await processListBuilderBatch(session.tenantId, nextJob.id);
+    } catch (err) {
+      console.error('[list-builder revise] first batch', err);
+    }
+    const fresh = await getListBuilderJob(session.tenantId, nextJob.id);
+    return NextResponse.json({ job: fresh || nextJob, revisedFrom: id });
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });

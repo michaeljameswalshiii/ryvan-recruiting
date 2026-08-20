@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Download, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
@@ -118,6 +118,10 @@ export function CompanyEventTimeline({
   const [noteType, setNoteType] = useState('general');
   const [addingNote, setAddingNote] = useState(false);
   const [page, setPage] = useState(1);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!initialEvents.length) {
@@ -181,6 +185,78 @@ export function CompanyEventTimeline({
       toast.error('Failed to save note');
     } finally {
       setAddingNote(false);
+    }
+  }
+
+  function eventKey(event: CompanyEvent) {
+    return String(event.id || event.timestamp || '');
+  }
+
+  async function handleEditSave(event: CompanyEvent) {
+    const eventId = eventKey(event);
+    if (!eventId) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/companies/${companyId}/events`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId, noteText: editText }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to update note');
+      setEditingId(null);
+      await fetchEvents();
+      toast.success('Note updated');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update note');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function handleDelete(event: CompanyEvent) {
+    const eventId = eventKey(event);
+    if (!eventId) return;
+    if (!window.confirm('Delete this note? This cannot be undone.')) return;
+    setDeletingId(eventId);
+    try {
+      const res = await fetch(
+        `/api/companies/${companyId}/events?eventId=${encodeURIComponent(eventId)}`,
+        { method: 'DELETE' },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to delete note');
+      await fetchEvents();
+      toast.success('Note deleted');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete note');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function downloadInvoice(invoiceId: string) {
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Download failed');
+      }
+      const blob = await res.blob();
+      const header = res.headers.get('content-disposition') || '';
+      const match = header.match(/filename="([^"]+)"/);
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = match?.[1] || 'invoice.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Download failed');
     }
   }
 
@@ -291,6 +367,9 @@ export function CompanyEventTimeline({
                 <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                   Note
                 </th>
+                <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-28">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -313,7 +392,16 @@ export function CompanyEventTimeline({
                       </span>
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <ExpandableNoteText text={getActivityBody(event)} />
+                      {editingId === eventKey(event) ? (
+                        <textarea
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          rows={3}
+                          className="w-full rounded-md border border-gray-200 px-2 py-1 text-sm"
+                        />
+                      ) : (
+                        <ExpandableNoteText text={getActivityBody(event)} />
+                      )}
                       {event.createdBy &&
                         event.createdBy !== 'system' &&
                         event.createdBy !== 'user@turnkey.com' && (
@@ -321,6 +409,67 @@ export function CompanyEventTimeline({
                             by {event.createdBy}
                           </span>
                         )}
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <div className="flex flex-wrap items-center gap-1">
+                        {event.metadata?.invoiceId ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50"
+                            onClick={() =>
+                              void downloadInvoice(String(event.metadata?.invoiceId))
+                            }
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            PDF
+                          </button>
+                        ) : null}
+                        {String(event.eventType || '') === 'NOTE' ||
+                        event.metadata?.noteText !== undefined ? (
+                          editingId === eventKey(event) ? (
+                            <>
+                              <button
+                                type="button"
+                                className="text-[11px] font-semibold text-blue-700"
+                                disabled={savingEdit}
+                                onClick={() => void handleEditSave(event)}
+                              >
+                                {savingEdit ? 'Saving…' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                className="text-[11px] text-gray-500"
+                                onClick={() => setEditingId(null)}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="rounded p-1 text-gray-400 hover:text-blue-700"
+                                title="Edit note"
+                                onClick={() => {
+                                  setEditingId(eventKey(event));
+                                  setEditText(getActivityBody(event));
+                                }}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded p-1 text-gray-400 hover:text-rose-700"
+                                title="Delete note"
+                                disabled={deletingId === eventKey(event)}
+                                onClick={() => void handleDelete(event)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          )
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );

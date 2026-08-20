@@ -65,6 +65,7 @@ export async function POST(
 
   const result = await importListBuilderRows(session.tenantId, id, rowIds, {
     maxRows,
+    actorUserId: session.userId,
   });
   if (!result.success) {
     return NextResponse.json(

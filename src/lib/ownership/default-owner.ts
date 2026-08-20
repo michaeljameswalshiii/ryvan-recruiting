@@ -158,15 +158,20 @@ export async function assignDefaultOwnerOnCreate(input: {
   tenantId: string;
   objectType: AssignableObjectType;
   objectId: string;
-  actorUserId: string;
+  actorUserId?: string;
   actorEmail?: string | null;
   role?: AssignmentRole;
   /** When set, this teammate is assigned instead of the tenant default / creator. */
   overrideUserId?: string;
-}): Promise<void> {
+}): Promise<{
+  userId: string;
+  userName: string;
+  userEmail: string;
+  source: "fixed" | "creator";
+} | null> {
   const objectId = String(input.objectId || "").trim();
   const actorUserId = String(input.actorUserId || "").trim();
-  if (!input.tenantId || !objectId || !actorUserId) return;
+  if (!input.tenantId || !objectId) return null;
 
   try {
     const overrideId = String(input.overrideUserId || "").trim();
@@ -199,12 +204,13 @@ export async function assignDefaultOwnerOnCreate(input: {
         actorUserId,
       });
     }
-    if (!owner) return;
+    if (!owner) return null;
 
     const actorEmail =
       (input.actorEmail && String(input.actorEmail).trim()) ||
       owner.userEmail ||
-      actorUserId;
+      actorUserId ||
+      "system";
 
     await assignUserToObject({
       tenantId: input.tenantId,
@@ -214,13 +220,29 @@ export async function assignDefaultOwnerOnCreate(input: {
       userName: owner.userName,
       userEmail: owner.userEmail,
       role: input.role || defaultAssignmentRole(input.objectType),
-      actorUserId,
+      actorUserId: actorUserId || "system",
       actorEmail,
     });
+    if (input.objectType === "company") {
+      try {
+        const { updateClient } = await import(
+          "@/lib/db/repositories/client-repository"
+        );
+        await updateClient(input.tenantId, objectId, {
+          ownerName: owner.userName,
+          ownerUserId: owner.userId,
+          accountOwner: owner.userName,
+        });
+      } catch (stampErr) {
+        console.warn("[assignDefaultOwnerOnCreate] stamp company owner", stampErr);
+      }
+    }
+    return owner;
   } catch (error) {
     console.error(
       `[assignDefaultOwnerOnCreate] ${input.objectType}/${objectId}:`,
       error,
     );
+    return null;
   }
 }

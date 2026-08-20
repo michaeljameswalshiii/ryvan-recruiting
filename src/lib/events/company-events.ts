@@ -7,7 +7,7 @@
 
 'use server';
 
-import { putItem, queryItems, eventsTable } from '../db/dynamodb';
+import { putItem, queryItems, getItem, deleteItem, eventsTable } from '../db/dynamodb';
 import type {
   CompanyEventType,
   EventDetails,
@@ -102,6 +102,68 @@ export async function getCompanyEvents(
 }
 
 /* ==================== Helper Functions for All Company Events ==================== */
+
+function eventKey(companyId: string, eventId: string) {
+  const id = String(eventId || '').trim();
+  const sk = id.startsWith('EVENT#') ? id : `EVENT#${id}`;
+  return { PK: `COMPANY#${companyId}`, SK: sk };
+}
+
+export async function updateCompanyEvent(
+  companyId: string,
+  eventId: string,
+  patch: { noteText?: string; noteType?: string; title?: string; description?: string }
+): Promise<RecordCompanyEventResponse> {
+  try {
+    const key = eventKey(companyId, eventId);
+    const existing = await getItem<CompanyEvent>(eventsTable, key);
+    if (!existing) return { success: false, error: 'Event not found' };
+
+    const meta = { ...(existing.metadata || {}) };
+    if (patch.noteText !== undefined) meta.noteText = patch.noteText;
+    if (patch.noteType !== undefined) {
+      meta.noteType = patch.noteType;
+      meta.noteTypeLabel =
+        noteTypes.find((t) => t.value === patch.noteType)?.label ||
+        String(patch.noteType).replace(/_/g, ' ');
+    }
+    const next: CompanyEvent = {
+      ...existing,
+      title: patch.title ?? existing.title,
+      description:
+        patch.description ??
+        (patch.noteText !== undefined
+          ? String(patch.noteText).slice(0, 150)
+          : existing.description),
+      metadata: meta,
+    };
+    await putItem(eventsTable, next);
+    return { success: true, eventId };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update event',
+    };
+  }
+}
+
+export async function deleteCompanyEvent(
+  companyId: string,
+  eventId: string
+): Promise<RecordCompanyEventResponse> {
+  try {
+    const key = eventKey(companyId, eventId);
+    const existing = await getItem<CompanyEvent>(eventsTable, key);
+    if (!existing) return { success: false, error: 'Event not found' };
+    await deleteItem(eventsTable, key);
+    return { success: true, eventId };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete event',
+    };
+  }
+}
 
 export async function addNoteToCompany(
   companyId: string,

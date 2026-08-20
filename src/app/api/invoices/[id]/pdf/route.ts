@@ -9,7 +9,6 @@ import {
 } from "@/lib/admin-auth";
 import {
   requireTenantId,
-  requireTeamAdmin,
   isAuthError,
 } from "@/lib/tenant-guard";
 import { getInvoice } from "@/lib/db/repositories/invoice-repository";
@@ -25,8 +24,6 @@ export async function GET(
     const { id } = await params;
     const auth = await requireAuthSession();
     if (isAdminAuthError(auth)) return auth;
-    const teamOk = requireTeamAdmin(auth);
-    if (isAuthError(teamOk)) return teamOk;
     const tenantId = requireTenantId(auth);
     if (isAuthError(tenantId)) return tenantId;
 

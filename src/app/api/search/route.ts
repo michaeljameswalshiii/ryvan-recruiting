@@ -14,13 +14,23 @@ import { getAllClients } from "@/lib/db/repositories/client-repository";
 import { getAllJobs } from "@/lib/db/repositories/job-repository";
 import { getAllContactsForTenant } from "@/lib/db/repositories/contact-repository";
 import { getAllTenants } from "@/lib/db/repositories/tenant-repository";
+import {
+  listMarketCompanies,
+  listMarketPeople,
+} from "@/lib/db/repositories/market-source-repository";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 export type GlobalSearchHit = {
   id: string;
-  type: "candidate" | "company" | "contact" | "job";
+  type:
+    | "candidate"
+    | "company"
+    | "contact"
+    | "job"
+    | "market_person"
+    | "market_company";
   title: string;
   subtitle?: string;
   href: string;
@@ -314,13 +324,6 @@ export async function GET(request: NextRequest) {
     }
 
     const tenants = resolved.tenants;
-    if (tenants.length === 0) {
-      return NextResponse.json({
-        query: q,
-        results: [] as GlobalSearchHit[],
-      });
-    }
-
     const scored: Array<GlobalSearchHit & { score: number }> = [];
     const batchSize = 4;
     for (let i = 0; i < tenants.length; i += batchSize) {
@@ -329,6 +332,41 @@ export async function GET(request: NextRequest) {
         batch.map((t) => searchOneTenant(t, q).catch(() => []))
       );
       for (const part of parts) scored.push(...part);
+    }
+
+    const [marketPeople, marketCompanies] = await Promise.all([
+      listMarketPeople({ query: q }).catch(() => []),
+      listMarketCompanies({ query: q }).catch(() => []),
+    ]);
+    for (const person of marketPeople.slice(0, 8)) {
+      scored.push({
+        id: person.id,
+        type: "market_person",
+        title: person.name,
+        subtitle: [person.title, person.company, "Sourcing library"]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/dashboard/sourcing-library?q=${encodeURIComponent(q)}`,
+        score: scoreMatch(q, person.name, person.title, person.company, person.location),
+      });
+    }
+    for (const company of marketCompanies.slice(0, 8)) {
+      scored.push({
+        id: company.id,
+        type: "market_company",
+        title: company.name,
+        subtitle: [company.location || company.city, company.industry, "Sourcing library"]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/dashboard/sourcing-library?q=${encodeURIComponent(q)}`,
+        score: scoreMatch(
+          q,
+          company.name,
+          company.domain,
+          company.city,
+          company.industry
+        ),
+      });
     }
 
     scored.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));

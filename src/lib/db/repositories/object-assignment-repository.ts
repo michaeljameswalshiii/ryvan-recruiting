@@ -131,23 +131,85 @@ export async function listObjectAssignmentsForType(
   return items;
 }
 
+function objectIdVariants(objectId: string): string[] {
+  const raw = String(objectId || "").trim();
+  if (!raw) return [];
+  const out = [raw];
+  if (raw.includes("#")) {
+    const tail = raw.split("#").pop();
+    if (tail) out.push(tail);
+  }
+  return [...new Set(out)];
+}
+
 export async function listObjectAssignments(
   tenantId: string,
   objectType: AssignableObjectType,
   objectId: string,
 ): Promise<ObjectAssignment[]> {
-  const result = await queryItems<ObjectAssignment>(
-    eventsTable,
-    "PK = :pk AND begins_with(SK, :prefix)",
-    {
-      ":pk": objectPK(tenantId, objectType, objectId),
-      ":prefix": "ASSIGNMENT#",
-    },
-  );
+  const items: ObjectAssignment[] = [];
+  const seen = new Set<string>();
+  const allowedTenants = new Set(tenantIdsToTry(tenantId));
 
-  return (result.items || [])
-    .filter((item) => item.tenantId === tenantId)
-    .sort((a, b) => a.userName.localeCompare(b.userName));
+  for (const tid of tenantIdsToTry(tenantId)) {
+    for (const oid of objectIdVariants(objectId)) {
+      try {
+        const result = await queryItems<ObjectAssignment>(
+          eventsTable,
+          "PK = :pk AND begins_with(SK, :prefix)",
+          {
+            ":pk": objectPK(tid, objectType, oid),
+            ":prefix": "ASSIGNMENT#",
+          },
+        );
+        for (const row of result.items || []) {
+          const key = `${row.PK || ""}#${row.SK || ""}`;
+          if (seen.has(key)) continue;
+          if (row.tenantId && !allowedTenants.has(row.tenantId)) continue;
+          seen.add(key);
+          items.push(row);
+        }
+      } catch (err) {
+        console.warn(
+          `[listObjectAssignments] tenant=${tid} object=${oid}`,
+          err,
+        );
+      }
+    }
+  }
+
+  return items.sort((a, b) =>
+    String(a.userName || "").localeCompare(String(b.userName || "")),
+  );
+}
+
+/** Same source as the company page pill — used to fill list Owner columns. */
+export async function listObjectAssignmentsForObjects(
+  tenantId: string,
+  objectType: AssignableObjectType,
+  objectIds: string[],
+): Promise<ObjectAssignment[]> {
+  const unique = [...new Set(objectIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (unique.length === 0) return [];
+
+  const out: ObjectAssignment[] = [];
+  const seen = new Set<string>();
+  const concurrency = 8;
+  for (let i = 0; i < unique.length; i += concurrency) {
+    const chunk = unique.slice(i, i + concurrency);
+    const batches = await Promise.all(
+      chunk.map((id) => listObjectAssignments(tenantId, objectType, id)),
+    );
+    for (const rows of batches) {
+      for (const row of rows) {
+        const key = `${row.PK || ""}#${row.SK || ""}#${row.objectId || ""}#${row.userId || ""}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(row);
+      }
+    }
+  }
+  return out;
 }
 
 function assignmentAuditItem(

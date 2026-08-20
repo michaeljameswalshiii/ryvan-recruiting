@@ -7,7 +7,7 @@
 
 'use server';
 
-import { putItem, queryItems, eventsTable } from '../db/dynamodb';
+import { putItem, queryItems, getItem, deleteItem, eventsTable } from '../db/dynamodb';
 import type {
   EventDetails,
   RecordEventResponse,
@@ -94,6 +94,52 @@ export async function recordJobEvent(
     return { success: true, eventId };
   } catch (error) {
     logEvent('error', 'Failed to record job event', { jobId, error: String(error) });
+    return { success: false, error: String(error) };
+  }
+}
+
+export async function updateJobEvent(
+  jobId: string,
+  eventId: string,
+  patch: { noteText?: string; title?: string; description?: string }
+): Promise<RecordEventResponse> {
+  try {
+    const sk = String(eventId).startsWith('EVENT#')
+      ? String(eventId)
+      : `EVENT#${eventId}`;
+    const existing = await getItem<any>(eventsTable, {
+      PK: `ENTITY#job#${jobId}`,
+      SK: sk,
+    });
+    if (!existing) return { success: false, error: 'Event not found' };
+    const meta = { ...(existing.metadata || {}) };
+    if (patch.noteText !== undefined) meta.noteText = patch.noteText;
+    await putItem(eventsTable, {
+      ...existing,
+      title: patch.title ?? existing.title,
+      description: patch.description ?? patch.noteText ?? existing.description,
+      metadata: meta,
+    });
+    return { success: true, eventId };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
+export async function deleteJobEvent(
+  jobId: string,
+  eventId: string
+): Promise<RecordEventResponse> {
+  try {
+    const sk = String(eventId).startsWith('EVENT#')
+      ? String(eventId)
+      : `EVENT#${eventId}`;
+    const key = { PK: `ENTITY#job#${jobId}`, SK: sk };
+    const existing = await getItem(eventsTable, key);
+    if (!existing) return { success: false, error: 'Event not found' };
+    await deleteItem(eventsTable, key);
+    return { success: true, eventId };
+  } catch (error) {
     return { success: false, error: String(error) };
   }
 }

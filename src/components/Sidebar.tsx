@@ -26,6 +26,7 @@ import {
   ScrollText,
   Gauge,
   Radio,
+  Library,
 } from 'lucide-react';
 import {
   hasPermission,
@@ -49,6 +50,7 @@ const menuItems: MenuItem[] = [
   { name: 'Jobs', href: '/dashboard/jobs', icon: Briefcase, permission: 'core_ats' },
   { name: 'Reporting', href: '/dashboard/reporting', icon: LineChart, permission: 'core_ats' },
   { name: 'Talent Graph', href: '/dashboard/talent-graph', icon: Network, permission: 'core_ats' },
+  { name: 'Sourcing library', href: '/dashboard/sourcing-library', icon: Library, permission: 'core_ats' },
   { name: 'Sequences', href: '/dashboard/sequences', icon: ListOrdered, permission: 'core_ats' },
   { name: 'AI', href: '/dashboard/general-ai-usage', icon: MessageSquare, permission: 'core_ats' },
   { name: 'Agent Ops', href: '/dashboard/agent-ops', icon: Radio, permission: 'core_ats' },
@@ -305,7 +307,9 @@ export default function Sidebar({
         <div className="space-y-1">
           {visibleMain.map((item) => {
             const isActive = isNavActive(item.href);
-            const requiresTenant = item.href !== '/dashboard';
+            const requiresTenant =
+              item.href !== '/dashboard' &&
+              item.href !== '/dashboard/sourcing-library';
             if (allTenantsSelected && requiresTenant) {
               return (
                 <div

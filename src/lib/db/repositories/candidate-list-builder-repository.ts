@@ -10,6 +10,7 @@
  */
 
 import { getItem, putItem, tableNames } from '../dynamodb';
+import { scheduleMarketSourceIngest } from '@/lib/market-source/schedule';
 import type {
   CreateCandidateListBuilderInput,
   CandidateListBuilderJob,
@@ -420,7 +421,7 @@ export async function appendCandidateResults(
     seen.add(k);
     deduped.push(r);
   }
-  return updateCandidateListBuilderJob(tenantId, jobId, {
+  const updated = await updateCandidateListBuilderJob(tenantId, jobId, {
     results: deduped,
     progress: {
       ...job.progress,
@@ -428,6 +429,27 @@ export async function appendCandidateResults(
       target: job.targetSize,
     },
   });
+  scheduleMarketSourceIngest({
+    surface: 'candidate_list_builder',
+    query: job.brief,
+    title: job.titles?.[0],
+    location: job.geography,
+    source: 'pdl',
+    runKey: `clb:${job.id}`,
+    people: rows.map((r) => ({
+      name: r.name,
+      title: r.title,
+      company: r.company,
+      location: r.location || [r.city, r.state].filter(Boolean).join(', '),
+      email: r.email,
+      phone: r.phone,
+      linkedinUrl: r.linkedinUrl,
+      pdlId: r.pdlId,
+      source: 'pdl',
+      role: 'candidate',
+    })),
+  });
+  return updated;
 }
 
 export async function setCandidateJobStatus(

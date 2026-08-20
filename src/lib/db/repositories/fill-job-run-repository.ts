@@ -10,6 +10,7 @@
  */
 
 import { getItem, putItem, scanItems, tableNames } from '../dynamodb';
+import { scheduleMarketSourceIngest } from '@/lib/market-source/schedule';
 
 export type FillJobVisibility = 'private' | 'public';
 
@@ -243,6 +244,24 @@ export async function createFillJobRun(
   if (visibility === 'public') {
     await addToPublicIndex(tenantId, id);
   }
+  scheduleMarketSourceIngest({
+    surface: 'fill_job',
+    query: run.query,
+    title: run.jobTitle,
+    location: run.jobLocation,
+    runKey: `fill:${id}`,
+    people: candidates.map((c) => ({
+      name: c.name,
+      title: c.title,
+      company: c.company,
+      location: c.location,
+      email: c.email,
+      phone: c.phone,
+      linkedinUrl: c.linkedinUrl,
+      source: c.source,
+      role: 'candidate',
+    })),
+  });
   return run;
 }
 

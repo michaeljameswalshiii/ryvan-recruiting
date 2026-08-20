@@ -10,12 +10,19 @@ import {
   Building2,
   Contact,
   Briefcase,
+  Library,
   X,
 } from "lucide-react";
 
 type SearchHit = {
   id: string;
-  type: "candidate" | "company" | "contact" | "job";
+  type:
+    | "candidate"
+    | "company"
+    | "contact"
+    | "job"
+    | "market_person"
+    | "market_company";
   title: string;
   subtitle?: string;
   href: string;
@@ -29,6 +36,8 @@ const TYPE_META: Record<
   company: { label: "Companies", icon: Building2, order: 1 },
   contact: { label: "Contacts", icon: Contact, order: 2 },
   job: { label: "Jobs", icon: Briefcase, order: 3 },
+  market_person: { label: "Sourcing library", icon: Library, order: 4 },
+  market_company: { label: "Sourcing companies", icon: Library, order: 5 },
 };
 
 function groupHits(hits: SearchHit[]) {

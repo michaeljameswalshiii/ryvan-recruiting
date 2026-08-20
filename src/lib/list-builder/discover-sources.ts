@@ -295,6 +295,7 @@ function buildCompletionPrompts(opts: {
   focusKw: string;
   phase: DiscoveryStrategyPhase;
   employeeCap?: number;
+  preferenceMemory?: string;
 }): { system: string; user: string } {
   const {
     job,
@@ -310,6 +311,7 @@ function buildCompletionPrompts(opts: {
     focusKw,
     phase,
     employeeCap,
+    preferenceMemory,
   } = opts;
 
   const honorCap = phase === 0 && !!employeeCap;
@@ -338,9 +340,12 @@ Rules:
 - NEVER invent phone or email
 - Max ${need} companies. Do not include: ${excludeList}
 - ${sizeRule}
-- Cities: ${anchors.slice(0, 8).join(', ')}`;
+- Cities: ${anchors.slice(0, 8).join(', ')}
+${preferenceMemory ? `- Honor recruiter preference memory below. Do not repeat rejected kinds of firms.` : ''}`;
 
-  const user = `Brief: ${job.brief}
+  const user = `Brief: ${job.brief}${
+    preferenceMemory ? `\n\n${preferenceMemory}` : ''
+  }
 Location focus: ${targetGeo}, Florida (South Florida OK if same market).
 Industry umbrella: ${umbrella}
 Batch ${batch} focus: ${batchFocus} near ${focusCity}.
@@ -392,6 +397,21 @@ export async function discoverCompanyCandidatesWithDiagnostics(
     keywords[(batch - 1) % Math.max(keywords.length, 1)] || 'construction';
   const phase = discoveryStrategyPhase(job);
 
+  let preferenceMemory = '';
+  try {
+    const { formatPreferenceMemoryBlock } = await import(
+      './preference-memory'
+    );
+    preferenceMemory = await formatPreferenceMemoryBlock({
+      tenantId: job.tenant_id,
+      userId: job.userId,
+      industry: job.industry,
+      geography: job.geography,
+    });
+  } catch {
+    preferenceMemory = '';
+  }
+
   const batchStarted = Date.now();
   // Fit under Vercel 60s with room for runner contact work
   // Nova grounding can use ~15–35s; leave headroom for hydrate
@@ -422,6 +442,7 @@ export async function discoverCompanyCandidatesWithDiagnostics(
         tenantId: job.tenant_id,
         userId: job.userId,
         jobId: job.id,
+        preferenceMemory,
       });
       diagnostics.novaGroundingCount = nova.candidates.length;
       diagnostics.novaGroundingCalls = nova.usage.groundingCalls;
@@ -484,6 +505,7 @@ export async function discoverCompanyCandidatesWithDiagnostics(
         focusKw,
         phase,
         employeeCap,
+        preferenceMemory,
       });
       const { text, error } = await grokWebResearch({
         system: prompts.system,

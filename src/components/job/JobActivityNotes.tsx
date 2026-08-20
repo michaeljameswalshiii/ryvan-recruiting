@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Loader2 } from 'lucide-react';
+import { Download, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ExpandableNoteText } from '@/components/shared/ExpandableNoteText';
@@ -33,6 +33,10 @@ type ActivityRow = {
   source: string;
   sourceHref?: string;
   createdBy?: string;
+  invoiceId?: string;
+  noteEventId?: string;
+  noteEntity?: 'company' | 'job';
+  noteEntityId?: string;
 };
 
 const NOTE_TYPES = [
@@ -205,6 +209,9 @@ export function JobActivityNotes({
   const [noteType, setNoteType] = useState('general');
   const [addingNote, setAddingNote] = useState(false);
   const [page, setPage] = useState(1);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [noteBusy, setNoteBusy] = useState(false);
 
   // Stable key so parent re-creating linkedCandidates arrays does not
   // re-fetch and force page back to 1 (which made pagination look broken).
@@ -266,6 +273,9 @@ export function JobActivityNotes({
               body: eventBody(ev),
               source: 'Job',
               createdBy: ev.createdBy,
+              noteEventId: ev.id || ev.timestamp,
+              noteEntity: 'job',
+              noteEntityId: jobId,
             });
           }
         }
@@ -315,6 +325,10 @@ export function JobActivityNotes({
                 source: companyName || 'Company',
                 sourceHref: `/dashboard/companies/${companyId}`,
                 createdBy: ev.createdBy,
+                invoiceId: ev.metadata?.invoiceId,
+                noteEventId: ev.id || ev.timestamp,
+                noteEntity: 'company',
+                noteEntityId: companyId,
               });
             }
           }
@@ -391,6 +405,77 @@ export function JobActivityNotes({
       toast.error(e?.message || 'Failed to save note');
     } finally {
       setAddingNote(false);
+    }
+  };
+
+  const downloadInvoice = async (invoiceId: string) => {
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Download failed');
+      }
+      const blob = await res.blob();
+      const header = res.headers.get('content-disposition') || '';
+      const match = header.match(/filename="([^"]+)"/);
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = match?.[1] || 'invoice.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Download failed');
+    }
+  };
+
+  const saveNoteEdit = async (row: ActivityRow) => {
+    if (!row.noteEntity || !row.noteEntityId || !row.noteEventId) return;
+    setNoteBusy(true);
+    try {
+      const url =
+        row.noteEntity === 'company'
+          ? `/api/companies/${row.noteEntityId}/events`
+          : `/api/jobs/${row.noteEntityId}/events`;
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: row.noteEventId, noteText: editText }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to update note');
+      setEditingId(null);
+      toast.success('Note updated');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update note');
+    } finally {
+      setNoteBusy(false);
+    }
+  };
+
+  const deleteNote = async (row: ActivityRow) => {
+    if (!row.noteEntity || !row.noteEntityId || !row.noteEventId) return;
+    if (!window.confirm('Delete this note? This cannot be undone.')) return;
+    setNoteBusy(true);
+    try {
+      const url =
+        row.noteEntity === 'company'
+          ? `/api/companies/${row.noteEntityId}/events?eventId=${encodeURIComponent(row.noteEventId)}`
+          : `/api/jobs/${row.noteEntityId}/events?eventId=${encodeURIComponent(row.noteEventId)}`;
+      const res = await fetch(url, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to delete note');
+      toast.success('Note deleted');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete note');
+    } finally {
+      setNoteBusy(false);
     }
   };
 
@@ -494,6 +579,9 @@ export function JobActivityNotes({
                   <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-32">
                     Source
                   </th>
+                  <th className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 w-28">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody key={`activity-page-${paged.page}`} className="divide-y divide-gray-100">
@@ -511,7 +599,16 @@ export function JobActivityNotes({
                       </span>
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <ExpandableNoteText text={row.body} />
+                      {editingId === row.id ? (
+                        <textarea
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          rows={3}
+                          className="w-full rounded-md border border-gray-200 px-2 py-1 text-sm"
+                        />
+                      ) : (
+                        <ExpandableNoteText text={row.body} />
+                      )}
                     </td>
                     <td className="px-3 py-3 text-xs align-top">
                       {row.sourceHref ? (
@@ -524,6 +621,64 @@ export function JobActivityNotes({
                       ) : (
                         <span className="text-gray-500">{row.source}</span>
                       )}
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <div className="flex flex-wrap items-center gap-1">
+                        {row.invoiceId ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50"
+                            onClick={() => void downloadInvoice(row.invoiceId!)}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            PDF
+                          </button>
+                        ) : null}
+                        {row.noteEntity && row.noteEventId ? (
+                          editingId === row.id ? (
+                            <>
+                              <button
+                                type="button"
+                                className="text-[11px] font-semibold text-blue-700"
+                                disabled={noteBusy}
+                                onClick={() => void saveNoteEdit(row)}
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                className="text-[11px] text-gray-500"
+                                onClick={() => setEditingId(null)}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="rounded p-1 text-gray-400 hover:text-blue-700"
+                                title="Edit note"
+                                onClick={() => {
+                                  setEditingId(row.id);
+                                  setEditText(row.body);
+                                }}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded p-1 text-gray-400 hover:text-rose-700"
+                                title="Delete note"
+                                disabled={noteBusy}
+                                onClick={() => void deleteNote(row)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          )
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}
