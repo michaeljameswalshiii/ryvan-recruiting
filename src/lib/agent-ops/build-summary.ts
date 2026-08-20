@@ -26,6 +26,10 @@ import type {
 
 const AI_DESK = "/dashboard/general-ai-usage";
 const SEQUENCES = "/dashboard/sequences";
+const SOURCING_LIBRARY = "/dashboard/sourcing-library";
+/** Open the market/sourcing library filtered to a run's query (e.g. a metro + role). */
+const sourcingHref = (query?: string) =>
+  query ? `${SOURCING_LIBRARY}?q=${encodeURIComponent(query)}` : SOURCING_LIBRARY;
 
 const MINUTES = {
   listJobBase: 10,
@@ -543,8 +547,16 @@ function buildFillReqBot(input: {
     state,
     headline,
     progressPct,
-    href: AI_DESK,
-    hrefLabel: "Open AI desk",
+    href:
+      latestRecruiter?.status === "completed"
+        ? sourcingHref(latestRecruiter.query || latestRecruiter.lastMessage)
+        : latestFill
+          ? sourcingHref(latestFill.query || latestFill.jobTitle)
+          : AI_DESK,
+    hrefLabel:
+      latestRecruiter?.status === "completed" || latestFill
+        ? "Open run data"
+        : "Open AI desk",
     liveCount,
     lastAt,
   };
@@ -698,7 +710,7 @@ function buildHistory(input: {
       botId: "fill-req",
       title: `${statusVerb(run.status)} fill req`,
       detail: `${run.qualifiedCount || 0} qualified · ${truncate(run.query)}`,
-      href: AI_DESK,
+      href: sourcingHref(run.query),
       at: run.updatedAt,
     });
   }
@@ -708,7 +720,7 @@ function buildHistory(input: {
       botId: "fill-req",
       title: run.error ? "Fill snapshot error" : "Fill snapshot saved",
       detail: `${run.count || 0} people · ${truncate(run.jobTitle || run.query)}`,
-      href: AI_DESK,
+      href: sourcingHref(run.query || run.jobTitle),
       at: run.updatedAt || run.createdAt,
     });
   }
