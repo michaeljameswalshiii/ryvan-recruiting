@@ -1218,7 +1218,7 @@ export function CandidatesClient() {
                             );
                           case 'last_note':
                             return (
-                              <td key={colId} className={`${listTd} w-[34%]`}>
+                              <td key={colId} className={`${listTd} w-[44%]`}>
                                 {c.lastNote ? (
                                   <span
                                     title={c.lastNote}
@@ -1244,7 +1244,7 @@ export function CandidatesClient() {
                             return (
                               <td
                                 key={colId}
-                                className={`${listTd} w-[7.25rem] max-w-[7.25rem] text-sm text-gray-700`}
+                                className={`${listTd} w-[5.25rem] max-w-[5.25rem] text-sm text-gray-700`}
                               >
                                 {c.location ? (
                                   <span

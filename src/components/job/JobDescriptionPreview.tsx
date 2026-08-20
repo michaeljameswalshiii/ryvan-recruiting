@@ -85,7 +85,7 @@ export function JobDescriptionPreview({
         </div>
 
         <div
-          className="relative max-h-[min(42vh,320px)] min-h-[140px] overflow-y-auto px-4 py-3 cursor-pointer"
+          className="relative max-h-[min(64vh,640px)] min-h-[200px] overflow-y-auto px-4 py-3 cursor-pointer"
           onClick={() => hasBody && setExpanded(true)}
           role={hasBody ? 'button' : undefined}
           tabIndex={hasBody ? 0 : undefined}
