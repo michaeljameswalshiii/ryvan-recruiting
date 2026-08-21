@@ -1,21 +1,11 @@
-"use client";
+import type { Metadata } from 'next';
+import { RyvanLanding } from '@/components/marketing/RyvanLanding';
 
-import { useEffect, useState } from "react";
-import { redirect } from "next/navigation";
-import { checkAuth } from "@/lib/api/auth-client";
+export const metadata: Metadata = {
+  title: 'RYVAN Recruiting | Great candidates. Great companies.',
+  description: 'Engaged, direct hire, and fractional recruiting solutions built around people, pace, and lasting fit.',
+};
 
 export default function Home() {
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    checkAuth().then((isAuthenticated) => {
-      redirect(isAuthenticated ? "/dashboard" : "/login");
-    }).catch(() => redirect("/login"));
-  }, []);
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center"><p className="text-muted-foreground">Loading...</p></div>
-    </div>
-  );
+  return <RyvanLanding />;
 }
