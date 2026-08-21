@@ -96,3 +96,4 @@ issues-query-*.json
 /reset-password.js
 /set-password.js
 /update-password.js
+.env*.local

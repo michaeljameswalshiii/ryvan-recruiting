@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Terms of Service | Trio Recruiting",
-  description: "Terms of Service for Trio Recruiting",
+  title: "Terms of Service | RYVAN Recruiting",
+  description: "Terms of Service for RYVAN Recruiting",
   robots: { index: true, follow: true },
 };
 
@@ -13,7 +13,7 @@ export default function TermsOfServicePage() {
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-4">
           <Link href="/" className="text-lg font-semibold tracking-tight">
-            Trio Recruiting
+            RYVAN Recruiting
           </Link>
           <nav className="flex gap-4 text-sm text-muted-foreground">
             <Link
@@ -34,12 +34,12 @@ export default function TermsOfServicePage() {
           Terms of Service
         </h1>
         <p className="text-sm text-muted-foreground mb-8">
-          Effective date: July 19, 2026 · Service: Trio Recruiting (
+          Effective date: July 19, 2026 · Service: RYVAN Recruiting (
           <a
-            href="https://turnkey-optimization.vercel.app"
+            href="https://ryvan-recruiting.vercel.app"
             className="text-primary hover:underline"
           >
-            turnkey-optimization.vercel.app
+            ryvan-recruiting.vercel.app
           </a>
           )
         </p>
@@ -48,7 +48,7 @@ export default function TermsOfServicePage() {
           <h2 className="text-xl font-semibold pt-2">1. Agreement</h2>
           <p>
             These Terms of Service (“<strong>Terms</strong>”) govern access to and use of
-            Trio Recruiting and related websites, APIs, and services (the “
+            RYVAN Recruiting and related websites, APIs, and services (the “
             <strong>Service</strong>”). By creating an account, inviting users, or using
             the Service, you agree to these Terms. If you use the Service on behalf of an
             organization, you represent that you have authority to bind that organization
@@ -57,7 +57,7 @@ export default function TermsOfServicePage() {
 
           <h2 className="text-xl font-semibold pt-4">2. The Service</h2>
           <p>
-            Trio Recruiting is a multi-tenant software platform for recruiting workflows,
+            RYVAN Recruiting is a multi-tenant software platform for recruiting workflows,
             including CRM/ATS-style records, pipelines, jobs, careers pages, optional
             email and AI features, and integrations. Features may change over time. We may
             offer free, trial, or paid plans.
@@ -143,7 +143,7 @@ export default function TermsOfServicePage() {
             8. Careers pages &amp; applicants
           </h2>
           <p>
-            Public careers pages may be available without a Trio Recruiting account.
+            Public careers pages may be available without a RYVAN Recruiting account.
             Applicants’ relationships regarding job applications are primarily with the
             Customer/employer. Customer is responsible for job postings, screening
             practices, and applicant communications.
@@ -177,7 +177,7 @@ export default function TermsOfServicePage() {
             Our Privacy Policy explains how we handle personal information and is
             incorporated by reference:{" "}
             <Link href="/privacy" className="text-primary hover:underline">
-              https://turnkey-optimization.vercel.app/privacy
+              https://ryvan-recruiting.vercel.app/privacy
             </Link>
             .
           </p>
@@ -260,10 +260,10 @@ export default function TermsOfServicePage() {
             <br />
             Service site:{" "}
             <a
-              href="https://turnkey-optimization.vercel.app"
+            href="https://ryvan-recruiting.vercel.app"
               className="text-primary hover:underline"
             >
-              https://turnkey-optimization.vercel.app
+              https://ryvan-recruiting.vercel.app
             </a>
           </p>
         </section>

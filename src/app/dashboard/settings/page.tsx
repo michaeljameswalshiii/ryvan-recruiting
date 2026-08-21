@@ -440,7 +440,7 @@ export default function SettingsPage() {
         body: JSON.stringify({
           userId,
           to: testEmail,
-          subject: 'Test Email - Trio Recruiting',
+          subject: 'Test Email - RYVAN Recruiting',
           text: 'This is a test email from your ATS. If you received this, your email connection is working!',
         }),
       });
@@ -1140,7 +1140,7 @@ export default function SettingsPage() {
             Email Connections
           </CardTitle>
           <CardDescription>
-            Connect your email to send and receive messages directly from Trio Recruiting
+            Connect your email to send and receive messages directly from RYVAN Recruiting
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

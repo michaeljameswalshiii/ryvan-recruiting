@@ -104,7 +104,7 @@ export default async function TenantCareersPage({ params }: Props) {
         )}
 
         <p className="text-center text-xs text-slate-400">
-          Applications go to {ctx.name} · Powered by Trio Recruiting
+          Applications go to {ctx.name} · Powered by RYVAN Recruiting
         </p>
       </main>
     </div>

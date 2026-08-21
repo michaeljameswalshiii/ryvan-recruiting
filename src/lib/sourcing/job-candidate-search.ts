@@ -237,7 +237,7 @@ export function parseCareersJobUrl(input: string): {
   try {
     const u = t.includes('://')
       ? new URL(t)
-      : new URL(t, 'https://turnkey-optimization.vercel.app');
+      : new URL(t, 'https://ryvan-recruiting.vercel.app');
     const m = u.pathname.match(
       /\/careers\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)/i
     );

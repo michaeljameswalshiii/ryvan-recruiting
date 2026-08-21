@@ -424,7 +424,7 @@ export default function Sidebar({
           </button>
         </div>
         <div className="sidebar-footer-copy text-xs font-medium text-slate-600 dark:text-white text-center">
-          © 2026 Trio Recruiting
+          © 2026 RYVAN Recruiting
         </div>
       </div>
     </div>

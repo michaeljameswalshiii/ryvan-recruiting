@@ -1,4 +1,4 @@
-# Turnkey Optimization (RYVAN Recruiting)
+# RYVAN Recruiting
 
 Modern AI-powered recruiting CRM with resume parsing, candidate intake, fit scoring, and AI-assisted recruiting workflows.
 
@@ -20,7 +20,7 @@ This repo already contains the core pieces of an AI resume reviewer:
 
 ## Live Deployment
 
-**URL**: https://turnkey-optimization.vercel.app
+**URL**: https://ryvan-recruiting.vercel.app
 
 Credentials are **not** stored in this repository. Use your Cognito / DynamoDB profile account, or create one via the signup flow if registration is enabled.
 

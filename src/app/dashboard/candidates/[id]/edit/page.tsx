@@ -9,7 +9,7 @@ import { getSessionTenantId } from "@/lib/server-auth";
 import CandidateEditForm from "@/components/candidate/CandidateEditForm";
 
 export const metadata = {
-  title: "Edit Candidate - Trio Recruiting",
+  title: "Edit Candidate - RYVAN Recruiting",
   description: "Edit candidate details",
 };
 

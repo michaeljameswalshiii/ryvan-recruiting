@@ -8,7 +8,7 @@ export default function SignupPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold">Create your account</h1>
           <p className="text-muted-foreground mt-2">
-Start using Trio Recruiting free
+Start using RYVAN Recruiting
           </p>
         </div>
 

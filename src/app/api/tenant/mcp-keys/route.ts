@@ -31,7 +31,7 @@ export async function GET() {
       process.env.NEXT_PUBLIC_APP_URL ||
       (process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
-        : "https://turnkey-optimization.vercel.app");
+        : "https://ryvan-recruiting.vercel.app");
     return NextResponse.json({
       keys,
       tenantId,
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_APP_URL ||
       (process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
-        : "https://turnkey-optimization.vercel.app");
+        : "https://ryvan-recruiting.vercel.app");
 
     const mcpUrl = `${appUrl.replace(/\/$/, "")}/api/mcp`;
 

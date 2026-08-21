@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Trio Recruiting",
-  description: "Privacy Policy for Trio Recruiting",
+  title: "Privacy Policy | RYVAN Recruiting",
+  description: "Privacy Policy for RYVAN Recruiting",
   robots: { index: true, follow: true },
 };
 
@@ -13,7 +13,7 @@ export default function PrivacyPolicyPage() {
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-4">
           <Link href="/" className="text-lg font-semibold tracking-tight">
-            Trio Recruiting
+            RYVAN Recruiting
           </Link>
           <nav className="flex gap-4 text-sm text-muted-foreground">
             <Link href="/terms" className="hover:text-foreground hover:underline">
@@ -31,21 +31,21 @@ export default function PrivacyPolicyPage() {
           Privacy Policy
         </h1>
         <p className="text-sm text-muted-foreground not-prose mb-8">
-          Effective date: July 19, 2026 · Service: Trio Recruiting (
+Effective date: July 19, 2026 · Service: RYVAN Recruiting (
           <a
-            href="https://turnkey-optimization.vercel.app"
+            href="https://ryvan-recruiting.vercel.app"
             className="text-primary hover:underline"
           >
-            turnkey-optimization.vercel.app
+            ryvan-recruiting.vercel.app
           </a>
           )
         </p>
 
         <section className="space-y-4 text-[15px] leading-relaxed text-foreground/90">
           <p>
-            This Privacy Policy describes how Trio Recruiting (“<strong>we</strong>,”
+            This Privacy Policy describes how RYVAN Recruiting (“<strong>we</strong>,”
             “<strong>us</strong>,” “<strong>our</strong>”) collects, uses, stores, and
-            shares information when you use Trio Recruiting (the “
+            shares information when you use RYVAN Recruiting (the “
             <strong>Service</strong>”) — a multi-tenant recruiting and talent-CRM
             platform that may include candidate and company records, pipelines, jobs,
             careers pages, email integrations, AI assistance, and related tools.
@@ -258,7 +258,7 @@ export default function PrivacyPolicyPage() {
               michaeljameswalshiii@gmail.com
             </a>
             <br />
-            Service: Trio Recruiting
+            Service: RYVAN Recruiting
           </p>
         </section>
 

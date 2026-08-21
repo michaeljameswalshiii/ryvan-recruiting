@@ -15,16 +15,17 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-<h1 className="text-2xl font-bold">Trio Recruiting</h1>
+<p className="text-sm font-black uppercase tracking-[0.25em] text-[#509ee2]">RYVAN Recruiting</p>
+          <h1 className="mt-3 text-3xl font-bold">Welcome back</h1>
           <p className="text-muted-foreground mt-2">Sign in to your account</p>
         </div>
 
         <LoginFormWithSuspense />
 
         <p className="text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
+          Need an account?{" "}
           <Link href="/signup" className="text-primary hover:underline">
-            Sign up
+            Create an account
           </Link>
         </p>
       </div>

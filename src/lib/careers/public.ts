@@ -234,7 +234,7 @@ export function getAppBaseUrl(request?: NextRequest): string {
   if (request) {
     return request.nextUrl.origin;
   }
-  return "https://turnkey-optimization.vercel.app";
+  return "https://ryvan-recruiting.vercel.app";
 }
 
 /**
