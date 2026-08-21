@@ -7,33 +7,21 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import type { ReportingStats, PeriodKey } from '@/lib/aws/reporting';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
 import {
   Users,
   Briefcase,
   Building2,
   Target,
   TrendingUp,
-  Sparkles,
   ArrowUpRight,
   ArrowDownRight,
   Minus,
-  ChevronDown,
 } from 'lucide-react';
 import { DeskNextActions } from '@/components/desk/DeskNextActions';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
-import { toDisplayTrend } from '@/lib/reporting/display-trend';
+import { DashboardInsightsSection } from '@/components/dashboard/DashboardInsightsSection';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#64748b'];
 
@@ -80,22 +68,12 @@ export function DashboardHome({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [insightsOpen, setInsightsOpen] = useState(false);
 
   const setPeriod = (key: PeriodKey) => {
     const next = new URLSearchParams(searchParams.toString());
     next.set('period', key);
     router.push(`${pathname}?${next.toString()}`);
   };
-
-  const candidatesTrend = useMemo(
-    () => toDisplayTrend(stats.candidatesOverTime),
-    [stats.candidatesOverTime]
-  );
-  const companiesTrend = useMemo(
-    () => toDisplayTrend(stats.companiesOverTime || []),
-    [stats.companiesOverTime]
-  );
 
   const funnelMax = Math.max(...stats.funnel.map((f) => f.count), 1);
 
@@ -229,121 +207,7 @@ export function DashboardHome({
         ))}
       </div>
 
-      {/* Insights — header only by default; hover or click for the full list (weekly scan, not daily noise) */}
-      {stats.insights.length > 0 && (
-        <div
-          className="relative z-20"
-          onMouseEnter={() => setInsightsOpen(true)}
-          onMouseLeave={() => setInsightsOpen(false)}
-        >
-          <button
-            type="button"
-            onClick={() => setInsightsOpen((o) => !o)}
-            aria-expanded={insightsOpen}
-            aria-controls="dashboard-insights-panel"
-            data-ink-on-light
-            className="surface-light flex w-full items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
-          >
-            <Sparkles className="h-4 w-4 shrink-0 text-blue-600" aria-hidden />
-            <span className="text-sm font-semibold uppercase tracking-wide text-slate-900">
-              Insights
-            </span>
-            <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-blue-800">
-              {stats.insights.length}
-            </span>
-            <span className="ml-auto hidden text-[11px] font-semibold text-slate-600 sm:inline">
-              {insightsOpen ? 'Hide' : 'Hover or click to review'}
-            </span>
-            <ChevronDown
-              className={`h-4 w-4 shrink-0 text-slate-700 transition-transform ${
-                insightsOpen ? 'rotate-180' : ''
-              }`}
-              aria-hidden
-            />
-          </button>
-
-          {insightsOpen && (
-            <div
-              id="dashboard-insights-panel"
-              role="region"
-              aria-label="Dashboard insights"
-              className="absolute left-0 right-0 top-full z-30 mt-1"
-            >
-              {/* Stay white in both themes — never dark:bg-card (dark ink on charcoal) */}
-              <ul
-                data-ink-on-light
-                data-popover-surface
-                className="surface-light max-h-72 space-y-1.5 overflow-y-auto rounded-xl border border-blue-200 bg-white p-3 shadow-lg"
-              >
-                {stats.insights.map((line, i) => (
-                  <li
-                    key={i}
-                    className="flex gap-2 text-sm font-semibold text-slate-900"
-                  >
-                    <span className="shrink-0 font-bold text-blue-600">•</span>
-                    <span>{line}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Trend charts: candidates + companies */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <DashboardCard title="Candidates added">
-          <p className="mb-2 text-xs text-gray-500">{stats.periodLabel}</p>
-          <ResponsiveContainer width="100%" height={145}>
-            <AreaChart data={candidatesTrend}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} />
-              <YAxis
-                tick={{ fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-                allowDecimals={false}
-              />
-              <Tooltip />
-              <Area
-                type="monotone"
-                dataKey="count"
-                stroke="#3b82f6"
-                fill="#3b82f6"
-                fillOpacity={0.15}
-                strokeWidth={2}
-                name="New candidates"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </DashboardCard>
-
-        <DashboardCard title="Companies added">
-          <p className="mb-2 text-xs text-gray-500">{stats.periodLabel}</p>
-          <ResponsiveContainer width="100%" height={145}>
-            <AreaChart data={companiesTrend}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} />
-              <YAxis
-                tick={{ fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-                allowDecimals={false}
-              />
-              <Tooltip />
-              <Area
-                type="monotone"
-                dataKey="count"
-                stroke="#10b981"
-                fill="#10b981"
-                fillOpacity={0.15}
-                strokeWidth={2}
-                name="New companies"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </DashboardCard>
-      </div>
+      <DashboardInsightsSection stats={stats} />
 
       {/* Active jobs + On Deck */}
       <div className="grid gap-4 lg:grid-cols-2">
