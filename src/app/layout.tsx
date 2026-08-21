@@ -26,8 +26,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RYVAN Recruiting",
-  description: "Great candidates. Great companies. Strategic, hands-on recruiting solutions.",
+  title: "Trio Recruiting",
+  description: "Trio Recruiting Platform",
 };
 
 export default function RootLayout({
