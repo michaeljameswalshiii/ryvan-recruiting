@@ -213,6 +213,11 @@
   font-size: 13px;
 }
 
+.agent-ops .ops-choice,
+.agent-ops .ops-run-secondary {
+  gap: 7px;
+}
+
 .agent-ops .ops-choice:hover {
   opacity: 0.92;
 }
@@ -256,6 +261,157 @@
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(220px, 0.75fr);
   gap: 12px;
+}
+
+.agent-ops .ops-active-panel {
+  overflow: hidden;
+}
+
+.agent-ops .ops-active-totals {
+  margin-top: 0;
+}
+
+.agent-ops .ops-active-list {
+  display: grid;
+}
+
+.agent-ops .ops-active-run {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.65fr) minmax(280px, 1.8fr) 78px;
+  align-items: center;
+  gap: 16px;
+  min-height: 112px;
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--ops-line);
+}
+
+.agent-ops .ops-active-run:last-child {
+  border-bottom: 0;
+}
+
+.agent-ops .ops-active-run:hover {
+  background: color-mix(in srgb, var(--ops-teal) 6%, var(--ops-panel));
+}
+
+.agent-ops .ops-active-run-agent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.agent-ops .ops-active-run-agent > div,
+.agent-ops .ops-active-run-work {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.agent-ops .ops-active-run-agent span,
+.agent-ops .ops-active-run-work > span {
+  color: var(--ops-muted);
+  font-size: 12px;
+}
+
+.agent-ops .ops-active-run-work > strong,
+.agent-ops .ops-active-run-work > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-ops .ops-live-pulse {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--ops-green);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ops-green) 12%, transparent);
+}
+
+.agent-ops .ops-live-pulse.is-queued {
+  background: var(--ops-teal);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ops-teal) 12%, transparent);
+}
+
+.agent-ops .ops-active-progress-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.agent-ops .ops-active-progress-row .ops-progress {
+  margin-top: 0;
+}
+
+.agent-ops .ops-active-progress-row > span {
+  color: var(--ops-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.agent-ops .ops-active-run-status {
+  min-width: 68px;
+  justify-self: end;
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: color-mix(in srgb, var(--ops-green) 10%, transparent);
+  text-align: center;
+}
+
+.agent-ops .ops-active-run-status.is-queued {
+  color: var(--ops-teal);
+  background: color-mix(in srgb, var(--ops-teal) 10%, transparent);
+}
+
+.agent-ops .ops-active-run-tail {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+}
+
+.agent-ops .ops-result-link {
+  color: var(--ops-teal);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.agent-ops .ops-live-empty {
+  min-height: 330px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  text-align: center;
+}
+
+.agent-ops .ops-live-empty-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: var(--ops-teal);
+  background: color-mix(in srgb, var(--ops-teal) 13%, transparent);
+}
+
+.agent-ops .ops-live-empty-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.agent-ops .ops-live-empty h3 {
+  margin: 14px 0 5px;
+  font-size: 17px;
+}
+
+.agent-ops .ops-live-empty p {
+  margin: 0 0 16px;
+  color: var(--ops-muted);
 }
 
 .agent-ops .ops-brief-grid {
@@ -425,8 +581,9 @@
 
 .agent-ops .ops-timeline-item {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 48px minmax(0, 1fr) auto;
   gap: 10px;
+  align-items: center;
 }
 
 .agent-ops .ops-time {
@@ -447,6 +604,215 @@
 .agent-ops .ops-fleet-card {
   padding: 14px;
   color: inherit;
+}
+
+.agent-ops .ops-fleet-card .ops-run-secondary {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.agent-ops .ops-run-secondary {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ops-line);
+  border-radius: 9px;
+  background: var(--ops-panel-2);
+  color: var(--ops-text);
+  padding: 8px 11px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.agent-ops .ops-run-secondary:hover {
+  background: color-mix(in srgb, var(--ops-teal) 8%, var(--ops-panel-2));
+}
+
+.agent-ops .ops-launch-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.agent-ops .ops-launch-toolbar,
+.agent-ops .ops-launch-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--ops-line);
+  border-radius: 12px;
+  background: var(--ops-panel);
+}
+
+.agent-ops .ops-segment {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--ops-panel-2);
+}
+
+.agent-ops .ops-segment button {
+  border: 0;
+  border-radius: 7px;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--ops-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.agent-ops .ops-segment button.is-active {
+  background: var(--ops-panel);
+  color: var(--ops-text);
+  box-shadow: 0 1px 4px rgba(16, 36, 45, 0.12);
+}
+
+.agent-ops .ops-launch-notice {
+  border-color: color-mix(in srgb, var(--ops-green) 45%, var(--ops-line));
+  background: color-mix(in srgb, var(--ops-green) 8%, var(--ops-panel));
+  font-size: 13px;
+}
+
+.agent-ops .ops-launch-notice.is-error {
+  border-color: color-mix(in srgb, var(--ops-red) 45%, var(--ops-line));
+  background: color-mix(in srgb, var(--ops-red) 8%, var(--ops-panel));
+}
+
+.agent-ops .ops-launch-notice-actions,
+.agent-ops .ops-launch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-ops .ops-launch-notice a,
+.agent-ops .ops-launch-notice button {
+  border: 0;
+  background: none;
+  color: var(--ops-teal);
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.agent-ops .ops-launch-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.agent-ops .ops-launch-card {
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.agent-ops .ops-launch-card-wide {
+  grid-column: 1 / -1;
+}
+
+.agent-ops .ops-launch-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.agent-ops .ops-launch-card-head h3,
+.agent-ops .ops-launch-card-head p {
+  margin: 0;
+}
+
+.agent-ops .ops-launch-card-head h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.agent-ops .ops-launch-card-head p {
+  margin-top: 3px;
+  color: var(--ops-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-ops .ops-launch-icon {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--ops-teal);
+  background: color-mix(in srgb, var(--ops-teal) 13%, transparent);
+}
+
+.agent-ops .ops-launch-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.agent-ops .ops-field {
+  display: grid;
+  gap: 5px;
+  color: var(--ops-muted);
+  font-size: 12px;
+}
+
+.agent-ops .ops-field input,
+.agent-ops .ops-field select,
+.agent-ops .ops-field textarea {
+  width: 100%;
+  border: 1px solid var(--ops-line);
+  border-radius: 9px;
+  background: var(--ops-window);
+  color: var(--ops-text);
+  padding: 9px 10px;
+  outline: none;
+  resize: vertical;
+}
+
+.agent-ops .ops-field input:focus,
+.agent-ops .ops-field select:focus,
+.agent-ops .ops-field textarea:focus {
+  border-color: var(--ops-teal);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ops-teal) 16%, transparent);
+}
+
+.agent-ops .ops-inline-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.agent-ops .ops-selected-job {
+  display: grid;
+  gap: 3px;
+  min-height: 84px;
+  align-content: center;
+  padding: 12px;
+  border: 1px solid var(--ops-line);
+  border-radius: 9px;
+  background: var(--ops-panel-2);
+}
+
+.agent-ops .ops-selected-job span {
+  color: var(--ops-muted);
+  font-size: 12px;
+}
+
+.agent-ops .ops-launch-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 3px;
+  color: var(--ops-muted);
+  font-size: 11px;
 }
 
 .agent-ops .ops-fleet-top {
@@ -492,6 +858,15 @@
   .agent-ops .ops-fleet-grid {
     grid-template-columns: 1fr;
   }
+  .agent-ops .ops-launch-grid {
+    grid-template-columns: 1fr;
+  }
+  .agent-ops .ops-launch-card-wide {
+    grid-column: auto;
+  }
+  .agent-ops .ops-active-run {
+    grid-template-columns: minmax(120px, 0.6fr) minmax(220px, 1.4fr) 72px;
+  }
 }
 
 @media (max-width: 720px) {
@@ -525,8 +900,35 @@
   .agent-ops .ops-agent-row {
     grid-template-columns: minmax(130px, 1fr) 1fr;
   }
+  .agent-ops .ops-launch-toolbar,
+  .agent-ops .ops-launch-notice,
+  .agent-ops .ops-launch-foot {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .agent-ops .ops-launch-actions,
+  .agent-ops .ops-launch-actions > * {
+    width: 100%;
+  }
   .agent-ops .ops-status {
     display: none;
+  }
+  .agent-ops .ops-active-run {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+  .agent-ops .ops-active-run-status {
+    display: inline-block;
+    justify-self: start;
+  }
+  .agent-ops .ops-active-run-tail {
+    justify-items: start;
+  }
+  .agent-ops .ops-timeline-item {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+  .agent-ops .ops-timeline-item > .ops-result-link {
+    grid-column: 2;
   }
 }
 

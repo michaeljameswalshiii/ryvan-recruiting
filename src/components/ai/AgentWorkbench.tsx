@@ -1270,6 +1270,9 @@ export function AgentWorkbench({
     (s, r) => s + (r.estimatedCostUsd || 0),
     0
   );
+  const focusedResearchRun = focusFillRunId
+    ? researchRuns.find((run) => run.id === focusFillRunId)
+    : researchRuns[0];
 
   return (
     <div
@@ -1433,7 +1436,10 @@ export function AgentWorkbench({
             ]
               .filter(Boolean)
               .join(' · ') || 'ready'}
-            {' · '}session ~${researchSpend.toFixed(4)}
+            {' · '}
+            {focusedResearchRun
+              ? `${focusFillRunId ? 'selected' : 'latest'} run ~$${focusedResearchRun.estimatedCostUsd.toFixed(4)}`
+              : 'no saved run cost yet'}
           </p>
         )}
 
@@ -2031,7 +2037,9 @@ export function AgentWorkbench({
                 <span
                   className={`text-[10px] ${light ? 'text-slate-600' : 'text-slate-500'}`}
                 >
-                  Session ~${researchSpend.toFixed(4)}
+                  {focusedResearchRun
+                    ? `Selected run ~${focusedResearchRun.estimatedCostUsd.toFixed(4)}`
+                    : `Saved runs ~${researchSpend.toFixed(4)}`}
                 </span>
                 <Button
                   type="button"

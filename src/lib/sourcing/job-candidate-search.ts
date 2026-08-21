@@ -1273,7 +1273,9 @@ export async function sourceCandidatesForJob(params: {
             queryPreview: `${pass.titles[0]} | ${pass.label} p${page}`,
             tenantId: params.tenantId || undefined,
             userId: params.userId || undefined,
-            surface: 'fill-job',
+            // Detail telemetry only — the combined Fill-job ledger row below
+            // is the single source of truth for budgets.
+            surface: 'fill-job-detail',
           }).catch(() => {});
 
           notes.push(
@@ -1692,7 +1694,8 @@ export async function sourceCandidatesForJob(params: {
             queryPreview: `rank-then-enrich top ${enrichIds.length}`,
             tenantId: params.tenantId || undefined,
             userId: params.userId || undefined,
-            surface: 'fill-job-enrich',
+            // Detail telemetry only — included in the combined Fill-job total.
+            surface: 'fill-job-detail',
           }).catch(() => {});
           notes.push(
             `Rank→enrich: unlocked ${unlocked}/${enrichIds.length} top profile(s) · ~${enrichCredits} credit(s) (not whole search page)`

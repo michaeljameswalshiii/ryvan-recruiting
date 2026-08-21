@@ -19,6 +19,7 @@ import type { SequenceEnrollment } from "@/lib/schemas/sequence";
 import type {
   AgentOpsBot,
   AgentOpsBotState,
+  AgentOpsActiveRun,
   AgentOpsHistoryItem,
   AgentOpsIntervention,
   AgentOpsSummary,
@@ -27,9 +28,33 @@ import type {
 const AI_DESK = "/dashboard/general-ai-usage";
 const SEQUENCES = "/dashboard/sequences";
 const SOURCING_LIBRARY = "/dashboard/sourcing-library";
+const fillWorkspaceHref = (runId?: string, recruiterRun = false) => {
+  const params = new URLSearchParams({ workspace: "fill" });
+  if (runId) params.set("runId", recruiterRun ? `recruiter-${runId}` : runId);
+  return `${AI_DESK}?${params.toString()}`;
+};
+const goalWorkspaceHref = (runId?: string) => {
+  const params = new URLSearchParams({ workspace: "goal" });
+  if (runId) params.set("runId", runId);
+  return `${AI_DESK}?${params.toString()}`;
+};
 /** Open the market/sourcing library filtered to a run's query (e.g. a metro + role). */
-const sourcingHref = (query?: string) =>
-  query ? `${SOURCING_LIBRARY}?q=${encodeURIComponent(query)}` : SOURCING_LIBRARY;
+const sourcingHref = (query?: string) => {
+  if (!query) return SOURCING_LIBRARY;
+  // Keep generated links useful: the library searches names/titles/locations,
+  // not full job-description text. The first non-empty line is the compact
+  // role/location summary used by sourcing runs.
+  const compact = String(query)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(' | ')
+    .slice(0, 240);
+  return compact
+    ? `${SOURCING_LIBRARY}?q=${encodeURIComponent(compact)}`
+    : SOURCING_LIBRARY;
+};
 
 const MINUTES = {
   listJobBase: 10,
@@ -238,9 +263,63 @@ export async function buildAgentOpsSummary(input: {
   });
 
   const bots = [fillBot, listBot, outreachBot];
-  const liveCount = bots.filter(
-    (b) => b.state === "running" || b.state === "queued"
-  ).length;
+  const activeRuns: AgentOpsActiveRun[] = [
+    ...liveRecruiter.map((run) => ({
+      id: `recruiter-${run.id}`,
+      botId: "fill-req" as const,
+      agentName: "Fill Req",
+      title: truncate(run.query, 110),
+      detail:
+        run.lastMessage ||
+        (run.status === "queued"
+          ? "Waiting for the next recruiter worker cycle"
+          : "Searching and qualifying candidates"),
+      status: run.status as "queued" | "running",
+      progressPct: pct(run.qualifiedCount || 0, run.targetQualified || 0),
+      progressLabel: `${run.qualifiedCount || 0} of ${run.targetQualified || 0} qualified`,
+      href: fillWorkspaceHref(run.id, true),
+      hrefLabel: "View candidates",
+      updatedAt: run.updatedAt,
+    })),
+    ...liveList
+      .filter((job) => job.status === "queued" || job.status === "running")
+      .map((job) => ({
+        id: `list-${job.id}`,
+        botId: "list-builder" as const,
+        agentName: "List Builder",
+        title: truncate(job.brief, 110),
+        detail:
+          job.progress?.lastMessage ||
+          (job.status === "queued"
+            ? "Waiting for the next list-builder worker cycle"
+            : "Researching companies and contact details"),
+        status: job.status as "queued" | "running",
+        progressPct: pct(job.progress?.found || 0, job.progress?.target || job.targetSize),
+        progressLabel: `${job.progress?.found || 0} of ${job.progress?.target || job.targetSize} companies`,
+        href: `/dashboard/list-builder/${job.id}`,
+        hrefLabel: "View companies",
+        updatedAt: job.updatedAt,
+      })),
+    ...liveGoals.map((goal) => ({
+      id: `goal-${goal.id}`,
+      botId: "fill-req" as const,
+      agentName: "CRM Goal",
+      title: truncate(goal.goal, 110),
+      detail:
+        goal.lastAssistantText ||
+        (goal.status === "planning" ? "Planning the next steps" : "Executing the current wave"),
+      status: "running" as const,
+      progressPct: pct(goal.wave || 0, goal.maxWaves || 0),
+      progressLabel: `Wave ${goal.wave || 0} of ${goal.maxWaves || 0}`,
+      href: goalWorkspaceHref(goal.id),
+      hrefLabel: "Open run",
+      updatedAt: goal.updatedAt,
+    })),
+  ].sort((a, b) => {
+    if (a.status !== b.status) return a.status === "running" ? -1 : 1;
+    return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+  });
+  const liveCount = activeRuns.length;
 
   const interventions: AgentOpsIntervention[] = [];
 
@@ -250,7 +329,7 @@ export async function buildAgentOpsSummary(input: {
       botId: "fill-req",
       title: "Fill req waiting to start",
       detail: truncate(run.query || run.lastMessage || "Queued sourcing run"),
-      href: AI_DESK,
+      href: fillWorkspaceHref(run.id, true),
       priority: "medium",
       ageLabel: ageLabel(run.updatedAt, now),
       at: run.updatedAt,
@@ -262,7 +341,7 @@ export async function buildAgentOpsSummary(input: {
       botId: "fill-req",
       title: "Fill req paused",
       detail: truncate(run.query || run.lastMessage || "Paused sourcing run"),
-      href: AI_DESK,
+      href: fillWorkspaceHref(run.id, true),
       priority: "medium",
       ageLabel: ageLabel(run.updatedAt, now),
       at: run.updatedAt,
@@ -274,7 +353,7 @@ export async function buildAgentOpsSummary(input: {
       botId: "fill-req",
       title: "Fill req failed",
       detail: truncate(run.error || run.query || "Sourcing run failed"),
-      href: AI_DESK,
+      href: fillWorkspaceHref(run.id, true),
       priority: "high",
       ageLabel: ageLabel(run.updatedAt, now),
       at: run.updatedAt,
@@ -286,7 +365,7 @@ export async function buildAgentOpsSummary(input: {
       botId: "fill-req",
       title: "Fill snapshot has an error",
       detail: truncate(run.error || run.query),
-      href: AI_DESK,
+      href: fillWorkspaceHref(run.id),
       priority: "medium",
       ageLabel: ageLabel(run.updatedAt || run.createdAt, now),
       at: run.updatedAt || run.createdAt,
@@ -298,7 +377,7 @@ export async function buildAgentOpsSummary(input: {
       botId: "fill-req",
       title: "Approve CRM writes",
       detail: truncate(goal.goal || "Goal agent is waiting for confirmation"),
-      href: AI_DESK,
+      href: goalWorkspaceHref(goal.id),
       priority: "high",
       ageLabel: ageLabel(goal.updatedAt, now),
       at: goal.updatedAt,
@@ -310,7 +389,7 @@ export async function buildAgentOpsSummary(input: {
       botId: "fill-req",
       title: "Goal run failed",
       detail: truncate(goal.error || goal.goal || "Goal agent stopped"),
-      href: AI_DESK,
+      href: goalWorkspaceHref(goal.id),
       priority: "high",
       ageLabel: ageLabel(goal.updatedAt, now),
       at: goal.updatedAt,
@@ -430,6 +509,7 @@ export async function buildAgentOpsSummary(input: {
     greetingName: name,
     generatedAt: new Date(now).toISOString(),
     liveCount,
+    activeRuns,
     stats: {
       completedValue,
       completedContext:
@@ -547,16 +627,18 @@ function buildFillReqBot(input: {
     state,
     headline,
     progressPct,
-    href:
-      latestRecruiter?.status === "completed"
-        ? sourcingHref(latestRecruiter.query || latestRecruiter.lastMessage)
-        : latestFill
-          ? sourcingHref(latestFill.query || latestFill.jobTitle)
-          : AI_DESK,
+    href: latestRecruiter
+      ? fillWorkspaceHref(
+          latestRecruiter.fillRunId || latestRecruiter.id,
+          !latestRecruiter.fillRunId
+        )
+      : latestFill
+        ? fillWorkspaceHref(latestFill.id)
+        : fillWorkspaceHref(),
     hrefLabel:
       latestRecruiter?.status === "completed" || latestFill
-        ? "Open run data"
-        : "Open AI desk",
+        ? "View candidates"
+        : "Open Fill Req",
     liveCount,
     lastAt,
   };
@@ -701,6 +783,7 @@ function buildHistory(input: {
       title: `${statusVerb(job.status)} company list`,
       detail: `${job.progress?.found || 0} found · ${truncate(job.brief)}`,
       href: `/dashboard/list-builder/${job.id}`,
+      hrefLabel: "View companies",
       at: job.updatedAt,
     });
   }
@@ -710,7 +793,8 @@ function buildHistory(input: {
       botId: "fill-req",
       title: `${statusVerb(run.status)} fill req`,
       detail: `${run.qualifiedCount || 0} qualified · ${truncate(run.query)}`,
-      href: sourcingHref(run.query),
+      href: fillWorkspaceHref(run.fillRunId || run.id, !run.fillRunId),
+      hrefLabel: "View candidates",
       at: run.updatedAt,
     });
   }
@@ -720,7 +804,8 @@ function buildHistory(input: {
       botId: "fill-req",
       title: run.error ? "Fill snapshot error" : "Fill snapshot saved",
       detail: `${run.count || 0} people · ${truncate(run.jobTitle || run.query)}`,
-      href: sourcingHref(run.query || run.jobTitle),
+      href: fillWorkspaceHref(run.id),
+      hrefLabel: "View candidates",
       at: run.updatedAt || run.createdAt,
     });
   }
@@ -730,7 +815,8 @@ function buildHistory(input: {
       botId: "fill-req",
       title: `${statusVerb(goal.status)} goal run`,
       detail: truncate(goal.goal),
-      href: AI_DESK,
+      href: goalWorkspaceHref(goal.id),
+      hrefLabel: "Open run",
       at: goal.updatedAt,
     });
   }
@@ -742,6 +828,7 @@ function buildHistory(input: {
       title: row.lastSentAt ? "Sequence step sent" : `${statusVerb(row.status)} enrollment`,
       detail: `${row.candidateName || "Candidate"} · ${input.nameForSeq(row.sequenceId)}`,
       href: SEQUENCES,
+      hrefLabel: "Open sequence",
       at: when,
     });
   }
@@ -830,5 +917,3 @@ function daypart(now: number): string {
   if (hour < 17) return "afternoon";
   return "evening";
 }
-
-

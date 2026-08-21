@@ -339,9 +339,19 @@ function GeneralAiUsagePageInner() {
    */
   type AiView = 'chat' | AiWorkspace;
   const AI_VIEW_KEY = 'trio-ai-home-view-v1';
-  const [aiView, setAiView] = useState<AiView>('chat');
+  const initialWorkspace = (() => {
+    if (typeof window === 'undefined') return null;
+    const workspace = new URLSearchParams(window.location.search).get('workspace');
+    return workspace === 'companies' || workspace === 'fill' || workspace === 'goal'
+      ? workspace
+      : null;
+  })();
+  const [aiView, setAiView] = useState<AiView>(initialWorkspace || 'chat');
   /** When opening Fill/Goal from Active runs history, focus this run id */
-  const [workspaceRunId, setWorkspaceRunId] = useState<string | null>(null);
+  const [workspaceRunId, setWorkspaceRunId] = useState<string | null>(() => {
+    if (!initialWorkspace || typeof window === 'undefined') return null;
+    return new URLSearchParams(window.location.search).get('runId')?.trim() || null;
+  });
 
   useEffect(() => {
     try {

@@ -48,14 +48,12 @@ export type CostBreakdown = {
 export const APOLLO_PEOPLE_SEARCH_CREDITS = 0;
 
 /**
- * Optional USD estimate for Apollo search when you want a non-zero ops estimate.
- * Default 0 — search is free of credits. Enrichment uses APOLLO_USD_PER_CREDIT.
+ * Apollo People Search is a discovery operation, not a per-result billable
+ * enrichment. Keep it at $0 even if an old environment variable is present.
+ * Fill-run estimates include only actual AI work and Apollo credits consumed.
  */
-export function apolloSearchUsdEstimate(resultsCount: number): number {
-  const per =
-    Number(process.env.APOLLO_SEARCH_USD_PER_RESULT) ||
-    0; // honest default: $0 for pure search
-  return Math.max(0, resultsCount) * per;
+export function apolloSearchUsdEstimate(_resultsCount: number): number {
+  return 0;
 }
 
 export function apolloCreditsUsd(credits: number): number {

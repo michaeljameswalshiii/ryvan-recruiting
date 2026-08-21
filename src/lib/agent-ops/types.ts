@@ -4,7 +4,9 @@
  */
 
 export const AGENT_OPS_TABS = [
+  "active",
   "command",
+  "launch",
   "fleet",
   "queue",
   "brief",
@@ -33,6 +35,20 @@ export type AgentOpsBot = {
   hrefLabel: string;
   liveCount: number;
   lastAt?: string;
+};
+
+export type AgentOpsActiveRun = {
+  id: string;
+  botId: AgentOpsBotId;
+  agentName: string;
+  title: string;
+  detail: string;
+  status: "queued" | "running";
+  progressPct: number | null;
+  progressLabel?: string;
+  href: string;
+  hrefLabel?: string;
+  updatedAt: string;
 };
 
 export type AgentOpsIntervention = {
@@ -66,6 +82,7 @@ export type AgentOpsHistoryItem = {
   title: string;
   detail: string;
   href?: string;
+  hrefLabel?: string;
   at: string;
 };
 
@@ -81,6 +98,7 @@ export type AgentOpsSummary = {
     attentionValue: string;
     attentionContext: string;
   };
+  activeRuns: AgentOpsActiveRun[];
   bots: AgentOpsBot[];
   interventions: AgentOpsIntervention[];
   brief: {
@@ -94,7 +112,9 @@ export type AgentOpsSummary = {
 
 export function isAgentOpsTab(value: string | null | undefined): value is AgentOpsTab {
   return (
+    value === "active" ||
     value === "command" ||
+    value === "launch" ||
     value === "fleet" ||
     value === "queue" ||
     value === "brief" ||

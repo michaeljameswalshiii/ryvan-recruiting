@@ -570,14 +570,32 @@ async function listIndexItems<T extends { lastSeenAt: string }>(
 }
 
 function matchesQuery(q: string, fields: Array<string | undefined>): boolean {
-  const needle = q.trim().toLowerCase();
+  // Agent/job links can contain a full multiline description. The library is
+  // indexed by short person/company fields, so search the summary line rather
+  // than requiring every responsibility/qualification word to match.
+  const needle = q
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(' ')
+    .toLowerCase();
   if (!needle) return true;
-  const tokens = needle.split(/\s+/).filter(Boolean);
+  const tokens = needle
+    .split(/[^a-z0-9+#.-]+/i)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1);
   const hay = fields
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
-  return tokens.every((token) => hay.includes(token));
+  if (tokens.length <= 1) return tokens.every((token) => hay.includes(token));
+
+  // Require two useful terms for a multi-term search. This preserves focused
+  // searches while allowing "Project Manager | Atlanta | Full-Time" to match
+  // records whose short fields do not contain every formatting token.
+  const matched = tokens.filter((token) => hay.includes(token)).length;
+  return matched >= Math.min(2, tokens.length);
 }
 
 export async function listMarketPeople(options?: {

@@ -91,8 +91,13 @@ export async function getRecruiterAgentUsage(tenantId: string) {
           ':end': `USAGE#${end}~`,
         }
       );
-      const scoped = items.filter((item) =>
-        ['fill-job', 'fill-job-enrich', 'recruiter-agent'].includes(item.surface)
+      // A Fill job writes detailed Apollo/LLM telemetry as well as one combined
+      // ledger row. Budgeting must only use the combined row; counting detail
+      // rows again inflates spend and pauses agents early.
+      const scoped = items.filter(
+        (item) =>
+          (item.surface === 'fill-job' && item.provider === 'combined') ||
+          item.surface === 'recruiter-agent'
       );
       const usd = scoped.reduce((sum, item) => sum + Number(item.estimatedCost || 0), 0);
       if (period === 'day') {
