@@ -1,36 +1,4 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs",
-  "installCommand": "npm install",
-  "buildCommand": "npm run build",
-  "outputDirectory": ".next",
-  "functions": {
-    "src/app/api/parse-resume/route.ts": { "maxDuration": 60 },
-    "src/app/api/candidate/[id]/resume/route.ts": { "maxDuration": 60 },
-    "src/app/api/public/careers/apply/route.ts": { "maxDuration": 60 },
-    "src/app/api/jobs/[id]/fit-score/route.ts": { "maxDuration": 60 },
-    "src/app/api/admin/ai-agents/run/route.ts": { "maxDuration": 120 },
-    "src/app/api/admin/ai-agents/merge/route.ts": { "maxDuration": 30 },
-    "src/app/api/agent/source-candidates/route.ts": { "maxDuration": 120 },
-    "src/app/api/cron/recruiter-agent-run/route.ts": { "maxDuration": 120 },
-    "src/app/api/agent-ops/summary/route.ts": { "maxDuration": 60 }
-  },
-  "crons": [
-    {
-      "path": "/api/cron/sequences-run",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cron/sequences-poll-replies",
-      "schedule": "30 * * * *"
-    },
-    {
-      "path": "/api/cron/list-builder-run",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/recruiter-agent-run",
-      "schedule": "* * * * *"
-    }
-  ]
+  "cleanUrls": true,
+  "trailingSlash": false
 }
